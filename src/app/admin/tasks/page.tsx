@@ -37,7 +37,7 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs';
 import {
-  Task,
+  ListTodo,
   Loader2,
   Eye,
   CheckCircle,
@@ -50,7 +50,24 @@ import {
   Upload,
 } from 'lucide-react';
 
-interface TaskWithProfile extends Task {
+interface TaskData {
+  id: number;
+  task_code: string;
+  title?: string;
+  status: string;
+  created_at: string;
+  user_id?: number;
+  product_count?: number;
+  model_cost?: string;
+  price_multiplier?: string;
+  total_credits?: string;
+  admin_notes?: string;
+  result_summary?: string;
+  files?: TaskFile[] | string;
+  conversation_log?: Array<{role: string; content: string}> | string;
+}
+
+interface TaskWithProfile extends TaskData {
   user_profile?: {
     id: number;
     username: string;
