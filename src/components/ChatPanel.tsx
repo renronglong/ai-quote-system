@@ -774,7 +774,7 @@ export default function ChatPanel() {
   const createTask = useCallback(async (uploadedFiles: Array<{name: string, size: number, type: string}>, title?: string) => {
     try {
       // 获取当前登录用户
-      const { data: { session } } = await import('@/lib/supabase-browser').then(m => m.getBrowserClient().auth.getSession());
+      const { data: { session } } = await import('@/lib/supabase-browser').then(m => m.supabase.auth.getSession());
       const userId = session?.user?.id;
       if (!userId) {
         console.log('[Task] 用户未登录，跳过任务创建');
