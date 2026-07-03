@@ -61,7 +61,7 @@ export async function GET(
         images,
         created_at
       `)
-      .eq("user_id", profile.user_id)
+      .eq("user_id", profile.id)
       .eq("status", "published")
       .order("created_at", { ascending: false });
 
