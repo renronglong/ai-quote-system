@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
     const { data: currentBalance } = await client
       .from("credit_balances")
       .select("*")
-      .eq("user_id", userId)
+      .eq("user_id", user_id)
       .single();
 
     let currentBal = parseFloat(currentBalance?.balance || "0");
