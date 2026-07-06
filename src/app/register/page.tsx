@@ -22,6 +22,8 @@ export default function RegisterPage() {
   const [countdown, setCountdown] = useState(0);
   const [sending, setSending] = useState(false);
   const [step, setStep] = useState<'form' | 'verify'>('form');
+  // TODO: 上线前删除测试账号相关逻辑
+  const [devCode, setDevCode] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && user) {
@@ -66,6 +68,10 @@ export default function RegisterPage() {
       }
 
       setSuccessMessage('验证码已发送');
+      // TODO: 上线前删除测试账号相关逻辑 - 显示测试验证码
+      if (data.devCode) {
+        setDevCode(data.devCode);
+      }
       setCountdown(60);
       setStep('verify');
     } catch {
@@ -248,6 +254,12 @@ export default function RegisterPage() {
                     </Button>
                   </div>
                   <p className="text-xs text-slate-500">验证码已发送至您的手机，10分钟内有效</p>
+                  {/* TODO: 上线前删除测试账号相关逻辑 */}
+                  {devCode && (
+                    <p className="text-xs text-orange-600 bg-orange-50 p-2 rounded">
+                      🔧 测试模式：验证码为 <strong>{devCode}</strong>（上线前请删除此提示）
+                    </p>
+                  )}
                 </div>
               )}
 
