@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { user, loading, signUp, signIn } = useAuth();
+  const { user, loading, signIn } = useAuth();
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -110,14 +110,23 @@ export default function RegisterPage() {
     setSubmitting(true);
 
     try {
-      const { error: signUpError } = await signUp(phone, password);
-      if (signUpError) {
-        setError(signUpError);
+      // 调用服务端注册接口
+      const response = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, password, verifyCode }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || '注册失败，请稍后重试');
         return;
       }
 
       setSuccessMessage('注册成功！正在自动登录...');
       
+      // 自动登录
       const { error: signInError } = await signIn(phone, password);
       if (signInError) {
         setError('注册成功但自动登录失败，请手动登录');
@@ -125,6 +134,8 @@ export default function RegisterPage() {
       } else {
         router.replace('/');
       }
+    } catch {
+      setError('注册失败，请稍后重试');
     } finally {
       setSubmitting(false);
     }

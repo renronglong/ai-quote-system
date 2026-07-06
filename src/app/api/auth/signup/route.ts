@@ -20,10 +20,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '密码长度至少为6个字符' }, { status: 400 });
     }
 
-    if (!companyName || companyName.trim().length === 0) {
-      return NextResponse.json({ error: '请填写公司名称' }, { status: 400 });
-    }
-
     if (!supabaseServiceKey) {
       console.error('[Signup] Supabase service role key not set');
       return NextResponse.json({ error: '服务配置错误，请联系管理员' }, { status: 500 });
@@ -44,16 +40,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '该手机号已注册' }, { status: 400 });
     }
 
-    // 创建用户（包含公司名称和地址）
+    // 创建用户（公司名称和地址改为可选）
+    const insertData: Record<string, unknown> = {
+      phone,
+      password,
+      created_at: new Date().toISOString(),
+    };
+    if (companyName && companyName.trim()) insertData.company_name = companyName.trim();
+    if (address && address.trim()) insertData.address = address.trim();
+
     const { data, error } = await supabase
       .from('users')
-      .insert({
-        phone,
-        password,
-        company_name: companyName.trim(),
-        address: (address || '').trim(),
-        created_at: new Date().toISOString(),
-      })
+      .insert(insertData)
       .select()
       .single();
 
