@@ -39,7 +39,7 @@ interface AluminumPrice {
 }
 
 // 供应商列表（占位数据，后续替换为真实供应商信息）
-const SUPPLIERS = [
+const SUPPLIERS: { id: string; name: string; desc: string }[] = [
   // { id: 'supplier-a', name: '供应商A', desc: '铝型材加工' },
   // { id: 'supplier-b', name: '供应商B', desc: '五金配件' },
   // { id: 'supplier-c', name: '供应商C', desc: '表面处理' },
