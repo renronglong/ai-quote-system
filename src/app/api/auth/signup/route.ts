@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://br-lush-teal-829ebb2c.supabase2.aidap-global.cn-beijing.volces.com';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseServiceKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 function validatePhone(phone: string): boolean {
   return /^1[3-9]\d{9}$/.test(phone);
@@ -18,6 +18,11 @@ export async function POST(request: Request) {
 
     if (!password || password.length < 6) {
       return NextResponse.json({ error: '密码长度至少为6个字符' }, { status: 400 });
+    }
+
+    if (!supabaseServiceKey) {
+      console.error('[Signup] Supabase service role key not set');
+      return NextResponse.json({ error: '服务配置错误，请联系管理员' }, { status: 500 });
     }
 
     // 创建 Supabase 客户端
