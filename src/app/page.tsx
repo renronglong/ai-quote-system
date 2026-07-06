@@ -11,9 +11,10 @@ import {
   RefreshCw,
   FileText,
   Loader2,
-  Link2,
+  Store,
   ChevronLeft,
   ChevronRight,
+  ArrowRight,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -37,6 +38,13 @@ interface AluminumPrice {
   date: string;
 }
 
+// 供应商列表（占位数据，后续替换为真实供应商信息）
+const SUPPLIERS = [
+  // { id: 'supplier-a', name: '供应商A', desc: '铝型材加工' },
+  // { id: 'supplier-b', name: '供应商B', desc: '五金配件' },
+  // { id: 'supplier-c', name: '供应商C', desc: '表面处理' },
+];
+
 export default function HomePage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -52,7 +60,6 @@ export default function HomePage() {
   }, [user, authLoading, router]);
 
   useEffect(() => {
-    // 已登录才获取数据
     if (!user) return;
 
     const fetchAluminumPrice = async () => {
@@ -79,7 +86,7 @@ export default function HomePage() {
     fetchProducts();
   }, [user]);
 
-  // 加载中状态
+  // 加载中
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50">
@@ -91,7 +98,7 @@ export default function HomePage() {
     );
   }
 
-  // 未登录，不渲染内容（等待跳转）
+  // 未登录，不渲染（等待跳转）
   if (!user) {
     return null;
   }
@@ -126,15 +133,15 @@ export default function HomePage() {
         </Link>
       </div>
       
-      {/* 主内容区 - 左侧供应商链接 + 右侧ChatPanel */}
+      {/* 主内容区 */}
       <div className="flex-1 overflow-hidden flex">
-        {/* 供应商链接区域 */}
-        <div className={`shrink-0 border-r bg-white flex flex-col transition-all duration-300 ${supplierCollapsed ? 'w-10' : 'w-52'}`}>
-          {/* 折叠/展开按钮 */}
+        {/* 左侧供应商链接区域 */}
+        <div className={`shrink-0 border-r bg-white flex flex-col transition-all duration-300 ${supplierCollapsed ? 'w-10' : 'w-56'}`}>
+          {/* 折叠按钮 */}
           <button
             onClick={() => setSupplierCollapsed(!supplierCollapsed)}
             className="flex items-center justify-center h-9 hover:bg-gray-100 border-b transition-colors"
-            title={supplierCollapsed ? '展开供应商链接' : '收起供应商链接'}
+            title={supplierCollapsed ? '展开供应商' : '收起供应商'}
           >
             {supplierCollapsed ? (
               <ChevronRight className="w-4 h-4 text-gray-400" />
@@ -147,26 +154,48 @@ export default function HomePage() {
             <>
               <div className="px-3 py-2.5 border-b bg-gray-50/50">
                 <div className="flex items-center gap-1.5">
-                  <Link2 className="w-3.5 h-3.5 text-blue-600" />
-                  <span className="text-xs font-semibold text-gray-700">供应商链接</span>
+                  <Store className="w-3.5 h-3.5 text-blue-600" />
+                  <span className="text-xs font-semibold text-gray-700">供应商</span>
                 </div>
               </div>
-              <div className="flex-1 overflow-auto px-3 py-2 space-y-1">
-                <div className="flex items-center justify-center h-24 border-2 border-dashed border-gray-200 rounded-lg">
-                  <p className="text-xs text-gray-400 text-center px-2">供应商链接即将添加<br/>敬请期待</p>
-                </div>
+              <div className="flex-1 overflow-auto px-2 py-2 space-y-1">
+                {SUPPLIERS.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-28 border-2 border-dashed border-gray-200 rounded-lg">
+                    <Store className="w-5 h-5 text-gray-300 mb-2" />
+                    <p className="text-xs text-gray-400 text-center">供应商即将添加</p>
+                  </div>
+                ) : (
+                  SUPPLIERS.map((supplier) => (
+                    <Link
+                      key={supplier.id}
+                      href={`/${supplier.id}`}
+                      className="flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-blue-50 transition-colors group"
+                    >
+                      <div className="w-7 h-7 rounded-md bg-blue-100 flex items-center justify-center shrink-0">
+                        <Store className="w-3.5 h-3.5 text-blue-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">{supplier.name}</p>
+                        {supplier.desc && (
+                          <p className="text-xs text-gray-400 truncate">{supplier.desc}</p>
+                        )}
+                      </div>
+                      <ArrowRight className="w-3.5 h-3.5 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </Link>
+                  ))
+                )}
               </div>
             </>
           )}
 
           {supplierCollapsed && (
             <div className="flex-1 flex items-start justify-center pt-3">
-              <Link2 className="w-4 h-4 text-gray-300" />
+              <Store className="w-4 h-4 text-gray-300" />
             </div>
           )}
         </div>
 
-        {/* 聊天区域 */}
+        {/* 右侧聊天报价区域 */}
         <div className="flex-1 overflow-hidden p-4">
           <ChatPanel />
         </div>
