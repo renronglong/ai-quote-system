@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 export default function LoginPage() {
   const router = useRouter();
-  const { user, loading, signIn } = useAuth();
+  const { user, loading } = useAuth();
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -44,12 +44,43 @@ export default function LoginPage() {
     setSubmitting(true);
 
     try {
-      const { error } = await signIn(phone, password);
-      if (error) {
-        setError(error);
-      } else {
-        router.replace('/');
+      // 调用服务端登录接口
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || '登录失败');
+        return;
       }
+
+      // 登录成功，存储会话
+      const mockSession = {
+        access_token: 'custom_token',
+        refresh_token: 'custom_refresh',
+        expires_in: 3600,
+        expires_at: Date.now() + 3600000,
+        token_type: 'bearer',
+        user: {
+          id: data.user.id,
+          email: null,
+          app_metadata: {},
+          user_metadata: {},
+          aud: 'authenticated',
+          created_at: new Date().toISOString(),
+        },
+      };
+
+      localStorage.setItem('custom_session', JSON.stringify(mockSession));
+      // 触发 auth context 更新
+      window.dispatchEvent(new Event('auth-changed'));
+      router.replace('/');
+    } catch {
+      setError('登录失败，请稍后重试');
     } finally {
       setSubmitting(false);
     }
@@ -57,7 +88,7 @@ export default function LoginPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-blue-100">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-blue-100 px-4">
         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
       </div>
     );

@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from './supabase-browser';
 
@@ -21,38 +21,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    }).catch(() => {
-      setLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
+  const loadSession = useCallback(() => {
+    const saved = localStorage.getItem('custom_session');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as Session;
+        // Check if expired
+        if (parsed.expires_at && parsed.expires_at > Date.now()) {
+          setSession(parsed);
+          setUser(parsed.user);
+        } else {
+          localStorage.removeItem('custom_session');
+        }
+      } catch {
+        localStorage.removeItem('custom_session');
+      }
+    }
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    loadSession();
+
+    // Listen for auth-changed events (e.g., after login/register from server API)
+    const handleAuthChanged = () => {
+      loadSession();
+    };
+    window.addEventListener('auth-changed', handleAuthChanged);
+
+    // Also listen for storage events (cross-tab sync)
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'custom_session') {
+        loadSession();
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener('auth-changed', handleAuthChanged);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [loadSession]);
 
   const signIn = async (phone: string, password: string): Promise<{ error: string | null }> => {
     try {
-      const { data: userData, error: queryError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('phone', phone)
-        .single();
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, password }),
+      });
 
-      if (queryError || !userData) {
-        return { error: '用户不存在' };
-      }
+      const data = await response.json();
 
-      if (userData.password !== password) {
-        return { error: '密码错误' };
+      if (!response.ok) {
+        return { error: data.error || '登录失败' };
       }
 
       const mockSession = {
@@ -62,12 +84,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         expires_at: Date.now() + 3600000,
         token_type: 'bearer',
         user: {
-          id: userData.id,
+          id: data.user.id,
           email: null,
           app_metadata: {},
           user_metadata: {},
           aud: 'authenticated',
-          created_at: userData.created_at,
+          created_at: new Date().toISOString(),
         },
       } as unknown as Session;
 
@@ -83,32 +105,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (phone: string, password: string, companyName?: string, address?: string): Promise<{ error: string | null }> => {
     try {
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('phone', phone)
-        .single();
+      const response = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, password, companyName, address }),
+      });
 
-      if (existingUser) {
-        return { error: '该手机号已注册' };
-      }
+      const data = await response.json();
 
-      const insertData: Record<string, unknown> = {
-        phone,
-        password,
-        created_at: new Date().toISOString(),
-      };
-      if (companyName) insertData.company_name = companyName;
-      if (address) insertData.address = address;
-
-      const { error } = await supabase
-        .from('users')
-        .insert(insertData)
-        .select()
-        .single();
-
-      if (error) {
-        return { error: '注册失败，请稍后重试' };
+      if (!response.ok) {
+        return { error: data.error || '注册失败' };
       }
 
       return { error: null };
