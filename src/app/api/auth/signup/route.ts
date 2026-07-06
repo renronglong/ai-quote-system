@@ -10,7 +10,7 @@ function validatePhone(phone: string): boolean {
 
 export async function POST(request: Request) {
   try {
-    const { phone, password, verifyCode } = await request.json();
+    const { phone, password, verifyCode, companyName, address } = await request.json();
 
     if (!validatePhone(phone)) {
       return NextResponse.json({ error: '请输入正确的手机号' }, { status: 400 });
@@ -20,12 +20,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '密码长度至少为6个字符' }, { status: 400 });
     }
 
+    if (!companyName || companyName.trim().length === 0) {
+      return NextResponse.json({ error: '请填写公司名称' }, { status: 400 });
+    }
+
     if (!supabaseServiceKey) {
       console.error('[Signup] Supabase service role key not set');
       return NextResponse.json({ error: '服务配置错误，请联系管理员' }, { status: 500 });
     }
 
-    // 创建 Supabase 客户端
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
@@ -41,12 +44,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '该手机号已注册' }, { status: 400 });
     }
 
-    // 创建用户
+    // 创建用户（包含公司名称和地址）
     const { data, error } = await supabase
       .from('users')
       .insert({
         phone,
         password,
+        company_name: companyName.trim(),
+        address: (address || '').trim(),
         created_at: new Date().toISOString(),
       })
       .select()
