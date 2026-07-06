@@ -945,22 +945,7 @@ export default function ChatPanel() {
     checkCompanyInfo();
   }, [user]);
 
-  // 当需要公司信息且还没问过，追加引导消息
-  useEffect(() => {
-    if (needsCompanyInfo && !companyInfoAsked) {
-      setCompanyInfoAsked(true);
-      // 延迟2秒后追加引导消息，让用户先看到欢迎消息
-      const timer = setTimeout(() => {
-        setMessages(prev => [...prev, {
-          id: 'company-info-ask',
-          role: 'assistant' as const,
-          content: '💼 **完善您的企业信息**\n\n为了给您提供更精准的报价服务，请告诉我您的公司信息：\n\n• 公司名称\n• 联系人姓名\n• 联系电话\n• 公司地址（选填）\n\n您可以直接回复文字，或者发送一张名片图片，我会自动识别并保存。',
-          timestamp: new Date(),
-        }]);
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [needsCompanyInfo, companyInfoAsked]);
+
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
@@ -1027,6 +1012,29 @@ export default function ChatPanel() {
       console.error('[Chat] Failed to restore from localStorage:', error);
     }
   }, []); // 只在组件挂载时执行一次
+
+  // 当 needsCompanyInfo 变为 true 时，检查是否需要追加引导消息
+  useEffect(() => {
+    if (needsCompanyInfo && !companyInfoAsked) {
+      setCompanyInfoAsked(true);
+      // 延迟3秒后追加引导消息，确保 localStorage 恢复已完成
+      const timer = setTimeout(() => {
+        setMessages(prev => {
+          // 检查是否已经有引导消息
+          const hasAskMessage = prev.some(m => m.id === 'company-info-ask');
+          if (hasAskMessage) return prev;
+          
+          return [...prev, {
+            id: 'company-info-ask',
+            role: 'assistant' as const,
+            content: '💼 **完善您的企业信息**\n\n为了给您提供更精准的报价服务，请告诉我您的公司信息：\n\n• 公司名称\n• 联系人姓名\n• 联系电话\n• 公司地址（选填）\n\n您可以直接回复文字，或者发送一张名片图片，我会自动识别并保存。',
+            timestamp: new Date(),
+          }];
+        });
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [needsCompanyInfo, companyInfoAsked]);
 
   // 对话更新时保存到 localStorage
   useEffect(() => {
