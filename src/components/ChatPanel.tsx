@@ -33,6 +33,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { useAuth } from '@/lib/auth-context';
 
 // 消息类型
 interface Message {
@@ -905,6 +906,8 @@ function MessageContent({ message, onFillForm }: { message: Message; onFillForm?
 }
 
 export default function ChatPanel() {
+  const { user } = useAuth();
+  
   // localStorage key 前缀，用于按 conversation_id 存储对话历史
   const CHAT_STORAGE_KEY_PREFIX = 'chat_history_';
   const CURRENT_CONV_KEY = 'current_conversation_id';
@@ -920,6 +923,44 @@ export default function ChatPanel() {
   ];
 
   const [messages, setMessages] = useState<Message[]>(getInitialMessages);
+  const [needsCompanyInfo, setNeedsCompanyInfo] = useState(false);
+  const [companyInfoAsked, setCompanyInfoAsked] = useState(false);
+
+  // 检查用户是否有公司信息
+  useEffect(() => {
+    if (!user) return;
+    
+    const checkCompanyInfo = async () => {
+      try {
+        const res = await fetch(`/api/auth/profile?user_id=${user.id}`);
+        const data = await res.json();
+        if (data.success && !data.data.hasCompanyInfo) {
+          setNeedsCompanyInfo(true);
+        }
+      } catch (err) {
+        console.error('[Chat] 检查公司信息失败:', err);
+      }
+    };
+    
+    checkCompanyInfo();
+  }, [user]);
+
+  // 当需要公司信息且还没问过，追加引导消息
+  useEffect(() => {
+    if (needsCompanyInfo && !companyInfoAsked) {
+      setCompanyInfoAsked(true);
+      // 延迟2秒后追加引导消息，让用户先看到欢迎消息
+      const timer = setTimeout(() => {
+        setMessages(prev => [...prev, {
+          id: 'company-info-ask',
+          role: 'assistant' as const,
+          content: '💼 **完善您的企业信息**\n\n为了给您提供更精准的报价服务，请告诉我您的公司信息：\n\n• 公司名称\n• 联系人姓名\n• 联系电话\n• 公司地址（选填）\n\n您可以直接回复文字，或者发送一张名片图片，我会自动识别并保存。',
+          timestamp: new Date(),
+        }]);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [needsCompanyInfo, companyInfoAsked]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
@@ -1689,8 +1730,77 @@ export default function ChatPanel() {
   }, []);
 
   // 发送消息
+  // 解析公司信息
+  const parseCompanyInfo = (text: string) => {
+    const info: {
+      company_name?: string;
+      contact_name?: string;
+      contact_phone?: string;
+      address?: string;
+    } = {};
+    
+    // 提取公司名称
+    const companyMatch = text.match(/([\u4e00-\u9fa5]+(?:有限公司|股份有限公司|集团))/);
+    if (companyMatch) {
+      info.company_name = companyMatch[1].trim();
+    }
+    
+    // 提取联系人
+    const contactMatch = text.match(/(?:联系人|姓名)[：:\s]*([\u4e00-\u9fa5]{2,4})/);
+    if (contactMatch) {
+      info.contact_name = contactMatch[1].trim();
+    }
+    
+    // 提取电话
+    const phoneMatch = text.match(/1[3-9]\d{9}/);
+    if (phoneMatch) {
+      info.contact_phone = phoneMatch[0];
+    }
+    
+    // 提取地址
+    const addressMatch = text.match(/(?:地址)[：:\s]*([^\n]+)/);
+    if (addressMatch) {
+      info.address = addressMatch[1].trim();
+    }
+    
+    return info;
+  };
+
   const sendMessage = useCallback(async () => {
     if (!input.trim() && !uploadedImage && cozeFileIdsBatch.length === 0 && !cozeFileId) return;
+    
+    // 如果正在收集公司信息，尝试解析
+    if (needsCompanyInfo && user) {
+      const parsedInfo = parseCompanyInfo(input);
+      if (parsedInfo.company_name || parsedInfo.contact_phone) {
+        // 尝试保存公司信息
+        try {
+          const res = await fetch('/api/auth/profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: user.id,
+              ...parsedInfo,
+            }),
+          });
+          const data = await res.json();
+          if (data.success) {
+            setNeedsCompanyInfo(false);
+            // 在消息列表中添加确认消息（延迟到用户消息发送后）
+            setTimeout(() => {
+              setMessages(prev => [...prev, {
+                id: `company-info-confirm-${Date.now()}`,
+                role: 'assistant' as const,
+                content: `✅ **信息已保存！**\n\n${parsedInfo.company_name ? `• 公司：${parsedInfo.company_name}\n` : ''}${parsedInfo.contact_name ? `• 联系人：${parsedInfo.contact_name}\n` : ''}${parsedInfo.contact_phone ? `• 电话：${parsedInfo.contact_phone}\n` : ''}${parsedInfo.address ? `• 地址：${parsedInfo.address}\n` : ''}\n现在可以开始使用报价功能了，请上传您的产品图片或描述需求。`,
+                timestamp: new Date(),
+              }]);
+            }, 100);
+          }
+        } catch (err) {
+          console.error('[Chat] 保存公司信息失败:', err);
+        }
+      }
+    }
     
     const userMessage: Message = {
       id: Date.now().toString(),
