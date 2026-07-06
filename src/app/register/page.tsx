@@ -24,6 +24,8 @@ export default function RegisterPage() {
   const [step, setStep] = useState<'form' | 'verify'>('form');
   // TODO: 上线前删除测试账号相关逻辑
   const [devCode, setDevCode] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState('');
+  const [address, setAddress] = useState('');
 
   useEffect(() => {
     if (!loading && user) {
@@ -100,6 +102,11 @@ export default function RegisterPage() {
       return;
     }
 
+    if (!companyName.trim()) {
+      setError('请填写公司名称');
+      return;
+    }
+
     if (step === 'form') {
       // 第一步：发送验证码
       await handleSendCode();
@@ -115,7 +122,7 @@ export default function RegisterPage() {
     setSubmitting(true);
 
     try {
-      const { error: signUpError } = await signUp(phone, password);
+      const { error: signUpError } = await signUp(phone, password, companyName, address);
       if (signUpError) {
         setError(signUpError);
         return;
