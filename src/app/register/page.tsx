@@ -24,8 +24,6 @@ export default function RegisterPage() {
   const [step, setStep] = useState<'form' | 'verify'>('form');
   // TODO: 上线前删除测试账号相关逻辑
   const [devCode, setDevCode] = useState<string | null>(null);
-  const [companyName, setCompanyName] = useState('');
-  const [address, setAddress] = useState('');
 
   useEffect(() => {
     if (!loading && user) {
@@ -54,8 +52,6 @@ export default function RegisterPage() {
     setError(null);
 
     try {
-      // 占位：调用短信发送接口
-      // 实际实现时替换为真实接口
       const response = await fetch('/api/sms/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -70,7 +66,6 @@ export default function RegisterPage() {
       }
 
       setSuccessMessage('验证码已发送');
-      // TODO: 上线前删除测试账号相关逻辑 - 显示测试验证码
       if (data.devCode) {
         setDevCode(data.devCode);
       }
@@ -102,18 +97,11 @@ export default function RegisterPage() {
       return;
     }
 
-    if (!companyName.trim()) {
-      setError('请填写公司名称');
-      return;
-    }
-
     if (step === 'form') {
-      // 第一步：发送验证码
       await handleSendCode();
       return;
     }
 
-    // 第二步：验证并注册
     if (!verifyCode) {
       setError('请输入验证码');
       return;
@@ -122,7 +110,7 @@ export default function RegisterPage() {
     setSubmitting(true);
 
     try {
-      const { error: signUpError } = await signUp(phone, password, companyName, address);
+      const { error: signUpError } = await signUp(phone, password);
       if (signUpError) {
         setError(signUpError);
         return;
@@ -130,7 +118,6 @@ export default function RegisterPage() {
 
       setSuccessMessage('注册成功！正在自动登录...');
       
-      // 自动登录
       const { error: signInError } = await signIn(phone, password);
       if (signInError) {
         setError('注册成功但自动登录失败，请手动登录');

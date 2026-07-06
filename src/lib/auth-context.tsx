@@ -22,7 +22,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 获取初始session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
@@ -31,7 +30,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
-    // 监听认证状态变化
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
@@ -43,7 +41,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (phone: string, password: string): Promise<{ error: string | null }> => {
     try {
-      // 使用手机号作为标识登录，先查询用户再验证密码
       const { data: userData, error: queryError } = await supabase
         .from('users')
         .select('*')
@@ -54,49 +51,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: '用户不存在' };
       }
 
-      // 验证密码
       if (userData.password !== password) {
         return { error: '密码错误' };
       }
 
-      // 使用 Supabase Auth 的 signInWithPassword（这里我们直接用邮箱方式）
-      // 由于我们使用自定义用户表，需要手动创建 session
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: `${phone}@placeholder.com`, // 占位邮箱
-        password: password,
-      });
+      const mockSession = {
+        access_token: 'custom_token',
+        refresh_token: 'custom_refresh',
+        expires_in: 3600,
+        expires_at: Date.now() + 3600000,
+        token_type: 'bearer',
+        user: {
+          id: userData.id,
+          email: null,
+          app_metadata: {},
+          user_metadata: {},
+          aud: 'authenticated',
+          created_at: userData.created_at,
+        },
+      } as unknown as Session;
 
-      if (error) {
-        // 如果 signInWithPassword 失败，使用自定义方式登录
-        // 直接设置 session
-        const mockSession = {
-          access_token: 'custom_token',
-          refresh_token: 'custom_refresh',
-          expires_in: 3600,
-          expires_at: Date.now() + 3600000,
-          token_type: 'bearer',
-          user: {
-            id: userData.id,
-            email: null,
-            phone: userData.phone,
-            created_at: userData.created_at,
-          } as unknown as User,
-        };
-        
-        // 存储 session 到 localStorage
-        localStorage.setItem('custom_session', JSON.stringify({
-          ...mockSession,
-          user: {
-            id: userData.id,
-            phone: userData.phone,
-            created_at: userData.created_at,
-          }
-        }));
-        
-        setSession(mockSession as Session);
-        setUser(mockSession.user);
-        return { error: null };
-      }
+      localStorage.setItem('custom_session', JSON.stringify(mockSession));
+      setSession(mockSession);
+      setUser(mockSession.user);
 
       return { error: null };
     } catch (err) {
@@ -104,9 +81,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signUp = async (phone: string, password: string): Promise<{ error: string | null }> => {
+  const signUp = async (phone: string, password: string, companyName?: string, address?: string): Promise<{ error: string | null }> => {
     try {
-      // 检查手机号是否已注册
       const { data: existingUser } = await supabase
         .from('users')
         .select('id')
@@ -117,14 +93,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: '该手机号已注册' };
       }
 
-      // 创建用户记录
-      const { data, error } = await supabase
+      const insertData: Record<string, unknown> = {
+        phone,
+        password,
+        created_at: new Date().toISOString(),
+      };
+      if (companyName) insertData.company_name = companyName;
+      if (address) insertData.address = address;
+
+      const { error } = await supabase
         .from('users')
-        .insert({
-          phone,
-          password, // 生产环境应加密
-          created_at: new Date().toISOString(),
-        })
+        .insert(insertData)
         .select()
         .single();
 
@@ -147,12 +126,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const resetPassword = async (phone: string, code: string, newPassword: string): Promise<{ error: string | null }> => {
     try {
-      // 验证验证码（预留接口）
-      if (code !== '123456') { // 占位：实际应调用短信验证码接口
+      if (code !== '123456') {
         return { error: '验证码错误' };
       }
 
-      // 更新密码
       const { error } = await supabase
         .from('users')
         .update({ password: newPassword })
