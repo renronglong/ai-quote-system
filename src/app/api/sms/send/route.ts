@@ -15,6 +15,12 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 // 验证码存储（生产环境应使用Redis）
 const verificationCodes = new Map<string, { code: string; expires: number }>();
 
+// ========== 临时测试账号白名单 ==========
+// TODO: 上线前删除测试账号！腾讯云短信签名报备通过后需移除此白名单
+const TEST_PHONE = '13800138000';
+const TEST_CODE = '888888';
+// ========================================
+
 function generateCode(): string {
   // 生成6位数字验证码
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -59,6 +65,24 @@ export async function POST(request: NextRequest) {
         );
       }
     }
+
+    // ========== 临时测试账号白名单 ==========
+    // TODO: 上线前删除测试账号！
+    if (phone === TEST_PHONE) {
+      const code = TEST_CODE;
+      const expires = Date.now() + 10 * 60 * 1000;
+      verificationCodes.set(phone, { code, expires });
+      
+      console.log(`[SMS] 测试账号验证码 ${code} 已发送至 ${phone}`);
+      
+      // 测试账号始终返回验证码，方便测试
+      return NextResponse.json({
+        success: true,
+        message: '验证码已发送',
+        devCode: code
+      });
+    }
+    // ========================================
 
     // 生成验证码
     const code = generateCode();
@@ -109,6 +133,13 @@ export async function GET(request: NextRequest) {
       { status: 400 }
     );
   }
+
+  // ========== 临时测试账号白名单 ==========
+  // TODO: 上线前删除测试账号！
+  if (phone === TEST_PHONE && code === TEST_CODE) {
+    return NextResponse.json({ valid: true });
+  }
+  // ========================================
 
   const stored = verificationCodes.get(phone);
 
