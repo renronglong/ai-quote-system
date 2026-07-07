@@ -10,6 +10,8 @@ export async function GET(request: NextRequest) {
     const surfaceTreatment = searchParams.get("surface_treatment");
     const search = searchParams.get("search");
     const userId = searchParams.get("user_id");
+    const supplier = searchParams.get("supplier");
+    const suppliersOnly = searchParams.get("suppliers");
 
     const client = getSupabaseClient();
     
@@ -43,9 +45,43 @@ export async function GET(request: NextRequest) {
       throw new Error(`查询产品失败: ${error.message}`);
     }
 
+    let products = data || [];
+
+    // 从 specs JSON 中提取 supplier 字段进行过滤
+    // 如果请求 ?suppliers=true，返回去重的供应商列表
+    if (suppliersOnly === "true") {
+      const supplierSet = new Set<string>();
+      for (const p of products) {
+        const specs = typeof p.specs === "string" ? JSON.parse(p.specs || "{}") : (p.specs || {});
+        const s = specs?.supplier;
+        if (s) supplierSet.add(s);
+      }
+      return NextResponse.json({
+        success: true,
+        data: Array.from(supplierSet),
+      });
+    }
+
+    // 如果指定了 supplier 参数，按供应商过滤
+    if (supplier) {
+      products = products.filter((p) => {
+        const specs = typeof p.specs === "string" ? JSON.parse(p.specs || "{}") : (p.specs || {});
+        return specs?.supplier === supplier;
+      });
+    }
+
+    // 为每个产品附加 supplier 字段（从 specs 中提取到顶层）
+    const enrichedProducts = products.map((p) => {
+      const specs = typeof p.specs === "string" ? JSON.parse(p.specs || "{}") : (p.specs || {});
+      return {
+        ...p,
+        supplier: specs?.supplier || "",
+      };
+    });
+
     return NextResponse.json({
       success: true,
-      data: data || [],
+      data: enrichedProducts,
     });
   } catch (error) {
     console.error("获取产品列表失败:", error);
@@ -103,6 +139,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 确保 specs 中包含 supplier 字段（默认使用第一个供应商）
+    let finalSpecs = specs || {};
+    if (typeof finalSpecs === 'string') {
+      try { finalSpecs = JSON.parse(finalSpecs); } catch { finalSpecs = {}; }
+    }
+    if (!finalSpecs.supplier) {
+      // 查询该用户已有的供应商，取第一个作为默认
+      if (user_id) {
+        const { data: existingProducts } = await client
+          .from("products")
+          .select("specs")
+          .eq("user_id", user_id)
+          .limit(1);
+        if (existingProducts && existingProducts.length > 0) {
+          const existSpecs = typeof existingProducts[0].specs === 'string'
+            ? JSON.parse(existingProducts[0].specs || '{}')
+            : (existingProducts[0].specs || {});
+          if (existSpecs.supplier) {
+            finalSpecs.supplier = existSpecs.supplier;
+          }
+        }
+      }
+      // 兜底默认供应商
+      if (!finalSpecs.supplier) {
+        finalSpecs.supplier = "佛山市碧利莱照明有限公司";
+      }
+    }
+
     // 插入新产品
     const insertData: Record<string, unknown> = {
       product_code,
@@ -113,7 +177,7 @@ export async function POST(request: NextRequest) {
       oxidation_color,
       cost_price,
       min_price,
-      specs,
+      specs: finalSpecs,
       description,
     };
     
