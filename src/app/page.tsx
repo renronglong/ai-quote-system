@@ -74,7 +74,9 @@ export default function HomePage() {
 
     const fetchProducts = async () => {
       try {
-        const res = await fetch('/api/products');
+        const params = new URLSearchParams();
+        if (user?.id) params.append('user_id', user.id);
+        const res = await fetch(`/api/products?${params.toString()}`);
         const data = await res.json();
         if (data.success) setTotalProducts(data.data.length);
       } catch (error) {
@@ -122,10 +124,10 @@ export default function HomePage() {
               <span className="text-gray-400 text-xs">加载中...</span>
             )}
           </div>
-          <div className="flex items-center gap-2 text-sm text-gray-500">
+          <Link href="/products" className="flex items-center gap-2 text-sm text-gray-500 hover:text-blue-600 transition-colors">
             <Package className="w-4 h-4" />
             <span>产品库 <Badge variant="secondary" className="font-medium">{totalProducts}</Badge></span>
-          </div>
+          </Link>
         </div>
         <Link href="/history" className="text-sm text-gray-500 hover:text-blue-600 transition-colors flex items-center gap-1.5">
           <FileText className="w-4 h-4" />
