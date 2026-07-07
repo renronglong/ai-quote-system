@@ -9,6 +9,7 @@ export async function GET(request: NextRequest) {
     const process = searchParams.get("process");
     const surfaceTreatment = searchParams.get("surface_treatment");
     const search = searchParams.get("search");
+    const userId = searchParams.get("user_id");
 
     const client = getSupabaseClient();
     
@@ -16,6 +17,11 @@ export async function GET(request: NextRequest) {
       .from("products")
       .select("*")
       .order("created_at", { ascending: false });
+
+    // 按用户过滤
+    if (userId) {
+      query = query.eq("user_id", userId);
+    }
 
     // 应用过滤条件
     if (material) {
@@ -65,6 +71,7 @@ export async function POST(request: NextRequest) {
       min_price,
       specs,
       description,
+      user_id,
     } = body;
 
     // 验证必填字段
@@ -77,12 +84,17 @@ export async function POST(request: NextRequest) {
 
     const client = getSupabaseClient();
 
-    // 检查产品编码是否已存在
-    const { data: existingProduct } = await client
+    // 检查产品编码是否已存在（同一用户下）
+    let existingQuery = client
       .from("products")
       .select("id")
-      .eq("product_code", product_code)
-      .maybeSingle();
+      .eq("product_code", product_code);
+    
+    if (user_id) {
+      existingQuery = existingQuery.eq("user_id", user_id);
+    }
+    
+    const { data: existingProduct } = await existingQuery.maybeSingle();
 
     if (existingProduct) {
       return NextResponse.json(
@@ -92,20 +104,26 @@ export async function POST(request: NextRequest) {
     }
 
     // 插入新产品
+    const insertData: Record<string, unknown> = {
+      product_code,
+      name,
+      material,
+      process,
+      surface_treatment,
+      oxidation_color,
+      cost_price,
+      min_price,
+      specs,
+      description,
+    };
+    
+    if (user_id) {
+      insertData.user_id = user_id;
+    }
+
     const { data, error } = await client
       .from("products")
-      .insert({
-        product_code,
-        name,
-        material,
-        process,
-        surface_treatment,
-        oxidation_color,
-        cost_price,
-        min_price,
-        specs,
-        description,
-      })
+      .insert(insertData)
       .select()
       .single();
 
