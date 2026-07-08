@@ -41,6 +41,7 @@ import {
   Building2,
   Menu,
   X,
+  ZoomIn,
 } from 'lucide-react';
 
 interface ProductSpecs {
@@ -107,10 +108,12 @@ function ProductCard({
   product,
   onEdit,
   onDelete,
+  onPreview,
 }: {
   product: Product;
   onEdit: (product: Product) => void;
   onDelete: (id: number) => void;
+  onPreview: (product: Product) => void;
 }) {
   const specs = parseSpecs(product.specs);
 
@@ -134,7 +137,11 @@ function ProductCard({
       {/* SVG 预览区域 */}
       <div className="relative p-3 pb-0">
         {specs.svg_path ? (
-          <div className="w-full h-32 bg-white rounded-lg border border-gray-100 flex items-center justify-center overflow-hidden">
+          <div
+            className="w-full h-32 bg-white rounded-lg border border-gray-100 flex items-center justify-center overflow-hidden cursor-zoom-in hover:border-blue-300 transition-colors"
+            onClick={() => onPreview(product)}
+            title="点击放大查看"
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={specs.svg_path}
@@ -154,9 +161,15 @@ function ProductCard({
                 `;
               }}
             />
+            {/* 放大提示图标 */}
+            <div className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <ZoomIn className="w-4 h-4 text-blue-500 bg-white/80 rounded p-0.5" />
+            </div>
           </div>
         ) : (
-          <SvgPlaceholder productCode={product.product_code} />
+          <div onClick={() => onPreview(product)} className="cursor-zoom-in">
+            <SvgPlaceholder productCode={product.product_code} />
+          </div>
         )}
 
         {/* 操作按钮 */}
@@ -407,6 +420,7 @@ function ProductsPageContent() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [previewProduct, setPreviewProduct] = useState<Product | null>(null);
   const [formData, setFormData] = useState({
     product_code: '',
     name: '',
@@ -482,13 +496,13 @@ function ProductsPageContent() {
       setFormData({
         product_code: product.product_code,
         name: product.name,
-        material: product.material,
-        process: product.process,
-        surface_treatment: product.surface_treatment,
+        material: product.material || '',
+        process: product.process || '',
+        surface_treatment: product.surface_treatment || '',
         oxidation_color: product.oxidation_color || '',
-        cost_price: product.cost_price,
-        min_price: product.min_price || '',
-        specs: typeof product.specs === 'string' ? product.specs : JSON.stringify(product.specs || {}, null, 2),
+        cost_price: product.cost_price?.toString() || '',
+        min_price: product.min_price?.toString() || '',
+        specs: typeof product.specs === 'string' ? product.specs : JSON.stringify(product.specs || {}),
         description: product.description || '',
       });
     } else {
@@ -507,6 +521,11 @@ function ProductsPageContent() {
       });
     }
     setDialogOpen(true);
+  };
+
+  // 打开截面图预览
+  const handlePreview = (product: Product) => {
+    setPreviewProduct(product);
   };
 
   // 保存产品
@@ -725,6 +744,7 @@ function ProductsPageContent() {
                   product={product}
                   onEdit={handleOpenDialog}
                   onDelete={handleDelete}
+                  onPreview={handlePreview}
                 />
               ))}
             </div>
@@ -928,6 +948,61 @@ function ProductsPageContent() {
                   保存
                 </Button>
               </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* 截面图预览 Dialog */}
+          <Dialog open={!!previewProduct} onOpenChange={(open) => !open && setPreviewProduct(null)}>
+            <DialogContent className="max-w-3xl max-h-[90vh] p-0 overflow-hidden border-0">
+              {previewProduct && (() => {
+                const specs = parseSpecs(previewProduct.specs);
+                return (
+                  <>
+                    <div className="bg-gradient-to-b from-blue-50 to-white px-6 pt-5 pb-3 border-b">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900">{previewProduct.name}</h3>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs font-mono text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                              {previewProduct.product_code}
+                            </span>
+                            <Badge variant="outline" className="text-xs">{previewProduct.material}</Badge>
+                            {specs.width && specs.height && (
+                              <span className="text-xs text-gray-500">
+                                {specs.width} × {specs.height}{specs.wall_thickness ? ` × ${specs.wall_thickness}` : ''} mm
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setPreviewProduct(null)}>
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-center p-8 bg-white min-h-[300px]">
+                      {specs.svg_path ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={specs.svg_path}
+                          alt={previewProduct.name}
+                          className="max-w-full max-h-[60vh] object-contain"
+                        />
+                      ) : (
+                        <div className="text-center text-gray-400">
+                          <Package className="w-16 h-16 mx-auto mb-2" />
+                          <p>暂无截面图</p>
+                        </div>
+                      )}
+                    </div>
+                    {specs.weight_per_meter && (
+                      <div className="bg-gray-50 px-6 py-3 border-t flex items-center gap-6 text-sm text-gray-600">
+                        <span>米重: <strong>{specs.weight_per_meter} kg/m</strong></span>
+                        {specs.supplier && <span>供应商: {specs.supplier}</span>}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </DialogContent>
           </Dialog>
         </div>
