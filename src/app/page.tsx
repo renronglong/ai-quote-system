@@ -115,10 +115,10 @@ export default function HomePage() {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-5">
-          <Link href="/products" className="flex items-center gap-1.5 text-sm text-gray-300 hover:text-white transition-colors">
+        <div className="flex items-center gap-3">
+          <Link href="/products" className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-sm font-medium transition-colors shadow-sm">
             <Package className="w-4 h-4" />
-            产品库 <Badge variant="secondary" className="bg-white/15 text-white border-0 text-xs font-medium ml-1">{totalProducts}</Badge>
+            产品库 ({totalProducts})
           </Link>
           <Link href="/history" className="flex items-center gap-1.5 text-sm text-gray-300 hover:text-white transition-colors">
             <FileText className="w-4 h-4" />
