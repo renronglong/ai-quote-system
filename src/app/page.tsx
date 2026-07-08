@@ -5,15 +5,22 @@ import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/lib/auth-context';
-import { 
+import {
   Package,
   TrendingUp,
   RefreshCw,
   FileText,
   Loader2,
   Store,
-  ChevronLeft,
-  ChevronRight,
+  Search,
+  Settings,
+  Upload,
+  Send,
+  Bot,
+  Image,
+  Database,
+  Calculator,
+  FileSpreadsheet,
   ArrowRight,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -38,11 +45,11 @@ interface AluminumPrice {
   date: string;
 }
 
-// 供应商列表（占位数据，后续替换为真实供应商信息）
-const SUPPLIERS: { id: string; name: string; desc: string }[] = [
-  // { id: 'supplier-a', name: '供应商A', desc: '铝型材加工' },
-  // { id: 'supplier-b', name: '供应商B', desc: '五金配件' },
-  // { id: 'supplier-c', name: '供应商C', desc: '表面处理' },
+const FEATURE_CARDS = [
+  { icon: Image, label: '上传图片识别材质', color: 'from-blue-500 to-blue-600', bg: 'bg-blue-50', text: 'text-blue-600', action: 'upload' },
+  { icon: Database, label: '查询产品库存', color: 'from-emerald-500 to-emerald-600', bg: 'bg-emerald-50', text: 'text-emerald-600', action: 'inventory' },
+  { icon: Calculator, label: '自动计算报价', color: 'from-orange-500 to-orange-600', bg: 'bg-orange-50', text: 'text-orange-600', action: 'calculate' },
+  { icon: FileSpreadsheet, label: '解析PDF/Excel', color: 'from-purple-500 to-purple-600', bg: 'bg-purple-50', text: 'text-purple-600', action: 'parse' },
 ];
 
 export default function HomePage() {
@@ -50,9 +57,10 @@ export default function HomePage() {
   const { user, loading: authLoading } = useAuth();
   const [aluminumPrice, setAluminumPrice] = useState<AluminumPrice | null>(null);
   const [totalProducts, setTotalProducts] = useState(0);
-  const [supplierCollapsed, setSupplierCollapsed] = useState(false);
+  const [supplierSearch, setSupplierSearch] = useState('');
+  const [chatStarted, setChatStarted] = useState(false);
 
-  // 认证拦截：未登录跳转登录页
+  // 认证拦截
   useEffect(() => {
     if (!authLoading && !user) {
       router.replace('/login');
@@ -88,7 +96,10 @@ export default function HomePage() {
     fetchProducts();
   }, [user]);
 
-  // 加载中
+  const handleFeatureClick = (action: string) => {
+    setChatStarted(true);
+  };
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50">
@@ -100,107 +111,155 @@ export default function HomePage() {
     );
   }
 
-  // 未登录，不渲染（等待跳转）
   if (!user) {
     return null;
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
-      {/* 顶部信息栏 */}
-      <div className="bg-white border-b px-6 py-2.5 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-orange-50 to-amber-50 rounded-lg border border-orange-100">
-            <TrendingUp className="w-4 h-4 text-orange-500" />
-            <span className="text-xs text-gray-500">铝锭价</span>
-            {aluminumPrice ? (
-              <>
-                <span className="font-bold text-orange-600">¥{aluminumPrice.price.toLocaleString()}</span>
-                <span className={`text-xs ${aluminumPrice.change >= 0 ? 'text-red-500' : 'text-green-500'}`}>
-                  {aluminumPrice.change >= 0 ? '↑' : '↓'}{Math.abs(aluminumPrice.changePercent).toFixed(2)}%
-                </span>
-              </>
-            ) : (
-              <span className="text-gray-400 text-xs">加载中...</span>
-            )}
-          </div>
-          <Link href="/products" className="flex items-center gap-2 text-sm text-gray-500 hover:text-blue-600 transition-colors">
-            <Package className="w-4 h-4" />
-            <span>产品库 <Badge variant="secondary" className="font-medium">{totalProducts}</Badge></span>
-          </Link>
-        </div>
-        <Link href="/history" className="text-sm text-gray-500 hover:text-blue-600 transition-colors flex items-center gap-1.5">
-          <FileText className="w-4 h-4" />
-          报价历史
-        </Link>
-      </div>
-      
-      {/* 主内容区 */}
-      <div className="flex-1 overflow-hidden flex">
-        {/* 左侧供应商链接区域 */}
-        <div className={`shrink-0 border-r bg-white flex flex-col transition-all duration-300 ${supplierCollapsed ? 'w-10' : 'w-56'}`}>
-          {/* 折叠按钮 */}
-          <button
-            onClick={() => setSupplierCollapsed(!supplierCollapsed)}
-            className="flex items-center justify-center h-9 hover:bg-gray-100 border-b transition-colors"
-            title={supplierCollapsed ? '展开供应商' : '收起供应商'}
-          >
-            {supplierCollapsed ? (
-              <ChevronRight className="w-4 h-4 text-gray-400" />
-            ) : (
-              <ChevronLeft className="w-4 h-4 text-gray-400" />
-            )}
-          </button>
-
-          {!supplierCollapsed && (
-            <>
-              <div className="px-3 py-2.5 border-b bg-gray-50/50">
-                <div className="flex items-center gap-1.5">
-                  <Store className="w-3.5 h-3.5 text-blue-600" />
-                  <span className="text-xs font-semibold text-gray-700">供应商</span>
-                </div>
-              </div>
-              <div className="flex-1 overflow-auto px-2 py-2 space-y-1">
-                {SUPPLIERS.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-28 border-2 border-dashed border-gray-200 rounded-lg">
-                    <Store className="w-5 h-5 text-gray-300 mb-2" />
-                    <p className="text-xs text-gray-400 text-center">供应商即将添加</p>
-                  </div>
-                ) : (
-                  SUPPLIERS.map((supplier) => (
-                    <Link
-                      key={supplier.id}
-                      href={`/${supplier.id}`}
-                      className="flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-blue-50 transition-colors group"
-                    >
-                      <div className="w-7 h-7 rounded-md bg-blue-100 flex items-center justify-center shrink-0">
-                        <Store className="w-3.5 h-3.5 text-blue-600" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800 truncate">{supplier.name}</p>
-                        {supplier.desc && (
-                          <p className="text-xs text-gray-400 truncate">{supplier.desc}</p>
-                        )}
-                      </div>
-                      <ArrowRight className="w-3.5 h-3.5 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </Link>
-                  ))
-                )}
-              </div>
-            </>
-          )}
-
-          {supplierCollapsed && (
-            <div className="flex-1 flex items-start justify-center pt-3">
-              <Store className="w-4 h-4 text-gray-300" />
+    <div className="flex flex-col h-screen bg-gray-100">
+      {/* 深蓝顶部导航栏 */}
+      <header className="bg-[#1a2a4a] text-white px-6 py-3 flex items-center justify-between shrink-0 shadow-lg">
+        <div className="flex items-center gap-3">
+          <span className="text-lg font-bold tracking-wide">铝庭价</span>
+          {aluminumPrice && (
+            <div className="flex items-center gap-1.5 ml-4 text-sm opacity-90">
+              <TrendingUp className="w-3.5 h-3.5 text-orange-400" />
+              <span className="font-semibold text-orange-400">¥{aluminumPrice.price.toLocaleString()}</span>
+              <span className={`text-xs ${aluminumPrice.change >= 0 ? 'text-red-400' : 'text-green-400'}`}>
+                {aluminumPrice.change >= 0 ? '↑' : '↓'}{Math.abs(aluminumPrice.changePercent).toFixed(2)}%
+              </span>
             </div>
           )}
         </div>
-
-        {/* 右侧聊天报价区域 */}
-        <div className="flex-1 overflow-hidden p-4">
-          <ChatPanel />
+        <div className="flex items-center gap-4">
+          <Link href="/products" className="flex items-center gap-1.5 text-sm opacity-80 hover:opacity-100 transition-opacity">
+            <Package className="w-4 h-4" />
+            产品库 <Badge variant="secondary" className="bg-white/20 text-white border-0 font-medium">{totalProducts}</Badge>
+          </Link>
+          <Link href="/history" className="flex items-center gap-1.5 text-sm opacity-80 hover:opacity-100 transition-opacity">
+            <FileText className="w-4 h-4" />
+            报价历史
+          </Link>
+          <Settings className="w-5 h-5 opacity-60 hover:opacity-100 cursor-pointer transition-opacity" />
         </div>
+      </header>
+
+      {/* 主体内容 */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* 左侧供应商栏 */}
+        <aside className="w-56 bg-white border-r border-gray-200 flex flex-col shrink-0">
+          <div className="px-4 pt-4 pb-2">
+            <h3 className="text-sm font-semibold text-gray-800 mb-2">供应商</h3>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="搜索供应商..."
+                value={supplierSearch}
+                onChange={(e) => setSupplierSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-md bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400 placeholder:text-gray-400"
+              />
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto px-3 py-2">
+            <div className="flex flex-col items-center justify-center h-28 border-2 border-dashed border-gray-200 rounded-lg">
+              <Store className="w-5 h-5 text-gray-300 mb-2" />
+              <p className="text-xs text-gray-400 text-center">供应商即将添加</p>
+            </div>
+          </div>
+        </aside>
+
+        {/* 右侧主区域 */}
+        <main className="flex-1 flex flex-col overflow-hidden">
+          {!chatStarted ? (
+            <>
+              {/* 欢迎区 */}
+              <div className="flex-1 overflow-auto flex items-start justify-center pt-8 px-6">
+                <div className="w-full max-w-2xl">
+                  {/* 标题 */}
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center">
+                      <Bot className="w-7 h-7 text-white" />
+                    </div>
+                    <div>
+                      <h1 className="text-2xl font-bold text-gray-900">AI智能报价助手</h1>
+                      <p className="text-sm text-gray-500">图纸上传 · 智能报价</p>
+                    </div>
+                  </div>
+
+                  {/* 功能卡片 */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+                    <p className="text-sm text-gray-600 mb-4">
+                      您好！我是AI智能报价助手，专门帮助您进行制造业产品报价。
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {FEATURE_CARDS.map((card) => {
+                        const Icon = card.icon;
+                        return (
+                          <button
+                            key={card.action}
+                            onClick={() => handleFeatureClick(card.action)}
+                            className={`flex items-center gap-3 p-4 rounded-xl border border-gray-100 hover:shadow-md hover:border-gray-200 transition-all text-left group`}
+                          >
+                            <div className={`w-10 h-10 rounded-lg ${card.bg} flex items-center justify-center shrink-0`}>
+                              <Icon className={`w-5 h-5 ${card.text}`} />
+                            </div>
+                            <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">{card.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 输入框 */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-2 flex items-center gap-2">
+                    <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-500">
+                      <Upload className="w-5 h-5" />
+                    </button>
+                    <input
+                      type="text"
+                      placeholder="输入您的需求，或直接上传图纸..."
+                      className="flex-1 text-sm outline-none bg-transparent placeholder:text-gray-400"
+                      onKeyDown={(e) => e.key === 'Enter' && handleFeatureClick('upload')}
+                    />
+                    <button
+                      onClick={() => handleFeatureClick('upload')}
+                      className="w-9 h-9 rounded-lg bg-blue-600 hover:bg-blue-700 flex items-center justify-center transition-colors"
+                    >
+                      <ArrowRight className="w-4 h-4 text-white" />
+                    </button>
+                  </div>
+
+                  {/* 快捷按钮 */}
+                  <div className="flex items-center justify-center gap-3 mt-4">
+                    <button
+                      onClick={() => handleFeatureClick('upload')}
+                      className="px-5 py-2 rounded-full bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+                    >
+                      上传报价
+                    </button>
+                    <button
+                      onClick={() => handleFeatureClick('calculate')}
+                      className="px-5 py-2 rounded-full border border-gray-300 text-gray-600 text-sm hover:bg-gray-50 transition-colors"
+                    >
+                      快速估算
+                    </button>
+                    <button
+                      onClick={() => handleFeatureClick('calculate')}
+                      className="px-5 py-2 rounded-full border border-gray-300 text-gray-600 text-sm hover:bg-gray-50 transition-colors"
+                    >
+                      非标材报价
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 overflow-hidden p-4">
+              <ChatPanel />
+            </div>
+          )}
+        </main>
       </div>
     </div>
   );
