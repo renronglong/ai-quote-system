@@ -23,6 +23,8 @@ import {
   ChevronDown,
   LogOut,
   Coins,
+  Building2,
+  Phone,
 } from 'lucide-react';
 
 interface NavItem {
@@ -46,6 +48,8 @@ const navGroups: NavGroup[] = [
       { label: '库存管理', href: '/inventory', icon: <Box className="w-5 h-5" /> },
       { label: '询价管理', href: '/inquiries', icon: <MessageSquare className="w-5 h-5" /> },
       { label: '报价历史', href: '/history', icon: <History className="w-5 h-5" /> },
+      { label: '供应商', href: '/suppliers', icon: <Building2 className="w-5 h-5" /> },
+      { label: '联系我们', href: '/contact', icon: <Phone className="w-5 h-5" /> },
     ],
   },
   {
