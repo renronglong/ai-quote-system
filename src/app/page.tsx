@@ -49,6 +49,15 @@ export default function HomePage() {
   const [aluminumPrice, setAluminumPrice] = useState<AluminumPrice | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showQuotePanel, setShowQuotePanel] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  // 监听滚动，切换 header 样式
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 80);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   // 获取实时铝价（无论是否登录都展示）
   useEffect(() => {
@@ -131,33 +140,43 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* 顶部导航 */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200">
+      {/* 顶部导航 - 透明浮在Hero上，滚动后变实心 */}
+      <header
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+          scrolled
+            ? 'bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm'
+            : 'bg-transparent border-b border-transparent'
+        }`}
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <Link href="/" className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 ${
+                scrolled ? 'bg-gradient-to-br from-blue-600 to-blue-700' : 'bg-white/15 backdrop-blur-sm'
+              }`}>
                 <Factory className="w-5 h-5 text-white" />
               </div>
               <div>
-                <span className="text-lg font-bold text-slate-800">工品报价</span>
-                <span className="hidden sm:inline text-xs text-slate-400 ml-1">gyparts.cn</span>
+                <span className={`text-lg font-bold transition-colors duration-300 ${scrolled ? 'text-slate-800' : 'text-white'}`}>工品报价</span>
+                <span className={`hidden sm:inline text-xs ml-1 transition-colors duration-300 ${scrolled ? 'text-slate-400' : 'text-white/60'}`}>gyparts.cn</span>
               </div>
             </Link>
 
             {/* 桌面导航 */}
             <nav className="hidden md:flex items-center gap-6">
-              <a href="#features" className="text-sm text-slate-600 hover:text-slate-900 transition-colors">核心功能</a>
-              <a href="#categories" className="text-sm text-slate-600 hover:text-slate-900 transition-colors">产品品类</a>
-              <Link href="/products" className="text-sm text-slate-600 hover:text-slate-900 transition-colors">产品库</Link>
+              <a href="#features" className={`text-sm transition-colors duration-300 ${scrolled ? 'text-slate-600 hover:text-slate-900' : 'text-white/80 hover:text-white'}`}>核心功能</a>
+              <a href="#categories" className={`text-sm transition-colors duration-300 ${scrolled ? 'text-slate-600 hover:text-slate-900' : 'text-white/80 hover:text-white'}`}>产品品类</a>
+              <Link href="/products" className={`text-sm transition-colors duration-300 ${scrolled ? 'text-slate-600 hover:text-slate-900' : 'text-white/80 hover:text-white'}`}>产品库</Link>
               {/* 实时铝价 */}
               {aluminumPrice && (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 rounded-full">
-                  <TrendingUp className="w-3.5 h-3.5 text-orange-500" />
-                  <span className="text-xs text-slate-500">铝锭价</span>
-                  <span className="text-xs font-semibold text-orange-600">¥{aluminumPrice.price.toLocaleString()}</span>
-                  <span className={`text-xs ${aluminumPrice.change >= 0 ? 'text-red-500' : 'text-green-600'}`}>
+                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors duration-300 ${
+                  scrolled ? 'bg-orange-50' : 'bg-white/10'
+                }`}>
+                  <TrendingUp className={`w-3.5 h-3.5 transition-colors duration-300 ${scrolled ? 'text-orange-500' : 'text-orange-300'}`} />
+                  <span className={`text-xs transition-colors duration-300 ${scrolled ? 'text-slate-500' : 'text-white/60'}`}>铝锭价</span>
+                  <span className={`text-xs font-semibold transition-colors duration-300 ${scrolled ? 'text-orange-600' : 'text-orange-300'}`}>¥{aluminumPrice.price.toLocaleString()}</span>
+                  <span className={`text-xs ${aluminumPrice.change >= 0 ? 'text-red-400' : 'text-green-400'}`}>
                     {aluminumPrice.change >= 0 ? '↑' : '↓'}{Math.abs(aluminumPrice.changePercent).toFixed(2)}%
                   </span>
                 </div>
@@ -167,7 +186,7 @@ export default function HomePage() {
             {/* 右侧按钮 */}
             <div className="hidden md:flex items-center gap-3">
               {authLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+                <Loader2 className={`w-5 h-5 animate-spin transition-colors duration-300 ${scrolled ? 'text-slate-400' : 'text-white/60'}`} />
               ) : user ? (
                 <div className="flex items-center gap-3">
                   <Link
@@ -177,10 +196,10 @@ export default function HomePage() {
                     开始报价
                   </Link>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-slate-600">{user.phone || user.email || '用户'}</span>
+                    <span className={`text-sm transition-colors duration-300 ${scrolled ? 'text-slate-600' : 'text-white/70'}`}>{user.phone || user.email || '用户'}</span>
                     <button
                       onClick={() => signOut()}
-                      className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors"
+                      className={`p-1.5 rounded-md transition-colors duration-300 ${scrolled ? 'text-slate-400 hover:text-slate-600 hover:bg-slate-100' : 'text-white/50 hover:text-white hover:bg-white/10'}`}
                       title="退出登录"
                     >
                       <LogOut className="w-4 h-4" />
@@ -191,7 +210,9 @@ export default function HomePage() {
                 <>
                   <Link
                     href="/login"
-                    className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
+                    className={`px-4 py-2 text-sm rounded-lg transition-all duration-300 ${
+                      scrolled ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-50' : 'text-white/80 hover:text-white hover:bg-white/10'
+                    }`}
                   >
                     登录
                   </Link>
@@ -207,7 +228,9 @@ export default function HomePage() {
 
             {/* 移动端菜单按钮 */}
             <button
-              className="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-md"
+              className={`md:hidden p-2 rounded-md transition-colors duration-300 ${
+                scrolled ? 'text-slate-600 hover:bg-slate-100' : 'text-white hover:bg-white/10'
+              }`}
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -217,7 +240,7 @@ export default function HomePage() {
 
         {/* 移动端菜单 */}
         {mobileMenuOpen && (
-          <div className="md:hidden bg-white border-t border-slate-200 py-4 px-4 space-y-3">
+          <div className="md:hidden bg-white/95 backdrop-blur-md border-t border-slate-200 py-4 px-4 space-y-3">
             <a href="#features" className="block text-sm text-slate-600 py-2" onClick={() => setMobileMenuOpen(false)}>核心功能</a>
             <a href="#categories" className="block text-sm text-slate-600 py-2" onClick={() => setMobileMenuOpen(false)}>产品品类</a>
             <Link href="/products" className="block text-sm text-slate-600 py-2" onClick={() => setMobileMenuOpen(false)}>产品库</Link>
@@ -253,53 +276,52 @@ export default function HomePage() {
         )}
       </header>
 
-      {/* Hero 区域 */}
-      <section className="pt-16">
+      {/* Hero 区域 - 紧凑 banner 风格，header 透明叠加 */}
+      <section>
         <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900">
           {/* 背景装饰 */}
           <div className="absolute inset-0">
-            <div className="absolute top-20 left-10 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl" />
-            <div className="absolute bottom-20 right-10 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl" />
+            <div className="absolute top-10 left-10 w-56 h-56 bg-blue-500/10 rounded-full blur-3xl" />
+            <div className="absolute bottom-10 right-10 w-72 h-72 bg-blue-600/10 rounded-full blur-3xl" />
             <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PHBhdGggZD0iTTM2IDM0djItSDI0di0yaDEyem0wLTRWMjhIMjR2Mmgxem0tMiAwaC0ydjJoMnYtMnptLTQgMGgtMnYyaDJ2LTJ6bS00IDBoLTJ2Mmgydi0yeiIvPjwvZz48L2c+PC9zdmc+')] opacity-50" />
           </div>
 
-          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 sm:py-28 lg:py-36">
+          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-12 sm:pt-28 sm:pb-16">
             <div className="max-w-3xl">
               {/* 标签 */}
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 border border-blue-400/20 rounded-full mb-6">
-                <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-500/10 border border-blue-400/20 rounded-full mb-4">
+                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
                 <span className="text-xs text-blue-300 font-medium">面向制造业的一站式报价服务平台</span>
               </div>
 
               {/* 主标题 */}
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white leading-tight mb-6">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white leading-tight mb-4">
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">AI 智能报价</span>
-                <br />
+                <span className="text-white/70 mx-2">—</span>
                 <span className="text-white/90">让制造业报价更快更准</span>
               </h1>
 
               {/* 副标题 */}
-              <p className="text-base sm:text-lg text-slate-300 mb-8 max-w-2xl leading-relaxed">
-                基于工艺参数与实时铝价，AI 自动计算加工成本。覆盖铝型材 CNC、板材加工、压铸件等多品类，
-                秒级生成精准报价单，助您抢占商机。
+              <p className="text-sm sm:text-base text-slate-400 mb-6 max-w-2xl leading-relaxed">
+                基于工艺参数与实时铝价，AI 自动计算加工成本，秒级生成精准报价单。
               </p>
 
               {/* CTA 按钮 */}
-              <div className="flex flex-wrap items-center gap-4">
+              <div className="flex flex-wrap items-center gap-3">
                 {user ? (
                   <>
                     <button
                       onClick={() => setShowQuotePanel(!showQuotePanel)}
-                      className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/25 hover:shadow-blue-600/40"
+                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/25 hover:shadow-blue-600/40 text-sm"
                     >
-                      <Calculator className="w-5 h-5" />
+                      <Calculator className="w-4 h-4" />
                       {showQuotePanel ? '收起报价' : '开始报价'}
                     </button>
                     <Link
                       href="/products"
-                      className="inline-flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/15 text-white font-medium rounded-xl transition-all border border-white/10"
+                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/15 text-white font-medium rounded-xl transition-all border border-white/10 text-sm"
                     >
-                      <Package className="w-5 h-5" />
+                      <Package className="w-4 h-4" />
                       浏览产品库
                     </Link>
                   </>
@@ -307,16 +329,16 @@ export default function HomePage() {
                   <>
                     <Link
                       href="/register"
-                      className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/25 hover:shadow-blue-600/40"
+                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/25 hover:shadow-blue-600/40 text-sm"
                     >
-                      <UserPlus className="w-5 h-5" />
+                      <UserPlus className="w-4 h-4" />
                       免费注册，立即体验
                     </Link>
                     <Link
                       href="/login"
-                      className="inline-flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/15 text-white font-medium rounded-xl transition-all border border-white/10"
+                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/15 text-white font-medium rounded-xl transition-all border border-white/10 text-sm"
                     >
-                      <LogIn className="w-5 h-5" />
+                      <LogIn className="w-4 h-4" />
                       已有账号登录
                     </Link>
                   </>
@@ -324,18 +346,20 @@ export default function HomePage() {
               </div>
 
               {/* 数据指标 */}
-              <div className="mt-12 grid grid-cols-3 gap-6 max-w-md">
+              <div className="mt-6 flex items-center gap-6 sm:gap-10">
                 <div>
-                  <div className="text-2xl sm:text-3xl font-bold text-white">10s</div>
-                  <div className="text-xs sm:text-sm text-slate-400 mt-1">平均报价时间</div>
+                  <div className="text-lg sm:text-xl font-bold text-white">10s</div>
+                  <div className="text-xs text-slate-500 mt-0.5">平均报价时间</div>
                 </div>
+                <div className="w-px h-8 bg-white/10" />
                 <div>
-                  <div className="text-2xl sm:text-3xl font-bold text-white">4+</div>
-                  <div className="text-xs sm:text-sm text-slate-400 mt-1">产品品类</div>
+                  <div className="text-lg sm:text-xl font-bold text-white">4+</div>
+                  <div className="text-xs text-slate-500 mt-0.5">产品品类</div>
                 </div>
+                <div className="w-px h-8 bg-white/10" />
                 <div>
-                  <div className="text-2xl sm:text-3xl font-bold text-white">实时</div>
-                  <div className="text-xs sm:text-sm text-slate-400 mt-1">铝价同步</div>
+                  <div className="text-lg sm:text-xl font-bold text-white">实时</div>
+                  <div className="text-xs text-slate-500 mt-0.5">铝价同步</div>
                 </div>
               </div>
             </div>
