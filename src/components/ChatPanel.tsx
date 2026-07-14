@@ -43,6 +43,10 @@ interface Message {
   imageUrl?: string;
   toolCalls?: ToolCall[];
   timestamp: Date;
+  // 报价计算相关（用户消息发送时自动提取参数并调用API）
+  pricingResult?: PricingResultData | null;
+  pricingLoading?: boolean;
+  pricingError?: string | null;
 }
 
 interface ToolCall {
@@ -836,69 +840,167 @@ async function saveProductToDatabase(productInfo: ParsedProductInfo): Promise<{ 
 }
 
 // 消息渲染组件
+
+// ============ 从用户输入文本中提取报价参数 ============
+interface ExtractedPricingParams {
+  productType: 'extrusion';
+  outerWidth: number;
+  outerHeight: number;
+  chamfer?: { count: number; size: number };
+  isHollow: boolean;
+  cavity?: { width: number; height: number };
+  length: number;
+  quantity: number;
+  surfaceTreatment: '无' | '氧化本色' | '氧化黑色' | '喷涂' | '电泳';
+  drillingHoles?: number;
+  tappingHoles?: number;
+}
+
+function extractPricingParams(text: string): ExtractedPricingParams | null {
+  // ---- 宽度 / 高度 ----
+  let outerWidth: number | undefined;
+  let outerHeight: number | undefined;
+
+  // 模式1: "38.7×21.7mm" / "38.7x21.7" / "38.7X21.7" (乘号或x)
+  const dimMulMatch = text.match(/(\d+(?:\.\d+)?)\s*[×xX*]\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
+  if (dimMulMatch) {
+    outerWidth = parseFloat(dimMulMatch[1]);
+    outerHeight = parseFloat(dimMulMatch[2]);
+  }
+
+  // 模式2: "宽38.7 高21.7" / "外宽38.7 外高21.7" / "宽度38.7 高度21.7"
+  if (outerWidth === undefined) {
+    const wMatch = text.match(/(?:外?宽(?:度)?|W)\s*[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
+    const hMatch = text.match(/(?:外?高(?:度)?|H)\s*[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
+    if (wMatch) outerWidth = parseFloat(wMatch[1]);
+    if (hMatch) outerHeight = parseFloat(hMatch[1]);
+  }
+
+  // 模式3: 直径 → 外宽=外高=直径 (如 "φ20" / "Φ20" / "直径20mm")
+  if (outerWidth === undefined) {
+    const diaMatch = text.match(/[φΦ⌀]\s*(\d+(?:\.\d+)?)|直(?:径|径)\s*[：:=]?\s*(\d+(?:\.\d+)?)/);
+    if (diaMatch) {
+      const dia = parseFloat(diaMatch[1] || diaMatch[2]);
+      outerWidth = dia;
+      outerHeight = dia;
+    }
+  }
+
+  // ---- 长度 ----
+  let length: number | undefined;
+  // "长100mm" / "长度100" / "L=100mm" / "长：100"
+  const lenMatch = text.match(/(?:长(?:度)?|L)\s*[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
+  if (lenMatch) {
+    length = parseFloat(lenMatch[1]);
+  }
+
+  // ---- 数量 ----
+  let quantity: number | undefined;
+  // "5000件" / "数量5000" / "5000个" / "5000PCS" / "5000 pcs"
+  const qtyMatch = text.match(/(?:数(?:量)?|qty|QTY)\s*[：:=]?\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?:件|个|pcs|PCS|套|支)/);
+  if (qtyMatch) {
+    quantity = parseInt(qtyMatch[1] || qtyMatch[2]);
+  }
+
+  // ---- 必要参数校验 ----
+  if (outerWidth === undefined || outerHeight === undefined || length === undefined || quantity === undefined) {
+    return null;
+  }
+  if (outerWidth <= 0 || outerHeight <= 0 || length <= 0 || quantity <= 0) {
+    return null;
+  }
+
+  // ---- 倒角/圆角 ----
+  let chamfer: { count: number; size: number } | undefined;
+  // "4个R0.5" / "4×R0.5" / "R0.5圆角" / "4个R0.5圆角" / "倒角R0.5×4"
+  const chamferMatch1 = text.match(/(\d+)\s*(?:个|×|x|X)?\s*R(\d+(?:\.\d+)?)/);
+  const chamferMatch2 = text.match(/R(\d+(?:\.\d+)?)\s*(?:圆角|倒角)/);
+  const chamferMatch3 = text.match(/(\d+)\s*(?:个|×|x|X)?\s*(?:圆角|倒角)/);
+  if (chamferMatch1) {
+    chamfer = { count: parseInt(chamferMatch1[1]), size: parseFloat(chamferMatch1[2]) };
+  } else if (chamferMatch2) {
+    // "R0.5圆角" - 没有数量，默认4个
+    chamfer = { count: 4, size: parseFloat(chamferMatch2[1]) };
+  } else if (chamferMatch3) {
+    // "4个圆角" - 没有尺寸，默认0.5
+    chamfer = { count: parseInt(chamferMatch3[1]), size: 0.5 };
+  }
+
+  // ---- 表面处理 ----
+  let surfaceTreatment: ExtractedPricingParams['surfaceTreatment'] = '无';
+  if (/氧化本色|本色氧化/.test(text)) {
+    surfaceTreatment = '氧化本色';
+  } else if (/氧化黑(?:色|色)/.test(text)) {
+    surfaceTreatment = '氧化黑色';
+  } else if (/喷涂|喷粉|粉体/.test(text)) {
+    surfaceTreatment = '喷涂';
+  } else if (/电泳/.test(text)) {
+    surfaceTreatment = '电泳';
+  } else if (/氧化(?!黑)/.test(text)) {
+    // 只写"氧化"没有颜色，默认本色
+    surfaceTreatment = '氧化本色';
+  }
+
+  // ---- 是否空心 ----
+  let isHollow = false;
+  if (/空心|有内腔|有腔体|中空|空心型材/.test(text)) {
+    isHollow = true;
+  }
+  // "实心" 明确为 false
+  if (/实心/.test(text)) {
+    isHollow = false;
+  }
+
+  // ---- 内腔尺寸（可选） ----
+  let cavity: { width: number; height: number } | undefined;
+  if (isHollow) {
+    const cavityMatch = text.match(/(?:内(?:宽|腔宽)|内腔宽)\s*[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?[\s,，/]*(?:内(?:高|腔高)|内腔高)\s*[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
+    if (cavityMatch) {
+      cavity = { width: parseFloat(cavityMatch[1]), height: parseFloat(cavityMatch[2]) };
+    }
+  }
+
+  // ---- 钻孔 ----
+  let drillingHoles: number | undefined;
+  // "3×φ5" / "3个φ5孔" / "3个5mm孔" / "3×Φ5" / "钻孔3个"
+  const drillMatch1 = text.match(/(\d+)\s*(?:×|x|X|个)?\s*[φΦ⌀]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?\s*(?:孔|钻孔|通孔|盲孔)/);
+  const drillMatch2 = text.match(/钻(?:孔|孔)\s*(\d+)\s*(?:个|孔)?/);
+  if (drillMatch1) {
+    drillingHoles = parseInt(drillMatch1[1]);
+  } else if (drillMatch2) {
+    drillingHoles = parseInt(drillMatch2[1]);
+  }
+
+  // ---- 攻丝 ----
+  let tappingHoles: number | undefined;
+  // "2×M4" / "2个M4螺纹孔" / "攻丝2×M4" / "2个M4"
+  const tapMatch1 = text.match(/(\d+)\s*(?:×|x|X|个)?\s*M(\d+(?:\.\d+)?)\s*(?:螺纹孔|螺纹|攻丝|丝锥)?/);
+  const tapMatch2 = text.match(/攻(?:丝|牙)\s*(\d+)\s*(?:个|孔)?/);
+  if (tapMatch1) {
+    tappingHoles = parseInt(tapMatch1[1]);
+  } else if (tapMatch2) {
+    tappingHoles = parseInt(tapMatch2[1]);
+  }
+
+  return {
+    productType: 'extrusion',
+    outerWidth,
+    outerHeight,
+    chamfer,
+    isHollow,
+    cavity,
+    length,
+    quantity,
+    surfaceTreatment,
+    drillingHoles,
+    tappingHoles,
+  };
+}
+
 function MessageContent({ message, onFillForm }: { message: Message; onFillForm?: (info: ParsedProductInfo, content: string) => void }) {
   const content = message.content;
   const [isSaving, setIsSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<{ success: boolean; message: string } | null>(null);
-  
-  // 报价计算结果 state
-  const [pricingResult, setPricingResult] = useState<PricingResultData | null>(null);
-  const [pricingLoading, setPricingLoading] = useState(false);
-  const [pricingError, setPricingError] = useState<string | null>(null);
-  const [pricingCalled, setPricingCalled] = useState(false);
-  
-  // 检测 pricing_request JSON 并调用 API
-  useEffect(() => {
-    if (pricingCalled || message.role !== 'assistant') return;
-    
-    const pricingMatch = content.match(/\{\s*"pricing_request"\s*:/);
-    if (!pricingMatch) return;
-    
-    setPricingCalled(true);
-    
-    // 提取 JSON
-    const jsonStart = content.indexOf('{', pricingMatch.index!);
-    // 找到匹配的右括号
-    let braceCount = 0;
-    let jsonEnd = -1;
-    for (let i = jsonStart; i < content.length; i++) {
-      if (content[i] === '{') braceCount++;
-      if (content[i] === '}') braceCount--;
-      if (braceCount === 0) { jsonEnd = i + 1; break; }
-    }
-    
-    if (jsonEnd === -1) return;
-    
-    try {
-      const parsed = JSON.parse(content.substring(jsonStart, jsonEnd));
-      if (!parsed.pricing_request) return;
-      
-      setPricingLoading(true);
-      setPricingError(null);
-      
-      fetch('/api/pricing/calculate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(parsed.pricing_request),
-      })
-        .then(res => res.json())
-        .then(result => {
-          if (result.success && result.data) {
-            setPricingResult(result.data);
-          } else {
-            setPricingError(result.error || '报价计算失败');
-          }
-        })
-        .catch(err => {
-          setPricingError(err.message || '请求失败');
-        })
-        .finally(() => {
-          setPricingLoading(false);
-        });
-    } catch {
-      setPricingError('JSON解析失败');
-    }
-  }, [content, message.role, pricingCalled]);
   
   // 使用 useMemo 缓存解析结果
   const parsedContent = useMemo(() => {
@@ -988,30 +1090,10 @@ function MessageContent({ message, onFillForm }: { message: Message; onFillForm?
     setIsSaving(false);
   };
   
-  // 检测工具调用JSON块并隐藏（包括 pricing_request JSON）
+  // 检测工具调用JSON块并隐藏
   const cleanContent = (() => {
     let result = content;
-    // 先移除包含 pricing_request 的代码块
-    result = result.replace(/```json[\s\S]*?"pricing_request"[\s\S]*?```/g, '');
-    // 移除裸 JSON 中的 pricing_request（用函数精确匹配花括号）
-    const idx = result.indexOf('"pricing_request"');
-    if (idx !== -1) {
-      // 向前找 {
-      let start = idx;
-      while (start > 0 && result[start] !== '{') start--;
-      // 向后匹配完整 JSON
-      let braceCount = 0;
-      let end = start;
-      for (let i = start; i < result.length; i++) {
-        if (result[i] === '{') braceCount++;
-        if (result[i] === '}') braceCount--;
-        if (braceCount === 0) { end = i + 1; break; }
-      }
-      if (end > start) {
-        result = result.substring(0, start) + result.substring(end);
-      }
-    }
-    // 移除其他工具调用JSON块
+    // 移除代码块中的JSON
     result = result.replace(/```json\s*\{[\s\S]*?\}\s*```/g, '');
     return result.trim();
   })();
@@ -1086,25 +1168,24 @@ function MessageContent({ message, onFillForm }: { message: Message; onFillForm?
     );
   }
   
-  // 如果有报价计算结果或正在加载或出错，显示对应卡片
-  if (message.role === 'assistant' && (pricingResult || pricingLoading || pricingError)) {
-    const displayText = cleanContent.trim();
+  // 用户消息：如果有关联的报价计算结果，在消息下方显示报价卡片
+  if (message.role === 'user' && (message.pricingResult || message.pricingLoading || message.pricingError)) {
     return (
       <div>
-        {displayText && <div className="whitespace-pre-wrap">{displayText}</div>}
-        {pricingLoading && (
+        <div className="whitespace-pre-wrap">{cleanContent}</div>
+        {message.pricingLoading && (
           <div className="mt-3 flex items-center gap-2 bg-emerald-50 rounded-lg px-4 py-3 border border-emerald-200">
             <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
             <span className="text-sm text-emerald-700">正在计算报价...</span>
           </div>
         )}
-        {pricingError && (
+        {message.pricingError && (
           <div className="mt-3 flex items-center gap-2 bg-red-50 rounded-lg px-4 py-3 border border-red-200">
             <AlertCircle className="w-4 h-4 text-red-500" />
-            <span className="text-sm text-red-700">报价计算失败：{pricingError}</span>
+            <span className="text-sm text-red-700">报价计算失败：{message.pricingError}</span>
           </div>
         )}
-        {pricingResult && <PricingResultCard data={pricingResult} />}
+        {message.pricingResult && <PricingResultCard data={message.pricingResult} />}
       </div>
     );
   }
@@ -2027,6 +2108,44 @@ export default function ChatPanel() {
     
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
+
+    // ===== 从用户输入中提取报价参数，尝试调用报价API =====
+    const pricingParams = extractPricingParams(input);
+    if (pricingParams) {
+      // 标记为加载中
+      setMessages((prev) => prev.map((m) =>
+        m.id === userMessage.id ? { ...m, pricingLoading: true } : m
+      ));
+      try {
+        const pricingRes = await fetch('/api/pricing/calculate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(pricingParams),
+        });
+        const pricingData = await pricingRes.json();
+        if (pricingData.success && pricingData.data) {
+          setMessages((prev) => prev.map((m) =>
+            m.id === userMessage.id
+              ? { ...m, pricingLoading: false, pricingResult: pricingData.data }
+              : m
+          ));
+        } else {
+          setMessages((prev) => prev.map((m) =>
+            m.id === userMessage.id
+              ? { ...m, pricingLoading: false, pricingError: pricingData.error || pricingData.details?.join('; ') || '报价计算失败' }
+              : m
+          ));
+        }
+      } catch (err) {
+        setMessages((prev) => prev.map((m) =>
+          m.id === userMessage.id
+            ? { ...m, pricingLoading: false, pricingError: err instanceof Error ? err.message : '请求失败' }
+            : m
+        ));
+      }
+    }
+    // ===== 报价参数提取结束 =====
+
     const currentImageData = uploadedImage; // 图片Base64数据（仅用于预览）
     const currentCozeFileId = cozeFileId; // Coze文件ID（单文件）
     const currentCozeFileIdsBatch = cozeFileIdsBatch; // Coze文件ID列表（压缩包多文件）
