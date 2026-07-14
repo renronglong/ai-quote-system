@@ -14,8 +14,22 @@ export default function LoginPage() {
   const { user, loading } = useAuth();
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [remember, setRemember] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // 页面加载时读取已保存的凭据
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('gyparts_remember');
+      if (saved) {
+        const { phone: savedPhone, password: savedPwd } = JSON.parse(saved);
+        if (savedPhone) setPhone(savedPhone);
+        if (savedPwd) setPassword(savedPwd);
+        setRemember(true);
+      }
+    } catch {}
+  }, []);
 
   useEffect(() => {
     if (!loading && user) {
@@ -76,6 +90,14 @@ export default function LoginPage() {
       };
 
       localStorage.setItem('custom_session', JSON.stringify(mockSession));
+
+      // 记住密码处理
+      if (remember) {
+        localStorage.setItem('gyparts_remember', JSON.stringify({ phone, password }));
+      } else {
+        localStorage.removeItem('gyparts_remember');
+      }
+
       // 触发 auth context 更新
       window.dispatchEvent(new Event('auth-changed'));
       router.replace('/');
@@ -158,6 +180,20 @@ export default function LoginPage() {
                     disabled={submitting}
                   />
                 </div>
+              </div>
+
+              {/* 记住密码 */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="remember"
+                  checked={remember}
+                  onChange={(e) => setRemember(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <label htmlFor="remember" className="text-sm text-slate-600 select-none cursor-pointer">
+                  记住密码
+                </label>
               </div>
 
               <Button 
