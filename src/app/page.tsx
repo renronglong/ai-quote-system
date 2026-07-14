@@ -1,27 +1,27 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useAuth } from '@/lib/auth-context';
 import {
-  Zap,
   Package,
   TrendingUp,
-  Users,
-  ArrowRight,
-  LogIn,
-  UserPlus,
   LogOut,
   Menu,
   X,
   Loader2,
-  ChevronRight,
-  Clock,
-  Shield,
   Calculator,
   Factory,
   BarChart3,
+  FileText,
+  ChevronDown,
+  Lightbulb,
+  Settings,
+  HardDrive,
+  Upload,
+  History,
+  User,
 } from 'lucide-react';
 
 const ChatPanel = dynamic(() => import('@/components/ChatPanel'), {
@@ -48,18 +48,10 @@ export default function HomePage() {
   const { user, loading: authLoading, signOut } = useAuth();
   const [aluminumPrice, setAluminumPrice] = useState<AluminumPrice | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [showQuotePanel, setShowQuotePanel] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
+  const [faqOpen, setFaqOpen] = useState<number | null>(0);
+  const chatPanelRef = useRef<HTMLDivElement>(null);
 
-  // 监听滚动，切换 header 样式
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 80);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-
-  // 获取实时铝价（无论是否登录都展示）
+  // 获取实时铝价
   useEffect(() => {
     const fetchAluminumPrice = async () => {
       try {
@@ -71,112 +63,87 @@ export default function HomePage() {
       }
     };
     fetchAluminumPrice();
-    const interval = setInterval(fetchAluminumPrice, 5 * 60 * 1000); // 5分钟更新一次
+    const interval = setInterval(fetchAluminumPrice, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // 已登录用户可以直接看到报价面板
-  useEffect(() => {
-    if (user) setShowQuotePanel(true);
-  }, [user]);
+  // 快捷提问按钮点击 - 滚动到ChatPanel
+  const scrollToChat = () => {
+    if (chatPanelRef.current) {
+      chatPanelRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
 
-  const productCategories = [
-    {
-      name: '铝型材',
-      desc: '工业铝型材、建筑铝型材、装饰铝型材',
-      icon: '🏭',
-      features: ['CNC加工', '表面处理', '定制截断'],
-      href: user ? '/products?category=aluminum' : '/login',
-    },
-    {
-      name: '板材加工',
-      desc: '铝板、铝塑板、蜂窝板',
-      icon: '📐',
-      features: ['激光切割', '折弯成型', '表面氧化'],
-      href: user ? '/products?category=plate' : '/login',
-    },
-    {
-      name: '压铸件',
-      desc: '铝合金压铸件、锌合金压铸件',
-      icon: '⚙️',
-      features: ['模具设计', '精密压铸', '后加工'],
-      href: user ? '/products?category=casting' : '/login',
-    },
-    {
-      name: '定制加工',
-      desc: '来图来样定制、OEM/ODM服务',
-      icon: '🔧',
-      features: ['图纸报价', '工艺评估', '批量生产'],
-      href: user ? '/products?category=custom' : '/login',
-    },
-  ];
+  // 报价模板库点击提示
+  const handleTemplateClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    alert('功能即将上线');
+  };
 
-  const features = [
+  // FAQ 数据
+  const faqItems = [
     {
-      icon: <Zap className="w-6 h-6" />,
-      title: 'AI 智能报价',
-      desc: '基于工艺参数自动计算，秒级生成精准报价单',
-      color: 'from-blue-500 to-blue-600',
+      question: '支持哪些图纸、文件格式上传？',
+      answer: 'DWG、DXF、PDF、图片、Excel BOM、压缩包批量上传',
     },
     {
-      icon: <Package className="w-6 h-6" />,
-      title: '多品类支持',
-      desc: '铝型材、板材、压铸件等多品类一站式报价管理',
-      color: 'from-emerald-500 to-emerald-600',
+      question: '报价数据、图纸文件会泄露吗？',
+      answer: '所有图纸与报价数据加密存储，仅本账号可见',
     },
     {
-      icon: <TrendingUp className="w-6 h-6" />,
-      title: '实时铝价',
-      desc: '对接市场铝锭价数据，报价随行情自动调整',
-      color: 'from-orange-500 to-orange-600',
+      question: '新用户免费额度有多少？',
+      answer: '注册即可免费解析2套图纸完整报价',
     },
     {
-      icon: <Shield className="w-6 h-6" />,
-      title: '专业可靠',
-      desc: '深耕制造业多年，覆盖CNC、压铸、钣金等全工艺',
-      color: 'from-purple-500 to-purple-600',
+      question: '适配哪些加工行业？',
+      answer: '铝型材、照明配件、CNC五金、冲压、机箱外壳制造工厂',
     },
   ];
 
   return (
     <div className="min-h-screen bg-white">
-      {/* 顶部导航 - 透明浮在Hero上，滚动后变实心 */}
-      <header
-        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-          scrolled
-            ? 'bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm'
-            : 'bg-transparent border-b border-transparent'
-        }`}
-      >
+      {/* ==================== 区域1：顶部悬浮导航栏 ==================== */}
+      <header className="fixed top-0 left-0 right-0 z-50 bg-[#0F2040] shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
-            <Link href="/" className="flex items-center gap-2">
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 ${
-                scrolled ? 'bg-gradient-to-br from-blue-600 to-blue-700' : 'bg-white/15 backdrop-blur-sm'
-              }`}>
+            <Link href="/" className="flex items-center gap-2 flex-shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center">
                 <Factory className="w-5 h-5 text-white" />
               </div>
               <div>
-                <span className={`text-lg font-bold transition-colors duration-300 ${scrolled ? 'text-slate-800' : 'text-white'}`}>工品报价</span>
-                <span className={`hidden sm:inline text-xs ml-1 transition-colors duration-300 ${scrolled ? 'text-slate-400' : 'text-white/60'}`}>gyparts.cn</span>
+                <span className="text-lg font-bold text-white">工品报价</span>
+                <span className="hidden sm:inline text-xs text-white/60 ml-1">gyparts.cn</span>
               </div>
             </Link>
 
-            {/* 桌面导航 */}
-            <nav className="hidden md:flex items-center gap-6">
-              <a href="#features" className={`text-sm transition-colors duration-300 ${scrolled ? 'text-slate-600 hover:text-slate-900' : 'text-white/80 hover:text-white'}`}>核心功能</a>
-              <a href="#categories" className={`text-sm transition-colors duration-300 ${scrolled ? 'text-slate-600 hover:text-slate-900' : 'text-white/80 hover:text-white'}`}>产品品类</a>
-              <Link href="/products" className={`text-sm transition-colors duration-300 ${scrolled ? 'text-slate-600 hover:text-slate-900' : 'text-white/80 hover:text-white'}`}>产品库</Link>
-              <Link href="/market" className={`text-sm transition-colors duration-300 ${scrolled ? 'text-slate-600 hover:text-slate-900' : 'text-white/80 hover:text-white'}`}>铝价行情</Link>
-              {/* 实时铝价 */}
+            {/* 桌面导航菜单 */}
+            <nav className="hidden lg:flex items-center gap-5">
+              <a href="#ai-quote" className="text-sm font-bold text-white">
+                AI 智能报价
+              </a>
+              <Link href="/products" className="text-sm text-white/80 hover:text-white transition-colors">
+                产品库
+              </Link>
+              <Link href="/market" className="text-sm text-white/80 hover:text-white transition-colors">
+                实时金属行情
+              </Link>
+              <a href="#" onClick={handleTemplateClick} className="text-sm text-white/80 hover:text-white transition-colors">
+                报价模板库
+              </a>
+              <Link href="/help" className="text-sm text-white/80 hover:text-white transition-colors">
+                工艺知识库
+              </Link>
+              <Link href="/help" className="text-sm text-white/80 hover:text-white transition-colors">
+                帮助中心
+              </Link>
+
+              {/* 行情小标签 */}
               {aluminumPrice && (
-                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors duration-300 ${
-                  scrolled ? 'bg-orange-50' : 'bg-white/10'
-                }`}>
-                  <TrendingUp className={`w-3.5 h-3.5 transition-colors duration-300 ${scrolled ? 'text-orange-500' : 'text-orange-300'}`} />
-                  <span className={`text-xs transition-colors duration-300 ${scrolled ? 'text-slate-500' : 'text-white/60'}`}>铝锭价</span>
-                  <span className={`text-xs font-semibold transition-colors duration-300 ${scrolled ? 'text-orange-600' : 'text-orange-300'}`}>¥{aluminumPrice.price.toLocaleString()}</span>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10">
+                  <TrendingUp className="w-3.5 h-3.5 text-orange-300" />
+                  <span className="text-xs text-white/60">灵通铝锭价</span>
+                  <span className="text-xs font-semibold text-orange-300">¥{aluminumPrice.price.toLocaleString()}</span>
                   <span className={`text-xs ${aluminumPrice.change >= 0 ? 'text-red-400' : 'text-green-400'}`}>
                     {aluminumPrice.change >= 0 ? '↑' : '↓'}{Math.abs(aluminumPrice.changePercent).toFixed(2)}%
                   </span>
@@ -184,393 +151,404 @@ export default function HomePage() {
               )}
             </nav>
 
-            {/* 右侧按钮 */}
-            <div className="hidden md:flex items-center gap-3">
+            {/* 右侧操作区 */}
+            <div className="hidden lg:flex items-center gap-3">
+              <Link
+                href="/quote"
+                className="px-4 py-2 bg-[#2563EB] hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                免费上传图纸报价
+              </Link>
               {authLoading ? (
-                <Loader2 className={`w-5 h-5 animate-spin transition-colors duration-300 ${scrolled ? 'text-slate-400' : 'text-white/60'}`} />
+                <Loader2 className="w-5 h-5 animate-spin text-white/60" />
               ) : user ? (
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   <Link
                     href="/profile"
-                    className={`px-3 py-2 text-sm rounded-lg transition-colors ${scrolled ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-50' : 'text-white/80 hover:text-white hover:bg-white/10'}`}
+                    className="p-2 text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/10"
                   >
-                    个人中心
+                    <User className="w-5 h-5" />
                   </Link>
-                  <Link
-                    href="/quote"
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+                  <button
+                    onClick={() => signOut()}
+                    className="p-2 text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/10"
+                    title="退出登录"
                   >
-                    开始报价
-                  </Link>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-sm transition-colors duration-300 ${scrolled ? 'text-slate-600' : 'text-white/70'}`}>{user.phone || user.email || '用户'}</span>
-                    <button
-                      onClick={() => signOut()}
-                      className={`p-1.5 rounded-md transition-colors duration-300 ${scrolled ? 'text-slate-400 hover:text-slate-600 hover:bg-slate-100' : 'text-white/50 hover:text-white hover:bg-white/10'}`}
-                      title="退出登录"
-                    >
-                      <LogOut className="w-4 h-4" />
-                    </button>
-                  </div>
+                    <LogOut className="w-5 h-5" />
+                  </button>
                 </div>
               ) : (
-                <>
-                  <Link
-                    href="/login"
-                    className={`px-4 py-2 text-sm rounded-lg transition-all duration-300 ${
-                      scrolled ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-50' : 'text-white/80 hover:text-white hover:bg-white/10'
-                    }`}
-                  >
+                <div className="flex items-center gap-2">
+                  <Link href="/login" className="text-sm text-white/70 hover:text-white transition-colors">
                     登录
                   </Link>
-                  <Link
-                    href="/register"
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
-                  >
-                    免费注册
+                  <span className="text-white/30">/</span>
+                  <Link href="/register" className="text-sm text-white/70 hover:text-white transition-colors">
+                    注册
                   </Link>
-                </>
+                </div>
               )}
             </div>
 
             {/* 移动端菜单按钮 */}
             <button
-              className={`md:hidden p-2 rounded-md transition-colors duration-300 ${
-                scrolled ? 'text-slate-600 hover:bg-slate-100' : 'text-white hover:bg-white/10'
-              }`}
+              className="lg:hidden text-white p-2"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             >
-              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
           </div>
         </div>
 
-        {/* 移动端菜单 */}
+        {/* 移动端下拉菜单 */}
         {mobileMenuOpen && (
-          <div className="md:hidden bg-white/95 backdrop-blur-md border-t border-slate-200 py-4 px-4 space-y-3">
-            <a href="#features" className="block text-sm text-slate-600 py-2" onClick={() => setMobileMenuOpen(false)}>核心功能</a>
-            <a href="#categories" className="block text-sm text-slate-600 py-2" onClick={() => setMobileMenuOpen(false)}>产品品类</a>
-            <Link href="/products" className="block text-sm text-slate-600 py-2" onClick={() => setMobileMenuOpen(false)}>产品库</Link>
-            <Link href="/market" className="block text-sm text-slate-600 py-2" onClick={() => setMobileMenuOpen(false)}>铝价行情</Link>
+          <div className="lg:hidden bg-[#0F2040] border-t border-white/10 px-4 py-4 space-y-3">
+            <a href="#ai-quote" className="block text-sm font-bold text-white" onClick={() => setMobileMenuOpen(false)}>AI 智能报价</a>
+            <Link href="/products" className="block text-sm text-white/80" onClick={() => setMobileMenuOpen(false)}>产品库</Link>
+            <Link href="/market" className="block text-sm text-white/80" onClick={() => setMobileMenuOpen(false)}>实时金属行情</Link>
+            <Link href="/help" className="block text-sm text-white/80" onClick={() => setMobileMenuOpen(false)}>帮助中心</Link>
             {aluminumPrice && (
-              <div className="flex items-center gap-1.5 py-2">
-                <TrendingUp className="w-3.5 h-3.5 text-orange-500" />
-                <span className="text-xs text-slate-500">铝锭价</span>
-                <span className="text-xs font-semibold text-orange-600">¥{aluminumPrice.price.toLocaleString()}</span>
+              <div className="flex items-center gap-2 px-3 py-2 rounded-full bg-white/10 w-fit">
+                <TrendingUp className="w-3.5 h-3.5 text-orange-300" />
+                <span className="text-xs text-orange-300 font-semibold">灵通铝锭价 ¥{aluminumPrice.price.toLocaleString()}</span>
               </div>
             )}
-            <div className="pt-3 border-t border-slate-100 flex gap-2">
-              {user ? (
-                <>
-                  <Link href="/profile" className="flex-1 text-center px-4 py-2 border border-slate-200 text-slate-700 text-sm rounded-lg" onClick={() => setMobileMenuOpen(false)}>
-                    个人中心
-                  </Link>
-                  <Link href="/quote" className="flex-1 text-center px-4 py-2 bg-blue-600 text-white text-sm rounded-lg">
-                    开始报价
-                  </Link>
-                  <button onClick={() => { signOut(); setMobileMenuOpen(false); }} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg">
-                    退出
-                  </button>
-                </>
-              ) : (
-                <>
-                  <Link href="/login" className="flex-1 text-center px-4 py-2 border border-slate-200 text-slate-700 text-sm rounded-lg">
-                    登录
-                  </Link>
-                  <Link href="/register" className="flex-1 text-center px-4 py-2 bg-blue-600 text-white text-sm rounded-lg">
-                    注册
-                  </Link>
-                </>
+            <div className="pt-3 border-t border-white/10 space-y-2">
+              <Link href="/quote" className="block w-full text-center px-4 py-2.5 bg-[#2563EB] text-white text-sm font-medium rounded-lg">
+                免费上传图纸报价
+              </Link>
+              {!user && (
+                <div className="flex gap-2 justify-center">
+                  <Link href="/login" className="text-sm text-white/70">登录</Link>
+                  <span className="text-white/30">/</span>
+                  <Link href="/register" className="text-sm text-white/70">注册</Link>
+                </div>
               )}
             </div>
           </div>
         )}
       </header>
 
-      {/* Hero 区域 - 紧凑 banner 风格，header 透明叠加 */}
-      <section>
-        <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900">
-          {/* 背景装饰 */}
-          <div className="absolute inset-0">
-            <div className="absolute top-10 left-10 w-56 h-56 bg-blue-500/10 rounded-full blur-3xl" />
-            <div className="absolute bottom-10 right-10 w-72 h-72 bg-blue-600/10 rounded-full blur-3xl" />
-            <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PHBhdGggZD0iTTM2IDM0djItSDI0di0yaDEyem0wLTRWMjhIMjR2Mmgxem0tMiAwaC0ydjJoMnYtMnptLTQgMGgtMnYyaDJ2LTJ6bS00IDBoLTJ2Mmgydi0yeiIvPjwvZz48L2c+PC9zdmc+')] opacity-50" />
+      {/* ==================== 区域2：首屏Banner价值区 ==================== */}
+      <section className="pt-16 bg-gradient-to-b from-[#0F2040] to-[#1a3260] min-h-[520px] flex items-center">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20 text-center">
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white leading-tight mb-6">
+            10秒AI自动核算加工成本
+            <br />
+            <span className="text-blue-300">告别人工算料耗、算工时</span>
+          </h1>
+          <p className="text-base sm:text-lg text-slate-300 max-w-3xl mx-auto mb-10 leading-relaxed">
+            基于CAD图纸/BOM工艺参数联动灵通实时金属行情，自动核算材料费、CNC加工、氧化、喷涂全工序费用，一键导出工厂专用报价单，杜绝漏算成本、报价亏损。
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link
+              href="/quote"
+              className="inline-flex items-center gap-2 px-8 py-4 bg-[#2563EB] hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors shadow-lg shadow-blue-600/30 text-base"
+            >
+              <Upload className="w-5 h-5" />
+              免费上传图纸报价
+            </Link>
+            <a
+              href="#cases"
+              className="inline-flex items-center gap-2 px-8 py-4 bg-white/10 hover:bg-white/20 text-white font-medium rounded-xl transition-colors border border-white/20 text-base"
+            >
+              <FileText className="w-5 h-5" />
+              查看加工报价案例
+            </a>
           </div>
+        </div>
+      </section>
 
-          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-12 sm:pt-28 sm:pb-16">
-            <div className="max-w-3xl">
-              {/* 标签 */}
-              <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-500/10 border border-blue-400/20 rounded-full mb-4">
-                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
-                <span className="text-xs text-blue-300 font-medium">面向制造业的一站式报价服务平台</span>
-              </div>
-
-              {/* 主标题 */}
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white leading-tight mb-4">
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">AI 智能报价</span>
-                <span className="text-white/70 mx-2">—</span>
-                <span className="text-white/90">让制造业报价更快更准</span>
-              </h1>
-
-              {/* 副标题 */}
-              <p className="text-sm sm:text-base text-slate-400 mb-6 max-w-2xl leading-relaxed">
-                基于工艺参数与实时铝价，AI 自动计算加工成本，秒级生成精准报价单。
-              </p>
-
-              {/* CTA 按钮 */}
-              <div className="flex flex-wrap items-center gap-3">
-                {user ? (
-                  <>
-                    <button
-                      onClick={() => setShowQuotePanel(!showQuotePanel)}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/25 hover:shadow-blue-600/40 text-sm"
-                    >
-                      <Calculator className="w-4 h-4" />
-                      {showQuotePanel ? '收起报价' : '开始报价'}
-                    </button>
-                    <Link
-                      href="/products"
-                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/15 text-white font-medium rounded-xl transition-all border border-white/10 text-sm"
-                    >
-                      <Package className="w-4 h-4" />
-                      浏览产品库
-                    </Link>
-                  </>
-                ) : (
-                  <>
-                    <Link
-                      href="/register"
-                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/25 hover:shadow-blue-600/40 text-sm"
-                    >
-                      <UserPlus className="w-4 h-4" />
-                      免费注册，立即体验
-                    </Link>
-                    <Link
-                      href="/login"
-                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/15 text-white font-medium rounded-xl transition-all border border-white/10 text-sm"
-                    >
-                      <LogIn className="w-4 h-4" />
-                      已有账号登录
-                    </Link>
-                  </>
-                )}
-              </div>
-
-              {/* 数据指标 */}
-              <div className="mt-6 flex items-center gap-6 sm:gap-10">
-                <div>
-                  <div className="text-lg sm:text-xl font-bold text-white">10s</div>
-                  <div className="text-xs text-slate-500 mt-0.5">平均报价时间</div>
-                </div>
-                <div className="w-px h-8 bg-white/10" />
-                <div>
-                  <div className="text-lg sm:text-xl font-bold text-white">4+</div>
-                  <div className="text-xs text-slate-500 mt-0.5">产品品类</div>
-                </div>
-                <div className="w-px h-8 bg-white/10" />
-                <div>
-                  <div className="text-lg sm:text-xl font-bold text-white">实时</div>
-                  <div className="text-xs text-slate-500 mt-0.5">铝价同步</div>
-                </div>
-              </div>
+      {/* ==================== 区域3：四大信任数据卡片 ==================== */}
+      <section className="bg-white py-12 sm:py-16 -mt-8 relative z-10">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center shadow-sm hover:shadow-md transition-shadow">
+              <div className="text-3xl mb-2">⏱️</div>
+              <div className="text-2xl sm:text-3xl font-bold text-[#2563EB] mb-1">10秒</div>
+              <div className="text-sm text-slate-600 font-medium">极速报价</div>
+              <div className="text-xs text-slate-400 mt-1">平均10秒生成完整报价单</div>
+            </div>
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center shadow-sm hover:shadow-md transition-shadow">
+              <div className="text-3xl mb-2">📦</div>
+              <div className="text-2xl sm:text-3xl font-bold text-[#2563EB] mb-1">40+</div>
+              <div className="text-sm text-slate-600 font-medium">覆盖品类</div>
+              <div className="text-xs text-slate-400 mt-1">铝型材/五金加工品类</div>
+            </div>
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center shadow-sm hover:shadow-md transition-shadow">
+              <div className="text-3xl mb-2">📈</div>
+              <div className="text-2xl sm:text-3xl font-bold text-[#2563EB] mb-1">每日更新</div>
+              <div className="text-sm text-slate-600 font-medium">行情同步</div>
+              <div className="text-xs text-slate-400 mt-1">自动更新灵通铝、铜、不锈钢价格</div>
+            </div>
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center shadow-sm hover:shadow-md transition-shadow">
+              <div className="text-3xl mb-2">🏭</div>
+              <div className="text-2xl sm:text-3xl font-bold text-[#2563EB] mb-1">2000+</div>
+              <div className="text-sm text-slate-600 font-medium">企业在用</div>
+              <div className="text-xs text-slate-400 mt-1">照明、五金制造工厂</div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* 已登录用户 - 报价面板区域 */}
-      {user && showQuotePanel && (
-        <section className="bg-slate-50 border-b border-slate-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden" style={{ height: '600px' }}>
+      {/* ==================== 区域4：三大核心优势板块 ==================== */}
+      <section className="py-16 sm:py-20 bg-slate-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <h2 className="text-2xl sm:text-3xl font-bold text-slate-800 mb-3">为什么选择工品报价？</h2>
+            <p className="text-slate-500 max-w-2xl mx-auto">三大核心能力，让工厂报价不再困难</p>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
+            {/* 卡片1 */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-8 hover:shadow-lg hover:border-blue-200 transition-all">
+              <div className="w-14 h-14 bg-orange-50 rounded-xl flex items-center justify-center mb-5">
+                <TrendingUp className="w-7 h-7 text-orange-500" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 mb-3">原材料行情自动联动</h3>
+              <p className="text-sm text-slate-500 mb-3">无需手动查价，原材料成本实时同步。</p>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                系统每日同步灵通现货金属价，报价单自动跟随铝/铜/不锈钢价格浮动。
+              </p>
+            </div>
+            {/* 卡片2 */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-8 hover:shadow-lg hover:border-blue-200 transition-all">
+              <div className="w-14 h-14 bg-blue-50 rounded-xl flex items-center justify-center mb-5">
+                <Settings className="w-7 h-7 text-blue-600" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 mb-3">内置完整加工工艺库</h3>
+              <p className="text-sm text-slate-500 mb-3">上百套标准工序工时，减少人为误差。</p>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                内置挤压、冲压、CNC、拉丝、氧化、喷粉等工艺标准损耗、工时模板。
+              </p>
+            </div>
+            {/* 卡片3 */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-8 hover:shadow-lg hover:border-blue-200 transition-all">
+              <div className="w-14 h-14 bg-emerald-50 rounded-xl flex items-center justify-center mb-5">
+                <HardDrive className="w-7 h-7 text-emerald-600" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 mb-3">私有报价模板存储</h3>
+              <p className="text-sm text-slate-500 mb-3">保存本厂加价、损耗参数，一键复用。</p>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                自定义工厂毛利率、废料损耗、包装运费规则。
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ==================== 区域5：AI智能报价助手交互区 ==================== */}
+      <section id="ai-quote" className="py-16 sm:py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* 模块标题 */}
+          <div className="text-center mb-8">
+            <h2 className="text-2xl sm:text-3xl font-bold text-slate-800 mb-3">
+              AI智能报价助手｜支持图纸/压缩包/BOM文件拖拽上传
+            </h2>
+          </div>
+
+          {/* 助手功能清单 */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <div className="flex items-start gap-3 p-4 bg-blue-50 rounded-xl">
+              <FileText className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <div className="text-sm font-semibold text-slate-800">图纸解析</div>
+                <div className="text-xs text-slate-500 mt-1">识别DWG/DXF/PDF/图片，自动提取尺寸、材质、加工工序</div>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-4 bg-orange-50 rounded-xl">
+              <Calculator className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <div className="text-sm font-semibold text-slate-800">智能核价</div>
+                <div className="text-xs text-slate-500 mt-1">联动实时金属价，自动计算料重、加工费、表面处理成本</div>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-4 bg-emerald-50 rounded-xl">
+              <Package className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <div className="text-sm font-semibold text-slate-800">文件处理</div>
+                <div className="text-xs text-slate-500 mt-1">批量解析Excel BOM，批量生成多款产品报价</div>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-4 bg-purple-50 rounded-xl">
+              <BarChart3 className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <div className="text-sm font-semibold text-slate-800">单据导出</div>
+                <div className="text-xs text-slate-500 mt-1">生成带工厂抬头、无水印PDF正式报价单</div>
+              </div>
+            </div>
+          </div>
+
+          {/* 快捷提问按钮 */}
+          <div className="flex flex-wrap justify-center gap-3 mb-6">
+            <button onClick={scrollToChat} className="px-4 py-2 bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-sm text-slate-600 rounded-full transition-colors border border-slate-200 hover:border-blue-200">
+              上传铝型材图纸算报价
+            </button>
+            <button onClick={scrollToChat} className="px-4 py-2 bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-sm text-slate-600 rounded-full transition-colors border border-slate-200 hover:border-blue-200">
+              批量导入BOM核算成本
+            </button>
+            <button onClick={scrollToChat} className="px-4 py-2 bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-sm text-slate-600 rounded-full transition-colors border border-slate-200 hover:border-blue-200">
+              查询今日灵通铝锭价格
+            </button>
+            <button onClick={scrollToChat} className="px-4 py-2 bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-sm text-slate-600 rounded-full transition-colors border border-slate-200 hover:border-blue-200">
+              导出标准工厂报价单
+            </button>
+          </div>
+
+          {/* ChatPanel + 右侧工具栏 */}
+          <div ref={chatPanelRef} className="flex gap-4" style={{ height: '600px' }}>
+            {/* 左侧工具按钮 */}
+            <div className="hidden sm:flex flex-col gap-2 w-16 bg-slate-50 rounded-l-2xl border border-r-0 border-slate-200 p-3 items-center justify-start pt-6">
+              <Link href="/quote" className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-blue-50 transition-colors group">
+                <Upload className="w-5 h-5 text-slate-400 group-hover:text-blue-600" />
+                <span className="text-[10px] text-slate-400 group-hover:text-blue-600">上传</span>
+              </Link>
+              <Link href="/history" className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-blue-50 transition-colors group">
+                <History className="w-5 h-5 text-slate-400 group-hover:text-blue-600" />
+                <span className="text-[10px] text-slate-400 group-hover:text-blue-600">历史</span>
+              </Link>
+              <Link href="/profile" className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-blue-50 transition-colors group">
+                <User className="w-5 h-5 text-slate-400 group-hover:text-blue-600" />
+                <span className="text-[10px] text-slate-400 group-hover:text-blue-600">我的</span>
+              </Link>
+            </div>
+
+            {/* 主对话区 - ChatPanel */}
+            <div className="flex-1 bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
               <ChatPanel />
             </div>
           </div>
-        </section>
-      )}
-
-      {/* 功能亮点区 */}
-      <section id="features" className="py-20 sm:py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-14">
-            <h2 className="text-2xl sm:text-3xl font-bold text-slate-800 mb-4">核心能力</h2>
-            <p className="text-slate-500 max-w-2xl mx-auto">
-              专为制造业打造的智能报价引擎，从材料成本到加工工艺，全链路自动化报价
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {features.map((feature, idx) => (
-              <div
-                key={idx}
-                className="group relative p-6 bg-white rounded-2xl border border-slate-200 hover:border-slate-300 hover:shadow-lg transition-all duration-300"
-              >
-                <div className={`w-12 h-12 bg-gradient-to-br ${feature.color} rounded-xl flex items-center justify-center text-white mb-4 group-hover:scale-110 transition-transform`}>
-                  {feature.icon}
-                </div>
-                <h3 className="text-lg font-semibold text-slate-800 mb-2">{feature.title}</h3>
-                <p className="text-sm text-slate-500 leading-relaxed">{feature.desc}</p>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 
-      {/* 产品品类展示 */}
-      <section id="categories" className="py-20 sm:py-24 bg-slate-50">
+      {/* ==================== 区域6：客户落地案例板块 ==================== */}
+      <section id="cases" className="py-16 sm:py-20 bg-slate-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-14">
-            <h2 className="text-2xl sm:text-3xl font-bold text-slate-800 mb-4">支持品类</h2>
-            <p className="text-slate-500 max-w-2xl mx-auto">
-              覆盖主流工业品加工品类，一站式满足多样化报价需求
-            </p>
+          <div className="text-center mb-12">
+            <h2 className="text-2xl sm:text-3xl font-bold text-slate-800 mb-3">上千家加工工厂真实使用效果</h2>
+            <p className="text-slate-500">看看同行们如何通过AI报价提升效率</p>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {productCategories.map((cat, idx) => (
-              <Link
-                key={idx}
-                href={cat.href}
-                className="group bg-white rounded-2xl border border-slate-200 p-6 hover:shadow-lg hover:border-blue-200 hover:-translate-y-1 transition-all duration-300"
-              >
-                <div className="text-4xl mb-4">{cat.icon}</div>
-                <h3 className="text-lg font-semibold text-slate-800 mb-2 group-hover:text-blue-600 transition-colors">
-                  {cat.name}
-                </h3>
-                <p className="text-sm text-slate-500 mb-4">{cat.desc}</p>
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {cat.features.map((f, i) => (
-                    <span key={i} className="px-2 py-0.5 text-xs bg-slate-100 text-slate-600 rounded-md">
-                      {f}
-                    </span>
-                  ))}
-                </div>
-                <div className="flex items-center text-sm text-blue-600 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                  进入报价 <ChevronRight className="w-4 h-4 ml-1" />
-                </div>
-              </Link>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* 未登录用户 - 引导注册区域 */}
-      {!user && !authLoading && (
-        <section className="py-20 bg-gradient-to-br from-blue-600 to-blue-700">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4">
-              立即注册，体验 AI 智能报价
-            </h2>
-            <p className="text-blue-100 mb-8 max-w-2xl mx-auto">
-              免费注册即可获得 AI 报价能力，支持铝型材、板材、压铸件等多品类。
-              实时对接铝锭价数据，报价更精准、更高效。
-            </p>
-            <div className="flex flex-wrap justify-center gap-4">
-              <Link
-                href="/register"
-                className="inline-flex items-center gap-2 px-8 py-3.5 bg-white text-blue-600 font-semibold rounded-xl hover:bg-blue-50 transition-colors shadow-lg"
-              >
-                <UserPlus className="w-5 h-5" />
-                免费注册
-              </Link>
-              <Link
-                href="/login"
-                className="inline-flex items-center gap-2 px-8 py-3.5 bg-blue-500/30 text-white font-medium rounded-xl hover:bg-blue-500/40 transition-colors border border-white/20"
-              >
-                <LogIn className="w-5 h-5" />
-                已有账号？登录
-              </Link>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* 已登录用户 - 快捷入口 */}
-      {user && (
-        <section className="py-16 bg-slate-50">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 className="text-xl font-bold text-slate-800 mb-6">快捷入口</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <Link href="/quote" className="flex items-center gap-3 p-4 bg-white rounded-xl border border-slate-200 hover:border-blue-200 hover:shadow-md transition-all group">
-                <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                  <Calculator className="w-5 h-5 text-blue-600" />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
+            {/* 案例1 */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-8 hover:shadow-lg transition-shadow">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 bg-yellow-50 rounded-xl flex items-center justify-center">
+                  <Lightbulb className="w-6 h-6 text-yellow-500" />
                 </div>
                 <div>
-                  <div className="text-sm font-medium text-slate-800">AI 报价</div>
-                  <div className="text-xs text-slate-400">智能生成报价单</div>
+                  <div className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded-full inline-block">照明铝型材厂</div>
                 </div>
-              </Link>
-              <Link href="/products" className="flex items-center gap-3 p-4 bg-white rounded-xl border border-slate-200 hover:border-blue-200 hover:shadow-md transition-all group">
-                <div className="w-10 h-10 bg-emerald-50 rounded-lg flex items-center justify-center group-hover:bg-emerald-100 transition-colors">
-                  <Package className="w-5 h-5 text-emerald-600" />
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-slate-800">产品库</div>
-                  <div className="text-xs text-slate-400">管理产品数据</div>
-                </div>
-              </Link>
-              <Link href="/history" className="flex items-center gap-3 p-4 bg-white rounded-xl border border-slate-200 hover:border-blue-200 hover:shadow-md transition-all group">
-                <div className="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center group-hover:bg-orange-100 transition-colors">
-                  <Clock className="w-5 h-5 text-orange-600" />
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-slate-800">报价历史</div>
-                  <div className="text-xs text-slate-400">查看历史报价</div>
-                </div>
-              </Link>
-              <Link href="/inventory" className="flex items-center gap-3 p-4 bg-white rounded-xl border border-slate-200 hover:border-blue-200 hover:shadow-md transition-all group">
-                <div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center group-hover:bg-purple-100 transition-colors">
-                  <BarChart3 className="w-5 h-5 text-purple-600" />
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-slate-800">库存管理</div>
-                  <div className="text-xs text-slate-400">查看库存数据</div>
-                </div>
-              </Link>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* Footer */}
-      <footer className="bg-slate-900 text-white py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-                  <Factory className="w-5 h-5 text-white" />
-                </div>
-                <span className="text-lg font-bold">工品报价</span>
               </div>
-              <p className="text-sm text-slate-400 leading-relaxed">
-                面向制造业的一站式报价服务平台，AI 驱动，让报价更高效。
+              <p className="text-slate-700 leading-relaxed mb-4">
+                原有1小时核算1套图纸，现10秒批量生成10款报价
               </p>
+              <div className="flex items-center gap-2 pt-4 border-t border-slate-100">
+                <span className="text-2xl font-bold text-[#2563EB]">90%</span>
+                <span className="text-sm text-slate-500">报价亏损减少</span>
+              </div>
             </div>
+            {/* 案例2 */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-8 hover:shadow-lg transition-shadow">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
+                  <Settings className="w-6 h-6 text-blue-600" />
+                </div>
+                <div>
+                  <div className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded-full inline-block">五金冲压配件厂</div>
+                </div>
+              </div>
+              <p className="text-slate-700 leading-relaxed mb-4">
+                新人无需熟记工艺工时，3分钟独立完成客户完整报价
+              </p>
+              <div className="flex items-center gap-2 pt-4 border-t border-slate-100">
+                <span className="text-2xl font-bold text-[#2563EB]">3分钟</span>
+                <span className="text-sm text-slate-500">新人独立完成报价</span>
+              </div>
+            </div>
+            {/* 案例3 */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-8 hover:shadow-lg transition-shadow">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center">
+                  <Factory className="w-6 h-6 text-emerald-600" />
+                </div>
+                <div>
+                  <div className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded-full inline-block">机箱CNC加工厂</div>
+                </div>
+              </div>
+              <p className="text-slate-700 leading-relaxed mb-4">
+                自动同步铝锭浮动价，每月减少原材料成本核算误差
+              </p>
+              <div className="flex items-center gap-2 pt-4 border-t border-slate-100">
+                <span className="text-2xl font-bold text-[#2563EB]">实时同步</span>
+                <span className="text-sm text-slate-500">铝锭浮动价</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ==================== 区域7：高频FAQ问答板块 ==================== */}
+      <section className="py-16 sm:py-20 bg-white">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <h2 className="text-2xl sm:text-3xl font-bold text-slate-800 mb-3">常见使用问题</h2>
+            <p className="text-slate-500">快速了解工品报价的核心能力</p>
+          </div>
+          <div className="space-y-3">
+            {faqItems.map((item, idx) => (
+              <div key={idx} className="border border-slate-200 rounded-xl overflow-hidden">
+                <button
+                  className="w-full flex items-center justify-between p-5 text-left hover:bg-slate-50 transition-colors"
+                  onClick={() => setFaqOpen(faqOpen === idx ? null : idx)}
+                >
+                  <span className="text-base font-medium text-slate-800">{item.question}</span>
+                  <ChevronDown className={`w-5 h-5 text-slate-400 flex-shrink-0 ml-4 transition-transform ${faqOpen === idx ? 'rotate-180' : ''}`} />
+                </button>
+                {faqOpen === idx && (
+                  <div className="px-5 pb-5">
+                    <p className="text-sm text-slate-600 leading-relaxed">{item.answer}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ==================== 区域8：页脚 ==================== */}
+      <footer className="bg-[#0F2040] text-white py-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
             <div>
-              <h4 className="text-sm font-semibold text-slate-300 mb-3">产品服务</h4>
+              <h4 className="text-sm font-semibold text-white mb-4">产品</h4>
               <ul className="space-y-2 text-sm text-slate-400">
-                <li><Link href="/quote" className="hover:text-white transition-colors">AI 报价</Link></li>
+                <li><Link href="/quote" className="hover:text-white transition-colors">AI智能报价</Link></li>
                 <li><Link href="/products" className="hover:text-white transition-colors">产品库</Link></li>
-                <li><Link href="/history" className="hover:text-white transition-colors">报价历史</Link></li>
-                <li><Link href="/market" className="hover:text-white transition-colors">铝价行情</Link></li>
+                <li><Link href="/market" className="hover:text-white transition-colors">实时金属行情</Link></li>
               </ul>
             </div>
             <div>
-              <h4 className="text-sm font-semibold text-slate-300 mb-3">支持品类</h4>
+              <h4 className="text-sm font-semibold text-white mb-4">帮助</h4>
               <ul className="space-y-2 text-sm text-slate-400">
-                <li>铝型材 CNC 加工</li>
-                <li>板材加工</li>
-                <li>压铸件</li>
-                <li>定制加工</li>
+                <li><Link href="/help" className="hover:text-white transition-colors">操作教程</Link></li>
+                <li><Link href="/help" className="hover:text-white transition-colors">工艺知识库</Link></li>
+                <li><Link href="/contact" className="hover:text-white transition-colors">在线客服</Link></li>
               </ul>
             </div>
             <div>
-              <h4 className="text-sm font-semibold text-slate-300 mb-3">联系我们</h4>
+              <h4 className="text-sm font-semibold text-white mb-4">商务</h4>
               <ul className="space-y-2 text-sm text-slate-400">
-                <li>网站：www.gyparts.cn</li>
-                <li><Link href="/contact" className="hover:text-white transition-colors">联系表单</Link></li>
+                <li>工厂合作</li>
+                <li>功能定制</li>
+                <li><Link href="/contact" className="hover:text-white transition-colors">联系我们</Link></li>
               </ul>
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold text-white mb-4">版权</h4>
+              <p className="text-sm text-slate-400">
+                ©{new Date().getFullYear()} 工品报价 gyparts.cn
+                <br />
+                工业品AI报价平台
+              </p>
             </div>
           </div>
           <div className="pt-8 border-t border-slate-800 text-center text-xs text-slate-500">
