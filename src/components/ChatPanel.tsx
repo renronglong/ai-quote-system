@@ -122,6 +122,106 @@ function ProductCard({ products: productList }: { products: Array<{
   );
 }
 
+
+// 报价计算结果卡片组件
+interface PricingResultData {
+  productType: string;
+  quantity: number;
+  section?: {
+    outerArea: number;
+    crossSectionArea: number;
+    weightPerMeter: number;
+    unitWeight: number;
+  };
+  materialCost: number;
+  extrusionCost: number;
+  cncCost: number;
+  surfaceTreatmentCost: number;
+  packagingCost: number;
+  transportationCost: number;
+  unitCost: number;
+  totalCost: number;
+  breakdown: Array<{ item: string; calculation: string; cost: number }>;
+  aluminumPrice: {
+    pricePerTon: number;
+    pricePerKg: number;
+    source: string;
+  };
+}
+
+function PricingResultCard({ data }: { data: PricingResultData }) {
+  return (
+    <div className="mt-3 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border border-emerald-200 overflow-hidden shadow-sm">
+      {/* 标题 */}
+      <div className="bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">📊</span>
+          <span className="text-white font-bold text-base">报价计算结果</span>
+        </div>
+      </div>
+      
+      <div className="p-4 space-y-4">
+        {/* 截面信息 */}
+        {data.section && (
+          <div>
+            <div className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-2">截面信息</div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
+                <div className="text-xs text-gray-500">截面面积</div>
+                <div className="text-sm font-semibold text-gray-800">{data.section.crossSectionArea.toFixed(2)} mm²</div>
+              </div>
+              <div className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
+                <div className="text-xs text-gray-500">米重</div>
+                <div className="text-sm font-semibold text-gray-800">{data.section.weightPerMeter.toFixed(2)} kg/m</div>
+              </div>
+              <div className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
+                <div className="text-xs text-gray-500">单件重量</div>
+                <div className="text-sm font-semibold text-gray-800">{data.section.unitWeight.toFixed(3)} kg</div>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* 成本明细 */}
+        <div>
+          <div className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-2">成本明细</div>
+          <div className="bg-white rounded-lg border border-emerald-100 overflow-hidden">
+            <table className="w-full text-sm">
+              <tbody className="divide-y divide-emerald-50">
+                {data.breakdown.map((item, idx) => (
+                  <tr key={idx} className="hover:bg-emerald-50/50 transition-colors">
+                    <td className="px-3 py-2.5 font-medium text-gray-700 w-24">{item.item}</td>
+                    <td className="px-3 py-2.5 text-gray-500 text-xs">{item.calculation}</td>
+                    <td className="px-3 py-2.5 text-right font-semibold text-gray-800 whitespace-nowrap">¥{item.cost.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        
+        {/* 汇总 */}
+        <div className="space-y-2">
+          <div className="flex justify-between items-center bg-white rounded-lg px-4 py-3 border border-emerald-100">
+            <span className="text-gray-600 font-medium">单件报价</span>
+            <span className="text-xl font-bold text-emerald-600">¥{data.unitCost.toFixed(2)}<span className="text-sm font-normal text-gray-500">/件</span></span>
+          </div>
+          <div className="flex justify-between items-center bg-gradient-to-r from-emerald-500 to-teal-500 rounded-lg px-4 py-3 shadow-sm">
+            <span className="text-white font-medium">批量总价 ({data.quantity.toLocaleString()}件)</span>
+            <span className="text-xl font-bold text-white">¥{data.totalCost.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+        </div>
+        
+        {/* 铝价信息 */}
+        <div className="text-xs text-gray-400 flex items-center gap-1">
+          <span>💰</span>
+          <span>铝锭价：¥{data.aluminumPrice.pricePerKg.toFixed(2)}/kg（{data.aluminumPrice.pricePerTon.toLocaleString()}元/吨，来源：{data.aluminumPrice.source}）</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // 解析报价数据
 function parseQuotationData(text: string): Record<string, string> | null {
   const data: Record<string, string> = {};
@@ -741,6 +841,65 @@ function MessageContent({ message, onFillForm }: { message: Message; onFillForm?
   const [isSaving, setIsSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<{ success: boolean; message: string } | null>(null);
   
+  // 报价计算结果 state
+  const [pricingResult, setPricingResult] = useState<PricingResultData | null>(null);
+  const [pricingLoading, setPricingLoading] = useState(false);
+  const [pricingError, setPricingError] = useState<string | null>(null);
+  const [pricingCalled, setPricingCalled] = useState(false);
+  
+  // 检测 pricing_request JSON 并调用 API
+  useEffect(() => {
+    if (pricingCalled || message.role !== 'assistant') return;
+    
+    const pricingMatch = content.match(/\{\s*"pricing_request"\s*:/);
+    if (!pricingMatch) return;
+    
+    setPricingCalled(true);
+    
+    // 提取 JSON
+    const jsonStart = content.indexOf('{', pricingMatch.index!);
+    // 找到匹配的右括号
+    let braceCount = 0;
+    let jsonEnd = -1;
+    for (let i = jsonStart; i < content.length; i++) {
+      if (content[i] === '{') braceCount++;
+      if (content[i] === '}') braceCount--;
+      if (braceCount === 0) { jsonEnd = i + 1; break; }
+    }
+    
+    if (jsonEnd === -1) return;
+    
+    try {
+      const parsed = JSON.parse(content.substring(jsonStart, jsonEnd));
+      if (!parsed.pricing_request) return;
+      
+      setPricingLoading(true);
+      setPricingError(null);
+      
+      fetch('/api/pricing/calculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsed.pricing_request),
+      })
+        .then(res => res.json())
+        .then(result => {
+          if (result.success && result.data) {
+            setPricingResult(result.data);
+          } else {
+            setPricingError(result.error || '报价计算失败');
+          }
+        })
+        .catch(err => {
+          setPricingError(err.message || '请求失败');
+        })
+        .finally(() => {
+          setPricingLoading(false);
+        });
+    } catch {
+      setPricingError('JSON解析失败');
+    }
+  }, [content, message.role, pricingCalled]);
+  
   // 使用 useMemo 缓存解析结果
   const parsedContent = useMemo(() => {
     // 检测报价卡片
@@ -829,8 +988,33 @@ function MessageContent({ message, onFillForm }: { message: Message; onFillForm?
     setIsSaving(false);
   };
   
-  // 检测工具调用JSON块并隐藏
-  const cleanContent = content.replace(/```json\s*\{[\s\S]*?\}\s*```/g, '');
+  // 检测工具调用JSON块并隐藏（包括 pricing_request JSON）
+  const cleanContent = (() => {
+    let result = content;
+    // 先移除包含 pricing_request 的代码块
+    result = result.replace(/```json[\s\S]*?"pricing_request"[\s\S]*?```/g, '');
+    // 移除裸 JSON 中的 pricing_request（用函数精确匹配花括号）
+    const idx = result.indexOf('"pricing_request"');
+    if (idx !== -1) {
+      // 向前找 {
+      let start = idx;
+      while (start > 0 && result[start] !== '{') start--;
+      // 向后匹配完整 JSON
+      let braceCount = 0;
+      let end = start;
+      for (let i = start; i < result.length; i++) {
+        if (result[i] === '{') braceCount++;
+        if (result[i] === '}') braceCount--;
+        if (braceCount === 0) { end = i + 1; break; }
+      }
+      if (end > start) {
+        result = result.substring(0, start) + result.substring(end);
+      }
+    }
+    // 移除其他工具调用JSON块
+    result = result.replace(/```json\s*\{[\s\S]*?\}\s*```/g, '');
+    return result.trim();
+  })();
   
   if (parsedContent.type === 'quotation') {
     return (
@@ -898,6 +1082,29 @@ function MessageContent({ message, onFillForm }: { message: Message; onFillForm?
             <span className="text-sm text-red-500">{saveResult.message}</span>
           )}
         </div>
+      </div>
+    );
+  }
+  
+  // 如果有报价计算结果或正在加载或出错，显示对应卡片
+  if (message.role === 'assistant' && (pricingResult || pricingLoading || pricingError)) {
+    const displayText = cleanContent.trim();
+    return (
+      <div>
+        {displayText && <div className="whitespace-pre-wrap">{displayText}</div>}
+        {pricingLoading && (
+          <div className="mt-3 flex items-center gap-2 bg-emerald-50 rounded-lg px-4 py-3 border border-emerald-200">
+            <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+            <span className="text-sm text-emerald-700">正在计算报价...</span>
+          </div>
+        )}
+        {pricingError && (
+          <div className="mt-3 flex items-center gap-2 bg-red-50 rounded-lg px-4 py-3 border border-red-200">
+            <AlertCircle className="w-4 h-4 text-red-500" />
+            <span className="text-sm text-red-700">报价计算失败：{pricingError}</span>
+          </div>
+        )}
+        {pricingResult && <PricingResultCard data={pricingResult} />}
       </div>
     );
   }
