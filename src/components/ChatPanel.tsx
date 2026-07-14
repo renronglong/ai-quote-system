@@ -917,7 +917,7 @@ export default function ChatPanel() {
     {
       id: '1',
       role: 'assistant',
-      content: '您好！我是AI智能报价助手，专门帮助您进行制造业产品报价。\n\n我可以帮您：\n• 📷 上传图片识别材质和工艺\n• 📊 查询产品和库存信息\n• 💰 自动计算报价\n• 📄 解析PDF/Excel文件\n\n请告诉我您需要什么帮助？',
+      content: '您好！我是工品报价AI助手，专注解决铝型材、五金加工厂人工报价慢、成本核算不准、工序漏算的问题。\n\n**您可以直接：**\n• 📷 上传 DWG/DXF/PDF/图片 → 自动识别尺寸、材质、工艺\n• 💬 描述产品需求 → 联动实时铝价，核算全工序成本\n• 📄 上传 Excel BOM → 批量生成多款产品报价\n• 📋 一键导出带工厂抬头的 PDF 正式报价单\n\n请问您今天需要核算什么产品的报价？',
       timestamp: new Date(),
     },
   ];
@@ -2476,7 +2476,7 @@ export default function ChatPanel() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="输入您的需求，或直接上传图纸..."
+            placeholder="描述产品需求，如：铝型材 6063-T5，长200mm，氧化黑色，1000件..."
             disabled={isLoading}
             className="flex-1 border-gray-200 focus:border-blue-300 focus:ring-blue-100 rounded-lg"
           />
@@ -2492,22 +2492,28 @@ export default function ChatPanel() {
             )}
           </Button>
         </div>
-        <div className="flex gap-3 mt-2 text-xs text-gray-400">
+        <div className="flex flex-wrap gap-2 mt-2">
           <button
-            onClick={() => setInput('我想上传图纸，帮我报价')}
-            className="hover:text-blue-500 transition-colors"
+            onClick={() => setInput('我有一个铝型材产品需要报价，材质6063-T5，请帮我核算成本')}
+            className="px-3 py-1.5 text-xs bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100 transition-colors border border-blue-100"
           >
-            📐 上传报价
+            📐 铝型材报价
           </button>
           <button
-            onClick={() => setInput('计算报价')}
-            className="hover:text-blue-500 transition-colors"
+            onClick={() => setInput('帮我查询今日铝锭价格')}
+            className="px-3 py-1.5 text-xs bg-orange-50 text-orange-600 rounded-full hover:bg-orange-100 transition-colors border border-orange-100"
           >
-            💰 快速估算
+            📈 今日铝价
+          </button>
+          <button
+            onClick={() => setInput('我有一个五金加工件需要报价，材质不锈钢304')}
+            className="px-3 py-1.5 text-xs bg-green-50 text-green-600 rounded-full hover:bg-green-100 transition-colors border border-green-100"
+          >
+            🔩 五金件报价
           </button>
           <button
             onClick={() => { setFormData(defaultFormData()); setFormStep('form'); setCostAnalysis(null); setPlateCostAnalysis(null); setFormOpen(true); }}
-            className="hover:text-orange-500 transition-colors font-medium text-orange-400"
+            className="px-3 py-1.5 text-xs bg-purple-50 text-purple-600 rounded-full hover:bg-purple-100 transition-colors border border-purple-100 font-medium"
           >
             📊 异型材报价
           </button>
