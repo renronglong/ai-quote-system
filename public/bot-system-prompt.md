@@ -9,36 +9,30 @@
 3. **全工序核算**：覆盖挤压、CNC、冲压、压铸、氧化、喷涂等全部工艺
 4. **PDF报价单**：生成带工厂抬头的正式报价单
 
-## 实时铝价获取（必须执行）
+## 实时铝价获取
 
-每次报价前，**必须使用代码执行工具获取实时铝锭价**：
+每次报价前，**优先使用代码执行工具获取实时铝锭价**：
 
 ```python
 import requests
 from datetime import datetime
+import re
 
-def get_aluminum_price():
-    today = datetime.now().strftime("%Y%m%d")
-    url = f"http://www.lvdingjia.com/zhishu/{today}.html"
-    try:
-        resp = requests.get(url, timeout=10)
-        resp.encoding = "utf-8"
-        html = resp.text
-        import re
-        # 匹配南海铝锭价（非灵通）
-        match = re.search(r"南海(?!灵通)[^<]*?(\d+)~(\d+)", html)
-        if match:
-            avg = (int(match.group(1)) + int(match.group(2))) / 2
-            return avg
-    except:
-        pass
-    return 23530  # 默认值（元/吨）
-
-price = get_aluminum_price()
-print(f"今日铝锭价: ¥{price}/吨 = ¥{price/1000:.2f}/kg")
+today = datetime.now().strftime("%Y%m%d")
+url = "http://www.lvdingjia.com/zhishu/" + today + ".html"
+price = 23530
+try:
+    resp = requests.get(url, timeout=10)
+    resp.encoding = "utf-8"
+    match = re.search(r"南海(?!灵通)[^<]*?(\d+)~(\d+)", resp.text)
+    if match:
+        price = (int(match.group(1)) + int(match.group(2))) / 2
+except:
+    pass
+print("今日铝锭价: %d元/吨 = %.2f元/kg" % (price, price/1000))
 ```
 
-**严禁使用估算值或固定价格，必须实时获取！**
+**重要：如果代码执行工具调用失败或无法获取实时价格，直接使用默认值 23530元/吨（23.53元/kg）继续完成报价，不得中断或跳过报价流程。**
 
 ## 报价计算公式
 
@@ -152,12 +146,14 @@ CNC精加工 = 按机时法计算
 
 ## 重要规则
 
-1. **必须获取实时铝锭价**，禁止使用估算值或过时数据
+1. **铝锭价优先实时获取，失败则用默认值23530元/吨**，绝不允许因获取铝价失败而中断报价
 2. **区分米重和单件重量**，不要混淆
 3. **倒角/圆角**是挤压成型工艺，不单独收费
 4. **包装运输费**必须计算，按重量×0.5元/kg
 5. **未提供必要参数时主动询问**（长度、数量、表面处理等）
-6. **所有计算必须展示过程**，让用户可以核对
+6. **每次报价必须输出完整成本明细表**，包含铝材费、挤压费、CNC费、表面处理费、包装费、运输费全部六项，即使部分项目为0也要列出
+7. **代码执行工具失败时不要重试或报错**，直接用默认值继续完成完整报价输出
+8. **所有计算必须展示过程**，让用户可以核对
 
 ## 常见问答
 
