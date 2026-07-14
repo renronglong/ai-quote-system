@@ -1,34 +1,6 @@
 import { NextResponse } from 'next/server';
-
-interface PricingInput {
-  material: string;
-  weight?: number; // kg
-  length?: number; // mm
-  crossSectionArea?: number; // mm²
-  quantity: number;
-  surfaceTreatment?: string;
-  surfaceArea?: number; // m²
-  processType: 'extrusion' | 'cnc' | 'stamping' | 'die_casting' | 'injection';
-  cncTime?: number; // minutes
-  hasChamfer?: boolean;
-  isHollow?: boolean;
-}
-
-interface PricingResult {
-  materialCost: number;
-  extrusionCost: number;
-  cncCost: number;
-  surfaceTreatmentCost: number;
-  packagingCost: number;
-  transportationCost: number;
-  totalCost: number;
-  unitCost: number;
-  breakdown: {
-    item: string;
-    calculation: string;
-    cost: number;
-  }[];
-}
+import { calculatePrice } from '@/lib/pricing/engine';
+import type { PricingInput, ExtrusionInput } from '@/lib/pricing/types';
 
 // 获取实时铝价
 async function getAluminumPrice(): Promise<number> {
@@ -36,14 +8,14 @@ async function getAluminumPrice(): Promise<number> {
     const today = new Date();
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
     const url = `http://www.lvdingjia.com/zhishu/${dateStr}.html`;
-    
+
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },
-      next: { revalidate: 3600 }, // 缓存1小时
+      next: { revalidate: 3600 },
     });
-    
+
     if (response.ok) {
       const html = await response.text();
       const match = html.match(/南海(?!灵通)[^<]*?(\d+)~(\d+)/);
@@ -56,161 +28,116 @@ async function getAluminumPrice(): Promise<number> {
   } catch (error) {
     console.error('Failed to fetch aluminum price:', error);
   }
-  
-  return 23530; // 默认值（元/吨）
+
+  return 23530;
 }
 
-// 挤压铝型材报价
-function calculateExtrusionPricing(input: PricingInput, aluminumPricePerKg: number): PricingResult {
-  const breakdown: { item: string; calculation: string; cost: number }[] = [];
-  
-  // 计算重量
-  let weight = input.weight || 0;
-  if (!weight && input.crossSectionArea && input.length) {
-    // 米重 = 截面积(mm²) × 2.7(g/cm³) / 1000 = kg/m
-    const weightPerMeter = (input.crossSectionArea * 2.7) / 1000;
-    weight = weightPerMeter * (input.length / 1000);
-  }
-  
-  if (!weight) {
-    throw new Error('无法计算重量，请提供重量、截面积+长度等参数');
-  }
-  
-  // 1. 铝材费
-  const materialCost = weight * aluminumPricePerKg;
-  breakdown.push({
-    item: '铝材费',
-    calculation: `${weight.toFixed(3)}kg × ¥${aluminumPricePerKg.toFixed(2)}/kg`,
-    cost: materialCost,
-  });
-  
-  // 2. 挤压加工费
-  let extrusionRate = 3.0; // 实心简单截面
-  if (input.isHollow) {
-    extrusionRate = 2.5;
-  }
-  const extrusionCost = weight * extrusionRate;
-  breakdown.push({
-    item: '挤压加工费',
-    calculation: `${weight.toFixed(3)}kg × ¥${extrusionRate}/kg`,
-    cost: extrusionCost,
-  });
-  
-  // 3. CNC加工费
-  let cncCost = 0;
-  if (input.processType === 'cnc' && input.cncTime) {
-    // 机时法：80元/小时
-    cncCost = (input.cncTime / 60) * 80;
-  } else {
-    // 简单切割+去毛刺
-    cncCost = input.isHollow ? 0.8 : 1.5;
-  }
-  breakdown.push({
-    item: 'CNC加工费',
-    calculation: input.cncTime 
-      ? `${input.cncTime}分钟 × (¥80/60分钟)`
-      : '切割+去毛刺（标准）',
-    cost: cncCost,
-  });
-  
-  // 4. 表面处理费
-  let surfaceTreatmentCost = 0;
-  if (input.surfaceTreatment && input.surfaceTreatment !== '无') {
-    let surfaceRate = 8; // 默认氧化本色
-    if (input.surfaceTreatment === '氧化黑色') {
-      surfaceRate = 10;
-    } else if (input.surfaceTreatment === '喷涂') {
-      surfaceRate = 20;
-    } else if (input.surfaceTreatment === '电泳') {
-      surfaceRate = 15;
-    }
-    
-    let surfaceArea = input.surfaceArea || 0;
-    if (!surfaceArea && input.crossSectionArea && input.length) {
-      // 估算表面积：周长 × 长度
-      // 假设矩形截面，周长 = 2 × (宽 + 高)
-      // 这里简化处理，实际应该根据具体截面计算
-      const perimeter = Math.sqrt(input.crossSectionArea) * 4; // 近似
-      surfaceArea = (perimeter * input.length) / 1000000; // 转换为m²
-    }
-    
-    if (surfaceArea > 0) {
-      surfaceTreatmentCost = surfaceArea * surfaceRate;
-      breakdown.push({
-        item: `表面处理费（${input.surfaceTreatment}）`,
-        calculation: `${surfaceArea.toFixed(4)}m² × ¥${surfaceRate}/m²`,
-        cost: surfaceTreatmentCost,
-      });
+/**
+ * 验证挤压铝型材必填参数
+ */
+function validateExtrusionInput(body: Record<string, unknown>): string[] {
+  const errors: string[] = [];
+  const required: Array<{ key: string; label: string }> = [
+    { key: 'outerWidth', label: '外轮廓宽度 (outerWidth)' },
+    { key: 'outerHeight', label: '外轮廓高度 (outerHeight)' },
+    { key: 'length', label: '长度 (length)' },
+    { key: 'quantity', label: '数量 (quantity)' },
+    { key: 'surfaceTreatment', label: '表面处理类型 (surfaceTreatment)' },
+    { key: 'isHollow', label: '是否有内腔 (isHollow)' },
+  ];
+
+  for (const { key, label } of required) {
+    if (body[key] === undefined || body[key] === null) {
+      errors.push(`缺少必填参数: ${label}`);
     }
   }
-  
-  // 5. 包装费
-  const packagingCost = weight * 0.5;
-  breakdown.push({
-    item: '包装费',
-    calculation: `${weight.toFixed(3)}kg × ¥0.5/kg`,
-    cost: packagingCost,
-  });
-  
-  // 6. 运输费
-  const transportationCost = weight * 0.5;
-  breakdown.push({
-    item: '运输费',
-    calculation: `${weight.toFixed(3)}kg × ¥0.5/kg`,
-    cost: transportationCost,
-  });
-  
-  // 总计
-  const totalCost = materialCost + extrusionCost + cncCost + surfaceTreatmentCost + packagingCost + transportationCost;
-  const unitCost = totalCost;
-  
-  return {
-    materialCost,
-    extrusionCost,
-    cncCost,
-    surfaceTreatmentCost,
-    packagingCost,
-    transportationCost,
-    totalCost,
-    unitCost,
-    breakdown,
-  };
+
+  if (typeof body.outerWidth === 'number' && body.outerWidth <= 0) {
+    errors.push('外轮廓宽度必须大于 0');
+  }
+  if (typeof body.outerHeight === 'number' && body.outerHeight <= 0) {
+    errors.push('外轮廓高度必须大于 0');
+  }
+  if (typeof body.length === 'number' && body.length <= 0) {
+    errors.push('长度必须大于 0');
+  }
+  if (typeof body.quantity === 'number' && body.quantity <= 0) {
+    errors.push('数量必须大于 0');
+  }
+
+  return errors;
+}
+
+/**
+ * 验证通用必填参数
+ */
+function validateInput(body: Record<string, unknown>): string[] {
+  const errors: string[] = [];
+
+  if (!body.productType) {
+    errors.push('缺少必填参数: 产品类型 (productType)，可选值: extrusion, plate, die_casting');
+    return errors;
+  }
+
+  if (!['extrusion', 'plate', 'die_casting'].includes(body.productType as string)) {
+    errors.push(`不支持的产品类型: ${body.productType}，可选值: extrusion, plate, die_casting`);
+    return errors;
+  }
+
+  if (body.productType === 'extrusion') {
+    errors.push(...validateExtrusionInput(body));
+  }
+
+  if (body.quantity === undefined || body.quantity === null) {
+    errors.push('缺少必填参数: 数量 (quantity)');
+  }
+
+  return errors;
 }
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const input: PricingInput = body;
-    
-    // 获取实时铝价
-    const aluminumPricePerTon = await getAluminumPrice();
-    const aluminumPricePerKg = aluminumPricePerTon / 1000;
-    
-    let result: PricingResult;
-    
-    switch (input.processType) {
-      case 'extrusion':
-        result = calculateExtrusionPricing(input, aluminumPricePerKg);
-        break;
-      // TODO: 添加其他工艺类型的计算
-      default:
-        result = calculateExtrusionPricing(input, aluminumPricePerKg);
+    const body = await request.json() as Record<string, unknown>;
+
+    // 参数校验
+    const validationErrors = validateInput(body);
+    if (validationErrors.length > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: '参数校验失败',
+          details: validationErrors,
+        },
+        { status: 400 }
+      );
     }
-    
+
+    // 获取实时铝价，用于没有显式传入 aluminumPricePerTon 的情况
+    const aluminumPricePerTon = await getAluminumPrice();
+
+    // 构造输入
+    const input: PricingInput = {
+      productType: body.productType as PricingInput['productType'],
+      ...body,
+    } as PricingInput;
+
+    // 如果没有显式传入铝锭价，使用实时价格
+    if (input.productType === 'extrusion') {
+      const extInput = input as ExtrusionInput;
+      if (!extInput.aluminumPricePerTon) {
+        extInput.aluminumPricePerTon = aluminumPricePerTon;
+      }
+    }
+
+    // 计算
+    const result = calculatePrice(input);
+
     return NextResponse.json({
       success: true,
-      data: {
-        ...result,
-        aluminumPrice: {
-          pricePerTon: aluminumPricePerTon,
-          pricePerKg: aluminumPricePerKg.toFixed(2),
-          source: '南海铝锭价',
-        },
-        quantity: input.quantity,
-        totalPrice: result.unitCost * input.quantity,
-      },
+      data: result,
     });
   } catch (error) {
+    console.error('Pricing calculation error:', error);
     return NextResponse.json(
       {
         success: false,
