@@ -168,6 +168,7 @@ export default function HomePage() {
               <a href="#features" className={`text-sm transition-colors duration-300 ${scrolled ? 'text-slate-600 hover:text-slate-900' : 'text-white/80 hover:text-white'}`}>核心功能</a>
               <a href="#categories" className={`text-sm transition-colors duration-300 ${scrolled ? 'text-slate-600 hover:text-slate-900' : 'text-white/80 hover:text-white'}`}>产品品类</a>
               <Link href="/products" className={`text-sm transition-colors duration-300 ${scrolled ? 'text-slate-600 hover:text-slate-900' : 'text-white/80 hover:text-white'}`}>产品库</Link>
+              <Link href="/market" className={`text-sm transition-colors duration-300 ${scrolled ? 'text-slate-600 hover:text-slate-900' : 'text-white/80 hover:text-white'}`}>铝价行情</Link>
               {/* 实时铝价 */}
               {aluminumPrice && (
                 <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors duration-300 ${
@@ -189,6 +190,12 @@ export default function HomePage() {
                 <Loader2 className={`w-5 h-5 animate-spin transition-colors duration-300 ${scrolled ? 'text-slate-400' : 'text-white/60'}`} />
               ) : user ? (
                 <div className="flex items-center gap-3">
+                  <Link
+                    href="/profile"
+                    className={`px-3 py-2 text-sm rounded-lg transition-colors ${scrolled ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-50' : 'text-white/80 hover:text-white hover:bg-white/10'}`}
+                  >
+                    个人中心
+                  </Link>
                   <Link
                     href="/quote"
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
@@ -244,6 +251,7 @@ export default function HomePage() {
             <a href="#features" className="block text-sm text-slate-600 py-2" onClick={() => setMobileMenuOpen(false)}>核心功能</a>
             <a href="#categories" className="block text-sm text-slate-600 py-2" onClick={() => setMobileMenuOpen(false)}>产品品类</a>
             <Link href="/products" className="block text-sm text-slate-600 py-2" onClick={() => setMobileMenuOpen(false)}>产品库</Link>
+            <Link href="/market" className="block text-sm text-slate-600 py-2" onClick={() => setMobileMenuOpen(false)}>铝价行情</Link>
             {aluminumPrice && (
               <div className="flex items-center gap-1.5 py-2">
                 <TrendingUp className="w-3.5 h-3.5 text-orange-500" />
@@ -254,6 +262,9 @@ export default function HomePage() {
             <div className="pt-3 border-t border-slate-100 flex gap-2">
               {user ? (
                 <>
+                  <Link href="/profile" className="flex-1 text-center px-4 py-2 border border-slate-200 text-slate-700 text-sm rounded-lg" onClick={() => setMobileMenuOpen(false)}>
+                    个人中心
+                  </Link>
                   <Link href="/quote" className="flex-1 text-center px-4 py-2 bg-blue-600 text-white text-sm rounded-lg">
                     开始报价
                   </Link>
@@ -542,6 +553,7 @@ export default function HomePage() {
                 <li><Link href="/quote" className="hover:text-white transition-colors">AI 报价</Link></li>
                 <li><Link href="/products" className="hover:text-white transition-colors">产品库</Link></li>
                 <li><Link href="/history" className="hover:text-white transition-colors">报价历史</Link></li>
+                <li><Link href="/market" className="hover:text-white transition-colors">铝价行情</Link></li>
               </ul>
             </div>
             <div>
