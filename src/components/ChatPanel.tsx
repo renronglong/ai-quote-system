@@ -896,10 +896,16 @@ function extractPricingParams(text: string): ExtractedPricingParams | null {
 
   // ---- 数量 ----
   let quantity: number | undefined;
-  // "5000件" / "数量5000" / "5000个" / "5000PCS" / "5000 pcs"
-  const qtyMatch = text.match(/(?:数(?:量)?|qty|QTY)\s*[：:=]?\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?:件|个|pcs|PCS|套|支)/);
-  if (qtyMatch) {
-    quantity = parseInt(qtyMatch[1] || qtyMatch[2]);
+  // 方法1: "数量5000" / "数量5000件" / "qty 5000"（有前缀的优先匹配）
+  const qtyMatch1 = text.match(/(?:数(?:量)?|qty|QTY)\s*[：:=]?\s*(\d+(?:\.\d+)?)/i);
+  if (qtyMatch1) {
+    quantity = parseFloat(qtyMatch1[1]);
+  } else {
+    // 方法2: "5000件" / "5000支" / "5000套" / "5000PCS"（不含"个"，避免与"4个R0.5"冲突）
+    const qtyMatch2 = text.match(/(\d+(?:\.\d+)?)\s*(?:件|支|套|pcs|PCS)/i);
+    if (qtyMatch2) {
+      quantity = parseInt(qtyMatch2[1]);
+    }
   }
 
   // ---- 必要参数校验 ----
