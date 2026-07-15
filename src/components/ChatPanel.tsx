@@ -1613,18 +1613,44 @@ export default function ChatPanel() {
               fileSummaries.push(`⚠️ ${baseName} 上传失败`);
             }
           } else if (isCad) {
-            // CAD文件：客户端解析
+            // CAD文件：优先后端解析STEP，否则客户端解析
             const format = isStep ? 'step' : isIges ? 'iges' : 'dxf';
-            const result = format === 'dxf'
-              ? await parseDxfFile(extractedFile)
-              : await parseStepOrIgesFile(extractedFile, format as 'step' | 'iges');
+            let parsedOk = false;
+            
+            // STEP 文件：尝试后端精确解析
+            if (isStep) {
+              try {
+                const fd = new FormData();
+                fd.append('file', extractedFile);
+                fd.append('quantity', '1');
+                fd.append('surfaceTreatment', '氧化本色');
+                const resp = await fetch('/api/pricing/step-quote', { method: 'POST', body: fd });
+                const stepData = await resp.json();
+                if (stepData.success && stepData.data) {
+                  const pr = stepData.data.parseResult;
+                  const ext = pr.extrusion;
+                  const cadText = `\n--- ${baseName} (STEP精确解析) ---\n材质：铝合金 (${pr.weight.material})\n产品类型：${ext.isExtrusion ? '铝挤压型材' : '铝板/块'}\n包围盒：${pr.boundingBox.x}×${pr.boundingBox.y}×${pr.boundingBox.z} mm\n体积(mm³)：${pr.volume}\n表面积(mm²)：${pr.surfaceArea}\n重量(g)：${pr.weight.grams}\n面数/边数：${pr.topology.faceCount}/${pr.topology.edgeCount}\n米重(kg/m)：${ext.weightPerMeter}\n截面尺寸(mm)：${ext.crossWidth}×${ext.crossHeight}\n截面积(mm²)：${ext.crossSectionArea}\n长度(mm)：${ext.length}\n是否空心：${ext.isHollow ? '是' : '否'}\n加工工艺：铝挤压\n表面处理：氧化本色\n`;
+                  allExtractedTexts.push(cadText);
+                  fileSummaries.push(`📐 ${baseName} (STEP精确解析)`);
+                  parsedOk = true;
+                }
+              } catch {
+                // 降级到客户端解析
+              }
+            }
+            
+            if (!parsedOk) {
+              const result = format === 'dxf'
+                ? await parseDxfFile(extractedFile)
+                : await parseStepOrIgesFile(extractedFile, format as 'step' | 'iges');
 
-            if (result.success) {
-              const cadText = `\n--- ${baseName} (${format.toUpperCase()}) ---\n材质：铝合金\n米重(kg/m)：${result.weightPerMeter}\n宽度(mm)：${result.width}\n高度(mm)：${result.height}\n长度(mm)：${result.length}\n截面积(mm²)：${result.crossSectionArea}\n加工工艺：铝挤压\n表面处理：无\n`;
-              allExtractedTexts.push(cadText);
-              fileSummaries.push(`📐 ${baseName} (已解析)`);
-            } else {
-              fileSummaries.push(`⚠️ ${baseName} 解析失败: ${result.error}`);
+              if (result.success) {
+                const cadText = `\n--- ${baseName} (${format.toUpperCase()}) ---\n材质：铝合金\n米重(kg/m)：${result.weightPerMeter}\n宽度(mm)：${result.width}\n高度(mm)：${result.height}\n长度(mm)：${result.length}\n截面积(mm²)：${result.crossSectionArea}\n加工工艺：铝挤压\n表面处理：无\n`;
+                allExtractedTexts.push(cadText);
+                fileSummaries.push(`📐 ${baseName} (已解析)`);
+              } else {
+                fileSummaries.push(`⚠️ ${baseName} 解析失败: ${result.error}`);
+              }
             }
           } else {
             // 其他文件：直接上传到 Coze
@@ -1693,85 +1719,191 @@ export default function ChatPanel() {
     setStatusMessage(`正在解析${format.toUpperCase()}文件...`);
 
     try {
-      let result: CadParseResult;
-      if (format === 'dxf') {
-        result = await parseDxfFile(file);
-      } else {
-        result = await parseStepOrIgesFile(file, format);
+      // ===== STEP 文件：优先使用后端精确解析 =====
+      const isStepFile = format === 'step';
+      let backendParseSuccess = false;
+      
+      if (isStepFile) {
+        try {
+          setStatusMessage('正在使用后端引擎精确解析 STEP 文件...');
+          const fd = new FormData();
+          fd.append('file', file);
+          fd.append('quantity', '1');
+          fd.append('surfaceTreatment', '氧化本色');
+          
+          const resp = await fetch('/api/pricing/step-quote', {
+            method: 'POST',
+            body: fd,
+          });
+          const data = await resp.json();
+          
+          if (data.success && data.data) {
+            backendParseSuccess = true;
+            const { parseResult, pricingResult } = data.data;
+            const ext = parseResult.extrusion;
+            
+            // 构建精确解析展示文本
+            let cadContent = `📐 STEP 文件精确解析完成！\n\n`;
+            cadContent += `**文件名称：** ${file.name}\n`;
+            cadContent += `**产品类型：** ${ext.isExtrusion ? '铝挤压型材' : '铝板/块'}\n\n`;
+            cadContent += `📏 **几何参数**\n`;
+            cadContent += `- 包围盒尺寸：${parseResult.boundingBox.x} × ${parseResult.boundingBox.y} × ${parseResult.boundingBox.z} mm\n`;
+            cadContent += `- 体积：${parseResult.volume.toLocaleString()} mm³\n`;
+            cadContent += `- 表面积：${parseResult.surfaceArea.toLocaleString()} mm²\n`;
+            cadContent += `- 面数量：${parseResult.topology.faceCount}，边数量：${parseResult.topology.edgeCount}\n`;
+            cadContent += `- 重量：${parseResult.weight.grams} g（${parseResult.weight.material}，密度 ${parseResult.weight.density} g/cm³）\n\n`;
+            
+            if (ext.isExtrusion) {
+              cadContent += `🔧 **挤压件参数**\n`;
+              cadContent += `- 挤压方向：${ext.axis?.toUpperCase()} 轴\n`;
+              cadContent += `- 挤压长度：${ext.length} mm\n`;
+              cadContent += `- 截面尺寸：${ext.crossWidth} × ${ext.crossHeight} mm\n`;
+              cadContent += `- 截面面积：${ext.crossSectionArea} mm²\n`;
+              cadContent += `- 米重：${ext.weightPerMeter} kg/m\n`;
+              cadContent += `- 是否空心：${ext.isHollow ? '是' : '否'}\n`;
+              cadContent += `- 截面复杂度：${ext.complexity}\n\n`;
+            }
+            
+            cadContent += `💰 **自动报价结果**\n`;
+            cadContent += `- 单件成本：¥${pricingResult.unitCost.toFixed(2)}\n`;
+            cadContent += `- 总价(1件)：¥${pricingResult.totalCost.toFixed(2)}\n\n`;
+            
+            // 添加助手消息（含报价卡片）
+            const assistantMsg: Message = {
+              id: Date.now().toString(),
+              role: 'assistant',
+              content: cadContent,
+              timestamp: new Date(),
+              pricingResult: pricingResult,
+            };
+            setMessages(prev => [...prev, assistantMsg]);
+            
+            // 设置 CAD 解析结果（兼容原有逻辑）
+            setCadResult({
+              success: true,
+              format: 'step',
+              weightPerMeter: ext.weightPerMeter,
+              width: ext.crossWidth,
+              height: ext.crossHeight,
+              length: ext.length,
+              crossSectionArea: ext.crossSectionArea,
+              volume: parseResult.volume,
+              meshCount: parseResult.topology.faceCount,
+            });
+            
+            setStatusMessage(null);
+            setIsLoading(false);
+            return; // 后端解析成功，直接返回
+          }
+        } catch (backendErr) {
+          console.warn('[CAD] 后端STEP解析失败，降级到客户端解析:', backendErr);
+          // 继续降级到客户端解析
+        }
       }
-
-      setCadResult(result);
-      setStatusMessage(null);
-
-      if (result.success) {
-        // 构建展示文本
-        let cadContent = `📐 ${result.format.toUpperCase()}文件解析成功！
-
-`;
-        cadContent += `【产品参数开始】
-`;
-        cadContent += `材质：铝合金
-`;
-        cadContent += `米重(kg/m)：${result.weightPerMeter}
-`;
-        if (result.width > 0) cadContent += `宽度(mm)：${result.width}
-`;
-        if (result.height > 0) cadContent += `高度(mm)：${result.height}
-`;
-        if (result.length > 0) cadContent += `长度(mm)：${result.length}
-`;
-        cadContent += `加工工艺：铝挤压
-`;
-        cadContent += `表面处理：无
-`;
-        cadContent += `【产品参数结束】
-
-`;
-        cadContent += `截面积：${result.crossSectionArea} mm²
-`;
-        if (result.volume) cadContent += `体积：${result.volume} mm³
-`;
-        cadContent += `实体数量：${result.meshCount || 0}
-`;
-        if (result.entityNames && result.entityNames.length > 0) {
-          cadContent += `实体名称：${result.entityNames.join(', ')}
-`;
+      
+      // ===== 降级：客户端文本解析（DXF / IGES / STEP fallback）=====
+      if (!backendParseSuccess) {
+        let result: CadParseResult;
+        if (format === 'dxf') {
+          result = await parseDxfFile(file);
+        } else {
+          result = await parseStepOrIgesFile(file, format);
         }
-        if (result.parts && result.parts.length > 1) {
-          cadContent += `\n--- 各部件明细 ---\n`;
-          for (const part of result.parts) {
-            cadContent += `· ${part.name}：截面积${part.crossSectionArea}mm²，米重${part.weightPerMeter}kg/m
-`;
+
+        setCadResult(result);
+        setStatusMessage(null);
+
+        if (result.success) {
+          // 构建展示文本
+          let cadContent = `📐 ${result.format.toUpperCase()}文件解析成功！\n\n`;
+          cadContent += `【产品参数开始】\n`;
+          cadContent += `材质：铝合金\n`;
+          cadContent += `米重(kg/m)：${result.weightPerMeter}\n`;
+          if (result.width > 0) cadContent += `宽度(mm)：${result.width}\n`;
+          if (result.height > 0) cadContent += `高度(mm)：${result.height}\n`;
+          if (result.length > 0) cadContent += `长度(mm)：${result.length}\n`;
+          cadContent += `加工工艺：铝挤压\n`;
+          cadContent += `表面处理：无\n`;
+          cadContent += `【产品参数结束】\n\n`;
+          cadContent += `截面积：${result.crossSectionArea} mm²\n`;
+          if (result.volume) cadContent += `体积：${result.volume} mm³\n`;
+          cadContent += `实体数量：${result.meshCount || 0}\n`;
+          if (result.entityNames && result.entityNames.length > 0) {
+            cadContent += `实体名称：${result.entityNames.join(', ')}\n`;
           }
-        }
-
-        // 诊断信息
-        if (result.diagnostics && result.diagnostics.length > 0) {
-          cadContent += '\n--- 诊断信息 ---\n';
-          for (const diag of result.diagnostics) {
-            const icon = diag.severity === 'error' ? '❌' : diag.severity === 'warning' ? '⚠️' : 'ℹ️';
-            cadContent += icon + ' ' + diag.message + '\n';
+          if (result.parts && result.parts.length > 1) {
+            cadContent += `\n--- 各部件明细 ---\n`;
+            for (const part of result.parts) {
+              cadContent += `· ${part.name}：截面积${part.crossSectionArea}mm²，米重${part.weightPerMeter}kg/m\n`;
+            }
           }
+
+          // 诊断信息
+          if (result.diagnostics && result.diagnostics.length > 0) {
+            cadContent += '\n--- 诊断信息 ---\n';
+            for (const diag of result.diagnostics) {
+              const icon = diag.severity === 'error' ? '❌' : diag.severity === 'warning' ? '⚠️' : 'ℹ️';
+              cadContent += icon + ' ' + diag.message + '\n';
+            }
+          }
+
+          // 添加助手消息
+          setMessages(prev => [...prev, {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: cadContent,
+            timestamp: new Date(),
+          }]);
+
+          // ===== 客户端解析成功后，自动调用报价API =====
+          if (isStepFile || format === 'dxf') {
+            try {
+              const pricingParams = {
+                productType: 'extrusion' as const,
+                outerWidth: result.width,
+                outerHeight: result.height,
+                length: result.length || 1000,
+                quantity: 1,
+                isHollow: false,
+                surfaceTreatment: '氧化本色' as const,
+                sectionComplexity: 'simple' as const,
+              };
+              
+              const pricingRes = await fetch('/api/pricing/calculate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(pricingParams),
+              });
+              const pricingData = await pricingRes.json();
+              
+              if (pricingData.success && pricingData.data) {
+                // 在上一条消息后追加报价结果卡片
+                setMessages(prev => {
+                  const msgs = [...prev];
+                  const lastMsg = msgs[msgs.length - 1];
+                  if (lastMsg && lastMsg.role === 'assistant') {
+                    msgs[msgs.length - 1] = {
+                      ...lastMsg,
+                      pricingResult: pricingData.data,
+                    };
+                  }
+                  return msgs;
+                });
+              }
+            } catch (pricingErr) {
+              console.warn('[CAD] 自动报价失败:', pricingErr);
+            }
+          }
+        } else {
+          setMessages(prev => [...prev, {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: `❌ CAD文件解析失败：${result.error}${result.diagnostics && result.diagnostics.length > 0 ? '\n\n--- 诊断信息 ---\n' + result.diagnostics.map(d => (d.severity === 'error' ? '❌' : d.severity === 'warning' ? '⚠️' : 'ℹ️') + ' ' + d.message).join('\n') : ''}`,
+            timestamp: new Date(),
+          }]);
+          setUploadedImage(null);
+          setUploadedFileType(null);
         }
-
-        // 添加助手消息
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          role: 'assistant',
-          content: cadContent,
-          timestamp: new Date(),
-        }]);
-
-        // CAD解析完成，参数信息已展示在上方消息中
-      } else {
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          role: 'assistant',
-          content: `❌ CAD文件解析失败：${result.error}${result.diagnostics && result.diagnostics.length > 0 ? '\n\n--- 诊断信息 ---\n' + result.diagnostics.map(d => (d.severity === 'error' ? '❌' : d.severity === 'warning' ? '⚠️' : 'ℹ️') + ' ' + d.message).join('\n') : ''}`,
-          timestamp: new Date(),
-        }]);
-        setUploadedImage(null);
-        setUploadedFileType(null);
       }
     } catch (error: any) {
       setMessages(prev => [...prev, {
