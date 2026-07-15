@@ -26,12 +26,71 @@ const EXTRUSION_RATE: Record<string, number> = {
   'hollow-complex': 4.0,  // 空心复杂截面 (元/kg)
 };
 
-const SURFACE_TREATMENT_RATE: Record<string, number> = {
-  '氧化本色': 8,   // 元/m²
-  '氧化黑色': 10,
-  '喷涂': 20,
-  '电泳': 15,
-};
+// 表面处理费 - 按板材公式统一计算
+// 公式：基础费 + 加工附加费×系数 + 重量×系数
+// 铝板/挤压件通用
+interface SurfaceTreatmentResult {
+  cost: number;
+  formula: string;
+}
+
+function calculateSurfaceTreatment(
+  treatment: string,
+  processingSurcharge: number, // 加工附加费（挤压件=挤压费，板材=冲压附加费）
+  weight: number,              // 单件重量(kg)
+): SurfaceTreatmentResult {
+  switch (treatment) {
+    case '氧化本色':
+      return {
+        cost: 0.2 + processingSurcharge * 2 + weight * 2,
+        formula: `0.2 + ${processingSurcharge.toFixed(2)}×2 + ${weight.toFixed(4)}×2`,
+      };
+    case '氧化黑色':
+      return {
+        cost: 0.3 + processingSurcharge * 3 + weight * 3,
+        formula: `0.3 + ${processingSurcharge.toFixed(2)}×3 + ${weight.toFixed(4)}×3`,
+      };
+    case '喷砂':
+      return {
+        cost: processingSurcharge * 2 + weight * 1,
+        formula: `${processingSurcharge.toFixed(2)}×2 + ${weight.toFixed(4)}×1`,
+      };
+    case '拉丝':
+      return {
+        cost: 0.3 + processingSurcharge * 3 + weight * 3,
+        formula: `0.3 + ${processingSurcharge.toFixed(2)}×3 + ${weight.toFixed(4)}×3（同氧化上色）`,
+      };
+    case '喷涂':
+      return {
+        cost: 0.2 + processingSurcharge * 2 + weight * 2,
+        formula: `0.2 + ${processingSurcharge.toFixed(2)}×2 + ${weight.toFixed(4)}×2`,
+      };
+    case '电泳':
+      return {
+        cost: 0.2 + processingSurcharge * 2 + weight * 2,
+        formula: `0.2 + ${processingSurcharge.toFixed(2)}×2 + ${weight.toFixed(4)}×2`,
+      };
+    case '磷化':
+      return {
+        cost: 0.2 + processingSurcharge * 2 + weight * 2,
+        formula: `0.2 + ${processingSurcharge.toFixed(2)}×2 + ${weight.toFixed(4)}×2`,
+      };
+    case '镀锌':
+    case '镀镍':
+      return {
+        cost: processingSurcharge * 2 + weight * 1.5,
+        formula: `${processingSurcharge.toFixed(2)}×2 + ${weight.toFixed(4)}×1.5`,
+      };
+    case '抛光':
+    case '镀铬':
+      return {
+        cost: 0.3 + processingSurcharge * 3 + weight * 3,
+        formula: `0.3 + ${processingSurcharge.toFixed(2)}×3 + ${weight.toFixed(4)}×3（同氧化上色）`,
+      };
+    default:
+      return { cost: 0, formula: '无处理' };
+  }
+}
 
 const CUTTING_COST_SOLID = 1.5;   // 元/件
 const CUTTING_COST_HOLLOW = 0.8;  // 元/件
@@ -164,20 +223,15 @@ export function calculateExtrusion(input: ExtrusionInput): PricingResult {
     cost: cncCost,
   });
 
-  // ---- 5. 表面处理费 ----
+  // ---- 5. 表面处理费（按板材公式统一计算） ----
+  // 加工附加费 = 挤压费（按重量算，与冲压附加费同理）
   let surfaceTreatmentCost = 0;
   if (input.surfaceTreatment && input.surfaceTreatment !== '无') {
-    const surfaceRate = SURFACE_TREATMENT_RATE[input.surfaceTreatment] ?? 0;
-
-    // 表面积 = 周长(m) × 长度(m) + 2 × 截面积(m²)
-    const perimeterM = section.perimeter / 1000; // mm → m
-    const sectionAreaM2 = section.crossSectionArea / 1_000_000; // mm² → m²
-    const surfaceArea = perimeterM * lengthM + 2 * sectionAreaM2;
-
-    surfaceTreatmentCost = surfaceArea * surfaceRate;
+    const surfaceResult = calculateSurfaceTreatment(input.surfaceTreatment, extrusionCost, unitWeight);
+    surfaceTreatmentCost = surfaceResult.cost;
     breakdown.push({
       item: `表面处理费（${input.surfaceTreatment}）`,
-      calculation: `${surfaceArea.toFixed(6)}m² × ¥${surfaceRate}/m²`,
+      calculation: surfaceResult.formula,
       cost: surfaceTreatmentCost,
     });
   }
@@ -260,19 +314,16 @@ export function calculatePlate(input: PlateInput): PricingResult {
     cost: cncCost,
   });
 
-  // 表面处理费
+  // 表面处理费（统一公式计算）
+  // 加工附加费 = 冲压附加费（尺寸附加+体积附加，基于重量和体积）
+  // 这里用板材加工费作为冲压附加费
   let surfaceTreatmentCost = 0;
   if (input.surfaceTreatment && input.surfaceTreatment !== '无') {
-    const surfaceRate = SURFACE_TREATMENT_RATE[input.surfaceTreatment] ?? 0;
-    // 表面积 = 2 × (宽×厚 + 宽×长 + 厚×长) mm² → m²
-    const w = input.width / 1000;
-    const h = input.height / 1000;
-    const t = input.thickness / 1000;
-    const surfaceArea = 2 * (w * t + w * h + t * h);
-    surfaceTreatmentCost = surfaceArea * surfaceRate;
+    const surfaceResult = calculateSurfaceTreatment(input.surfaceTreatment, extrusionCost, unitWeight);
+    surfaceTreatmentCost = surfaceResult.cost;
     breakdown.push({
       item: `表面处理费（${input.surfaceTreatment}）`,
-      calculation: `${surfaceArea.toFixed(6)}m² × ¥${surfaceRate}/m²`,
+      calculation: surfaceResult.formula,
       cost: surfaceTreatmentCost,
     });
   }
@@ -349,16 +400,14 @@ export function calculateDieCasting(input: DieCastingInput): PricingResult {
     cost: cncCost,
   });
 
-  // 表面处理
+  // 表面处理（统一公式）
   let surfaceTreatmentCost = 0;
   if (input.surfaceTreatment && input.surfaceTreatment !== '无') {
-    const surfaceRate = SURFACE_TREATMENT_RATE[input.surfaceTreatment] ?? 0;
-    // 估算表面积
-    const surfaceArea = 0.01 * unitWeight; // 粗略估算
-    surfaceTreatmentCost = surfaceArea * surfaceRate;
+    const surfaceResult = calculateSurfaceTreatment(input.surfaceTreatment, castingCost, unitWeight);
+    surfaceTreatmentCost = surfaceResult.cost;
     breakdown.push({
       item: `表面处理费（${input.surfaceTreatment}）`,
-      calculation: `${surfaceArea.toFixed(6)}m² × ¥${surfaceRate}/m²`,
+      calculation: surfaceResult.formula,
       cost: surfaceTreatmentCost,
     });
   }
