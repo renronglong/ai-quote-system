@@ -16,23 +16,10 @@ import {
   CheckCircle,
   AlertCircle,
   Plus,
-  Save,
-  Trash2,
   FileImage,
-  Download,
-  ArrowLeft,
-  ArrowRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { parseDxfFile, parseStepOrIgesFile, CadParseResult, CadDiagnostic } from '@/lib/cad-parser';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
 import { useAuth } from '@/lib/auth-context';
 
 // 消息类型
@@ -263,329 +250,6 @@ function parseProductList(text: string): Array<{
     // JSON解析失败，返回null
   }
   return null;
-}
-
-// 加工类型预设
-const PROCESS_TYPES = ['铝挤压', '冲压', '铝压铸', '注塑', '塑料挤出', 'CNC加工', '车加工'];
-const SURFACE_OPTIONS = ['氧化', '喷涂', '电泳', '电镀', '无'];
-const PRODUCT_TYPES = ['铝型材', '板材件'] as const;
-type ProductType = typeof PRODUCT_TYPES[number];
-
-// 板材材料类别
-const PLATE_MATERIALS = ['铝板', '冷板', '不锈钢304', '不锈钢201', '不锈钢430', '不锈钢316L'] as const;
-// 铝板牌号加价（元/吨）
-const AL_GRADE_MARKUP: Record<string, number> = { '1系': 1000, '3系': 2000, '5系': 3000, '7系': 4000 };
-const AL_GRADE_OPTIONS = ['1系(1050/1060/1100)', '3系(3003)', '5系(5052/5083)', '7系(7075)'] as const;
-// 板材表面处理选项
-const PLATE_SURFACE_OPTIONS_AL = ['氧化本色', '氧化上色', '喷砂', '拉丝', '无'];
-const PLATE_SURFACE_OPTIONS_OTHER = ['喷涂/喷粉', '磷化', '镀锌/镀镍', '抛光/镀铬', '无'];
-// 冲压吨位费率表（元/次）
-const STAMPING_RATES: Record<number, number> = { 35: 0.10, 45: 0.24, 60: 0.30, 80: 0.40, 110: 0.50, 160: 0.60, 200: 1.00, 250: 1.80 };
-const STAMPING_TONNAGES = Object.keys(STAMPING_RATES).map(Number);
-
-// 异型材表单数据
-interface YixingFormData {
-  productType: string;
-  productCode: string;
-  productName: string;
-  material: string;
-  // 板材专用字段
-  plateMaterial: string;      // 板材材料：铝板/冷板/不锈钢304/...
-  alGrade: string;            // 铝板牌号系列：1系/3系/5系/7系
-  thickness: string;          // 板厚(mm)
-  nestingCount: string;       // 排版数量
-  stampingTonnage: string;    // 冲压吨位(T)
-  maxDimension: string;       // 最大尺寸(mm)
-  volume: string;             // 体积(mm³)
-  laserCutLength: string;     // 激光切割总长(m)
-  // 铝型材字段
-  meterWeight: string;
-  length: string;
-  width: string;
-  height: string;
-  processes: Array<{ type: string; order: string }>;
-  surfaceTreatment: string;
-  moldFee: string;
-  minOrderQty: string;
-  unit: string;
-  remarks: string;
-}
-
-const defaultFormData = (): YixingFormData => ({
-  productType: '铝型材',
-  productCode: '',
-  productName: '',
-  material: '铝',
-  plateMaterial: '铝板',
-  alGrade: '5系(5052/5083)',
-  thickness: '',
-  nestingCount: '1',
-  stampingTonnage: '35',
-  maxDimension: '',
-  volume: '',
-  laserCutLength: '',
-  meterWeight: '',
-  length: '',
-  width: '',
-  height: '',
-  processes: [{ type: '铝挤压', order: '1' }],
-  surfaceTreatment: '无',
-  moldFee: '',
-  minOrderQty: '100',
-  unit: '件',
-  remarks: '',
-});
-
-// 成本分析数据
-interface CostAnalysis {
-  aluminumPrice: number;
-  grossWeight: number;
-  netWeight: number;
-  volume: number;
-  materialCost: number;
-  processCost: number;
-  surfaceCost: number;
-  totalCost: number;
-  managementFee: number;
-  priceBeforeTax: number;
-  priceWithTax: number;
-  processCount: number;
-}
-
-function calculateCostAnalysis(fd: YixingFormData, alPrice: number): CostAnalysis {
-  const mw = parseFloat(fd.meterWeight) || 0; // kg/m
-  const len = parseFloat(fd.length) || 0; // mm
-  const wid = parseFloat(fd.width) || 0; // mm
-  const hgt = parseFloat(fd.height) || 0; // mm
-  const qty = parseFloat(fd.minOrderQty) || 100;
-  const processCount = fd.processes.length;
-
-  const lenM = (len + 5) / 1000; // mm+5 → m
-  const netWeight = mw * (len / 1000) * 1000; // kg/m × m × 1000 = g
-  const grossWeight = mw * lenM * 1000; // 米重 × (长度+5mm换算为m) × 1000 = g
-  const volume = (len * wid * hgt) / 1000; // mm³ → cm³ (÷1000)
-  const materialCost = (alPrice + 2000) / 1000000 * grossWeight;
-  const processCost = (materialCost * 0.05 + 0.1) * processCount;
-  const surfaceCost = fd.surfaceTreatment === '无' ? 0 : (netWeight * 0.002 + volume * 0.0000003 + 0.1);
-  const totalCost = materialCost + surfaceCost + processCost;
-  const managementFee = totalCost * 0.1 + 500 / qty;
-  const priceBeforeTax = totalCost + managementFee;
-  const priceWithTax = priceBeforeTax * 1.13;
-
-  return {
-    aluminumPrice: alPrice, grossWeight, netWeight, volume,
-    materialCost, processCost, surfaceCost, totalCost,
-    managementFee, priceBeforeTax, priceWithTax, processCount,
-  };
-}
-
-// ============ 板材报价计算 ============
-interface PlateCostAnalysis {
-  plateMaterial: string;
-  thickness: number;
-  sheetLength: number;  // 2440mm
-  sheetWidth: number;   // 1220mm
-  nestingCount: number;
-  materialCostPerSheet: number;
-  materialCostPerPiece: number;
-  stampingBaseFee: number;
-  sizeSurcharge: number;
-  volumeSurcharge: number;
-  processFeePerStep: number;
-  cumulativeAfterProcesses: number;
-  processBreakdown: Array<{ name: string; base: number; size: number; vol: number; total: number; cumAfter: number }>;
-  surfaceTreatmentType: string;
-  surfaceCost: number;
-  quoteMain: number;       // (累计+表面处理) × 1.05
-  packaging: number;       // 重量 × 0.5
-  transport: number;       // 重量 × 0.5
-  totalPrice: number;      // 报价主体 + 包装 + 运输
-  weightPerPiece: number;  // 单件重量(kg)
-  density: number;
-  materialPricePerKg: number;
-  moldCostPerProcess: number;
-  totalMoldCost: number;
-  warnings: string[];
-}
-
-function getPlateDensity(mat: string): number {
-  if (mat.includes('铝')) return 2.7;
-  return 7.85; // 冷板和不锈钢密度相同
-}
-
-function getPlateMaterialPrice(mat: string, alGrade: string, alPrice: number): number {
-  // alPrice: 南海灵通铝锭价（元/吨）
-  if (mat.includes('铝')) {
-    // 铝板单价 = (铝锭价 + 牌号加价) / 1000  → 元/kg
-    const gradeKey = Object.keys(AL_GRADE_MARKUP).find(k => alGrade.includes(k)) || '5系';
-    const markup = AL_GRADE_MARKUP[gradeKey] || 3000;
-    return (alPrice + markup) / 1000;
-  } else if (mat.includes('304')) {
-    // 不锈钢304参考价：约15元/kg（可根据市场调整）
-    return 15;
-  } else if (mat.includes('201') || mat.includes('430')) {
-    return 15 * 0.50; // 304价格 × 0.50
-  } else if (mat.includes('316')) {
-    return 15 * 2;    // 304价格 × 2
-  } else {
-    // 冷板 SPCC：热卷期货价 × 1.05，简化取4.5元/kg
-    return 4.5;
-  }
-}
-
-function calculatePlateCostAnalysis(fd: YixingFormData, alPrice: number): PlateCostAnalysis {
-  const warnings: string[] = [];
-  const thickness = parseFloat(fd.thickness) || 1;
-  const nestingCount = Math.max(1, parseInt(fd.nestingCount) || 1);
-  const stampingTonnage = parseInt(fd.stampingTonnage) || 35;
-  const maxDimension = parseFloat(fd.maxDimension) || 0;
-  const pieceVolume = parseFloat(fd.volume) || 0; // mm³
-  const laserCutLen = parseFloat(fd.laserCutLength) || 0; // m
-  const qty = parseInt(fd.minOrderQty) || 100;
-  
-  const plateMat = fd.plateMaterial || '铝板';
-  const density = getPlateDensity(plateMat);
-  const pricePerKg = getPlateMaterialPrice(plateMat, fd.alGrade, alPrice);
-  
-  // 板材尺寸：标准 2440 × 1220
-  const sheetLength = 2440;
-  const sheetWidth = 1220;
-  
-  // ① 材料费 = 整张板价格 ÷ 排版数量
-  // 整张板价格 = 2440 × 1220 × 厚度 × 密度 ÷ 1000000 × 单价(元/kg)
-  const sheetVolume_cm3 = sheetLength * sheetWidth * thickness / 1000; // mm³ → cm³
-  const sheetWeight_kg = sheetVolume_cm3 * density / 1000; // cm³ × g/cm³ ÷ 1000 = kg
-  const sheetPrice = sheetWeight_kg * pricePerKg;
-  const materialCostPerPiece = sheetPrice / nestingCount;
-  
-  // 单件重量估算（用于包装和运输费）
-  const pieceWeight_kg = pieceVolume > 0 
-    ? (pieceVolume / 1000) * density / 1000  // mm³ → cm³ → kg
-    : sheetWeight_kg / nestingCount;
-  
-  // ② 工序费：逐级累加 ×1.03×1.03
-  let cumulative = materialCostPerPiece;
-  const processBreakdown: PlateCostAnalysis['processBreakdown'] = [];
-  
-  // 获取冲压吨位费率
-  const baseTonnageRate = STAMPING_RATES[stampingTonnage] || STAMPING_RATES[35];
-  
-  // 尺寸附加费 = floor((最大尺寸-1)/100) × 0.01
-  const sizeSurcharge = maxDimension > 100 ? Math.floor((maxDimension - 1) / 100) * 0.01 : 0;
-  
-  // 体积附加费 = 体积 × 0.00000003
-  const volSurcharge = pieceVolume * 0.00000003;
-  
-  // 冲压附加费（用于表面处理计算）= 尺寸附加费 + 体积附加费
-  const stampingSurcharge = sizeSurcharge + volSurcharge;
-  
-  // 为每道工序计算
-  const processes = fd.processes.length > 0 ? fd.processes : [{ type: '冲压', order: '1' }];
-  
-  for (const proc of processes) {
-    let processFee = 0;
-    let procName = proc.type;
-    
-    if (proc.type === '冲压' || proc.type === '折弯' || proc.type === '钻孔' || proc.type === '攻丝') {
-      // 冲压/折弯/钻孔/攻丝：吨位基数 + 尺寸附加 + 体积附加
-      processFee = baseTonnageRate + sizeSurcharge + volSurcharge;
-    } else if (proc.type === '激光切割') {
-      // 激光切割费：按材料×厚度，单价元/米
-      let cutRatePerMeter = 0;
-      if (plateMat.includes('铝')) cutRatePerMeter = thickness * 4;
-      else if (plateMat.includes('不锈钢')) cutRatePerMeter = thickness * 2.5;
-      else cutRatePerMeter = thickness * 1.5; // 冷板
-      processFee = cutRatePerMeter * (laserCutLen || 1);
-      procName = `激光切割(${plateMat.includes('铝') ? '铝板' : plateMat.includes('不锈钢') ? '不锈钢' : '冷板'} ${thickness}mm)`;
-    } else if (proc.type === '焊接') {
-      // 焊接按道次估算
-      processFee = baseTonnageRate * 2;
-    } else {
-      // 默认其他工序用冲压费率
-      processFee = baseTonnageRate + sizeSurcharge + volSurcharge;
-    }
-    
-    const newCumulative = (cumulative + processFee) * 1.03 * 1.03;
-    processBreakdown.push({
-      name: procName,
-      base: baseTonnageRate,
-      size: sizeSurcharge,
-      vol: volSurcharge,
-      total: processFee,
-      cumAfter: Math.round(newCumulative * 10000) / 10000,
-    });
-    cumulative = newCumulative;
-  }
-  
-  // ③ 表面处理费
-  let surfaceCost = 0;
-  const surfType = fd.surfaceTreatment;
-  
-  if (surfType && surfType !== '无') {
-    if (plateMat.includes('铝')) {
-      // 铝板表面处理
-      if (surfType === '氧化本色') {
-        surfaceCost = 0.2 + stampingSurcharge * 2 + pieceWeight_kg * 2;
-      } else if (surfType === '氧化上色' || surfType === '拉丝') {
-        surfaceCost = 0.3 + stampingSurcharge * 3 + pieceWeight_kg * 3;
-      } else if (surfType === '喷砂') {
-        surfaceCost = stampingSurcharge * 2 + pieceWeight_kg * 1;
-      }
-    } else {
-      // 冷板/不锈钢表面处理
-      if (surfType === '喷涂/喷粉' || surfType === '磷化') {
-        surfaceCost = 0.2 + stampingSurcharge * 2 + pieceWeight_kg * 2;
-      } else if (surfType === '镀锌/镀镍') {
-        surfaceCost = stampingSurcharge * 2 + pieceWeight_kg * 1.5;
-      } else if (surfType === '抛光/镀铬') {
-        surfaceCost = 0.3 + stampingSurcharge * 3 + pieceWeight_kg * 3;
-      }
-    }
-  }
-  
-  // ④ 报价主体 = (工序累计 + 表面处理) × 1.05
-  const quoteMain = (cumulative + surfaceCost) * 1.05;
-  
-  // ⑤ 包装 = 重量 × 0.5
-  const packaging = pieceWeight_kg * 0.5;
-  
-  // ⑥ 运输 = 重量 × 0.5
-  const transport = pieceWeight_kg * 0.5;
-  
-  // ⑦ 总报价
-  const totalPrice = quoteMain + packaging + transport;
-  
-  // ⑧ 模具费（可选）
-  const moldFeeInput = parseFloat(fd.moldFee) || 0;
-  const moldPerPiece = moldFeeInput > 0 ? moldFeeInput / qty : 0;
-  
-  return {
-    plateMaterial: plateMat,
-    thickness,
-    sheetLength,
-    sheetWidth,
-    nestingCount,
-    materialCostPerSheet: Math.round(sheetPrice * 100) / 100,
-    materialCostPerPiece: Math.round(materialCostPerPiece * 10000) / 10000,
-    stampingBaseFee: baseTonnageRate,
-    sizeSurcharge: Math.round(sizeSurcharge * 10000) / 10000,
-    volumeSurcharge: Math.round(volSurcharge * 10000) / 10000,
-    processFeePerStep: Math.round((baseTonnageRate + sizeSurcharge + volSurcharge) * 10000) / 10000,
-    cumulativeAfterProcesses: Math.round(cumulative * 10000) / 10000,
-    processBreakdown,
-    surfaceTreatmentType: surfType,
-    surfaceCost: Math.round(surfaceCost * 10000) / 10000,
-    quoteMain: Math.round(quoteMain * 10000) / 10000,
-    packaging: Math.round(packaging * 10000) / 10000,
-    transport: Math.round(transport * 10000) / 10000,
-    totalPrice: Math.round(totalPrice * 10000) / 10000,
-    weightPerPiece: Math.round(pieceWeight_kg * 1000) / 1000,
-    density,
-    materialPricePerKg: Math.round(pricePerKg * 100) / 100,
-    moldCostPerProcess: 0,
-    totalMoldCost: moldFeeInput,
-    warnings,
-  };
 }
 
 // 解析图片识别结果中的产品信息 - 增强版（放宽匹配条件）
@@ -1003,7 +667,19 @@ function extractPricingParams(text: string): ExtractedPricingParams | null {
   };
 }
 
-function MessageContent({ message, onFillForm }: { message: Message; onFillForm?: (info: ParsedProductInfo, content: string) => void }) {
+// 从Bot回复文本中提取产品参数（用于自动报价）
+function extractPricingParamsFromBotReply(text: string): ExtractedPricingParams | null {
+  // 检查是否包含产品参数识别结果的标记
+  if (!text.includes('产品参数识别结果') && !text.includes('📋') && !(/[×xX]/.test(text) && /mm/i.test(text))) {
+    return null;
+  }
+
+  // 复用已有的 extractPricingParams 逻辑
+  // Bot回复中的参数格式与用户输入类似，可以直接复用
+  return extractPricingParams(text);
+}
+
+function MessageContent({ message }: { message: Message }) {
   const content = message.content;
   const [isSaving, setIsSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -1124,7 +800,7 @@ function MessageContent({ message, onFillForm }: { message: Message; onFillForm?
     );
   }
   
-  // 图片识别结果，显示保存按钮和填入表单按钮
+  // 图片识别结果，显示保存按钮
   if (parsedContent.type === 'recognition') {
     const info = parsedContent.productInfo!;
     return (
@@ -1157,14 +833,7 @@ function MessageContent({ message, onFillForm }: { message: Message; onFillForm?
             {isSaving ? '保存中...' : saveResult?.success ? '已保存' : '💾 保存到产品库'}
           </button>
           
-          {onFillForm && (
-            <button
-              onClick={() => onFillForm(info, content)}
-              className="px-4 py-2 text-sm rounded-md bg-orange-500 text-white hover:bg-orange-600 transition-colors"
-            >
-              📋 填入表单报价
-            </button>
-          )}
+
           
           {saveResult && !saveResult.success && (
             <span className="text-sm text-red-500">{saveResult.message}</span>
@@ -1196,6 +865,28 @@ function MessageContent({ message, onFillForm }: { message: Message; onFillForm?
     );
   }
   
+  // 如果是assistant消息且有关联的报价结果，附加显示
+  if (message.role === 'assistant' && (message.pricingResult || message.pricingLoading || message.pricingError)) {
+    return (
+      <div>
+        <div className="whitespace-pre-wrap">{cleanContent}</div>
+        {message.pricingLoading && (
+          <div className="mt-3 flex items-center gap-2 bg-emerald-50 rounded-lg px-4 py-3 border border-emerald-200">
+            <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+            <span className="text-sm text-emerald-700">正在从识别的参数计算报价...</span>
+          </div>
+        )}
+        {message.pricingError && (
+          <div className="mt-3 flex items-center gap-2 bg-red-50 rounded-lg px-4 py-3 border border-red-200">
+            <AlertCircle className="w-4 h-4 text-red-500" />
+            <span className="text-sm text-red-700">自动报价失败：{message.pricingError}</span>
+          </div>
+        )}
+        {message.pricingResult && <PricingResultCard data={message.pricingResult} />}
+      </div>
+    );
+  }
+
   return <div className="whitespace-pre-wrap">{cleanContent}</div>;
 }
 
@@ -1251,24 +942,10 @@ export default function ChatPanel() {
   const [extractedText, setExtractedText] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  // 异型材表单相关state
-  const [formOpen, setFormOpen] = useState(false);
-  const [formData, setFormData] = useState<YixingFormData>(defaultFormData());
-  const [formStep, setFormStep] = useState<'form' | 'analysis' | 'quotation'>('form');
-  const [costAnalysis, setCostAnalysis] = useState<CostAnalysis | null>(null);
-  const [plateCostAnalysis, setPlateCostAnalysis] = useState<PlateCostAnalysis | null>(null);
-  const [aluminumPrice, setAluminumPrice] = useState(20000);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 获取最新铝锭价
-  useEffect(() => {
-    fetch('/api/aluminum-price')
-      .then(r => r.json())
-      .then(d => { if (d.price) setAluminumPrice(d.price); })
-      .catch(() => {});
-  }, []);
 
   // 监听右侧快捷操作事件
   useEffect(() => {
@@ -1943,23 +1620,7 @@ export default function ChatPanel() {
           timestamp: new Date(),
         }]);
 
-        // 自动填入表单
-        const fd = defaultFormData();
-        fd.material = '铝合金';
-        fd.meterWeight = String(result.weightPerMeter);
-        if (result.width > 0) fd.width = String(result.width);
-        if (result.height > 0) fd.height = String(result.height);
-        if (result.length > 0) fd.length = String(result.length);
-        fd.processes = [{ type: '铝挤压', order: '1' }];
-        fd.surfaceTreatment = '无';
-        // 从文件名提取产品编号
-        const baseName = file.name.replace(/.(step|stp|iges|igs|dxf)$/i, '');
-        fd.productCode = baseName;
-        fd.productName = '铝合金型材';
-        setFormData(fd);
-        setFormStep('form');
-        setCostAnalysis(null);
-        setFormOpen(true);
+        // CAD解析完成，参数信息已展示在上方消息中
       } else {
         setMessages(prev => [...prev, {
           id: Date.now().toString(),
@@ -2297,6 +1958,45 @@ export default function ChatPanel() {
           }
         }
       }
+
+      // ===== SSE流结束后，检查Bot回复中是否包含产品参数，自动报价 =====
+      if (assistantContent) {
+        const botPricingParams = extractPricingParamsFromBotReply(assistantContent);
+        if (botPricingParams) {
+          // 标记assistant消息为加载中
+          setMessages((prev) => prev.map((m) =>
+            m.id === assistantMessageId ? { ...m, pricingLoading: true } : m
+          ));
+          try {
+            const pricingRes = await fetch('/api/pricing/calculate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(botPricingParams),
+            });
+            const pricingData = await pricingRes.json();
+            if (pricingData.success && pricingData.data) {
+              setMessages((prev) => prev.map((m) =>
+                m.id === assistantMessageId
+                  ? { ...m, pricingLoading: false, pricingResult: pricingData.data }
+                  : m
+              ));
+            } else {
+              setMessages((prev) => prev.map((m) =>
+                m.id === assistantMessageId
+                  ? { ...m, pricingLoading: false, pricingError: pricingData.error || '报价计算失败' }
+                  : m
+              ));
+            }
+          } catch (pricingErr) {
+            setMessages((prev) => prev.map((m) =>
+              m.id === assistantMessageId
+                ? { ...m, pricingLoading: false, pricingError: pricingErr instanceof Error ? pricingErr.message : '请求失败' }
+                : m
+            ));
+          }
+        }
+      }
+      // ===== Bot回复自动报价结束 =====
     } catch (error) {
       console.error('发送消息失败:', error);
       setMessages((prev) => [
@@ -2320,335 +2020,6 @@ export default function ChatPanel() {
       sendMessage();
     }
   };
-
-  // 从AI识别结果填入表单
-  const handleFillFormFromRecognition = useCallback((info: ParsedProductInfo, content: string) => {
-    const fd = defaultFormData();
-    
-    // 产品编号
-    if (info.productCode) fd.productCode = info.productCode;
-    
-    // 产品名称
-    if (info.productName) fd.productName = info.productName;
-    
-    // 材质 → material + productName
-    if (info.material) {
-      fd.material = info.material;
-      if (!fd.productName) fd.productName = info.material + '型材';
-    }
-    
-    // 米重（单位：kg/m）
-    if (info.meterWeight) {
-      fd.meterWeight = info.meterWeight;
-    } else {
-      // 尝试从自由文本中提取米重
-      const mwKgMatch = content.match(/(\d+(?:\.\d+)?)\s*(?:kg\/m|千克\/米)/i);
-      if (mwKgMatch) {
-        fd.meterWeight = mwKgMatch[1];
-      } else {
-        const mwGMatch = content.match(/(\d+(?:\.\d+)?)\s*(?:g\/m|克\/米)/i);
-        if (mwGMatch) {
-          // g/m → kg/m
-          fd.meterWeight = (parseFloat(mwGMatch[1]) / 1000).toFixed(3);
-        }
-      }
-    }
-    
-    // 尺寸 - 优先使用解析出的字段
-    if (info.length) fd.length = info.length;
-    if (info.width) fd.width = info.width;
-    if (info.height) fd.height = info.height;
-    
-    // 如果没有从结构化字段获取到，尝试从内容匹配
-    if (!fd.length) {
-      // 尝试匹配"长度：XXmm"格式
-      const lenMatch = content.match(/(?:长度|长)[：:]\s*(\d+(?:\.\d+)?)\s*mm/i);
-      if (lenMatch) fd.length = lenMatch[1];
-    }
-    if (!fd.width) {
-      const widMatch = content.match(/(?:宽度|宽)[：:]\s*(\d+(?:\.\d+)?)\s*mm/i);
-      if (widMatch) fd.width = widMatch[1];
-    }
-    if (!fd.height) {
-      const hgtMatch = content.match(/(?:高度|高)[：:]\s*(\d+(?:\.\d+)?)\s*mm/i);
-      if (hgtMatch) fd.height = hgtMatch[1];
-    }
-    // 尝试匹配 "XXmm × XXmm × XXmm" 格式
-    if (!fd.length) {
-      const dimMatch = content.match(/(\d+(?:\.\d+)?)\s*mm\s*[×xX]\s*(\d+(?:\.\d+)?)\s*mm\s*[×xX]\s*(\d+(?:\.\d+)?)\s*mm/);
-      if (dimMatch) {
-        fd.length = dimMatch[1];
-        if (!fd.width) fd.width = dimMatch[2];
-        if (!fd.height) fd.height = dimMatch[3];
-      } else {
-        const dim2Match = content.match(/(\d+(?:\.\d+)?)\s*mm\s*[×xX]\s*(\d+(?:\.\d+)?)\s*mm/);
-        if (dim2Match) {
-          fd.length = dim2Match[1];
-          if (!fd.width) fd.width = dim2Match[2];
-        }
-      }
-    }
-    
-    // 加工工艺
-    if (info.process) {
-      const procs = info.process.split(/[、,，\/]/).map(p => p.trim()).filter(Boolean);
-      fd.processes = procs.map((p, i) => ({
-        type: PROCESS_TYPES.includes(p) ? p : PROCESS_TYPES[0],
-        order: String(i + 1),
-      }));
-      if (fd.processes.length === 0) fd.processes = [{ type: '铝挤压', order: '1' }];
-    }
-    
-    // 表面处理
-    if (info.surfaceTreatment && SURFACE_OPTIONS.includes(info.surfaceTreatment)) {
-      fd.surfaceTreatment = info.surfaceTreatment;
-    }
-    
-    setFormData(fd);
-    setFormStep('form');
-    setCostAnalysis(null);
-    setFormOpen(true);
-  }, []);
-
-  // 表单提交 → 生成成本分析
-  const handleFormSubmit = useCallback(() => {
-    const fd = formData;
-    if (fd.productType === '板材件') {
-      // 板材件计算
-      if (!fd.thickness) {
-        alert('请填写板厚');
-        return;
-      }
-      const plateAnalysis = calculatePlateCostAnalysis(fd, aluminumPrice);
-      setPlateCostAnalysis(plateAnalysis);
-      setCostAnalysis(null);
-      setFormStep('analysis');
-    } else {
-      // 铝型材计算（原逻辑）
-      if (!fd.meterWeight && !fd.length) {
-        alert('请填写米重和长度');
-        return;
-      }
-      const analysis = calculateCostAnalysis(fd, aluminumPrice);
-      setCostAnalysis(analysis);
-      setPlateCostAnalysis(null);
-      setFormStep('analysis');
-    }
-  }, [formData, aluminumPrice]);
-
-  // 确认成本分析 → 生成报价单Excel
-  const handleConfirmAnalysis = useCallback(async () => {
-    // 板材报价 → 导出板材报价单
-    if (formData.productType === '板材件' && plateCostAnalysis) {
-      try {
-        const p = plateCostAnalysis;
-        const fd = formData;
-        const qty = parseInt(fd.minOrderQty) || 100;
-        const priceBeforeTax = p.totalPrice;
-        const priceWithTax = Math.round(priceBeforeTax * 1.13 * 10000) / 10000;
-        
-        const response = await fetch('/api/export-quotation', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            companyName: '佛山市质稳五金制品有限公司',
-            customerName: '-',
-            quotationNo: 'QT-' + Date.now().toString().slice(-8),
-            validDays: 15,
-            aluminumPrice: aluminumPrice,
-            isPlateQuote: true,
-            items: [{
-              productCode: fd.productCode || 'P-001',
-              productName: fd.productName || '-',
-              specSize: `${p.plateMaterial} ${p.thickness}mm`,
-              unit: fd.unit || '件',
-              material: p.plateMaterial,
-              surfaceTreatment: p.surfaceTreatmentType,
-              weightPerPiece: p.weightPerPiece,
-              moldFee: p.totalMoldCost,
-              materialCost: p.materialCostPerPiece,
-              processCost: p.cumulativeAfterProcesses - p.materialCostPerPiece,
-              surfaceCost: p.surfaceCost,
-              packagingFee: p.packaging,
-              transportFee: p.transport,
-              managementFee: 0,
-              priceBeforeTax: priceBeforeTax,
-              priceWithTax: priceWithTax,
-              minOrderQty: qty,
-              remarks: fd.remarks || '',
-              processSteps: p.processBreakdown.map(pb => pb.name).join(' → '),
-              nestingCount: p.nestingCount,
-            }],
-          }),
-        });
-        
-        if (!response.ok) throw new Error('生成失败');
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `板材报价单_${fd.productCode || fd.productName || 'new'}_${new Date().toISOString().slice(0,10)}.xlsx`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-        
-        setFormOpen(false);
-        setFormStep('form');
-        setFormData(defaultFormData());
-        setCostAnalysis(null);
-        setPlateCostAnalysis(null);
-        
-        const processDetail = p.processBreakdown.map((pb, i) => `  ${i+1}. ${pb.name}: ¥${pb.total.toFixed(4)}`).join('\n');
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          role: 'assistant',
-          content: `📋 板材报价单已生成并下载！\n\n**产品**：${fd.productName}\n**材料**：${p.plateMaterial} ${p.thickness}mm\n**排版**：${p.nestingCount}件/张\n**单件重量**：${p.weightPerPiece}kg\n**表面处理**：${p.surfaceTreatmentType}\n\n**成本明细：**\n- 材料费：¥${p.materialCostPerPiece.toFixed(4)}\n- 加工累计：¥${p.cumulativeAfterProcesses.toFixed(4)}\n- 表面处理：¥${p.surfaceCost.toFixed(4)}\n- 报价主体(×1.05)：¥${p.quoteMain.toFixed(4)}\n- 包装+运输：¥${(p.packaging + p.transport).toFixed(4)}\n\n**不含税单价：¥${priceBeforeTax.toFixed(4)}**\n**含税单价(13%)：¥${priceWithTax.toFixed(4)}**\n${p.totalMoldCost > 0 ? `**模具费：¥${p.totalMoldCost.toLocaleString()}**\n` : ''}\n**加工工序：**\n${processDetail}`,
-          timestamp: new Date(),
-        }]);
-      } catch (error) {
-        console.error('板材报价单生成失败:', error);
-        alert('报价单生成失败：' + (error as Error).message);
-      }
-      return;
-    }
-    
-    if (!costAnalysis) return;
-    
-    try {
-      const fd = formData;
-      const mw = parseFloat(fd.meterWeight) || 0;
-      const len = parseFloat(fd.length) || 0;
-      const wid = parseFloat(fd.width) || 0;
-      const hgt = parseFloat(fd.height) || 0;
-      const alPrice = costAnalysis.aluminumPrice || 22.78;
-      const isAl5052 = fd.material?.includes('5052') || fd.material?.includes('AL5052');
-      const specSize = isAl5052
-        ? '冲压件'
-        : [fd.length, fd.width, fd.height].filter(Boolean).join('×') + 'mm';
-
-      // 详细成本拆分
-      const materialCost = isAl5052
-        ? Math.round(mw * alPrice * 2 * 100) / 100  // 侧挡板按件重×铝价×批量系数
-        : Math.round(mw * alPrice * (len + 5 + (100 / Math.floor(3100 / (len || 1)))) / 1000 * 100) / 100;
-      const packagingFee = Math.round(mw * len / 1000 * 0.5 * 100) / 100;
-      const transportFee = packagingFee;
-      const surfaceFee = costAnalysis.surfaceCost;
-      const machiningFee = costAnalysis.processCost;
-      const costBase = materialCost + surfaceFee + packagingFee + machiningFee;
-      const lossRate = fd.productName?.includes('支架') && !isAl5052 ? 0.03 : (isAl5052 ? 0.02 : 0.05);
-      const lossFee = Math.round(costBase * lossRate * 100) / 100;
-      const managementFee = Math.round(costBase * 0.1 * 100) / 100;
-      // 挤压费按产品类别（简化：根据截面尺寸判断）
-      const crossSection = wid * hgt;
-      const extrusionFee = isAl5052 ? 0.05
-        : fd.productName?.includes('散热器') ? 0.55
-        : fd.productName?.includes('支架') ? 1.15
-        : 2.33;
-      const priceBeforeTax = costBase + lossFee + managementFee + extrusionFee;
-      const priceWithTax = Math.round(priceBeforeTax * 1.13 * 100) / 100;
-      const weightPerPiece = isAl5052 ? Math.round(mw * 1000 * 10) / 10 : Math.round(mw * len * 10) / 10;
-
-      const response = await fetch('/api/export-quotation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          companyName: '佛山市质稳五金制品有限公司',
-          customerName: '-',
-          quotationNo: 'QT-' + Date.now().toString().slice(-8),
-          validDays: 15,
-          aluminumPrice: alPrice,
-          items: [{
-            productCode: fd.productCode || 'P-001',
-            productName: fd.productName || '-',
-            specSize,
-            unit: fd.unit || '件',
-            material: fd.material || '6063-T5',
-            surfaceTreatment: fd.surfaceTreatment || '氧化',
-            meterWeight: mw || undefined,
-            length: len || undefined,
-            width: wid || undefined,
-            height: hgt || undefined,
-            weightPerPiece,
-            moldFee: parseFloat(fd.moldFee) || 0,
-            materialCost,
-            extrusionFee,
-            machiningFee,
-            surfaceFee,
-            packagingFee,
-            transportFee,
-            lossFee,
-            managementFee,
-            priceBeforeTax,
-            priceWithTax,
-            minOrderQty: parseInt(fd.minOrderQty) || 100,
-            remarks: fd.remarks || '',
-          }],
-        }),
-      });
-      
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || '生成失败');
-      }
-      
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `报价单_${fd.productCode || fd.productName || 'new'}_${new Date().toISOString().slice(0,10)}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-      
-      setFormOpen(false);
-      setFormStep('form');
-      setFormData(defaultFormData());
-      setCostAnalysis(null);
-      
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: `📋 报价单已生成并下载！\n\n**产品**：${fd.productName}\n**规格**：${specSize}\n**材质**：${fd.material}\n**表面处理**：${fd.surfaceTreatment}\n\n**成本明细：**\n- 材料费：¥${materialCost.toFixed(2)}\n- 挤压费：¥${extrusionFee.toFixed(2)}\n- 加工费：¥${machiningFee.toFixed(2)}\n- 表面处理：¥${surfaceFee.toFixed(2)}\n- 损耗：¥${lossFee.toFixed(2)}\n- 管理费利润：¥${managementFee.toFixed(2)}\n\n**不含税单价：¥${priceBeforeTax.toFixed(2)}**\n**含税单价（13%）：¥${priceWithTax.toFixed(2)}**\n**模具费：¥${fd.moldFee || '0'}**`,
-        timestamp: new Date(),
-      }]);
-    } catch (error) {
-      console.error('报价单生成失败:', error);
-      alert('报价单生成失败：' + (error as Error).message);
-    }
-  }, [costAnalysis, formData]);
-
-  // 更新表单字段
-  const updateFormField = useCallback((field: keyof YixingFormData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  }, []);
-
-  // 添加加工行
-  const addProcessRow = useCallback(() => {
-    setFormData(prev => ({
-      ...prev,
-      processes: [...prev.processes, { type: PROCESS_TYPES[0], order: String(prev.processes.length + 1) }],
-    }));
-  }, []);
-
-  // 删除加工行
-  const removeProcessRow = useCallback((index: number) => {
-    setFormData(prev => {
-      if (prev.processes.length <= 1) return prev;
-      const newProcs = prev.processes.filter((_, i) => i !== index);
-      return { ...prev, processes: newProcs };
-    });
-  }, []);
-
-  // 更新加工行
-  const updateProcessRow = useCallback((index: number, field: 'type' | 'order', value: string) => {
-    setFormData(prev => {
-      const newProcs = [...prev.processes];
-      newProcs[index] = { ...newProcs[index], [field]: value };
-      return { ...prev, processes: newProcs };
-    });
-  }, []);
 
   return (
     <div className="flex flex-col h-full bg-gray-50/30 rounded-xl border border-gray-100 overflow-hidden">
@@ -2741,7 +2112,7 @@ export default function ChatPanel() {
                     ))}
                   </div>
                 )}
-                <MessageContent message={message} onFillForm={handleFillFormFromRecognition} />
+                <MessageContent message={message} />
               </div>
             </div>
           ))}
@@ -2843,449 +2214,10 @@ export default function ChatPanel() {
           >
             🔩 五金件报价
           </button>
-          <button
-            onClick={() => { setFormData(defaultFormData()); setFormStep('form'); setCostAnalysis(null); setPlateCostAnalysis(null); setFormOpen(true); }}
-            className="px-3 py-1.5 text-xs bg-purple-50 text-purple-600 rounded-full hover:bg-purple-100 transition-colors border border-purple-100 font-medium"
-          >
-            📊 异型材报价
-          </button>
+
         </div>
       </div>
 
-      {/* 异型材报价弹窗 - 三步骤 */}
-      <Dialog open={formOpen} onOpenChange={(open) => { setFormOpen(open); if (!open) { setFormStep('form'); setCostAnalysis(null); setPlateCostAnalysis(null); } }}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Calculator className="w-5 h-5 text-orange-500" />
-              异型材报价
-              <span className="text-xs text-gray-400 ml-2">({formData.productType})</span>
-              <div className="flex gap-1 ml-4">
-                {['填写信息', '成本分析', '生成报价'].map((step, i) => (
-                  <div key={step} className={cn(
-                    'px-2 py-0.5 rounded text-xs',
-                    (formStep === 'form' && i === 0) || (formStep === 'analysis' && i <= 1) || (formStep === 'quotation' && i <= 2)
-                      ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-400'
-                  )}>{step}</div>
-                ))}
-              </div>
-            </DialogTitle>
-          </DialogHeader>
-
-          {/* Step 1: 填写表单 */}
-          {formStep === 'form' && (
-            <div className="space-y-4 py-2">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs text-gray-500">产品编号</Label>
-                  <Input value={formData.productCode} onChange={(e) => updateFormField('productCode', e.target.value)} placeholder="如: XC-001" className="mt-1" />
-                </div>
-                <div>
-                  <Label className="text-xs text-gray-500">产品名称</Label>
-                  <Input value={formData.productName} onChange={(e) => updateFormField('productName', e.target.value)} placeholder="如: 铝型材" className="mt-1" />
-                </div>
-              </div>
-
-              {/* 产品形态选择 */}
-              <div>
-                <Label className="text-xs text-gray-500">产品形态</Label>
-                <div className="flex gap-2 mt-1">
-                  {PRODUCT_TYPES.map(pt => (
-                    <button key={pt} type="button"
-                      onClick={() => {
-                        updateFormField('productType', pt);
-                        if (pt === '板材件') {
-                          // 切换到板材默认工序
-                        } else {
-                          // 切换回铝型材默认工序
-                        }
-                      }}
-                      className={cn('flex-1 py-2 rounded-md border text-sm font-medium transition-colors',
-                        formData.productType === pt
-                          ? 'bg-orange-500 text-white border-orange-500'
-                          : 'bg-white text-gray-600 border-gray-200 hover:border-orange-300'
-                      )}
-                    >{pt}</button>
-                  ))}
-                </div>
-              </div>
-
-              {formData.productType === '铝型材' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs text-gray-500">材质</Label>
-                    <Input value={formData.material} onChange={(e) => updateFormField('material', e.target.value)} placeholder="如: 铝" className="mt-1" />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-gray-500">米重 (kg/m)</Label>
-                    <Input type="number" value={formData.meterWeight} onChange={(e) => updateFormField('meterWeight', e.target.value)} placeholder="kg/m" className="mt-1" />
-                  </div>
-                </div>
-              )}
-
-              {formData.productType === '板材件' && (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs text-gray-500">板材材料</Label>
-                      <select value={formData.plateMaterial} onChange={(e) => updateFormField('plateMaterial', e.target.value)} className="mt-1 w-full h-9 rounded-md border border-gray-200 bg-white px-3 text-sm">
-                        {PLATE_MATERIALS.map(m => <option key={m} value={m}>{m}</option>)}
-                      </select>
-                    </div>
-                    {formData.plateMaterial?.includes('铝') && (
-                      <div>
-                        <Label className="text-xs text-gray-500">铝板牌号</Label>
-                        <select value={formData.alGrade} onChange={(e) => updateFormField('alGrade', e.target.value)} className="mt-1 w-full h-9 rounded-md border border-gray-200 bg-white px-3 text-sm">
-                          {AL_GRADE_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
-                        </select>
-                      </div>
-                    )}
-                    {!formData.plateMaterial?.includes('铝') && (
-                      <div>
-                        <Label className="text-xs text-gray-500">不锈钢牌号</Label>
-                        <Input value={formData.material} onChange={(e) => updateFormField('material', e.target.value)} placeholder="如: 304" className="mt-1" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <Label className="text-xs text-gray-500">板厚(mm)</Label>
-                      <Input type="number" value={formData.thickness} onChange={(e) => updateFormField('thickness', e.target.value)} placeholder="mm" className="mt-1" />
-                    </div>
-                    <div>
-                      <Label className="text-xs text-gray-500">排版数量</Label>
-                      <Input type="number" value={formData.nestingCount} onChange={(e) => updateFormField('nestingCount', e.target.value)} placeholder="张出几件" className="mt-1" />
-                    </div>
-                    <div>
-                      <Label className="text-xs text-gray-500">最大尺寸(mm)</Label>
-                      <Input type="number" value={formData.maxDimension} onChange={(e) => updateFormField('maxDimension', e.target.value)} placeholder="mm" className="mt-1" />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <Label className="text-xs text-gray-500">冲压吨位(T)</Label>
-                      <select value={formData.stampingTonnage} onChange={(e) => updateFormField('stampingTonnage', e.target.value)} className="mt-1 w-full h-9 rounded-md border border-gray-200 bg-white px-3 text-sm">
-                        {STAMPING_TONNAGES.map(t => <option key={t} value={t}>{t}T (¥{STAMPING_RATES[t]}/次)</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <Label className="text-xs text-gray-500">单件体积(mm³)</Label>
-                      <Input type="number" value={formData.volume} onChange={(e) => updateFormField('volume', e.target.value)} placeholder="mm³" className="mt-1" />
-                    </div>
-                    <div>
-                      <Label className="text-xs text-gray-500">激光切割长(m)</Label>
-                      <Input type="number" value={formData.laserCutLength} onChange={(e) => updateFormField('laserCutLength', e.target.value)} placeholder="m/件" className="mt-1" />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <Label className="text-xs text-gray-500">长(mm)</Label>
-                  <Input type="number" value={formData.length} onChange={(e) => updateFormField('length', e.target.value)} placeholder="mm" className="mt-1" />
-                </div>
-                <div>
-                  <Label className="text-xs text-gray-500">宽(mm)</Label>
-                  <Input type="number" value={formData.width} onChange={(e) => updateFormField('width', e.target.value)} placeholder="mm" className="mt-1" />
-                </div>
-                <div>
-                  <Label className="text-xs text-gray-500">高(mm)</Label>
-                  <Input type="number" value={formData.height} onChange={(e) => updateFormField('height', e.target.value)} placeholder="mm" className="mt-1" />
-                </div>
-              </div>
-
-              {/* 加工类型 */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <Label className="text-xs text-gray-500">加工类型</Label>
-                  <button onClick={addProcessRow} className="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1">
-                    <Plus className="w-3 h-3" /> 添加加工
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {formData.processes.map((proc, idx) => (
-                    <div key={idx} className="flex gap-2 items-center">
-                      <select value={proc.type} onChange={(e) => updateProcessRow(idx, 'type', e.target.value)} className="flex-1 h-9 rounded-md border border-gray-200 bg-white px-3 text-sm">
-                        {PROCESS_TYPES.map(pt => <option key={pt} value={pt}>{pt}</option>)}
-                      </select>
-                      <Input value={proc.order} onChange={(e) => updateProcessRow(idx, 'order', e.target.value)} placeholder="工序次" className="w-24" />
-                      {formData.processes.length > 1 && (
-                        <button onClick={() => removeProcessRow(idx)} className="text-red-400 hover:text-red-600 p-1"><Trash2 className="w-4 h-4" /></button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <Label className="text-xs text-gray-500">表面处理</Label>
-                  <select value={formData.surfaceTreatment} onChange={(e) => updateFormField('surfaceTreatment', e.target.value)} className="mt-1 w-full h-9 rounded-md border border-gray-200 bg-white px-3 text-sm">
-                    {(formData.productType === '板材件'
-                      ? (formData.plateMaterial?.includes('铝') ? PLATE_SURFACE_OPTIONS_AL : PLATE_SURFACE_OPTIONS_OTHER)
-                      : SURFACE_OPTIONS
-                    ).map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <Label className="text-xs text-gray-500">模具费(元)</Label>
-                  <Input type="number" value={formData.moldFee} onChange={(e) => updateFormField('moldFee', e.target.value)} placeholder="元" className="mt-1" />
-                </div>
-                <div>
-                  <Label className="text-xs text-gray-500">最小起订量</Label>
-                  <Input type="number" value={formData.minOrderQty} onChange={(e) => updateFormField('minOrderQty', e.target.value)} placeholder="件" className="mt-1" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs text-gray-500">单位</Label>
-                  <select value={formData.unit} onChange={(e) => updateFormField('unit', e.target.value)} className="mt-1 w-full h-9 rounded-md border border-gray-200 bg-white px-3 text-sm">
-                    <option value="件">件</option><option value="米">米</option><option value="公斤">公斤</option><option value="套">套</option>
-                  </select>
-                </div>
-                <div>
-                  <Label className="text-xs text-gray-500">备注</Label>
-                  <Input value={formData.remarks} onChange={(e) => updateFormField('remarks', e.target.value)} placeholder="备注" className="mt-1" />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Step 2: 板材成本分析表 */}
-          {formStep === 'analysis' && plateCostAnalysis && (() => {
-            const p = plateCostAnalysis;
-            const rows = [
-              { label: '板材尺寸', value: `${p.sheetLength}×${p.sheetWidth}`, unit: 'mm', formula: '标准板' },
-              { label: '板厚', value: p.thickness, unit: 'mm', formula: '' },
-              { label: '材料', value: p.plateMaterial, unit: '', formula: `密度${p.density}g/cm³` },
-              { label: '材料单价', value: p.materialPricePerKg, unit: '元/kg', formula: p.plateMaterial.includes('铝') ? `铝锭价+牌号加价` : '参考价' },
-              { label: '整张板重', value: (p.sheetLength * p.sheetWidth * p.thickness / 1000 * p.density / 1000).toFixed(2), unit: 'kg', formula: '2440×1220×厚×密度' },
-              { label: '整张板价', value: p.materialCostPerSheet, unit: '元', formula: '板重×单价' },
-              { label: '排版数量', value: p.nestingCount, unit: '件/张', formula: '' },
-              { label: '①材料费/件', value: p.materialCostPerPiece, unit: '元', formula: '整张板价÷排版数', highlight: true },
-              { label: '─'.repeat(20), value: '', unit: '', formula: '工序费逐级累加(×1.03×1.03)' },
-              ...p.processBreakdown.map((proc, i) => ({
-                label: `${i+1}. ${proc.name}`,
-                value: proc.total,
-                unit: '元',
-                formula: `累计后: ¥${proc.cumAfter.toFixed(4)}`,
-              })),
-              { label: '②加工累计', value: p.cumulativeAfterProcesses, unit: '元', formula: '逐级×1.03×1.03', highlight: true },
-              { label: '③表面处理', value: p.surfaceCost, unit: '元', formula: p.surfaceTreatmentType || '无' },
-              { label: '④报价主体', value: p.quoteMain, unit: '元', formula: '(②+③)×1.05', highlight: true },
-              { label: '⑤包装费', value: p.packaging, unit: '元', formula: `${p.weightPerPiece}kg×0.5` },
-              { label: '⑥运输费', value: p.transport, unit: '元', formula: `${p.weightPerPiece}kg×0.5` },
-              { label: '═══ 总报价/件 ═══', value: p.totalPrice, unit: '元', formula: '④+⑤+⑥', highlight: true },
-              { label: '含税价(13%)', value: Math.round(p.totalPrice * 1.13 * 10000) / 10000, unit: '元', formula: '总报价×1.13', highlight: true },
-            ];
-            if (p.totalMoldCost > 0) {
-              rows.push({ label: '模具费', value: p.totalMoldCost, unit: '元', formula: `摊销: ¥${(p.totalMoldCost / (parseInt(formData.minOrderQty) || 100)).toFixed(2)}/件` });
-            }
-            return (
-              <div className="py-2 overflow-x-auto">
-                <div className="mb-2 px-3 py-1 bg-orange-50 rounded text-xs text-orange-700">
-                  📐 板材报价（总报价 = (加工累计+表面处理)×1.05 + 包装 + 运输）
-                </div>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50">
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">项目</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">数值</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">单位</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">说明</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((row, idx) => (
-                      <tr key={idx} className={cn('border-t', row.highlight ? 'bg-blue-50 font-semibold' : '', row.label.startsWith('─') ? 'border-dashed' : '')}>
-                        <td className="px-3 py-2">{row.label}</td>
-                        <td className="px-3 py-2">
-                          <span className={row.highlight ? 'text-blue-700 text-base' : ''}>
-                            {typeof row.value === 'number' ? row.value.toFixed(row.value < 1 ? 4 : 2) : row.value}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-gray-500">{row.unit}</td>
-                        <td className="px-3 py-2 text-gray-400 text-xs">{row.formula}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            );
-          })()}
-
-          {/* Step 2: 铝型材成本分析表 */}
-          {formStep === 'analysis' && costAnalysis && (
-            <div className="py-2 overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="text-left px-3 py-2 font-medium text-gray-600">项目</th>
-                    <th className="text-left px-3 py-2 font-medium text-gray-600">数值</th>
-                    <th className="text-left px-3 py-2 font-medium text-gray-600">单位</th>
-                    <th className="text-left px-3 py-2 font-medium text-gray-600">公式</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    const a = costAnalysis;
-                    const rows = [
-                      { label: '铝锭价', value: a.aluminumPrice, unit: '元/吨', formula: '实时获取', editable: true },
-                      { label: '毛重', value: a.grossWeight, unit: 'g', formula: '米重(kg/m)×(长度+5)(m)×1000' },
-                      { label: '净重', value: a.netWeight, unit: 'g', formula: '米重(kg/m)×长度(m)×1000' },
-                      { label: '体积', value: a.volume, unit: 'cm³', formula: '长×宽×高/1000' },
-                      { label: '材料成本', value: a.materialCost, unit: '元', formula: '(铝锭价+2000)/1000000×毛重' },
-                      { label: '加工费', value: a.processCost, unit: '元', formula: '(材料成本×0.05+0.1)×工序数' },
-                      { label: '表面处理', value: a.surfaceCost, unit: '元', formula: '净重×0.002+体积×0.0000003+0.1' },
-                      { label: '合计成本', value: a.totalCost, unit: '元', formula: '材料成本+表面处理+加工费', highlight: true },
-                      { label: '管理费用', value: a.managementFee, unit: '元', formula: '合计成本×0.1+500/起订量' },
-                      { label: '未税价', value: a.priceBeforeTax, unit: '元', formula: '合计成本+管理费用', highlight: true },
-                      { label: '含税价', value: a.priceWithTax, unit: '元', formula: '未税价×1.13', highlight: true },
-                    ];
-                    return rows.map((row) => (
-                      <tr key={row.label} className={cn('border-t', row.highlight ? 'bg-blue-50 font-semibold' : '')}>
-                        <td className="px-3 py-2">{row.label}</td>
-                        <td className="px-3 py-2">
-                          {row.editable ? (
-                            <Input type="number" value={row.value as number} onChange={(e) => {
-                              const p = parseFloat(e.target.value) || 0;
-                              setAluminumPrice(p);
-                              setCostAnalysis(calculateCostAnalysis(formData, p));
-                            }} className="w-28 h-8 text-sm" />
-                          ) : (
-                            <span className={row.highlight ? 'text-blue-700 text-base' : ''}>
-                              {typeof row.value === 'number' ? row.value.toFixed(row.value < 1 ? 6 : row.value < 100 ? 4 : 2) : row.value}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-gray-500">{row.unit}</td>
-                        <td className="px-3 py-2 text-gray-400 text-xs">{row.formula}</td>
-                      </tr>
-                    ));
-                  })()}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Step 3: 板材报价单预览 */}
-          {formStep === 'quotation' && plateCostAnalysis && (
-            <div className="py-2">
-              <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-lg p-4 border border-orange-100">
-                <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                  <Download className="w-4 h-4 text-orange-600" />
-                  板材报价单预览
-                </h3>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div><span className="text-gray-500">产品编号：</span>{formData.productCode || '-'}</div>
-                  <div><span className="text-gray-500">产品名称：</span>{formData.productName || '-'}</div>
-                  <div><span className="text-gray-500">板材材料：</span>{plateCostAnalysis.plateMaterial}</div>
-                  <div><span className="text-gray-500">板厚：</span>{plateCostAnalysis.thickness}mm</div>
-                  <div><span className="text-gray-500">排版数量：</span>{plateCostAnalysis.nestingCount}件/张</div>
-                  <div><span className="text-gray-500">表面处理：</span>{plateCostAnalysis.surfaceTreatmentType}</div>
-                  <div><span className="text-gray-500">单件重量：</span>{plateCostAnalysis.weightPerPiece}kg</div>
-                  <div><span className="text-gray-500">单位：</span>{formData.unit}</div>
-                  <div><span className="text-gray-500">加工工序：</span>{plateCostAnalysis.processBreakdown.map(p => p.name).join(' → ')}</div>
-                  <div><span className="text-gray-500">最小起订量：</span>{formData.minOrderQty}件</div>
-                  <div className="col-span-2 border-t border-orange-200 pt-2 mt-1">
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-gray-500">材料费/件</span>
-                      <span>¥{plateCostAnalysis.materialCostPerPiece.toFixed(4)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-gray-500">加工累计</span>
-                      <span>¥{plateCostAnalysis.cumulativeAfterProcesses.toFixed(4)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-gray-500">表面处理</span>
-                      <span>¥{plateCostAnalysis.surfaceCost.toFixed(4)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-gray-500">报价主体(×1.05)</span>
-                      <span>¥{plateCostAnalysis.quoteMain.toFixed(4)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-gray-500">包装+运输</span>
-                      <span>¥{(plateCostAnalysis.packaging + plateCostAnalysis.transport).toFixed(4)}</span>
-                    </div>
-                  </div>
-                  <div className="col-span-2 flex justify-between items-center bg-white rounded p-2 border border-orange-200">
-                    <span className="text-gray-600 font-medium">未税单价：</span>
-                    <span className="text-blue-700 font-semibold text-lg">¥{plateCostAnalysis.totalPrice.toFixed(4)}</span>
-                  </div>
-                  <div className="col-span-2 flex justify-between items-center bg-red-50 rounded p-2 border border-red-200">
-                    <span className="text-gray-600 font-medium">含税单价(13%)：</span>
-                    <span className="text-red-600 font-bold text-xl">¥{(plateCostAnalysis.totalPrice * 1.13).toFixed(4)}</span>
-                  </div>
-                  {plateCostAnalysis.totalMoldCost > 0 && (
-                    <div className="col-span-2 flex justify-between text-sm">
-                      <span className="text-gray-500">模具费(一次性)</span>
-                      <span>¥{plateCostAnalysis.totalMoldCost.toLocaleString()}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: 铝型材报价单预览 */}
-          {formStep === 'quotation' && costAnalysis && (
-            <div className="py-2">
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-100">
-                <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                  <Download className="w-4 h-4 text-blue-600" />
-                  报价单预览
-                </h3>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div><span className="text-gray-500">产品编号：</span>{formData.productCode || '-'}</div>
-                  <div><span className="text-gray-500">产品名称：</span>{formData.productName || '-'}</div>
-                  <div><span className="text-gray-500">规格尺寸：</span>{[formData.length, formData.width, formData.height].filter(Boolean).join('×')}mm</div>
-                  <div><span className="text-gray-500">材质：</span>{formData.material}</div>
-                  <div><span className="text-gray-500">表面处理：</span>{formData.surfaceTreatment}</div>
-                  <div><span className="text-gray-500">单位：</span>{formData.unit}</div>
-                  <div className="text-blue-700 font-semibold"><span className="text-gray-500 font-normal">未税价：</span>¥{costAnalysis.priceBeforeTax.toFixed(2)}</div>
-                  <div className="text-red-600 font-bold text-base"><span className="text-gray-500 font-normal text-sm">含税价：</span>¥{costAnalysis.priceWithTax.toFixed(2)}</div>
-                  <div><span className="text-gray-500">最小起订量：</span>{formData.minOrderQty}件</div>
-                  <div><span className="text-gray-500">模具费：</span>¥{formData.moldFee || '0'}</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            {formStep === 'form' && (
-              <>
-                <Button variant="outline" onClick={() => setFormOpen(false)}>取消</Button>
-                <Button onClick={handleFormSubmit} className="bg-orange-500 hover:bg-orange-600 text-white">
-                  计算成本 <ArrowRight className="w-4 h-4 ml-1" />
-                </Button>
-              </>
-            )}
-            {formStep === 'analysis' && (
-              <>
-                <Button variant="outline" onClick={() => setFormStep('form')}>
-                  <ArrowLeft className="w-4 h-4 mr-1" /> 返回修改
-                </Button>
-                <Button onClick={() => setFormStep('quotation')} className="bg-orange-500 hover:bg-orange-600 text-white">
-                  确认并预览 <ArrowRight className="w-4 h-4 ml-1" />
-                </Button>
-              </>
-            )}
-            {formStep === 'quotation' && (
-              <>
-                <Button variant="outline" onClick={() => setFormStep('analysis')}>
-                  <ArrowLeft className="w-4 h-4 mr-1" /> 返回修改
-                </Button>
-                <Button onClick={handleConfirmAnalysis} className="bg-green-600 hover:bg-green-700 text-white">
-                  <Download className="w-4 h-4 mr-1" /> 下载报价单
-                </Button>
-              </>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
