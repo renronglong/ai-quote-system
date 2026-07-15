@@ -20,7 +20,7 @@ interface CozeMessage {
   role: 'user' | 'assistant';
   content: string;
   content_type: 'text' | 'object_string';
-  type?: 'question' | 'answer';
+
 }
 
 // 上传图片到Coze获取file_id
@@ -286,7 +286,7 @@ export async function POST(request: NextRequest) {
             role: 'user',
             content: textContent,
             content_type: 'text',
-            type: 'question',
+
           });
           // 发送所有页面图片
           const imageObjects = cozeFileIds.map(id => ({ type: 'image' as const, file_id: id }));
@@ -295,7 +295,7 @@ export async function POST(request: NextRequest) {
             role: 'user',
             content: fileContent,
             content_type: 'object_string',
-            type: 'question',
+
           });
         } else if (cozeFileId) {
           // 单文件模式（图片或PDF回退）
@@ -311,14 +311,14 @@ export async function POST(request: NextRequest) {
             role: 'user',
             content: textContent,
             content_type: 'text',
-            type: 'question',
+
           });
           const fileContent = JSON.stringify([{ type: contentType, file_id: cozeFileId }]);
           additionalMessages.push({
             role: 'user',
             content: fileContent,
             content_type: 'object_string',
-            type: 'question',
+
           });
         } else if (extractedText) {
           // ★ 没有文件ID但有提取文字（PDF提取成功，前端决定不发送文件ID）
@@ -333,14 +333,14 @@ export async function POST(request: NextRequest) {
             role: 'user',
             content: textContent,
             content_type: 'text',
-            type: 'question',
+
           });
         } else {
           additionalMessages.push({
             role: 'user',
             content: userContent,
             content_type: 'text',
-            type: 'question',
+
           });
         }
 
