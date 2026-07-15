@@ -2136,13 +2136,14 @@ export default function ChatPanel() {
     const isZip = file.name.toLowerCase().endsWith('.zip') || file.name.toLowerCase().endsWith('.rar');
     
     
+    // CAD文件优先判断，避免浏览器误识别MIME类型走错路径
     if (isZip) {
       handleZipUpload(file);
-    } else if (isImage) {
-      handleImageUpload(file);
     } else if (isCad) {
       const format = isStep ? 'step' : isIges ? 'iges' : 'dxf';
       handleCadUpload(file, format);
+    } else if (isImage) {
+      handleImageUpload(file);
     } else {
       // PDF和Excel文件处理
       handleFileUpload(file);
