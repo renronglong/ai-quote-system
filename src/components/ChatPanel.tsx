@@ -664,15 +664,24 @@ interface ExtractedPricingParams {
 }
 
 function extractPricingParams(text: string): ExtractedPricingParams | null {
-  // ---- 宽度 / 高度 ----
+  // ---- 宽度 / 高度 / 长度 ----
   let outerWidth: number | undefined;
   let outerHeight: number | undefined;
+  let length: number | undefined;
 
-  // 模式1: "38.7×21.7mm" / "38.7x21.7" / "38.7X21.7" (乘号或x)
-  const dimMulMatch = text.match(/(\d+(?:\.\d+)?)\s*[×xX*]\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
-  if (dimMulMatch) {
-    outerWidth = parseFloat(dimMulMatch[1]);
-    outerHeight = parseFloat(dimMulMatch[2]);
+  // 模式0: 三维格式 "100*20*3mm" / "100×20×3" (长*宽*高)
+  const dim3Match = text.match(/(\d+(?:\.\d+)?)\s*[×xX*]\s*(\d+(?:\.\d+)?)\s*[×xX*]\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
+  if (dim3Match) {
+    length = parseFloat(dim3Match[1]);
+    outerWidth = parseFloat(dim3Match[2]);
+    outerHeight = parseFloat(dim3Match[3]);
+  } else {
+    // 模式1: "38.7×21.7mm" / "38.7x21.7" / "38.7X21.7" (两维 W*H)
+    const dimMulMatch = text.match(/(\d+(?:\.\d+)?)\s*[×xX*]\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
+    if (dimMulMatch) {
+      outerWidth = parseFloat(dimMulMatch[1]);
+      outerHeight = parseFloat(dimMulMatch[2]);
+    }
   }
 
   // 模式2: "宽38.7 高21.7" / "外宽38.7 外高21.7" / "宽度38.7 高度21.7"
@@ -693,8 +702,7 @@ function extractPricingParams(text: string): ExtractedPricingParams | null {
     }
   }
 
-  // ---- 长度 ----
-  let length: number | undefined;
+  // ---- 长度（如果三维匹配未设置则从文字提取） ----
   // "长100mm" / "长度100" / "L=100mm" / "长：100"
   const lenMatch = text.match(/(?:长(?:度)?|L)\s*[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
   if (lenMatch) {
