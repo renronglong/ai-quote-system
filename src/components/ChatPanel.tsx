@@ -515,9 +515,11 @@ interface ExtractedPricingParams {
   cavity?: { width: number; height: number };
   length: number;
   quantity: number;
-  surfaceTreatment: '无' | '氧化本色' | '氧化黑色' | '喷涂' | '电泳';
+  surfaceTreatment: '无' | '氧化本色' | '氧化黑色' | '喷涂' | '电泳' | '拉丝' | '喷砂' | '磷化' | '镀锌' | '镀镍' | '抛光' | '镀铬';
   drillingHoles?: number;
   tappingHoles?: number;
+  unitWeight?: number;
+  crossSectionArea?: number;
 }
 
 function extractPricingParams(text: string): ExtractedPricingParams | null {
@@ -669,14 +671,154 @@ function extractPricingParams(text: string): ExtractedPricingParams | null {
 
 // 从Bot回复文本中提取产品参数（用于自动报价）
 function extractPricingParamsFromBotReply(text: string): ExtractedPricingParams | null {
-  // 检查是否包含产品参数识别结果的标记
-  if (!text.includes('产品参数识别结果') && !text.includes('📋') && !(/[×xX]/.test(text) && /mm/i.test(text))) {
+  // 检查是否包含产品参数相关内容（Bot回复通常有"参数"、尺寸数值等）
+  const hasProductInfo = text.includes('产品参数识别结果') || text.includes('📋') ||
+    (/\d+(?:\.\d+)?\s*mm/i.test(text) && /(?:截面|尺寸|型材|铝|产品|编号|数量|重量)/.test(text));
+  if (!hasProductInfo) return null;
+
+  // 先尝试简单格式（用户直接输入的参数）
+  const simpleResult = extractPricingParams(text);
+  if (simpleResult) return simpleResult;
+
+  // ---- Bot冗余格式提取 ----
+  // Bot输出格式如：
+  // ### 3. 截面尺寸（实心矩形）
+  // **参数值**：38.7mm（宽）×21.7mm（高）
+  // ### 4. 单根长度
+  // **参数值**：100mm
+  // ### 5. 订单数量
+  // **参数值**：5000件
+
+  let outerWidth: number | undefined;
+  let outerHeight: number | undefined;
+  let length: number | undefined;
+  let quantity: number | undefined;
+  let isHollow = false;
+  let unitWeight: number | undefined;
+
+  // 1. 截面尺寸：从"截面尺寸"段落提取
+  // 匹配 "38.7mm（宽）×21.7mm（高）" 或 "38.7×21.7mm" 或 "宽38.7 高21.7"
+  const sectionBlock = text.match(/截面尺寸[\s\S]*?(?=###|$)/);
+  if (sectionBlock) {
+    const block = sectionBlock[0];
+    // "38.7mm（宽）×21.7mm（高）"
+    const wxhMatch = block.match(/(\d+(?:\.\d+)?)\s*(?:mm)?\s*[（(]\s*宽\s*[）)]\s*[×xX*]\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[（(]\s*高\s*[）)]/);
+    if (wxhMatch) {
+      outerWidth = parseFloat(wxhMatch[1]);
+      outerHeight = parseFloat(wxhMatch[2]);
+    } else {
+      // "38.7×21.7mm" 或 "38.7 × 21.7"
+      const mulMatch = block.match(/(\d+(?:\.\d+)?)\s*[×xX*]\s*(\d+(?:\.\d+)?)/);
+      if (mulMatch) {
+        outerWidth = parseFloat(mulMatch[1]);
+        outerHeight = parseFloat(mulMatch[2]);
+      } else {
+        // "宽38.7 高21.7"
+        const wMatch = block.match(/宽\s*[：:=]?\s*(\d+(?:\.\d+)?)/);
+        const hMatch = block.match(/高\s*[：:=]?\s*(\d+(?:\.\d+)?)/);
+        if (wMatch) outerWidth = parseFloat(wMatch[1]);
+        if (hMatch) outerHeight = parseFloat(hMatch[1]);
+      }
+    }
+    if (/实心|无内腔/.test(block)) isHollow = false;
+    if (/空心|有内腔|中空/.test(block)) isHollow = true;
+  }
+
+  // Fallback: 从全文找 宽×高
+  if (outerWidth === undefined) {
+    const globalMul = text.match(/(\d+(?:\.\d+)?)\s*(?:mm)?\s*[（(]\s*宽\s*[）)]\s*[×xX*]\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[（(]\s*高\s*[）)]/);
+    if (globalMul) {
+      outerWidth = parseFloat(globalMul[1]);
+      outerHeight = parseFloat(globalMul[2]);
+    }
+  }
+
+  // 2. 长度：从"长度"段落提取
+  const lengthBlock = text.match(/(?:单根)?长度[\s\S]*?(?=###|$)/);
+  if (lengthBlock) {
+    const lenMatch = lengthBlock[0].match(/(\d+(?:\.\d+)?)\s*(?:mm|毫米)/);
+    if (lenMatch) length = parseFloat(lenMatch[1]);
+  }
+  // Fallback
+  if (length === undefined) {
+    const lenFallback = text.match(/(?:长(?:度)?|L)\s*[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)/);
+    if (lenFallback) length = parseFloat(lenFallback[1]);
+  }
+
+  // 3. 数量：从"数量"段落提取
+  const qtyBlock = text.match(/(?:订单)?数量[\s\S]*?(?=###|$)/);
+  if (qtyBlock) {
+    const qtyMatch = qtyBlock[0].match(/(\d+(?:\.\d+)?)/);
+    if (qtyMatch) quantity = parseInt(qtyMatch[1]);
+  }
+  // Fallback
+  if (quantity === undefined) {
+    const qtyFallback = text.match(/(\d+(?:\.\d+)?)\s*(?:件|支|套|pcs|PCS)/i);
+    if (qtyFallback) quantity = parseInt(qtyFallback[1]);
+  }
+
+  // 4. 净重/理论重量
+  const weightBlock = text.match(/(?:理论重量|净重|单根.*?重量)[\s\S]*?(?=###|$)/);
+  if (weightBlock) {
+    // "227g = 0.227kg" 或 "0.227kg" 或 "227g"
+    const kgMatch = weightBlock[0].match(/(\d+(?:\.\d+)?)\s*kg/);
+    const gMatch = weightBlock[0].match(/(\d+(?:\.\d+)?)\s*g(?!B)/);
+    if (kgMatch) {
+      unitWeight = parseFloat(kgMatch[1]);
+    } else if (gMatch) {
+      unitWeight = parseFloat(gMatch[1]) / 1000;
+    }
+  }
+
+  // 5. 表面处理
+  let surfaceTreatment: ExtractedPricingParams['surfaceTreatment'] = '无';
+  const surfaceBlock = text.match(/表面处理[\s\S]*?(?=###|$)/);
+  const surfaceText = surfaceBlock ? surfaceBlock[0] : text;
+  if (/氧化本色|本色氧化/.test(surfaceText)) {
+    surfaceTreatment = '氧化本色';
+  } else if (/氧化黑/.test(surfaceText)) {
+    surfaceTreatment = '氧化黑色';
+  } else if (/喷涂|喷粉|粉体/.test(surfaceText)) {
+    surfaceTreatment = '喷涂';
+  } else if (/电泳/.test(surfaceText)) {
+    surfaceTreatment = '电泳';
+  } else if (/拉丝/.test(surfaceText)) {
+    surfaceTreatment = '拉丝';
+  } else if (/喷砂/.test(surfaceText)) {
+    surfaceTreatment = '喷砂';
+  } else if (/抛光/.test(surfaceText)) {
+    surfaceTreatment = '抛光';
+  } else if (/镀[锌镍铬]/.test(surfaceText)) {
+    surfaceTreatment = /镀[锌镍]/.test(surfaceText) ? (/[镍]/.test(surfaceText) ? '镀镍' : '镀锌') : '镀铬';
+  } else if (/磷化/.test(surfaceText)) {
+    surfaceTreatment = '磷化';
+  } else if (/氧化(?!黑)/.test(surfaceText)) {
+    surfaceTreatment = '氧化本色';
+  }
+
+  // 6. 截面面积（Bot有时会直接给出）
+  let crossSectionArea: number | undefined;
+  const areaMatch = text.match(/截面面积\s*[：:=]?\s*(\d+(?:\.\d+)?)\s*mm/);
+  if (areaMatch) {
+    crossSectionArea = parseFloat(areaMatch[1]);
+  }
+
+  // 必要参数校验
+  if (outerWidth === undefined || outerHeight === undefined || length === undefined || quantity === undefined) {
     return null;
   }
 
-  // 复用已有的 extractPricingParams 逻辑
-  // Bot回复中的参数格式与用户输入类似，可以直接复用
-  return extractPricingParams(text);
+  return {
+    productType: 'extrusion',
+    outerWidth,
+    outerHeight,
+    isHollow,
+    length,
+    quantity,
+    surfaceTreatment,
+    unitWeight,
+    crossSectionArea,
+  };
 }
 
 function MessageContent({ message }: { message: Message }) {
