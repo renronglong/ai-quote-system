@@ -97,8 +97,8 @@ function calculateSurfaceTreatment(
   }
 }
 
-const CUTTING_COST_SOLID = 1.5;   // 元/件
-const CUTTING_COST_HOLLOW = 0.8;  // 元/件
+const STAMPING_COST_SOLID = 1.5;   // 冲压费-实心 (元/件)
+const STAMPING_COST_HOLLOW = 0.8;  // 冲压费-空心 (元/件)
 const DRILLING_COST_PER_HOLE = 0.3;  // 元/孔
 const TAPPING_COST_PER_HOLE = 0.5;   // 元/孔
 
@@ -202,18 +202,17 @@ export function calculateExtrusion(input: ExtrusionInput): PricingResult {
     cost: extrusionCost,
   });
 
-  // ---- 4. CNC 费 ----
-  // 切割+去毛刺
-  const cuttingCost = input.isHollow ? CUTTING_COST_HOLLOW : CUTTING_COST_SOLID;
+  // ---- 4. 冲压费 ----
+  const stampingCost = input.isHollow ? STAMPING_COST_HOLLOW : STAMPING_COST_SOLID;
   // 钻孔费
   const drillingCost = (input.drillingHoles ?? 0) * DRILLING_COST_PER_HOLE;
   // 攻丝费
   const tappingCost = (input.tappingHoles ?? 0) * TAPPING_COST_PER_HOLE;
 
-  const cncCost = cuttingCost + drillingCost + tappingCost;
+  const cncCost = stampingCost + drillingCost + tappingCost;
 
   const cncParts: string[] = [
-    `切割+去毛刺: ¥${cuttingCost}(${input.isHollow ? '空心' : '实心'})`,
+    `冲压工序: ¥${stampingCost}(${input.isHollow ? '空心' : '实心'})`,
   ];
   if (drillingCost > 0) {
     cncParts.push(`钻孔: ${input.drillingHoles}孔 × ¥${DRILLING_COST_PER_HOLE} = ¥${drillingCost.toFixed(2)}`);
@@ -223,7 +222,7 @@ export function calculateExtrusion(input: ExtrusionInput): PricingResult {
   }
 
   breakdown.push({
-    item: 'CNC加工费',
+    item: '冲压费',
     calculation: cncParts.join('; '),
     cost: cncCost,
   });
@@ -311,11 +310,11 @@ export function calculatePlate(input: PlateInput): PricingResult {
     cost: extrusionCost,
   });
 
-  // CNC 费
-  const cncCost = CUTTING_COST_SOLID;
+  // 冲压费
+  const cncCost = STAMPING_COST_SOLID;
   breakdown.push({
-    item: '切割费',
-    calculation: `标准切割 ¥${CUTTING_COST_SOLID}/件`,
+    item: '冲压费',
+    calculation: `标准冲压 ¥${STAMPING_COST_SOLID}/件`,
     cost: cncCost,
   });
 
@@ -397,11 +396,11 @@ export function calculateDieCasting(input: DieCastingInput): PricingResult {
     cost: castingCost,
   });
 
-  // CNC 费
-  const cncCost = CUTTING_COST_SOLID;
+  // 冲压费
+  const cncCost = STAMPING_COST_SOLID;
   breakdown.push({
-    item: '后处理费',
-    calculation: `标准后处理 ¥${CUTTING_COST_SOLID}/件`,
+    item: '冲压费',
+    calculation: `标准冲压 ¥${STAMPING_COST_SOLID}/件`,
     cost: cncCost,
   });
 
