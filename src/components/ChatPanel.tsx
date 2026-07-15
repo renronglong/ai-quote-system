@@ -34,6 +34,8 @@ interface Message {
   pricingResult?: PricingResultData | null;
   pricingLoading?: boolean;
   pricingError?: string | null;
+  // 装配体报价结果
+  assemblyPricingResult?: AssemblyPricingData | null;
 }
 
 interface ToolCall {
@@ -203,6 +205,145 @@ function PricingResultCard({ data }: { data: PricingResultData }) {
           </div>
         </div>
         
+        {/* 铝价信息 */}
+        <div className="text-xs text-gray-400 flex items-center gap-1">
+          <span>💰</span>
+          <span>铝锭价：¥{data.aluminumPrice.pricePerKg.toFixed(2)}/kg（{data.aluminumPrice.pricePerTon.toLocaleString()}元/吨，来源：{data.aluminumPrice.source}）</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 装配体报价数据接口
+interface AssemblyPartData {
+  partId: string;
+  quantity: number;
+  dimensions: number[];
+  volume: number;
+  weight: number;
+  isExtrusion: boolean;
+  crossSectionArea: number;
+  length: number;
+  unitCost: number;
+  partTotalCost: number;
+  breakdown: Array<{ item: string; calculation: string; cost: number }>;
+}
+
+interface AssemblyPricingData {
+  productType: 'assembly';
+  partsCount: number;
+  uniqueParts: AssemblyPartData[];
+  partsPricing: AssemblyPartData[];
+  totalCost: number;
+  aluminumPrice: {
+    pricePerTon: number;
+    pricePerKg: number;
+    source: string;
+  };
+}
+
+// 装配体BOM报价卡片
+function AssemblyPricingCard({ data }: { data: AssemblyPricingData }) {
+  const [expandedParts, setExpandedParts] = useState<Set<string>>(new Set());
+
+  const togglePart = (partId: string) => {
+    setExpandedParts(prev => {
+      const next = new Set(prev);
+      if (next.has(partId)) {
+        next.delete(partId);
+      } else {
+        next.add(partId);
+      }
+      return next;
+    });
+  };
+
+  return (
+    <div className="mt-3 bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl border border-violet-200 overflow-hidden shadow-sm">
+      {/* 标题 */}
+      <div className="bg-gradient-to-r from-violet-500 to-purple-500 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🔧</span>
+            <span className="text-white font-bold text-base">装配体报价</span>
+          </div>
+          <span className="text-white/80 text-sm">{data.partsCount} 个零件 · {data.uniqueParts.length} 种</span>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-3">
+        {/* 零件明细列表 */}
+        <div>
+          <div className="text-xs font-semibold text-violet-700 uppercase tracking-wide mb-2">零件明细（BOM）</div>
+          <div className="bg-white rounded-lg border border-violet-100 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-violet-50 border-b border-violet-100">
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-violet-600">零件</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold text-violet-600">数量</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-violet-600">尺寸(mm)</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-violet-600">单件价</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-violet-600">小计</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-violet-50">
+                {data.partsPricing.flatMap((part) => {
+                  const isExpanded = expandedParts.has(part.partId);
+                  const rows = [
+                    <tr
+                      key={part.partId}
+                      className="hover:bg-violet-50/50 cursor-pointer transition-colors"
+                      onClick={() => togglePart(part.partId)}
+                    >
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-violet-400 text-xs">{isExpanded ? '▼' : '▶'}</span>
+                          <span className="font-bold text-violet-700">{part.partId}</span>
+                          <span className="text-xs text-gray-400">{part.isExtrusion ? '挤压件' : '板材件'}</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-center font-medium text-gray-700">×{part.quantity}</td>
+                      <td className="px-3 py-2.5 text-right text-gray-600 text-xs">
+                        {part.dimensions.length === 3
+                          ? `${part.dimensions[0]}×${part.dimensions[1]}×${part.dimensions[2]}`
+                          : `${part.crossSectionArea}mm² L${part.length}mm`}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-semibold text-gray-800">¥{part.unitCost.toFixed(2)}</td>
+                      <td className="px-3 py-2.5 text-right font-bold text-violet-700">¥{part.partTotalCost.toFixed(2)}</td>
+                    </tr>
+                  ];
+                  if (isExpanded) {
+                    rows.push(
+                      <tr key={`${part.partId}-detail`}>
+                        <td colSpan={5} className="px-3 py-2 bg-violet-50/30">
+                          <div className="text-xs space-y-1 pl-6">
+                            {part.breakdown.map((item, idx) => (
+                              <div key={idx} className="flex justify-between text-gray-500">
+                                <span>{item.item}</span>
+                                <span>¥{item.cost.toFixed(2)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  return rows;
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* 总价 */}
+        <div className="flex justify-between items-center bg-gradient-to-r from-violet-500 to-purple-500 rounded-lg px-4 py-3 shadow-sm">
+          <span className="text-white font-medium">装配体总价（{data.partsCount}件）</span>
+          <span className="text-xl font-bold text-white">
+            ¥{data.totalCost.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+        </div>
+
         {/* 铝价信息 */}
         <div className="text-xs text-gray-400 flex items-center gap-1">
           <span>💰</span>
@@ -1008,7 +1149,7 @@ function MessageContent({ message }: { message: Message }) {
   }
   
   // 如果是assistant消息且有关联的报价结果，附加显示
-  if (message.role === 'assistant' && (message.pricingResult || message.pricingLoading || message.pricingError)) {
+  if (message.role === 'assistant' && (message.pricingResult || message.pricingLoading || message.pricingError || message.assemblyPricingResult)) {
     return (
       <div>
         <div className="whitespace-pre-wrap">{cleanContent}</div>
@@ -1025,6 +1166,7 @@ function MessageContent({ message }: { message: Message }) {
           </div>
         )}
         {message.pricingResult && <PricingResultCard data={message.pricingResult} />}
+        {message.assemblyPricingResult && <AssemblyPricingCard data={message.assemblyPricingResult} />}
       </div>
     );
   }
@@ -1627,11 +1769,28 @@ export default function ChatPanel() {
                 const resp = await fetch('/api/pricing/step-quote', { method: 'POST', body: fd });
                 const stepData = await resp.json();
                 if (stepData.success && stepData.data) {
-                  const pr = stepData.data.parseResult;
-                  const ext = pr.extrusion;
-                  const cadText = `\n--- ${baseName} (STEP精确解析) ---\n材质：铝合金 (${pr.weight.material})\n产品类型：${ext.isExtrusion ? '铝挤压型材' : '铝板/块'}\n包围盒：${pr.boundingBox.x}×${pr.boundingBox.y}×${pr.boundingBox.z} mm\n体积(mm³)：${pr.volume}\n表面积(mm²)：${pr.surfaceArea}\n重量(g)：${pr.weight.grams}\n面数/边数：${pr.topology.faceCount}/${pr.topology.edgeCount}\n米重(kg/m)：${ext.weightPerMeter}\n截面尺寸(mm)：${ext.crossWidth}×${ext.crossHeight}\n截面积(mm²)：${ext.crossSectionArea}\n长度(mm)：${ext.length}\n是否空心：${ext.isHollow ? '是' : '否'}\n加工工艺：铝挤压\n表面处理：氧化本色\n`;
-                  allExtractedTexts.push(cadText);
-                  fileSummaries.push(`📐 ${baseName} (STEP精确解析)`);
+                  if (stepData.data.isAssembly) {
+                    // 装配体模式
+                    const pr = stepData.data.parseResult;
+                    const pricing = stepData.data.pricingResult;
+                    let cadText = `\n--- ${baseName} (STEP装配体解析) ---\n零件总数：${pr.partsCount}个（${pr.uniqueParts.length}种）\n总体积(mm³)：${pr.totalVolume}\n总重量(g)：${pr.totalWeight}\n`;
+                    for (const part of pr.uniqueParts) {
+                      cadText += `零件${part.id}（×${part.quantity}）：${part.dimensions[0]}×${part.dimensions[1]}×${part.dimensions[2]}mm，截面${part.crossSectionArea}mm²，长度${part.length}mm\n`;
+                    }
+                    cadText += `加工工艺：铝挤压+焊接装配\n表面处理：氧化本色\n`;
+                    for (const part of pricing.partsPricing) {
+                      cadText += `零件${part.partId}报价：¥${part.unitCost.toFixed(2)}/件 ×${part.quantity} = ¥${part.partTotalCost.toFixed(2)}\n`;
+                    }
+                    cadText += `装配体总价：¥${pricing.totalCost.toFixed(2)}\n`;
+                    allExtractedTexts.push(cadText);
+                    fileSummaries.push(`🔧 ${baseName} (装配体${pr.partsCount}件)`);
+                  } else {
+                    const pr = stepData.data.parseResult;
+                    const ext = pr.extrusion;
+                    const cadText = `\n--- ${baseName} (STEP精确解析) ---\n材质：铝合金 (${pr.weight.material})\n产品类型：${ext.isExtrusion ? '铝挤压型材' : '铝板/块'}\n包围盒：${pr.boundingBox.x}×${pr.boundingBox.y}×${pr.boundingBox.z} mm\n体积(mm³)：${pr.volume}\n表面积(mm²)：${pr.surfaceArea}\n重量(g)：${pr.weight.grams}\n面数/边数：${pr.topology.faceCount}/${pr.topology.edgeCount}\n米重(kg/m)：${ext.weightPerMeter}\n截面尺寸(mm)：${ext.crossWidth}×${ext.crossHeight}\n截面积(mm²)：${ext.crossSectionArea}\n长度(mm)：${ext.length}\n是否空心：${ext.isHollow ? '是' : '否'}\n加工工艺：铝挤压\n表面处理：氧化本色\n`;
+                    allExtractedTexts.push(cadText);
+                    fileSummaries.push(`📐 ${baseName} (STEP精确解析)`);
+                  }
                   parsedOk = true;
                 }
               } catch {
@@ -1739,10 +1898,51 @@ export default function ChatPanel() {
           
           if (data.success && data.data) {
             backendParseSuccess = true;
-            const { parseResult, pricingResult } = data.data;
+            const { isAssembly, parseResult, pricingResult } = data.data;
+            
+            // ===== 装配体模式 =====
+            if (isAssembly && parseResult.assembly) {
+              let cadContent = `📐 STEP 装配体解析完成！\n\n`;
+              cadContent += `**文件名称：** ${file.name}\n`;
+              cadContent += `**类型：** 装配体（挤压型材切割+焊接）\n\n`;
+              cadContent += `📏 **总体参数**\n`;
+              cadContent += `- 零件总数：${parseResult.partsCount} 个\n`;
+              cadContent += `- 去重后：${parseResult.uniqueParts.length} 种零件\n`;
+              cadContent += `- 总体积：${parseResult.totalVolume.toLocaleString()} mm³\n`;
+              cadContent += `- 总重量：${parseResult.totalWeight} g\n\n`;
+              
+              cadContent += `🔧 **零件明细**\n`;
+              for (const part of parseResult.uniqueParts) {
+                const dims = part.dimensions;
+                cadContent += `- **零件${part.id}**（×${part.quantity}）：${dims[0]}×${dims[1]}×${dims[2]} mm`;
+                cadContent += `，截面${part.crossSectionArea}mm²，长度${part.length}mm`;
+                cadContent += `，重量${part.weight}g\n`;
+              }
+              cadContent += `\n`;
+              
+              cadContent += `💰 **装配体报价**\n`;
+              for (const part of pricingResult.partsPricing) {
+                cadContent += `- 零件${part.partId}（×${part.quantity}）：¥${part.unitCost.toFixed(2)}/件 → 小计 ¥${part.partTotalCost.toFixed(2)}\n`;
+              }
+              cadContent += `- **装配体总价：¥${pricingResult.totalCost.toFixed(2)}**\n`;
+              
+              const assistantMsg: Message = {
+                id: Date.now().toString(),
+                role: 'assistant',
+                content: cadContent,
+                timestamp: new Date(),
+                assemblyPricingResult: pricingResult as AssemblyPricingData,
+              };
+              setMessages(prev => [...prev, assistantMsg]);
+              
+              setStatusMessage(null);
+              setIsLoading(false);
+              return;
+            }
+            
+            // ===== 单件模式（原有逻辑）=====
             const ext = parseResult.extrusion;
             
-            // 构建精确解析展示文本
             let cadContent = `📐 STEP 文件精确解析完成！\n\n`;
             cadContent += `**文件名称：** ${file.name}\n`;
             cadContent += `**产品类型：** ${ext.isExtrusion ? '铝挤压型材' : '铝板/块'}\n\n`;
@@ -1768,7 +1968,6 @@ export default function ChatPanel() {
             cadContent += `- 单件成本：¥${pricingResult.unitCost.toFixed(2)}\n`;
             cadContent += `- 总价(1件)：¥${pricingResult.totalCost.toFixed(2)}\n\n`;
             
-            // 添加助手消息（含报价卡片）
             const assistantMsg: Message = {
               id: Date.now().toString(),
               role: 'assistant',
@@ -1778,7 +1977,6 @@ export default function ChatPanel() {
             };
             setMessages(prev => [...prev, assistantMsg]);
             
-            // 设置 CAD 解析结果（兼容原有逻辑）
             setCadResult({
               success: true,
               format: 'step',
@@ -1793,7 +1991,7 @@ export default function ChatPanel() {
             
             setStatusMessage(null);
             setIsLoading(false);
-            return; // 后端解析成功，直接返回
+            return;
           }
         } catch (backendErr) {
           console.warn('[CAD] 后端STEP解析失败，降级到客户端解析:', backendErr);

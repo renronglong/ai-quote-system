@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { calculatePrice } from '@/lib/pricing/engine';
-import type { PricingInput, ExtrusionInput } from '@/lib/pricing/types';
+import { calculatePrice, calculatePriceFull } from '@/lib/pricing/engine';
+import type { PricingInput, ExtrusionInput, FullPricingInput, AssemblyInput } from '@/lib/pricing/types';
 
 // 获取实时铝价
 async function getAluminumPrice(): Promise<number> {
@@ -75,12 +75,20 @@ function validateInput(body: Record<string, unknown>): string[] {
   const errors: string[] = [];
 
   if (!body.productType) {
-    errors.push('缺少必填参数: 产品类型 (productType)，可选值: extrusion, plate, die_casting');
+    errors.push('缺少必填参数: 产品类型 (productType)，可选值: extrusion, plate, die_casting, assembly');
     return errors;
   }
 
-  if (!['extrusion', 'plate', 'die_casting'].includes(body.productType as string)) {
-    errors.push(`不支持的产品类型: ${body.productType}，可选值: extrusion, plate, die_casting`);
+  if (!['extrusion', 'plate', 'die_casting', 'assembly'].includes(body.productType as string)) {
+    errors.push(`不支持的产品类型: ${body.productType}，可选值: extrusion, plate, die_casting, assembly`);
+    return errors;
+  }
+
+  // 装配体模式：需要parts数组
+  if (body.productType === 'assembly') {
+    if (!body.parts || !Array.isArray(body.parts) || body.parts.length === 0) {
+      errors.push('装配体模式需要提供 parts 数组');
+    }
     return errors;
   }
 
@@ -116,10 +124,10 @@ export async function POST(request: Request) {
     const aluminumPricePerTon = await getAluminumPrice();
 
     // 构造输入
-    const input: PricingInput = {
-      productType: body.productType as PricingInput['productType'],
+    const input: FullPricingInput = {
+      productType: body.productType as FullPricingInput['productType'],
       ...body,
-    } as PricingInput;
+    } as FullPricingInput;
 
     // 如果没有显式传入铝锭价，使用实时价格
     if (input.productType === 'extrusion') {
@@ -127,10 +135,15 @@ export async function POST(request: Request) {
       if (!extInput.aluminumPricePerTon) {
         extInput.aluminumPricePerTon = aluminumPricePerTon;
       }
+    } else if (input.productType === 'assembly') {
+      const asmInput = input as AssemblyInput;
+      if (!asmInput.aluminumPricePerTon) {
+        asmInput.aluminumPricePerTon = aluminumPricePerTon;
+      }
     }
 
-    // 计算
-    const result = calculatePrice(input);
+    // 计算（支持装配体）
+    const result = calculatePriceFull(input);
 
     return NextResponse.json({
       success: true,

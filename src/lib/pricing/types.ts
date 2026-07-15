@@ -138,3 +138,84 @@ export interface PricingResult {
     source: string;
   };
 }
+
+// ------------------------------------------------------------
+// 装配体报价类型
+// ------------------------------------------------------------
+
+/** 装配体中的单个零件信息 */
+export interface AssemblyPartInput {
+  /** 零件ID (A, B, C...) */
+  partId: string;
+  /** 产品类型（assembly中每个零件都是挤压件或板材件） */
+  productType: 'extrusion' | 'plate';
+  /** 该零件的数量 */
+  quantity: number;
+  /** 挤压件参数 */
+  outerWidth?: number;
+  outerHeight?: number;
+  length?: number;
+  isHollow?: boolean;
+  /** 板材件参数 */
+  width?: number;
+  height?: number;
+  thickness?: number;
+  /** 通用参数 */
+  unitWeight?: number;        // kg
+  crossSectionArea?: number;  // mm²
+  surfaceTreatment?: SurfaceTreatment;
+  sectionComplexity?: SectionComplexity;
+  drillingHoles?: number;
+  tappingHoles?: number;
+}
+
+/** 装配体输入参数 */
+export interface AssemblyInput {
+  productType: 'assembly';
+  parts: AssemblyPartInput[];
+  surfaceTreatment?: SurfaceTreatment;
+  aluminumPricePerTon?: number;
+}
+
+/** 装配体报价中的单个零件结果 */
+export interface AssemblyPartResult {
+  partId: string;
+  quantity: number;
+  dimensions: number[];        // [smallest, middle, largest] mm
+  volume: number;              // mm³
+  weight: number;              // g
+  isExtrusion: boolean;
+  crossSectionArea: number;    // mm²
+  length: number;              // mm
+  /** 该零件的单件报价 */
+  unitCost: number;
+  /** 该零件的批量总价 = unitCost × quantity */
+  partTotalCost: number;
+  /** 该零件的成本明细 */
+  breakdown: CostBreakdown[];
+}
+
+/** 装配体报价结果 */
+export interface AssemblyPricingResult {
+  productType: 'assembly';
+  /** 装配体中的零件总数（含重复） */
+  partsCount: number;
+  /** 去重后的零件列表 */
+  uniqueParts: AssemblyPartResult[];
+  /** 每个零件的报价明细 */
+  partsPricing: AssemblyPartResult[];
+  /** 所有零件总价（无焊接费，直接加总） */
+  totalCost: number;
+  /** 铝价信息 */
+  aluminumPrice: {
+    pricePerTon: number;
+    pricePerKg: number;
+    source: string;
+  };
+}
+
+/** 扩展联合输入类型 */
+export type FullPricingInput = PricingInput | AssemblyInput;
+
+/** 扩展联合输出类型 */
+export type FullPricingResult = PricingResult | AssemblyPricingResult;

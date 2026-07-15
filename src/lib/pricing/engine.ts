@@ -11,6 +11,11 @@ import type {
   PlateInput,
   DieCastingInput,
   SurfaceTreatment,
+  AssemblyInput,
+  AssemblyPricingResult,
+  AssemblyPartResult,
+  FullPricingInput,
+  FullPricingResult,
 } from './types';
 
 // ------------------------------------------------------------
@@ -450,6 +455,79 @@ export function calculateDieCasting(input: DieCastingInput): PricingResult {
 }
 
 // ============================================================
+// 装配体报价（无焊接费，各零件加总）
+// ============================================================
+
+export function calculateAssembly(input: AssemblyInput): AssemblyPricingResult {
+  const aluminumPricePerTon = input.aluminumPricePerTon ?? DEFAULT_ALUMINUM_PRICE_PER_TON;
+  const aluminumPricePerKg = aluminumPricePerTon / 1000;
+
+  const partsPricing: AssemblyPartResult[] = [];
+  let grandTotal = 0;
+
+  for (const part of input.parts) {
+    let partResult: PricingResult;
+
+    if (part.productType === 'extrusion') {
+      partResult = calculateExtrusion({
+        productType: 'extrusion',
+        outerWidth: part.outerWidth ?? 10,
+        outerHeight: part.outerHeight ?? 10,
+        length: part.length ?? 100,
+        quantity: 1,
+        isHollow: part.isHollow ?? false,
+        surfaceTreatment: (part.surfaceTreatment ?? input.surfaceTreatment ?? '氧化本色') as SurfaceTreatment,
+        sectionComplexity: part.sectionComplexity ?? 'simple',
+        drillingHoles: part.drillingHoles,
+        tappingHoles: part.tappingHoles,
+        aluminumPricePerTon,
+      });
+    } else {
+      partResult = calculatePlate({
+        productType: 'plate',
+        width: part.width ?? 10,
+        height: part.height ?? 10,
+        thickness: part.thickness ?? 1,
+        quantity: 1,
+        surfaceTreatment: (part.surfaceTreatment ?? input.surfaceTreatment ?? '氧化本色') as SurfaceTreatment,
+        aluminumPricePerTon,
+      });
+    }
+
+    const unitCost = round2(partResult.unitCost);
+    const partTotalCost = round2(unitCost * part.quantity);
+    grandTotal += partTotalCost;
+
+    partsPricing.push({
+      partId: part.partId,
+      quantity: part.quantity,
+      dimensions: [],
+      volume: 0,
+      weight: part.unitWeight ? round2(part.unitWeight * 1000) : 0,
+      isExtrusion: part.productType === 'extrusion',
+      crossSectionArea: part.crossSectionArea ?? 0,
+      length: part.length ?? 0,
+      unitCost,
+      partTotalCost,
+      breakdown: partResult.breakdown,
+    });
+  }
+
+  return {
+    productType: 'assembly',
+    partsCount: input.parts.reduce((sum, p) => sum + p.quantity, 0),
+    uniqueParts: partsPricing,
+    partsPricing,
+    totalCost: round2(grandTotal),
+    aluminumPrice: {
+      pricePerTon: aluminumPricePerTon,
+      pricePerKg: aluminumPricePerKg,
+      source: '南海铝锭价',
+    },
+  };
+}
+
+// ============================================================
 // 统一入口
 // ============================================================
 
@@ -464,6 +542,16 @@ export function calculatePrice(input: PricingInput): PricingResult {
     default:
       throw new Error(`不支持的产品类型: ${(input as PricingInput).productType}`);
   }
+}
+
+/**
+ * 支持装配体的扩展入口
+ */
+export function calculatePriceFull(input: FullPricingInput): FullPricingResult {
+  if (input.productType === 'assembly') {
+    return calculateAssembly(input as AssemblyInput);
+  }
+  return calculatePrice(input as PricingInput);
 }
 
 // ============================================================

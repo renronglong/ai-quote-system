@@ -5,8 +5,8 @@ import { writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
-import { calculatePrice } from '@/lib/pricing/engine';
-import type { PricingInput, ExtrusionInput, PlateInput } from '@/lib/pricing/types';
+import { calculatePrice, calculateAssembly } from '@/lib/pricing/engine';
+import type { PricingInput, ExtrusionInput, PlateInput, AssemblyInput } from '@/lib/pricing/types';
 
 const execFileAsync = promisify(execFile);
 
@@ -103,6 +103,66 @@ export async function POST(request: Request) {
     
     // 构造报价输入
     const pricingParams = parseResult.pricingParams;
+    
+    // ===== 装配体模式 =====
+    if (parseResult.assembly && pricingParams.productType === 'assembly') {
+      // 构建装配体报价输入
+      const assemblyInput: AssemblyInput = {
+        productType: 'assembly',
+        parts: pricingParams.parts.map((p: Record<string, unknown>) => ({
+          partId: p.partId as string,
+          productType: p.productType as 'extrusion' | 'plate',
+          quantity: p.quantity as number,
+          outerWidth: p.outerWidth as number | undefined,
+          outerHeight: p.outerHeight as number | undefined,
+          length: p.length as number | undefined,
+          isHollow: p.isHollow as boolean | undefined,
+          width: p.width as number | undefined,
+          height: p.height as number | undefined,
+          thickness: p.thickness as number | undefined,
+          unitWeight: p.unitWeight as number | undefined,
+          crossSectionArea: p.crossSectionArea as number | undefined,
+          surfaceTreatment: (p.surfaceTreatment as string || surfaceTreatment) as ExtrusionInput['surfaceTreatment'],
+          sectionComplexity: (p.sectionComplexity as string || 'simple') as ExtrusionInput['sectionComplexity'],
+        })),
+        surfaceTreatment: surfaceTreatment as ExtrusionInput['surfaceTreatment'],
+        aluminumPricePerTon,
+      };
+      
+      const assemblyResult = calculateAssembly(assemblyInput);
+      
+      // 把解析结果中的尺寸/体积信息补充到零件报价中
+      if (parseResult.uniqueParts) {
+        for (const partResult of assemblyResult.partsPricing) {
+          const parsed = parseResult.uniqueParts.find((p: Record<string, unknown>) => p.id === partResult.partId);
+          if (parsed) {
+            partResult.dimensions = parsed.dimensions as number[];
+            partResult.volume = parsed.volume as number;
+            partResult.weight = parsed.weight as number;
+            partResult.crossSectionArea = parsed.crossSectionArea as number;
+            partResult.length = parsed.length as number;
+          }
+        }
+      }
+      
+      return NextResponse.json({
+        success: true,
+        data: {
+          isAssembly: true,
+          parseResult: {
+            assembly: true,
+            partsCount: parseResult.partsCount,
+            uniqueParts: parseResult.uniqueParts,
+            totalVolume: parseResult.totalVolume,
+            totalWeight: parseResult.totalWeight,
+          },
+          pricingResult: assemblyResult,
+          fileName: file.name,
+        },
+      });
+    }
+    
+    // ===== 单件模式（原有逻辑）=====
     let pricingInput: PricingInput;
     
     if (pricingParams.productType === 'extrusion') {
@@ -135,6 +195,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       data: {
+        isAssembly: false,
         parseResult: {
           boundingBox: parseResult.boundingBox,
           volume: parseResult.volume,
