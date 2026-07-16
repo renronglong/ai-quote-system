@@ -4,8 +4,15 @@ import { createContext, useContext, useEffect, useState, ReactNode, useCallback 
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from './supabase-browser';
 
+// Extended user info including custom fields from the users table
+export interface ExtendedUser extends User {
+  phone?: string;
+  company_name?: string;
+  address?: string;
+}
+
 interface AuthContextType {
-  user: User | null;
+  user: ExtendedUser | null;
   session: Session | null;
   loading: boolean;
   signIn: (phone: string, password: string) => Promise<{ error: string | null }>;
@@ -17,7 +24,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<ExtendedUser | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -85,11 +92,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         token_type: 'bearer',
         user: {
           id: data.user.id,
-          email: null,
+          email: data.user.email || null,
           app_metadata: {},
           user_metadata: {},
           aud: 'authenticated',
           created_at: new Date().toISOString(),
+          phone: data.user.phone || '',
+          company_name: data.user.company_name || '',
+          address: data.user.address || '',
         },
       } as unknown as Session;
 
@@ -164,4 +174,11 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+}
+
+// Extended user info including custom fields from the users table
+export interface ExtendedUser extends User {
+  phone?: string;
+  company_name?: string;
+  address?: string;
 }
