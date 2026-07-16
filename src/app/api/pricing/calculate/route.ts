@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { calculatePrice, calculatePriceFull } from '@/lib/pricing/engine';
 import type { PricingInput, ExtrusionInput, FullPricingInput, AssemblyInput } from '@/lib/pricing/types';
 
-// 获取实时铝价
+// 获取实时铝价（返回 元/吨）
 async function getAluminumPrice(): Promise<number> {
   try {
     const today = new Date();
@@ -29,21 +29,26 @@ async function getAluminumPrice(): Promise<number> {
     console.error('Failed to fetch aluminum price:', error);
   }
 
-  return 23530;
+  return 23450; // 默认 23.45 元/kg × 1000
 }
 
 /**
- * 验证挤压铝型材必填参数
+ * 验证挤压铝型材必填参数（质稳 v4 公式）
  */
 function validateExtrusionInput(body: Record<string, unknown>): string[] {
   const errors: string[] = [];
+
+  // crossSectionArea 为必填（质稳公式核心输入）
+  if (body.crossSectionArea === undefined || body.crossSectionArea === null) {
+    errors.push('缺少必填参数: 截面面积 (crossSectionArea)，单位 mm²');
+  } else if (typeof body.crossSectionArea === 'number' && body.crossSectionArea <= 0) {
+    errors.push('截面面积必须大于 0');
+  }
+
   const required: Array<{ key: string; label: string }> = [
-    { key: 'outerWidth', label: '外轮廓宽度 (outerWidth)' },
-    { key: 'outerHeight', label: '外轮廓高度 (outerHeight)' },
     { key: 'length', label: '长度 (length)' },
     { key: 'quantity', label: '数量 (quantity)' },
     { key: 'surfaceTreatment', label: '表面处理类型 (surfaceTreatment)' },
-    { key: 'isHollow', label: '是否有内腔 (isHollow)' },
   ];
 
   for (const { key, label } of required) {
@@ -52,17 +57,17 @@ function validateExtrusionInput(body: Record<string, unknown>): string[] {
     }
   }
 
-  if (typeof body.outerWidth === 'number' && body.outerWidth <= 0) {
-    errors.push('外轮廓宽度必须大于 0');
-  }
-  if (typeof body.outerHeight === 'number' && body.outerHeight <= 0) {
-    errors.push('外轮廓高度必须大于 0');
-  }
   if (typeof body.length === 'number' && body.length <= 0) {
     errors.push('长度必须大于 0');
   }
   if (typeof body.quantity === 'number' && body.quantity <= 0) {
     errors.push('数量必须大于 0');
+  }
+
+  // 验证表面处理类型
+  const validTreatments = ['无', '白色哑光', '阳极氧化', '阳极氧化原色', '氧化银白', '氧化黑色', '喷涂', '电泳'];
+  if (body.surfaceTreatment && !validTreatments.includes(body.surfaceTreatment as string)) {
+    errors.push(`不支持的表面处理类型: ${body.surfaceTreatment}，可选值: ${validTreatments.join(', ')}`);
   }
 
   return errors;
@@ -120,7 +125,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // 获取实时铝价，用于没有显式传入 aluminumPricePerTon 的情况
+    // 获取实时铝价（元/吨），用于没有显式传入铝价的情况
     const aluminumPricePerTon = await getAluminumPrice();
 
     // 构造输入
@@ -132,13 +137,18 @@ export async function POST(request: Request) {
     // 如果没有显式传入铝锭价，使用实时价格
     if (input.productType === 'extrusion') {
       const extInput = input as ExtrusionInput;
-      if (!extInput.aluminumPricePerTon) {
-        extInput.aluminumPricePerTon = aluminumPricePerTon;
+      if (!extInput.aluminumPricePerKg && !extInput.aluminumPricePerTon) {
+        // 优先使用 aluminumPricePerKg，如果没有则从实时吨价换算
+        extInput.aluminumPricePerKg = aluminumPricePerTon / 1000;
+      } else if (!extInput.aluminumPricePerKg && extInput.aluminumPricePerTon) {
+        extInput.aluminumPricePerKg = extInput.aluminumPricePerTon / 1000;
       }
     } else if (input.productType === 'assembly') {
       const asmInput = input as AssemblyInput;
-      if (!asmInput.aluminumPricePerTon) {
-        asmInput.aluminumPricePerTon = aluminumPricePerTon;
+      if (!asmInput.aluminumPricePerKg && !asmInput.aluminumPricePerTon) {
+        asmInput.aluminumPricePerKg = aluminumPricePerTon / 1000;
+      } else if (!asmInput.aluminumPricePerKg && asmInput.aluminumPricePerTon) {
+        asmInput.aluminumPricePerKg = asmInput.aluminumPricePerTon / 1000;
       }
     }
 
