@@ -51,7 +51,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. 验证验证码
+    // 2. 万能验证码（测试模式）
+    const isTestMode = !process.env.TENCENT_SMS_SECRET_ID;
+    if (isTestMode && code === '888888') {
+      console.log(`[SMS/Verify] 万能验证码通过(测试模式): ${phone}, 用途: ${purpose}`);
+      return NextResponse.json({ success: true, message: '验证成功' });
+    }
+
+    // 3. 验证验证码
     const result = await verifyCode(phone, code, purpose);
 
     if (!result.success) {
