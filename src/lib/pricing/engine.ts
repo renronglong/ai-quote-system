@@ -222,7 +222,7 @@ export function calculateExtrusion(input: ExtrusionInput): PricingResult {
   }
 
   breakdown.push({
-    item: '冲压费',
+    item: '切割费',
     calculation: cncParts.join('; '),
     cost: cncCost,
   });
@@ -313,7 +313,7 @@ export function calculatePlate(input: PlateInput): PricingResult {
   // 冲压费
   const cncCost = STAMPING_COST_SOLID;
   breakdown.push({
-    item: '冲压费',
+    item: '切割费',
     calculation: `标准冲压 ¥${STAMPING_COST_SOLID}/件`,
     cost: cncCost,
   });
@@ -399,7 +399,7 @@ export function calculateDieCasting(input: DieCastingInput): PricingResult {
   // 冲压费
   const cncCost = STAMPING_COST_SOLID;
   breakdown.push({
-    item: '冲压费',
+    item: '切割费',
     calculation: `标准冲压 ¥${STAMPING_COST_SOLID}/件`,
     cost: cncCost,
   });
