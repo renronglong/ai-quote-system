@@ -51,9 +51,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. 万能验证码（测试模式）
-    const isTestMode = !process.env.TENCENT_SMS_SECRET_ID;
-    if (isTestMode && code === '888888') {
+    // 2. 万能验证码（通过环境变量控制，默认开启）
+    const universalEnabled = process.env.UNIVERSAL_CODE_ENABLED !== 'false';
+    if (universalEnabled && code === '888888') {
       console.log(`[SMS/Verify] 万能验证码通过(测试模式): ${phone}, 用途: ${purpose}`);
       return NextResponse.json({ success: true, message: '验证成功' });
     }
