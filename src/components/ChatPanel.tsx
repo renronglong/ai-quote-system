@@ -664,6 +664,7 @@ interface ExtractedPricingParams {
 }
 
 function extractPricingParams(text: string): ExtractedPricingParams | null {
+  console.log("[DEBUG] extractPricingParams v2.0 called with:", text);
   // ---- 宽度 / 高度 / 长度 ----
   let outerWidth: number | undefined;
   let outerHeight: number | undefined;
