@@ -23,7 +23,7 @@ function validatePhone(phone: string): boolean {
 
 export async function POST(request: Request) {
   try {
-    const { phone, password, verifyCode, companyName, address } = await request.json();
+    const { phone, password, verifyCode, companyName, address, email } = await request.json();
 
     // 1. 基础参数校验
     if (!validatePhone(phone)) {
@@ -49,6 +49,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '服务配置错误，请联系管理员' }, { status: 500 });
     }
 
+    // 验证邮箱格式（如果提供了）
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return NextResponse.json({ error: '请输入正确的邮箱地址' }, { status: 400 });
+      }
+    }
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
@@ -71,6 +79,7 @@ export async function POST(request: Request) {
       created_at: new Date().toISOString(),
     };
 
+    if (email && email.trim()) insertData.email = email.trim();
     if (companyName && companyName.trim()) insertData.company_name = companyName.trim();
     if (address && address.trim()) insertData.address = address.trim();
 
@@ -85,7 +94,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '注册失败，请稍后重试' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, user: { id: data.id, phone: data.phone } });
+    return NextResponse.json({ success: true, user: { id: data.id, phone: data.phone, email: data.email || '' } });
   } catch (err) {
     console.error('[Signup] 注册异常:', err);
     return NextResponse.json({ error: '服务器错误' }, { status: 500 });
