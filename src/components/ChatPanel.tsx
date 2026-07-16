@@ -1870,15 +1870,15 @@ export default function ChatPanel() {
     if (isZip || isCad) {
       // CAD文件和压缩包统一走邮件转发
       const format = isStep ? 'step' : isDxf ? 'dxf' : 'dxf';
-      handleCadUpload(file, format as 'dxf' | 'step' | 'iges');
+      handleCadUpload(file as File, format as 'dxf' | 'step' | 'iges');
     } else if (false) {
       const format = isStep ? 'step' : isIges ? 'iges' : 'dxf';
-      handleCadUpload(file, format);
+      handleCadUpload(file as File, format);
     } else if (isImage) {
-      handleImageUpload(file);
+      handleImageUpload(file as File);
     } else {
       // PDF和Excel文件处理
-      handleFileUpload(file);
+      handleFileUpload(file as File);
     }
     
     // 清空input，允许重复选择同一文件
