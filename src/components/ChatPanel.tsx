@@ -2216,7 +2216,7 @@ export default function ChatPanel() {
         requestBody.extractedText = currentExtractedText;
       }
 
-      // 先添加一个带"正在处理..."状态的助手消息
+      // 添加空的助手消息
       const assistantMessageId = (Date.now() + 1).toString();
       setMessages((prev) => [
         ...prev,
@@ -2235,28 +2235,85 @@ export default function ChatPanel() {
         body: JSON.stringify(requestBody),
       });
       
-      const result = await response.json();
-      
-      if (!response.ok || result.error) {
-        const errorMsg = result.error || '请求失败';
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMessageId
-              ? { ...m, content: `错误: ${errorMsg}` }
-              : m
-          )
-        );
+      if (!response.ok) {
+        // 非流式错误响应（如500）
+        try {
+          const errJson = await response.json();
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMessageId
+                ? { ...m, content: `错误: ${errJson.error || '请求失败'}` }
+                : m
+            )
+          );
+        } catch {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMessageId
+                ? { ...m, content: '错误: 请求失败' }
+                : m
+            )
+          );
+        }
         setStatusMessage(null);
       } else {
-        // 成功获取完整回复
-        setStatusMessage(null);
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMessageId
-              ? { ...m, content: result.content || '' }
-              : m
-          )
-        );
+        // SSE流式读取
+        const reader = response.body?.getReader();
+        if (!reader) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMessageId
+                ? { ...m, content: '错误: 无法读取响应' }
+                : m
+            )
+          );
+          setStatusMessage(null);
+        } else {
+          let assistantContent = '';
+          const decoder = new TextDecoder();
+          let buffer = '';
+          
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            buffer += decoder.decode(value, { stream: true });
+            const events = buffer.split('\n\n');
+            buffer = events.pop() || '';
+            
+            for (const event of events) {
+              const line = event.trim();
+              if (!line.startsWith('data: ')) continue;
+              try {
+                const data = JSON.parse(line.substring(6));
+                if (data.type === 'status') {
+                  setStatusMessage(data.message || null);
+                } else if (data.type === 'text') {
+                  assistantContent += data.content;
+                  setStatusMessage(null);
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMessageId
+                        ? { ...m, content: assistantContent }
+                        : m
+                    )
+                  );
+                } else if (data.type === 'error') {
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMessageId
+                        ? { ...m, content: `错误: ${data.error || '未知错误'}` }
+                        : m
+                    )
+                  );
+                  setStatusMessage(null);
+                }
+              } catch {
+                // 忽略解析错误
+              }
+            }
+          }
+        }
       }
 
       // ===== 纯对话模式：不再从Bot回复中提取参数自动报价 =====
