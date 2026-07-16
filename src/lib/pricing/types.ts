@@ -5,8 +5,8 @@
 /** 产品类型 */
 export type ProductType = 'extrusion' | 'plate' | 'die_casting';
 
-/** 表面处理类型 */
-export type SurfaceTreatment = '无' | '氧化本色' | '氧化黑色' | '喷涂' | '电泳';
+/** 表面处理类型（质稳 v4 公式） */
+export type SurfaceTreatment = '无' | '白色哑光' | '阳极氧化' | '阳极氧化原色' | '氧化银白' | '氧化黑色' | '喷涂' | '电泳';
 
 /** 截面复杂度 */
 export type SectionComplexity = 'simple' | 'complex';
@@ -31,20 +31,12 @@ export interface Cavity {
   height: number;
 }
 
-/** 挤压铝型材输入参数 */
+/** 挤压铝型材输入参数（质稳 v4 公式） */
 export interface ExtrusionInput {
   productType: 'extrusion';
 
-  // 外轮廓尺寸
-  outerWidth: number;   // mm
-  outerHeight: number;  // mm
-
-  // 倒角
-  chamfer?: Chamfer;
-
-  // 内腔
-  isHollow: boolean;
-  cavity?: Cavity;
+  // 截面面积（质稳公式核心输入）
+  crossSectionArea: number;  // mm²
 
   // 尺寸与数量
   length: number;   // mm
@@ -53,14 +45,21 @@ export interface ExtrusionInput {
   // 表面处理
   surfaceTreatment: SurfaceTreatment;
 
-  // CNC 加工（可选）
+  // 加工费（可选，默认 8 元）
+  processingFee?: number;
+
+  // 铝锭价 元/kg（可选，默认 23.45）
+  aluminumPricePerKg?: number;
+
+  // ---- 以下为旧版兼容字段（可选） ----
+  outerWidth?: number;   // mm
+  outerHeight?: number;  // mm
+  chamfer?: Chamfer;
+  isHollow?: boolean;
+  cavity?: Cavity;
   drillingHoles?: number;   // 钻孔数量
   tappingHoles?: number;    // 攻丝数量
-
-  // 铝锭价
-  aluminumPricePerTon?: number; // 元/吨，默认 23530
-
-  // 截面复杂度（可选，默认 simple）
+  aluminumPricePerTon?: number; // 元/吨（旧版兼容）
   sectionComplexity?: SectionComplexity;
 }
 
@@ -116,16 +115,16 @@ export interface PricingResult {
   // 截面计算（仅挤压型材）
   section?: SectionCalculation;
 
-  // 六项成本（单件）
-  materialCost: number;        // 铝材费
-  extrusionCost: number;       // 挤压费
-  cncCost: number;             // CNC 费
-  surfaceTreatmentCost: number; // 表面处理费
-  packagingCost: number;       // 包装费
-  transportationCost: number;  // 运输费
+  // 六项成本（单件）— 保留兼容
+  materialCost: number;        // 铝材费 / 材料费 K
+  extrusionCost: number;       // 挤压费 P（仅展示，不计入成本）
+  cncCost: number;             // 加工费 G（挤压件） / 切割费（板材/压铸）
+  surfaceTreatmentCost: number; // 表面处理费 J
+  packagingCost: number;       // 包装运输费 I（挤压件合并） / 包装费（其他）
+  transportationCost: number;  // 运输费（挤压件为 0，已合并至 packagingCost）
 
   // 汇总
-  unitCost: number;            // 单件总价
+  unitCost: number;            // 含税单价（挤压件） / 单件总价（其他）
   totalCost: number;           // 批量总价
 
   // 明细
@@ -137,6 +136,17 @@ export interface PricingResult {
     pricePerKg: number;
     source: string;
   };
+
+  // ---- 质稳 v4 公式专属字段（仅挤压件） ----
+  netWeight?: number;            // 净重量 (kg)
+  effectiveWeight?: number;      // 有效重量 (kg)
+  cutAllowanceCoef?: number;    // 切割余量系数 E_coef
+  costTotal?: number;            // 成本合计 L（不含挤压费）
+  wasteCost?: number;            // 损耗 5%
+  profitCost?: number;           // 利润 10%
+  taxCost?: number;              // 税金 13%
+  unitPriceWithTax?: number;     // 含税单价 = L × 1.28
+  processingFeeCost?: number;    // 加工费 G
 }
 
 // ------------------------------------------------------------
@@ -167,6 +177,8 @@ export interface AssemblyPartInput {
   sectionComplexity?: SectionComplexity;
   drillingHoles?: number;
   tappingHoles?: number;
+  processingFee?: number;
+  aluminumPricePerKg?: number;
 }
 
 /** 装配体输入参数 */
@@ -174,7 +186,8 @@ export interface AssemblyInput {
   productType: 'assembly';
   parts: AssemblyPartInput[];
   surfaceTreatment?: SurfaceTreatment;
-  aluminumPricePerTon?: number;
+  aluminumPricePerKg?: number;
+  aluminumPricePerTon?: number; // 旧版兼容
 }
 
 /** 装配体报价中的单个零件结果 */
