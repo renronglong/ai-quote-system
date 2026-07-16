@@ -2216,120 +2216,47 @@ export default function ChatPanel() {
         requestBody.extractedText = currentExtractedText;
       }
 
+      // 先添加一个带"正在处理..."状态的助手消息
+      const assistantMessageId = (Date.now() + 1).toString();
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: assistantMessageId,
+          role: 'assistant' as const,
+          content: '',
+          timestamp: new Date(),
+        },
+      ]);
+      setStatusMessage('正在处理...');
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
       });
       
-      if (!response.ok) {
-        throw new Error('请求失败');
-      }
+      const result = await response.json();
       
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('无法读取响应');
-      
-      let assistantContent = '';
-      const assistantMessageId = (Date.now() + 1).toString();
-      
-      // 添加空的助手消息
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: assistantMessageId,
-          role: 'assistant',
-          content: '',
-          timestamp: new Date(),
-        },
-      ]);
-      
-      const decoder = new TextDecoder();
-      let buffer = ''; // 累积缓冲区，确保SSE消息完整解析
-      let totalBytes = 0;
-      let chunkCount = 0;
-      console.log('[SSE Debug] 开始读取SSE流, response status:', response.status, 'content-type:', response.headers.get('content-type'));
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          console.log('[SSE Debug] 流结束, 总字节数:', totalBytes, '总chunk数:', chunkCount, '剩余buffer:', buffer.length > 0 ? buffer.substring(0, 100) : '空');
-          break;
-        }
-        
-        chunkCount++;
-        totalBytes += value.length;
-        const chunkText = decoder.decode(value, { stream: true });
-        console.log(`[SSE Debug] chunk #${chunkCount}, 大小: ${value.length}B, 内容:`, chunkText.substring(0, 200));
-        
-        // 累积数据到缓冲区
-        buffer += chunkText;
-        
-        // 按双换行符分割完整的SSE事件
-        const events = buffer.split('\n\n');
-        // 最后一个可能是不完整的，保留在缓冲区
-        buffer = events.pop() || '';
-        console.log(`[SSE Debug] 解析出 ${events.length} 个事件, 剩余buffer: ${buffer.length}B`);
-        
-        for (const event of events) {
-          const line = event.trim();
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.substring(6));
-              
-              console.log('[SSE Debug] 解析事件:', data.type, data.type === 'text' ? data.content : data);
-              if (data.type === 'status') {
-                // 后端状态提示
-                setStatusMessage(data.message || null);
-              } else if (data.type === 'text') {
-                assistantContent += data.content;
-                setStatusMessage(null); // 收到文本后清除状态提示
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantMessageId
-                      ? { ...m, content: assistantContent }
-                      : m
-                  )
-                );
-              } else if (data.type === 'error') {
-                // 处理错误
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantMessageId
-                      ? { ...m, content: `错误: ${data.error || '未知错误'}` }
-                      : m
-                  )
-                );
-              } else if (data.type === 'tool_start') {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantMessageId
-                      ? { ...m, toolCalls: [{ tool: data.tool, status: 'running' }] }
-                      : m
-                  )
-                );
-              } else if (data.type === 'tool_result') {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantMessageId
-                      ? {
-                          ...m,
-                          toolCalls: [
-                            {
-                              tool: m.toolCalls?.[0]?.tool || '',
-                              status: data.result.success ? 'success' : 'error',
-                              result: data.result.data,
-                            },
-                          ],
-                        }
-                      : m
-                  )
-                );
-              }
-            } catch {
-              // 忽略解析错误
-            }
-          }
-        }
+      if (!response.ok || result.error) {
+        const errorMsg = result.error || '请求失败';
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMessageId
+              ? { ...m, content: `错误: ${errorMsg}` }
+              : m
+          )
+        );
+        setStatusMessage(null);
+      } else {
+        // 成功获取完整回复
+        setStatusMessage(null);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMessageId
+              ? { ...m, content: result.content || '' }
+              : m
+          )
+        );
       }
 
       // ===== 纯对话模式：不再从Bot回复中提取参数自动报价 =====
