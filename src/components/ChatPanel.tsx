@@ -2703,3 +2703,6 @@ export default function ChatPanel() {
     </div>
   );
 }// Deployment trigger: 1784160033
+
+// === BUILD_TIMESTAMP: 2026-07-16T09:10:00+08:00 ===
+// Force rebuild marker - do not remove
