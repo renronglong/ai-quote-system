@@ -70,10 +70,15 @@ export async function POST(request: Request) {
 
     console.log(`[SMS/Send] 验证码已发送至 ${phone.slice(0, 3)}****${phone.slice(-4)}, 用途: ${purpose}`);
 
-    return NextResponse.json({
+    const response: Record<string, unknown> = {
       success: true,
       message: '验证码已发送',
-    });
+    };
+    // 测试模式下返回验证码供调试
+    if (smsResult.code) {
+      response.debugCode = smsResult.code;
+    }
+    return NextResponse.json(response);
   } catch (err) {
     console.error('[SMS/Send] 发送验证码异常:', err);
     return NextResponse.json({ error: '服务器错误' }, { status: 500 });
