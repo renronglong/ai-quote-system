@@ -2245,18 +2245,30 @@ export default function ChatPanel() {
       
       const decoder = new TextDecoder();
       let buffer = ''; // 累积缓冲区，确保SSE消息完整解析
+      let totalBytes = 0;
+      let chunkCount = 0;
+      console.log('[SSE Debug] 开始读取SSE流, response status:', response.status, 'content-type:', response.headers.get('content-type'));
       
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          console.log('[SSE Debug] 流结束, 总字节数:', totalBytes, '总chunk数:', chunkCount, '剩余buffer:', buffer.length > 0 ? buffer.substring(0, 100) : '空');
+          break;
+        }
+        
+        chunkCount++;
+        totalBytes += value.length;
+        const chunkText = decoder.decode(value, { stream: true });
+        console.log(`[SSE Debug] chunk #${chunkCount}, 大小: ${value.length}B, 内容:`, chunkText.substring(0, 200));
         
         // 累积数据到缓冲区
-        buffer += decoder.decode(value, { stream: true });
+        buffer += chunkText;
         
         // 按双换行符分割完整的SSE事件
         const events = buffer.split('\n\n');
         // 最后一个可能是不完整的，保留在缓冲区
         buffer = events.pop() || '';
+        console.log(`[SSE Debug] 解析出 ${events.length} 个事件, 剩余buffer: ${buffer.length}B`);
         
         for (const event of events) {
           const line = event.trim();
@@ -2264,6 +2276,7 @@ export default function ChatPanel() {
             try {
               const data = JSON.parse(line.substring(6));
               
+              console.log('[SSE Debug] 解析事件:', data.type, data.type === 'text' ? data.content : data);
               if (data.type === 'status') {
                 // 后端状态提示
                 setStatusMessage(data.message || null);
