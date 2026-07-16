@@ -36,6 +36,7 @@ export async function POST(request: Request) {
       user: {
         id: userData.id,
         phone: userData.phone,
+        email: userData.email || '',
         company_name: userData.company_name,
         address: userData.address,
       },
