@@ -67,8 +67,9 @@ async function pollChatResult(
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          chat_id: chatId,
+          bot_id: config.botId,
           conversation_id: conversationId,
+          chat_id: chatId,
         }),
       });
       
