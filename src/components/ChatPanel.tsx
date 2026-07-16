@@ -1092,94 +1092,7 @@ function MessageContent({ message }: { message: Message }) {
     );
   }
   
-  // 图片识别结果，显示保存按钮
-  if (parsedContent.type === 'recognition') {
-    const info = parsedContent.productInfo!;
-    return (
-      <div>
-        {/* 识别结果摘要卡片 */}
-        <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
-          <div className="text-sm font-medium text-slate-700 mb-2">📋 识别结果摘要</div>
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <div><span className="text-slate-500">材质：</span>{info.material}</div>
-            <div><span className="text-slate-500">工艺：</span>{info.process}</div>
-            <div><span className="text-slate-500">表面处理：</span>{info.surfaceTreatment}</div>
-            {info.productCode && <div><span className="text-slate-500">编号：</span>{info.productCode}</div>}
-            {info.meterWeight && <div><span className="text-slate-500">米重：</span>{info.meterWeight} kg/m</div>}
-            {info.length && <div><span className="text-slate-500">长度：</span>{info.length}mm</div>}
-            {info.specs && <div><span className="text-slate-500">规格：</span>{info.specs}</div>}
-          </div>
-        </div>
-        
-        {/* 操作按钮 */}
-        <div className="mt-3 flex items-center gap-2 flex-wrap">
-          <button
-            onClick={handleSaveProduct}
-            disabled={isSaving || saveResult?.success === true}
-            className={`px-4 py-2 text-sm rounded-md transition-colors ${
-              saveResult?.success 
-                ? 'bg-green-100 text-green-700 cursor-default' 
-                : 'bg-blue-500 text-white hover:bg-blue-600 disabled:bg-slate-300'
-            }`}
-          >
-            {isSaving ? '保存中...' : saveResult?.success ? '已保存' : '💾 保存到产品库'}
-          </button>
-          
-
-          
-          {saveResult && !saveResult.success && (
-            <span className="text-sm text-red-500">{saveResult.message}</span>
-          )}
-        </div>
-      </div>
-    );
-  }
-  
-  // 用户消息：如果有关联的报价计算结果，在消息下方显示报价卡片
-  if (message.role === 'user' && (message.pricingResult || message.pricingLoading || message.pricingError)) {
-    return (
-      <div>
-        <div className="whitespace-pre-wrap">{cleanContent}</div>
-        {message.pricingLoading && (
-          <div className="mt-3 flex items-center gap-2 bg-emerald-50 rounded-lg px-4 py-3 border border-emerald-200">
-            <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
-            <span className="text-sm text-emerald-700">正在计算报价...</span>
-          </div>
-        )}
-        {message.pricingError && (
-          <div className="mt-3 flex items-center gap-2 bg-red-50 rounded-lg px-4 py-3 border border-red-200">
-            <AlertCircle className="w-4 h-4 text-red-500" />
-            <span className="text-sm text-red-700">报价计算失败：{message.pricingError}</span>
-          </div>
-        )}
-        {message.pricingResult && <PricingResultCard data={message.pricingResult} />}
-      </div>
-    );
-  }
-  
-  // 如果是assistant消息且有关联的报价结果，附加显示
-  if (message.role === 'assistant' && (message.pricingResult || message.pricingLoading || message.pricingError || message.assemblyPricingResult)) {
-    return (
-      <div>
-        <div className="whitespace-pre-wrap">{cleanContent}</div>
-        {message.pricingLoading && (
-          <div className="mt-3 flex items-center gap-2 bg-emerald-50 rounded-lg px-4 py-3 border border-emerald-200">
-            <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
-            <span className="text-sm text-emerald-700">正在从识别的参数计算报价...</span>
-          </div>
-        )}
-        {message.pricingError && (
-          <div className="mt-3 flex items-center gap-2 bg-red-50 rounded-lg px-4 py-3 border border-red-200">
-            <AlertCircle className="w-4 h-4 text-red-500" />
-            <span className="text-sm text-red-700">自动报价失败：{message.pricingError}</span>
-          </div>
-        )}
-        {message.pricingResult && <PricingResultCard data={message.pricingResult} />}
-        {message.assemblyPricingResult && <AssemblyPricingCard data={message.assemblyPricingResult} />}
-      </div>
-    );
-  }
-
+  // 纯文本显示 - 不再显示识别结果摘要卡片和报价卡片
   return <div className="whitespace-pre-wrap">{cleanContent}</div>;
 }
 
@@ -2258,42 +2171,7 @@ export default function ChatPanel() {
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
 
-    // ===== 从用户输入中提取报价参数，尝试调用报价API =====
-    const pricingParams = extractPricingParams(input);
-    if (pricingParams) {
-      // 标记为加载中
-      setMessages((prev) => prev.map((m) =>
-        m.id === userMessage.id ? { ...m, pricingLoading: true } : m
-      ));
-      try {
-        const pricingRes = await fetch('/api/pricing/calculate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(pricingParams),
-        });
-        const pricingData = await pricingRes.json();
-        if (pricingData.success && pricingData.data) {
-          setMessages((prev) => prev.map((m) =>
-            m.id === userMessage.id
-              ? { ...m, pricingLoading: false, pricingResult: pricingData.data }
-              : m
-          ));
-        } else {
-          setMessages((prev) => prev.map((m) =>
-            m.id === userMessage.id
-              ? { ...m, pricingLoading: false, pricingError: pricingData.error || pricingData.details?.join('; ') || '报价计算失败' }
-              : m
-          ));
-        }
-      } catch (err) {
-        setMessages((prev) => prev.map((m) =>
-          m.id === userMessage.id
-            ? { ...m, pricingLoading: false, pricingError: err instanceof Error ? err.message : '请求失败' }
-            : m
-        ));
-      }
-    }
-    // ===== 报价参数提取结束 =====
+    // ===== 纯对话模式：不再自动触发报价计算 =====
 
     const currentImageData = uploadedImage; // 图片Base64数据（仅用于预览）
     const currentCozeFileId = cozeFileId; // Coze文件ID（单文件）
@@ -2441,44 +2319,7 @@ export default function ChatPanel() {
         }
       }
 
-      // ===== SSE流结束后，检查Bot回复中是否包含产品参数，自动报价 =====
-      if (assistantContent) {
-        const botPricingParams = extractPricingParamsFromBotReply(assistantContent);
-        if (botPricingParams) {
-          // 标记assistant消息为加载中
-          setMessages((prev) => prev.map((m) =>
-            m.id === assistantMessageId ? { ...m, pricingLoading: true } : m
-          ));
-          try {
-            const pricingRes = await fetch('/api/pricing/calculate', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(botPricingParams),
-            });
-            const pricingData = await pricingRes.json();
-            if (pricingData.success && pricingData.data) {
-              setMessages((prev) => prev.map((m) =>
-                m.id === assistantMessageId
-                  ? { ...m, pricingLoading: false, pricingResult: pricingData.data }
-                  : m
-              ));
-            } else {
-              setMessages((prev) => prev.map((m) =>
-                m.id === assistantMessageId
-                  ? { ...m, pricingLoading: false, pricingError: pricingData.error || '报价计算失败' }
-                  : m
-              ));
-            }
-          } catch (pricingErr) {
-            setMessages((prev) => prev.map((m) =>
-              m.id === assistantMessageId
-                ? { ...m, pricingLoading: false, pricingError: pricingErr instanceof Error ? pricingErr.message : '请求失败' }
-                : m
-            ));
-          }
-        }
-      }
-      // ===== Bot回复自动报价结束 =====
+      // ===== 纯对话模式：不再从Bot回复中提取参数自动报价 =====
     } catch (error) {
       console.error('发送消息失败:', error);
       setMessages((prev) => [
