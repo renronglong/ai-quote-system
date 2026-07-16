@@ -39,9 +39,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '请提供短信验证码' }, { status: 400 });
     }
 
-    // ★ 万能验证码（测试模式）
-    const isTestMode = !process.env.TENCENT_SMS_SECRET_ID;
-    if (!(isTestMode && verifyCode === '888888')) {
+    // ★ 万能验证码（通过环境变量控制，默认开启）
+    const universalEnabled = process.env.UNIVERSAL_CODE_ENABLED !== 'false';
+    if (!(universalEnabled && verifyCode === '888888')) {
       const smsResult = await verifySmsCodeForSignup(phone, verifyCode);
       if (!smsResult.valid) {
         return NextResponse.json({ error: smsResult.error }, { status: 400 });
