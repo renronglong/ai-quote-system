@@ -1793,254 +1793,62 @@ export default function ChatPanel() {
   }, [loadJSZip, renderPdfToImages]);
 
   // 处理CAD文件上传（DXF/STEP/IGES）
+  // 处理CAD文件上传（DXF/STEP/ZIP）- 转发至 Agent 邮箱处理
   const handleCadUpload = useCallback(async (file: File, format: 'dxf' | 'step' | 'iges') => {
     setUploadedFileType('cad');
     setUploadedImage(`📐 CAD文件: ${file.name}`);
     setIsLoading(true);
-    setStatusMessage(`正在解析${format.toUpperCase()}文件...`);
+    setStatusMessage('正在提交文件，请稍候...');
 
     try {
-      // ===== STEP 文件：优先使用后端精确解析 =====
-      const isStepFile = format === 'step';
-      let backendParseSuccess = false;
-      
-      if (isStepFile) {
-        try {
-          setStatusMessage('正在使用后端引擎精确解析 STEP 文件...');
-          const fd = new FormData();
-          fd.append('file', file);
-          fd.append('quantity', '1');
-          fd.append('surfaceTreatment', '氧化本色');
-          
-          const resp = await fetch('/api/pricing/step-quote', {
-            method: 'POST',
-            body: fd,
-          });
-          const data = await resp.json();
-          
-          if (data.success && data.data) {
-            backendParseSuccess = true;
-            const { isAssembly, parseResult, pricingResult } = data.data;
-            
-            // ===== 装配体模式 =====
-            if (isAssembly && parseResult.assembly) {
-              let cadContent = `📐 STEP 装配体解析完成！\n\n`;
-              cadContent += `**文件名称：** ${file.name}\n`;
-              cadContent += `**类型：** 装配体（挤压型材切割+焊接）\n\n`;
-              cadContent += `📏 **总体参数**\n`;
-              cadContent += `- 零件总数：${parseResult.partsCount} 个\n`;
-              cadContent += `- 去重后：${parseResult.uniqueParts.length} 种零件\n`;
-              cadContent += `- 总体积：${parseResult.totalVolume.toLocaleString()} mm³\n`;
-              cadContent += `- 总重量：${parseResult.totalWeight} g\n\n`;
-              
-              cadContent += `🔧 **零件明细**\n`;
-              for (const part of parseResult.uniqueParts) {
-                const dims = part.dimensions;
-                cadContent += `- **零件${part.id}**（×${part.quantity}）：${dims[0]}×${dims[1]}×${dims[2]} mm`;
-                cadContent += `，截面${part.crossSectionArea}mm²，长度${part.length}mm`;
-                cadContent += `，重量${part.weight}g\n`;
-              }
-              cadContent += `\n`;
-              
-              cadContent += `💰 **装配体报价**\n`;
-              for (const part of pricingResult.partsPricing) {
-                cadContent += `- 零件${part.partId}（×${part.quantity}）：¥${part.unitCost.toFixed(2)}/件 → 小计 ¥${part.partTotalCost.toFixed(2)}\n`;
-              }
-              cadContent += `- **装配体总价：¥${pricingResult.totalCost.toFixed(2)}**\n`;
-              
-              const assistantMsg: Message = {
-                id: Date.now().toString(),
-                role: 'assistant',
-                content: cadContent,
-                timestamp: new Date(),
-                assemblyPricingResult: pricingResult as AssemblyPricingData,
-              };
-              setMessages(prev => [...prev, assistantMsg]);
-              
-              setStatusMessage(null);
-              setIsLoading(false);
-              return;
-            }
-            
-            // ===== 单件模式（原有逻辑）=====
-            const ext = parseResult.extrusion;
-            
-            let cadContent = `📐 STEP 文件精确解析完成！\n\n`;
-            cadContent += `**文件名称：** ${file.name}\n`;
-            cadContent += `**产品类型：** ${ext.isExtrusion ? '铝挤压型材' : '铝板/块'}\n\n`;
-            cadContent += `📏 **几何参数**\n`;
-            cadContent += `- 包围盒尺寸：${parseResult.boundingBox.x} × ${parseResult.boundingBox.y} × ${parseResult.boundingBox.z} mm\n`;
-            cadContent += `- 体积：${parseResult.volume.toLocaleString()} mm³\n`;
-            cadContent += `- 表面积：${parseResult.surfaceArea.toLocaleString()} mm²\n`;
-            cadContent += `- 面数量：${parseResult.topology.faceCount}，边数量：${parseResult.topology.edgeCount}\n`;
-            cadContent += `- 重量：${parseResult.weight.grams} g（${parseResult.weight.material}，密度 ${parseResult.weight.density} g/cm³）\n\n`;
-            
-            if (ext.isExtrusion) {
-              cadContent += `🔧 **挤压件参数**\n`;
-              cadContent += `- 挤压方向：${ext.axis?.toUpperCase()} 轴\n`;
-              cadContent += `- 挤压长度：${ext.length} mm\n`;
-              cadContent += `- 截面尺寸：${ext.crossWidth} × ${ext.crossHeight} mm\n`;
-              cadContent += `- 截面面积：${ext.crossSectionArea} mm²\n`;
-              cadContent += `- 米重：${ext.weightPerMeter} kg/m\n`;
-              cadContent += `- 是否空心：${ext.isHollow ? '是' : '否'}\n`;
-              cadContent += `- 截面复杂度：${ext.complexity}\n\n`;
-            }
-            
-            cadContent += `💰 **自动报价结果**\n`;
-            cadContent += `- 单件成本：¥${pricingResult.unitCost.toFixed(2)}\n`;
-            cadContent += `- 总价(1件)：¥${pricingResult.totalCost.toFixed(2)}\n\n`;
-            
-            const assistantMsg: Message = {
-              id: Date.now().toString(),
-              role: 'assistant',
-              content: cadContent,
-              timestamp: new Date(),
-              pricingResult: pricingResult,
-            };
-            setMessages(prev => [...prev, assistantMsg]);
-            
-            setCadResult({
-              success: true,
-              format: 'step',
-              weightPerMeter: ext.weightPerMeter,
-              width: ext.crossWidth,
-              height: ext.crossHeight,
-              length: ext.length,
-              crossSectionArea: ext.crossSectionArea,
-              volume: parseResult.volume,
-              meshCount: parseResult.topology.faceCount,
-            });
-            
-            setStatusMessage(null);
-            setIsLoading(false);
-            return;
-          }
-        } catch (backendErr) {
-          console.warn('[CAD] 后端STEP解析失败，降级到客户端解析:', backendErr);
-          // 继续降级到客户端解析
-        }
+      // 将文件转发到 Agent 邮箱进行处理
+      const fd = new FormData();
+      fd.append('file', file);
+      if (user) {
+        fd.append('userId', user.id);
+        fd.append('userPhone', user.phone || '');
+        fd.append('userEmail', user.email || '');
+        fd.append('companyName', user.company_name || '');
       }
-      
-      // ===== 降级：客户端文本解析（DXF / IGES / STEP fallback）=====
-      if (!backendParseSuccess) {
-        let result: CadParseResult;
-        if (format === 'dxf') {
-          result = await parseDxfFile(file);
-        } else {
-          result = await parseStepOrIgesFile(file, format);
-        }
 
-        setCadResult(result);
-        setStatusMessage(null);
+      const resp = await fetch('/api/forward-cad', {
+        method: 'POST',
+        body: fd,
+      });
+      const data = await resp.json();
 
-        if (result.success) {
-          // 构建展示文本
-          let cadContent = `📐 ${result.format.toUpperCase()}文件解析成功！\n\n`;
-          cadContent += `【产品参数开始】\n`;
-          cadContent += `材质：铝合金\n`;
-          cadContent += `米重(kg/m)：${result.weightPerMeter}\n`;
-          if (result.width > 0) cadContent += `宽度(mm)：${result.width}\n`;
-          if (result.height > 0) cadContent += `高度(mm)：${result.height}\n`;
-          if (result.length > 0) cadContent += `长度(mm)：${result.length}\n`;
-          cadContent += `加工工艺：铝挤压\n`;
-          cadContent += `表面处理：无\n`;
-          cadContent += `【产品参数结束】\n\n`;
-          cadContent += `截面积：${result.crossSectionArea} mm²\n`;
-          if (result.volume) cadContent += `体积：${result.volume} mm³\n`;
-          cadContent += `实体数量：${result.meshCount || 0}\n`;
-          if (result.entityNames && result.entityNames.length > 0) {
-            cadContent += `实体名称：${result.entityNames.join(', ')}\n`;
-          }
-          if (result.parts && result.parts.length > 1) {
-            cadContent += `\n--- 各部件明细 ---\n`;
-            for (const part of result.parts) {
-              cadContent += `· ${part.name}：截面积${part.crossSectionArea}mm²，米重${part.weightPerMeter}kg/m\n`;
-            }
-          }
-
-          // 诊断信息
-          if (result.diagnostics && result.diagnostics.length > 0) {
-            cadContent += '\n--- 诊断信息 ---\n';
-            for (const diag of result.diagnostics) {
-              const icon = diag.severity === 'error' ? '❌' : diag.severity === 'warning' ? '⚠️' : 'ℹ️';
-              cadContent += icon + ' ' + diag.message + '\n';
-            }
-          }
-
-          // 添加助手消息
-          setMessages(prev => [...prev, {
-            id: Date.now().toString(),
-            role: 'assistant',
-            content: cadContent,
-            timestamp: new Date(),
-          }]);
-
-          // ===== 客户端解析成功后，自动调用报价API =====
-          if (isStepFile || format === 'dxf') {
-            try {
-              const pricingParams = {
-                productType: 'extrusion' as const,
-                outerWidth: result.width,
-                outerHeight: result.height,
-                length: result.length || 1000,
-                quantity: 1,
-                isHollow: false,
-                surfaceTreatment: '氧化本色' as const,
-                sectionComplexity: 'simple' as const,
-              };
-              
-              const pricingRes = await fetch('/api/pricing/calculate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(pricingParams),
-              });
-              const pricingData = await pricingRes.json();
-              
-              if (pricingData.success && pricingData.data) {
-                // 在上一条消息后追加报价结果卡片
-                setMessages(prev => {
-                  const msgs = [...prev];
-                  const lastMsg = msgs[msgs.length - 1];
-                  if (lastMsg && lastMsg.role === 'assistant') {
-                    msgs[msgs.length - 1] = {
-                      ...lastMsg,
-                      pricingResult: pricingData.data,
-                    };
-                  }
-                  return msgs;
-                });
-              }
-            } catch (pricingErr) {
-              console.warn('[CAD] 自动报价失败:', pricingErr);
-            }
-          }
-        } else {
-          setMessages(prev => [...prev, {
-            id: Date.now().toString(),
-            role: 'assistant',
-            content: `❌ CAD文件解析失败：${result.error}${result.diagnostics && result.diagnostics.length > 0 ? '\n\n--- 诊断信息 ---\n' + result.diagnostics.map(d => (d.severity === 'error' ? '❌' : d.severity === 'warning' ? '⚠️' : 'ℹ️') + ' ' + d.message).join('\n') : ''}`,
-            timestamp: new Date(),
-          }]);
-          setUploadedImage(null);
-          setUploadedFileType(null);
-        }
+      if (data.success) {
+        const replyMsg: Message = {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: `📨 **文件已接收**\n\n` +
+            `**文件名：** ${file.name}\n` +
+            `**文件大小：** ${(file.size / 1024).toFixed(1)} KB\n\n` +
+            `我们已收到您的 CAD 文件，工程师将在 **2小时内** 完成分析并将报价结果发送至您的绑定邮箱。\n\n` +
+            `如有疑问，请直接在对话中咨询。`,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, replyMsg]);
+      } else {
+        throw new Error(data.error || '提交失败');
       }
-    } catch (error: any) {
-      setMessages(prev => [...prev, {
+    } catch (err) {
+      console.error('[Chat] CAD转发失败:', err);
+      const errorMsg: Message = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: `❌ CAD文件处理出错：${error.message}`,
+        content: `⚠️ 文件提交失败：${err instanceof Error ? err.message : '未知错误'}\n\n请直接将文件发送至 **ryda8638@coze.email**，我们会尽快处理并回复您。`,
         timestamp: new Date(),
-      }]);
-      setUploadedImage(null);
-      setUploadedFileType(null);
+      };
+      setMessages(prev => [...prev, errorMsg]);
     } finally {
-      setIsLoading(false);
       setStatusMessage(null);
+      setIsLoading(false);
+      setUploadedImage(null);
+      setCozeFileId(null);
     }
-  }, []);
+  }, [user]);
 
-  // 处理文件选择
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -2059,9 +1867,11 @@ export default function ChatPanel() {
     
     
     // CAD文件优先判断，避免浏览器误识别MIME类型走错路径
-    if (isZip) {
-      handleZipUpload(file);
-    } else if (isCad) {
+    if (isZip || isCad) {
+      // CAD文件和压缩包统一走邮件转发
+      const format = isStep ? 'step' : isDxf ? 'dxf' : 'dxf';
+      handleCadUpload(file, format as 'dxf' | 'step' | 'iges');
+    } else if (false) {
       const format = isStep ? 'step' : isIges ? 'iges' : 'dxf';
       handleCadUpload(file, format);
     } else if (isImage) {
