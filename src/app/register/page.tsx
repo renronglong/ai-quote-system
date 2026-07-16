@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, Phone, Lock, ShieldCheck } from 'lucide-react';
+import { Loader2, Phone, Lock, ShieldCheck, Mail } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,7 @@ export default function RegisterPage() {
   const router = useRouter();
   const { user, loading, signIn } = useAuth();
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [verifyCode, setVerifyCode] = useState('');
@@ -87,6 +88,14 @@ export default function RegisterPage() {
       return;
     }
 
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        setError('请输入正确的邮箱地址');
+        return;
+      }
+    }
+
     if (password.length < 6) {
       setError('密码长度至少为6个字符');
       return;
@@ -114,7 +123,7 @@ export default function RegisterPage() {
       const response = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, password, verifyCode }),
+        body: JSON.stringify({ phone, password, verifyCode, email }),
       });
 
       const data = await response.json();
@@ -192,6 +201,22 @@ export default function RegisterPage() {
                     placeholder="请输入手机号" 
                     value={phone} 
                     onChange={(e) => setPhone(e.target.value)}
+                    className="pl-10"
+                    disabled={submitting || step === 'verify'}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="email" className="text-sm font-medium text-slate-700">邮箱 <span className="text-slate-400 text-xs">（选填，用于接收报价结果）</span></label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Input 
+                    id="email" 
+                    type="email" 
+                    placeholder="example@company.com" 
+                    value={email} 
+                    onChange={(e) => setEmail(e.target.value)}
                     className="pl-10"
                     disabled={submitting || step === 'verify'}
                   />
