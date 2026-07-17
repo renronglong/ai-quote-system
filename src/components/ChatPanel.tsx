@@ -1093,7 +1093,7 @@ function MessageContent({ message }: { message: Message }) {
   }
   
   // 纯文本显示 - 不再显示识别结果摘要卡片和报价卡片
-  return <div className="whitespace-pre-wrap">{cleanContent}</div>;
+  return <div className="whitespace-pre-wrap text-[15px] leading-relaxed">{cleanContent}</div>;
 }
 
 export default function ChatPanel() {
@@ -2195,7 +2195,7 @@ export default function ChatPanel() {
             >
               <div
                 className={cn(
-                  'w-8 h-8 rounded-full flex items-center justify-center shrink-0',
+                  'w-9 h-9 rounded-full flex items-center justify-center shrink-0',
                   message.role === 'user'
                     ? 'bg-gradient-to-br from-blue-500 to-indigo-600 shadow-sm'
                     : 'bg-gradient-to-br from-gray-100 to-gray-200'
@@ -2209,7 +2209,7 @@ export default function ChatPanel() {
               </div>
               <div
                 className={cn(
-                  'max-w-[80%] rounded-2xl px-4 py-3',
+                  'max-w-[90%] rounded-2xl px-5 py-3 text-base leading-relaxed',
                   message.role === 'user'
                     ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-sm'
                     : 'bg-white text-gray-800 border border-gray-100 shadow-xs'
