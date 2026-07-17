@@ -213,7 +213,7 @@ export async function POST(request: NextRequest) {
       // 4. 调用Coze Chat API
       // 文件消息使用非流式模式，确保能获取完整响应
       // 文字消息使用流式模式，提供更好的用户体验
-      const useStream = !hasFile;
+      const useStream = true;
       const chatUrl = `${config.apiBase}/v3/chat?conversation_id=${conversationId}`;
       const chatBody = {
         bot_id: config.botId,
@@ -287,7 +287,7 @@ export async function POST(request: NextRequest) {
           for (let i = 0; i < maxRetries; i++) {
             await new Promise(resolve => setTimeout(resolve, 2000)); // 等2秒
             
-            const retrieveUrl = `${config.apiBase}/v1/chat/retrieve?conversation_id=${conversationId}&chat_id=${chatId}`;
+            const retrieveUrl = `${config.apiBase}/v3/chat/retrieve?conversation_id=${conversationId}&chat_id=${chatId}`;
             const retrieveResponse = await fetch(retrieveUrl, {
               headers: {
                 'Authorization': `Bearer ${config.apiToken}`,
