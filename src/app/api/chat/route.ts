@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 
 // ★ 使用 Edge Runtime 获得原生流式响应支持，避免 Vercel Node.js 函数的 SSE 缓冲问题
 export const runtime = 'edge';
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 // Coze API配置
 interface CozeConfig {
@@ -209,12 +209,15 @@ export async function POST(request: NextRequest) {
         additionalMessages.push({ role: 'user', content: userContent, content_type: 'text' });
       }
 
-      // 4. 调用Coze Chat流式API
+      // 4. 调用Coze Chat API
+      // 文件消息使用非流式模式，确保能获取完整响应
+      // 文字消息使用流式模式，提供更好的用户体验
+      const useStream = !hasFile;
       const chatUrl = `${config.apiBase}/v3/chat?conversation_id=${conversationId}`;
       const chatBody = {
         bot_id: config.botId,
         user_id: userId,
-        stream: true,
+        stream: useStream,
         additional_messages: additionalMessages,
         auto_save_history: true,
       };
@@ -244,7 +247,90 @@ export async function POST(request: NextRequest) {
         return;
       }
 
-      // 5. 转发Coze流式响应到前端
+      // 5. 处理响应
+      if (!useStream) {
+        // 非流式模式：解析初始响应获取chat_id
+        const chatResult = await chatResponse.json() as {
+          code?: number;
+          data?: {
+            id?: string;
+            conversation_id?: string;
+            status?: string;
+            messages?: Array<{ role: string; content: string; type: string }>;
+            last_error?: { msg: string };
+          };
+          msg?: string;
+        };
+        
+        if (chatResult.code !== 0 || !chatResult.data) {
+          await writer.write(encoder.encode(
+            `data: ${JSON.stringify({ type: 'error', error: chatResult.msg || 'Bot处理失败' })}\n\n`
+          ));
+          await writer.close();
+          return;
+        }
+        
+        const chatId = chatResult.data.id;
+        let botReply = '';
+        
+        // 检查初始响应是否已有完整结果
+        const initialMessages = chatResult.data.messages || [];
+        const initialAnswers = initialMessages.filter((m: { role: string; type: string }) => m.role === 'assistant' && m.type === 'answer');
+        if (initialAnswers.length > 0) {
+          botReply = initialAnswers.map((m: { content: string }) => m.content).join('\n');
+        }
+        
+        // 如果初始响应没有内容，轮询获取结果
+        if (!botReply && chatId) {
+          const maxRetries = 10;
+          for (let i = 0; i < maxRetries; i++) {
+            await new Promise(resolve => setTimeout(resolve, 2000)); // 等2秒
+            
+            const retrieveUrl = `${config.apiBase}/v1/chat/retrieve?conversation_id=${conversationId}&chat_id=${chatId}`;
+            const retrieveResponse = await fetch(retrieveUrl, {
+              headers: {
+                'Authorization': `Bearer ${config.apiToken}`,
+                'Content-Type': 'application/json',
+              },
+            });
+            
+            if (retrieveResponse.ok) {
+              const retrieveResult = await retrieveResponse.json() as {
+                code?: number;
+                data?: {
+                  status?: string;
+                  messages?: Array<{ role: string; content: string; type: string }>;
+                };
+              };
+              
+              const status = retrieveResult.data?.status;
+              if (status === 'completed' || status === 'failed') {
+                const messages = retrieveResult.data?.messages || [];
+                const answers = messages.filter((m: { role: string; type: string }) => m.role === 'assistant' && m.type === 'answer');
+                botReply = answers.map((m: { content: string }) => m.content).join('\n');
+                break;
+              }
+            }
+          }
+        }
+        
+        if (botReply) {
+          await writer.write(encoder.encode(
+            `data: ${JSON.stringify({ type: 'text', content: botReply })}\n\n`
+          ));
+        } else {
+          await writer.write(encoder.encode(
+            `data: ${JSON.stringify({ type: 'text', content: '已收到您的文件，但暂时无法解析内容。请尝试用文字描述产品的尺寸、材质和数量，我将为您识别参数。' })}\n\n`
+          ));
+        }
+        await writer.write(encoder.encode(
+          `data: ${JSON.stringify({ type: 'done' })}\n\n`
+        ));
+        await writer.close();
+        return;
+      }
+      
+      // 流式模式：转发Coze流式响应到前端
       const reader = chatResponse.body?.getReader();
       if (!reader) {
         await writer.write(encoder.encode(
@@ -257,6 +343,7 @@ export async function POST(request: NextRequest) {
       const decoder = new TextDecoder();
       let buffer = '';
       let currentEventType = '';
+      let hasReceivedContent = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -282,6 +369,17 @@ export async function POST(request: NextRequest) {
               if (eventType === 'conversation.message.delta') {
                 const content = json.data?.content || json.content || '';
                 if (content) {
+                  hasReceivedContent = true;
+                  await writer.write(encoder.encode(
+                    `data: ${JSON.stringify({ type: 'text', content })}\n\n`
+                  ));
+                }
+              } else if (eventType === 'conversation.message.completed') {
+                // 处理 completed 消息（某些情况下 delta 不会发送，只有 completed）
+                const msgType = json.data?.type || json.type || '';
+                const content = json.data?.content || json.content || '';
+                const role = json.data?.role || json.role || '';
+                if (role === 'assistant' && content && (msgType === 'answer' || msgType === 'text')) {
                   await writer.write(encoder.encode(
                     `data: ${JSON.stringify({ type: 'text', content })}\n\n`
                   ));
@@ -292,12 +390,28 @@ export async function POST(request: NextRequest) {
                   `data: ${JSON.stringify({ type: 'error', error: errorMsg })}\n\n`
                 ));
               } else if (eventType === 'done' || eventType === 'conversation.chat.completed') {
+                if (!hasReceivedContent) {
+                  // Bot没有返回任何内容，给出提示
+                  await writer.write(encoder.encode(
+                    `data: ${JSON.stringify({ type: 'text', content: '已收到您的文件，但暂时无法解析内容。请尝试用文字描述产品的尺寸、材质和数量，我将为您识别参数。' })}\n\n`
+                  ));
+                }
                 await writer.write(encoder.encode(
                   `data: ${JSON.stringify({ type: 'done' })}\n\n`
                 ));
               } else if (json.event === 'conversation.message.delta') {
                 const content = json.data?.content || '';
                 if (content) {
+                  await writer.write(encoder.encode(
+                    `data: ${JSON.stringify({ type: 'text', content })}\n\n`
+                  ));
+                }
+              } else if (json.event === 'conversation.message.completed') {
+                // 备用处理 completed 消息
+                const msgType = json.data?.type || json.type || '';
+                const content = json.data?.content || json.content || '';
+                const role = json.data?.role || json.role || '';
+                if (role === 'assistant' && content && (msgType === 'answer' || msgType === 'text')) {
                   await writer.write(encoder.encode(
                     `data: ${JSON.stringify({ type: 'text', content })}\n\n`
                   ));
