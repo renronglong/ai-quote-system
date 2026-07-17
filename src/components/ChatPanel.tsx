@@ -2016,6 +2016,10 @@ export default function ChatPanel() {
         })),
         fileType: currentFileType || 'file',
       };
+      // 传递 conversationId 以维持对话上下文
+      if (conversationId) {
+        requestBody.conversationId = conversationId;
+      }
       // 优先使用批量文件ID（压缩包场景），否则使用单文件ID
       if (currentCozeFileIdsBatch.length > 0) {
         requestBody.cozeFileIds = currentCozeFileIdsBatch;
@@ -2096,7 +2100,10 @@ export default function ChatPanel() {
               if (!line.startsWith('data: ')) continue;
               try {
                 const data = JSON.parse(line.substring(6));
-                if (data.type === 'status') {
+                if (data.type === 'conversation') {
+                  setConversationId(data.conversationId);
+                  console.log('[Chat] Saved conversationId from server:', data.conversationId);
+                } else if (data.type === 'status') {
                   setStatusMessage(data.message || null);
                 } else if (data.type === 'text') {
                   assistantContent += data.content;
