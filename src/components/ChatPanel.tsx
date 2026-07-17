@@ -2294,7 +2294,7 @@ export default function ChatPanel() {
       )}
       
       {/* 输入区域 - 固定在底部 */}
-      <div className="px-4 py-3 border-t bg-white shrink-0">
+      <div className="px-4 py-4 border-t bg-white shrink-0">
         <div className="flex gap-2 items-center">
           <input
             ref={fileInputRef}
@@ -2307,7 +2307,7 @@ export default function ChatPanel() {
             onClick={triggerFileUpload}
             disabled={isLoading}
             title="上传图纸/图片"
-            className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-gray-50 hover:bg-blue-50 text-gray-500 hover:text-blue-600 border border-gray-200 hover:border-blue-200 transition-colors"
+            className="shrink-0 w-12 h-12 flex items-center justify-center rounded-lg bg-gray-50 hover:bg-blue-50 text-gray-500 hover:text-blue-600 border border-gray-200 hover:border-blue-200 transition-colors"
           >
             <Upload className="w-4 h-4" />
           </button>
@@ -2318,12 +2318,12 @@ export default function ChatPanel() {
             onKeyDown={handleKeyDown}
             placeholder="描述产品需求，如：铝型材 6063-T5，长200mm，氧化黑色，1000件..."
             disabled={isLoading}
-            className="flex-1 border-gray-200 focus:border-blue-300 focus:ring-blue-100 rounded-lg"
+            className="flex-1 border-gray-200 focus:border-blue-300 focus:ring-blue-100 rounded-lg h-12 text-base px-4"
           />
           <Button
             onClick={sendMessage}
             disabled={isLoading || (!input.trim() && !uploadedImage)}
-            className="bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm"
+            className="bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm h-12 px-5"
           >
             {isLoading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
