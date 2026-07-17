@@ -32,7 +32,7 @@ const PRICING_CONFIG_URL =
 
 /** 请求体类型 */
 interface QuoteRequest {
-  product_type: 'sheet_metal' | 'die_casting' | 'zinc_alloy' | 'injection';
+  product_type: 'sheet_metal' | 'die_casting' | 'zinc_alloy' | 'injection' | 'extrusion';
   material: {
     category: string; // 铝板 | 冷板SPCC | 不锈钢 | 压铸铝ADC12 | 锌合金ZA-8 | ABS | PC | PA | POM | PP | PMMA
     grade?: string;   // 牌号，如 5系(5052)、304 等
@@ -137,6 +137,13 @@ const DEFAULT_PRICING_RULES: PricingRules = {
     'POM': { density: 1.41, price_range: [15, 22] },
     'PP': { density: 0.91, price_range: [8, 12] },
     'PMMA': { density: 1.19, price_range: [18, 25] },
+    '挤压铝型材': {
+      density: 2.7,
+      price_formula: '铝锭价 + 挤压加工费',
+      extrusion_fee_per_ton: 3000,
+      default_grade: '6063-T5',
+      fill_factor: 0.35,
+    },
   },
   default_sheet_size: { length_mm: 2440, width_mm: 1220 },
   process_rates: {
@@ -213,6 +220,7 @@ const DEFAULT_PRICING_RULES: PricingRules = {
   },
   die_cost: {
     '冲压模具费': { base_fee: 600, area_rate: 1, perimeter_rate: 10 },
+    '挤压模具费': { base_fee: 600, perimeter_rate: 0.1, max_size_rate: 0.05 },
     '线割费': { rate: 0.035 },
   },
 };
@@ -450,6 +458,186 @@ function calcVolumetricMaterialCost(
   const cost = weightKg * pricePerKg;
 
   return { cost: r2(cost), weight: r2(weightKg), formula: formulaStr, detail: detailStr };
+}
+
+// ============================================================
+// 铝型材材料费计算
+// ============================================================
+
+/**
+ * 计算铝型材材料费
+ * 公式：材料单价 = 铝锭价 + 挤压加工费
+ * 重量 = 截面积 × 长度 × 密度 / 1000000 (如果有截面数据)
+ * 或 重量 = 长 × 宽 × 高 × 填充系数 × 密度 / 1000000 (简化计算)
+ */
+function calcExtrusionMaterialCost(
+  dimensions: NonNullable<QuoteRequest['dimensions']>,
+  aluminumPrice: number,
+  rules: PricingRules,
+  weightOverride?: number,
+): { cost: number; weight: number; formula: string; detail: string } {
+  const matRule = rules.material_prices['挤压铝型材'] || {};
+  const density = matRule.density || 2.7;
+  const extrusionFeePerTon = matRule.extrusion_fee_per_ton || 3000;
+  const fillFactor = matRule.fill_factor || 0.35;
+  
+  // 材料单价 = 铝锭价 + 挤压加工费 (元/吨)
+  const materialPricePerTon = aluminumPrice + extrusionFeePerTon;
+  const materialPricePerKg = materialPricePerTon / 1000; // 元/kg
+  
+  let weightKg: number;
+  let formulaStr: string;
+  let detailStr: string;
+  
+  if (weightOverride && weightOverride > 0) {
+    // 使用用户提供的重量
+    weightKg = weightOverride;
+    formulaStr = '用户提供重量';
+    detailStr = `${weightKg}kg`;
+  } else if (dimensions.cross_section_area_mm2 && dimensions.length_mm) {
+    // 有截面面积和长度：重量 = 截面积 × 长度 × 密度 / 1000000
+    weightKg = (dimensions.cross_section_area_mm2 * dimensions.length_mm * density) / 1000000;
+    formulaStr = '截面积 × 长度 × 密度';
+    detailStr = `${dimensions.cross_section_area_mm2}mm² × ${dimensions.length_mm}mm × ${density}g/cm³ ÷ 1000000 = ${r2(weightKg)}kg`;
+  } else {
+    // 简化计算：用外形尺寸 × 填充系数
+    const length = dimensions.length_mm || 1000;
+    const width = dimensions.width_mm || 50;
+    const height = dimensions.height_mm || 25;
+    
+    weightKg = (length * width * height * fillFactor * density) / 1000000;
+    formulaStr = '长 × 宽 × 高 × 填充系数 × 密度';
+    detailStr = `${length} × ${width} × ${height} × ${fillFactor} × ${density} ÷ 1000000 = ${r2(weightKg)}kg`;
+  }
+  
+  const cost = weightKg * materialPricePerKg;
+  
+  detailStr += ` | 材料单价: ${aluminumPrice} + ${extrusionFeePerTon} = ${materialPricePerTon}元/吨 = ${r2(materialPricePerKg)}元/kg`;
+  detailStr += ` | 材料费: ${r2(weightKg)}kg × ${r2(materialPricePerKg)}元/kg = ${r2(cost)}元`;
+  
+  return {
+    cost: r2(cost),
+    weight: r2(weightKg),
+    formula: formulaStr,
+    detail: detailStr,
+  };
+}
+
+// ============================================================
+// 主计算引擎 — 铝型材挤压（复用板材的CNC和表面处理逻辑）
+// ============================================================
+
+function calcExtrusion(
+  req: QuoteRequest,
+  aluminumPrice: number,
+  rules: PricingRules,
+): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[] } {
+  const dims = req.dimensions || { length_mm: 1000, width_mm: 50, height_mm: 25 };
+  const notes: string[] = [];
+  const breakdown: Record<string, { formula: string; detail: string }> = {};
+  
+  // 1. 材料费（铝型材专用计算：铝锭价 + 挤压加工费）
+  const mat = calcExtrusionMaterialCost(dims, aluminumPrice, rules, req.weight_per_piece_kg);
+  breakdown['material'] = { formula: mat.formula, detail: mat.detail };
+  
+  let accumulated = mat.cost;
+  
+  // 2. 模具费（单独列出，不计入单件价格）
+  let moldCost = 0;
+  if (req.mold_cost && req.mold_cost > 0) {
+    moldCost = req.mold_cost;
+  } else {
+    // 估算模具费：基础费 + 截面周长 × 0.1 + 最大尺寸 × 0.05
+    const maxDim = Math.max(dims.width_mm || 50, dims.height_mm || 25);
+    const perimeter = 2 * ((dims.width_mm || 50) + (dims.height_mm || 25));
+    moldCost = 600 + perimeter * 0.1 + maxDim * 0.05;
+    moldCost = Math.round(moldCost);
+  }
+  notes.push(`挤压模具费: ${moldCost}元（一次性，不计入单件价格）`);
+  breakdown['mold'] = {
+    formula: '基础费600 + 截面周长×0.1 + 最大尺寸×0.05',
+    detail: `模具费: ${moldCost}元（单独列出）`,
+  };
+  
+  // 3. CNC二次加工费（复用板材的逻辑）
+  let secondaryCost = 0;
+  if (req.process) {
+    const sec = calcSecondaryOperationsCost(req.process, rules);
+    secondaryCost = sec.cost;
+    accumulated += secondaryCost;
+    breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
+  }
+  
+  // 4. 锯切下料费（每根2元）
+  const cutCount = req.process?.cut_count || 1;
+  const cutCost = cutCount * 2;
+  accumulated += cutCost;
+  breakdown['cutting'] = {
+    formula: '锯切次数 × 2元',
+    detail: `${cutCount}次 × 2元 = ${cutCost}元`,
+  };
+  
+  // 5. 表面处理费（复用板材的逻辑，按表面积计算）
+  let surfaceCost = 0;
+  if (req.surface_treatment?.type) {
+    // 估算表面积：周长 × 长度 / 1000000 (m²)
+    const perimeter = 2 * ((dims.width_mm || 50) + (dims.height_mm || 25));
+    const surfaceAreaM2 = (perimeter * (dims.length_mm || 1000)) / 1000000;
+    
+    // 表面处理单价（元/m²）
+    let surfacePricePerM2 = 0;
+    if (req.surface_treatment.type.includes('氧化本色')) {
+      surfacePricePerM2 = 10;
+    } else if (req.surface_treatment.type.includes('氧化') && req.surface_treatment.type.includes('黑色')) {
+      surfacePricePerM2 = 12.5;
+    } else if (req.surface_treatment.type.includes('喷涂') || req.surface_treatment.type.includes('喷粉')) {
+      surfacePricePerM2 = 20;
+    } else {
+      surfacePricePerM2 = 10;
+    }
+    
+    surfaceCost = surfaceAreaM2 * surfacePricePerM2;
+    accumulated += surfaceCost;
+    breakdown['surface'] = {
+      formula: `表面积 × 单价(${surfacePricePerM2}元/m²)`,
+      detail: `${r2(surfaceAreaM2)}m² × ${surfacePricePerM2}元/m² = ${r2(surfaceCost)}元`,
+    };
+  }
+  
+  // 6. 包装 + 运输（复用板材逻辑：重量 × 0.5）
+  const packagingCost = r2(mat.weight * 0.5);
+  const transportCost = r2(mat.weight * 0.5);
+  accumulated += packagingCost + transportCost;
+  breakdown['packaging'] = { formula: '重量 × 0.5', detail: `${mat.weight}kg × 0.5 = ${packagingCost}元` };
+  breakdown['transport'] = { formula: '重量 × 0.5', detail: `${mat.weight}kg × 0.5 = ${transportCost}元` };
+  
+  // 7. 管销费 + 利润
+  const managementFee = r2(accumulated * 0.03);
+  const profitFee = r2(accumulated * 0.05);
+  accumulated += managementFee + profitFee;
+  breakdown['management_profit'] = {
+    formula: '合计 × 3%(管销) + 合计 × 5%(利润)',
+    detail: `管销费: ${managementFee}元, 利润: ${profitFee}元`,
+  };
+  
+  const unitPrice = r2(accumulated);
+  
+  return {
+    costs: {
+      material_cost: mat.cost,
+      processing_cost: r2(cutCost),
+      surface_treatment_cost: r2(surfaceCost),
+      secondary_operations_cost: r2(secondaryCost),
+      packaging_cost: packagingCost,
+      transport_cost: transportCost,
+      management_fee: r2(managementFee + profitFee),
+      unit_price: unitPrice,
+      weight_per_piece_kg: mat.weight,
+    },
+    breakdown,
+    weight: mat.weight,
+    notes,
+  };
 }
 
 // ============================================================
@@ -1064,14 +1252,15 @@ function calcInjection(
   };
 }
 
+
 // ============================================================
 // 请求校验
 // ============================================================
 
 function validateRequest(body: any): string | null {
   if (!body.product_type) return '缺少 product_type 字段';
-  if (!['sheet_metal', 'die_casting', 'zinc_alloy', 'injection'].includes(body.product_type)) {
-    return `不支持的 product_type: ${body.product_type}，可选值: sheet_metal, die_casting, zinc_alloy, injection`;
+  if (!['sheet_metal', 'die_casting', 'zinc_alloy', 'injection', 'extrusion'].includes(body.product_type)) {
+    return `不支持的 product_type: ${body.product_type}，可选值: sheet_metal, die_casting, zinc_alloy, injection, extrusion`;
   }
   if (!body.material || !body.material.category) return '缺少 material.category 字段';
   if (!body.quantity || body.quantity <= 0) return 'quantity 必须为正整数';
@@ -1125,6 +1314,9 @@ export async function POST(request: NextRequest) {
         break;
       case 'injection':
         result = calcInjection(body, aluminumPrice, rules);
+        break;
+      case 'extrusion':
+        result = calcExtrusion(body, aluminumPrice, rules);
         break;
       default:
         return Response.json(
@@ -1181,12 +1373,13 @@ export async function GET() {
     endpoint: '/api/v1/quote/calculate',
     method: 'POST',
     description: '制造业零配件报价计算引擎 v1 — Coze Bot 专用',
-    supported_product_types: ['sheet_metal', 'die_casting', 'zinc_alloy', 'injection'],
+    supported_product_types: ['sheet_metal', 'die_casting', 'zinc_alloy', 'injection', 'extrusion'],
     supported_materials: {
       sheet_metal: ['铝板', '冷板SPCC', '不锈钢'],
       die_casting: ['压铸铝ADC12'],
       zinc_alloy: ['锌合金ZA-8'],
       injection: ['ABS', 'PC', 'PA', 'POM', 'PP', 'PMMA'],
+      extrusion: ['挤压铝型材'],
     },
     request_example: {
       product_type: 'sheet_metal',
