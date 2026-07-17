@@ -29,7 +29,7 @@ async function getAluminumPrice(): Promise<number> {
     console.error('Failed to fetch aluminum price:', error);
   }
 
-  return 23450; // 默认 23.45 元/kg × 1000
+  return 23530; // 默认 23.53 元/kg × 1000
 }
 
 /**

@@ -25,7 +25,7 @@ import type {
 const ALUMINUM_DENSITY = 2.7; // g/cm³
 
 /** 默认铝锭价 元/kg（质稳公式） */
-const DEFAULT_ALUMINUM_PRICE_PER_KG = 23.45;
+const DEFAULT_ALUMINUM_PRICE_PER_KG = 23.53;
 
 /** 默认加工费 元（质稳公式） */
 const DEFAULT_PROCESSING_FEE = 8;

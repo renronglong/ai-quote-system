@@ -48,7 +48,7 @@ export interface ExtrusionInput {
   // 加工费（可选，默认 8 元）
   processingFee?: number;
 
-  // 铝锭价 元/kg（可选，默认 23.45）
+  // 铝锭价 元/kg（可选，默认 23.53）
   aluminumPricePerKg?: number;
 
   // ---- 以下为旧版兼容字段（可选） ----
