@@ -319,7 +319,10 @@ async function loadPricingRules(): Promise<PricingRules> {
     if (res.ok) {
       const data = await res.json();
       // 合并远程配置到默认值
-      return { ...DEFAULT_PRICING_RULES, ...data };
+      // 注意：surface_treatment 远程JSON是公式字符串格式，代码需要数值格式，
+      // 所以不覆盖默认的数值格式配置
+      const { surface_treatment: _remoteST, ...restData } = data;
+      return { ...DEFAULT_PRICING_RULES, ...restData };
     }
   } catch { /* 使用默认值 */ }
   return DEFAULT_PRICING_RULES;
@@ -340,8 +343,9 @@ function calcSheetMaterialCost(
   aluminumPrice: number,
   rules: PricingRules,
 ): { cost: number; weight: number; formula: string; detail: string } {
-  const { length_mm, width_mm, height_mm: thickness_mm } = dimensions;
-  const t = thickness_mm || 2; // 默认厚度 2mm
+  const { length_mm, width_mm } = dimensions;
+  // 板材厚度优先使用 wall_thickness_mm，其次 height_mm（兼容旧格式）
+  const t = dimensions.wall_thickness_mm || dimensions.height_mm || 2;
 
   const matRule = rules.material_prices;
   const sheetSize = rules.default_sheet_size;
@@ -462,34 +466,34 @@ function calcSheetProcessingFee(
   materialCategory: string,
   rules: PricingRules,
 ): { cost: number; tonnage: number; baseFee: number; sizeSurcharge: number; volumeSurcharge: number; formula: string; detail: string } {
-  const { length_mm, width_mm, height_mm: thickness_mm } = dimensions;
-  const t = thickness_mm || 2;
+  const { length_mm, width_mm } = dimensions;
+  // 板材厚度优先使用 wall_thickness_mm，其次 height_mm
+  const t = dimensions.wall_thickness_mm || dimensions.height_mm || 2;
 
   // 冲裁周长（简化：矩形件 2×(L+W)）
   const perimeter = 2 * (length_mm + width_mm);
 
-  // 抗剪强度
+  // 抗剪强度（MPa）— 支持数值或范围字符串 "110~180 MPa"
   const shearMap = rules.process_rates['冲压吨位计算']?.shear_strength || {};
   let shearStrength = 350; // 默认冷板
-  if (materialCategory.includes('铝')) shearStrength = shearMap['铝'] || 150;
-  else if (materialCategory.includes('不锈钢')) shearStrength = shearMap['不锈钢304'] || 570;
+  if (materialCategory.includes('铝')) shearStrength = midOfRange(shearMap['铝'] || 150);
+  else if (materialCategory.includes('不锈钢')) shearStrength = midOfRange(shearMap['不锈钢304'] || 570);
 
   // 冲压吨位 = 冲裁周长 × 板厚 × 抗剪强度 ÷ 1000
   const tonnage = (perimeter * t * shearStrength) / 1000; // 单位：kN → 换算为吨(近似)
   const tonnageT = tonnage / 10; // 简化换算
 
-  // 根据吨位选择费率
-  const rateMap = rules.process_rates['冲压吨位费率']?.rates || {};
+  // 根据吨位选择费率（硬编码标准费率，避免远程配置键名不一致问题）
   let baseFee = 0.3;
-  const rateEntries = [
-    [35, rateMap['<=35T'] || 0.10],
-    [45, rateMap['45T'] || 0.24],
-    [60, rateMap['60T'] || 0.30],
-    [80, rateMap['80T'] || 0.40],
-    [110, rateMap['110T'] || 0.50],
-    [160, rateMap['160T'] || 0.60],
-    [200, rateMap['200T'] || 1.00],
-    [400, rateMap['250T双轴'] || 1.80],
+  const rateEntries: [number, number][] = [
+    [35, 0.10],   // ≤35T
+    [45, 0.24],   // 45T
+    [60, 0.30],   // 60T
+    [80, 0.40],   // 80T
+    [110, 0.50],  // 110T
+    [160, 0.60],  // 160T
+    [200, 1.00],  // 200T
+    [400, 1.80],  // 250T双轴
   ];
   for (const [limit, rate] of rateEntries) {
     if (tonnageT <= limit) { baseFee = rate as number; break; }
@@ -714,7 +718,8 @@ function calcSheetMetal(
   rules: PricingRules,
 ): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[] } {
   const dims = req.dimensions!;
-  const volumeCm3 = req.volume_cm3 || (dims.length_mm * dims.width_mm * (dims.height_mm || dims.wall_thickness_mm || 2)) / 1000;
+  // 板材体积：优先使用请求中的值，否则用 长×宽×壁厚 估算（注意是壁厚不是高度）
+  const volumeCm3 = req.volume_cm3 || (dims.length_mm * dims.width_mm * (dims.wall_thickness_mm || dims.height_mm || 2)) / 1000;
   const notes: string[] = [];
   const breakdown: Record<string, { formula: string; detail: string }> = {};
 
