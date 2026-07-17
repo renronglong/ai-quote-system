@@ -524,7 +524,7 @@ function calcExtrusionMaterialCost(
 }
 
 // ============================================================
-// 主计算引擎 — 铝型材挤压（复用板材的CNC和表面处理逻辑）
+// 主计算引擎 — 铝型材挤压（完全复用板材的加工逻辑，仅材料费不同）
 // ============================================================
 
 function calcExtrusion(
@@ -536,18 +536,18 @@ function calcExtrusion(
   const notes: string[] = [];
   const breakdown: Record<string, { formula: string; detail: string }> = {};
   
-  // 1. 材料费（铝型材专用计算：铝锭价 + 挤压加工费）
+  // 1. 材料费（铝型材专用：铝锭价 + 挤压加工费）
   const mat = calcExtrusionMaterialCost(dims, aluminumPrice, rules, req.weight_per_piece_kg);
   breakdown['material'] = { formula: mat.formula, detail: mat.detail };
   
   let accumulated = mat.cost;
   
-  // 2. 模具费（单独列出，不计入单件价格）
+  // 2. 模具费（挤压模具，单独列出）
   let moldCost = 0;
   if (req.mold_cost && req.mold_cost > 0) {
     moldCost = req.mold_cost;
   } else {
-    // 估算模具费：基础费 + 截面周长 × 0.1 + 最大尺寸 × 0.05
+    // 估算挤压模具费
     const maxDim = Math.max(dims.width_mm || 50, dims.height_mm || 25);
     const perimeter = 2 * ((dims.width_mm || 50) + (dims.height_mm || 25));
     moldCost = 600 + perimeter * 0.1 + maxDim * 0.05;
@@ -559,7 +559,34 @@ function calcExtrusion(
     detail: `模具费: ${moldCost}元（单独列出）`,
   };
   
-  // 3. CNC二次加工费（复用板材的逻辑）
+  // 3. 以下全部复用板材的加工逻辑
+  // 构造一个临时的板材请求，用铝型材的重量和尺寸
+  const sheetReq: QuoteRequest = {
+    ...req,
+    product_type: 'sheet_metal',
+    material: { category: '铝板', grade: req.material.grade || '6063-T5' },
+    weight_per_piece_kg: mat.weight,
+    volume_cm3: (mat.weight * 1000) / 2.7, // 反算体积 cm³
+  };
+  
+  // 3.1 冲压加工费（复用板材逻辑）
+  const volumeCm3 = sheetReq.volume_cm3 || (dims.length_mm * dims.width_mm * (dims.wall_thickness_mm || dims.height_mm || 2)) / 1000;
+  const proc = calcSheetProcessingFee(dims, volumeCm3, '铝板', rules);
+  accumulated += proc.cost;
+  breakdown['processing'] = { formula: proc.formula, detail: proc.detail };
+  
+  const stampingSurcharge = proc.sizeSurcharge + proc.volumeSurcharge;
+  
+  // 3.2 表面处理费（复用板材逻辑）
+  let surfaceCost = 0;
+  if (req.surface_treatment?.type) {
+    const st = calcSurfaceTreatmentCost(req.surface_treatment.type, '铝板', mat.weight, stampingSurcharge, rules);
+    surfaceCost = st.cost;
+    accumulated += surfaceCost;
+    breakdown['surface'] = { formula: st.formula, detail: st.detail };
+  }
+  
+  // 3.3 CNC二次加工费（复用板材逻辑）
   let secondaryCost = 0;
   if (req.process) {
     const sec = calcSecondaryOperationsCost(req.process, rules);
@@ -568,7 +595,7 @@ function calcExtrusion(
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
   }
   
-  // 4. 锯切下料费（每根2元）
+  // 3.4 锯切下料费（铝型材特有，每根2元）
   const cutCount = req.process?.cut_count || 1;
   const cutCost = cutCount * 2;
   accumulated += cutCost;
@@ -577,41 +604,14 @@ function calcExtrusion(
     detail: `${cutCount}次 × 2元 = ${cutCost}元`,
   };
   
-  // 5. 表面处理费（复用板材的逻辑，按表面积计算）
-  let surfaceCost = 0;
-  if (req.surface_treatment?.type) {
-    // 估算表面积：周长 × 长度 / 1000000 (m²)
-    const perimeter = 2 * ((dims.width_mm || 50) + (dims.height_mm || 25));
-    const surfaceAreaM2 = (perimeter * (dims.length_mm || 1000)) / 1000000;
-    
-    // 表面处理单价（元/m²）
-    let surfacePricePerM2 = 0;
-    if (req.surface_treatment.type.includes('氧化本色')) {
-      surfacePricePerM2 = 10;
-    } else if (req.surface_treatment.type.includes('氧化') && req.surface_treatment.type.includes('黑色')) {
-      surfacePricePerM2 = 12.5;
-    } else if (req.surface_treatment.type.includes('喷涂') || req.surface_treatment.type.includes('喷粉')) {
-      surfacePricePerM2 = 20;
-    } else {
-      surfacePricePerM2 = 10;
-    }
-    
-    surfaceCost = surfaceAreaM2 * surfacePricePerM2;
-    accumulated += surfaceCost;
-    breakdown['surface'] = {
-      formula: `表面积 × 单价(${surfacePricePerM2}元/m²)`,
-      detail: `${r2(surfaceAreaM2)}m² × ${surfacePricePerM2}元/m² = ${r2(surfaceCost)}元`,
-    };
-  }
-  
-  // 6. 包装 + 运输（复用板材逻辑：重量 × 0.5）
+  // 3.5 包装 + 运输（复用板材逻辑）
   const packagingCost = r2(mat.weight * 0.5);
   const transportCost = r2(mat.weight * 0.5);
   accumulated += packagingCost + transportCost;
   breakdown['packaging'] = { formula: '重量 × 0.5', detail: `${mat.weight}kg × 0.5 = ${packagingCost}元` };
   breakdown['transport'] = { formula: '重量 × 0.5', detail: `${mat.weight}kg × 0.5 = ${transportCost}元` };
   
-  // 7. 管销费 + 利润
+  // 4. 管销费 + 利润
   const managementFee = r2(accumulated * 0.03);
   const profitFee = r2(accumulated * 0.05);
   accumulated += managementFee + profitFee;
@@ -625,7 +625,7 @@ function calcExtrusion(
   return {
     costs: {
       material_cost: mat.cost,
-      processing_cost: r2(cutCost),
+      processing_cost: r2(proc.cost + cutCost),
       surface_treatment_cost: r2(surfaceCost),
       secondary_operations_cost: r2(secondaryCost),
       packaging_cost: packagingCost,
