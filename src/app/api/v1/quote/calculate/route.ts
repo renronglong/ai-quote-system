@@ -1284,22 +1284,32 @@ export async function OPTIONS() {
 
 export async function POST(request: NextRequest) {
   try {
-    const parsed = await request.json() as Record<string, unknown>;
-    let rawBody: Record<string, unknown> = parsed;
+    // 兼容 Coze 插件传入方法为 Query 的情况：优先从 Query 取 RequestBody
+    const queryBody = request.nextUrl.searchParams.get('RequestBody');
+    let rawBody: Record<string, unknown> = {};
 
-    // 兼容 Coze 插件：如果 body 被包在 RequestBody 字符串里，先解包
-    if (parsed && typeof parsed['RequestBody'] === 'string') {
+    if (queryBody) {
       try {
-        rawBody = JSON.parse(parsed['RequestBody'] as string) as Record<string, unknown>;
+        rawBody = JSON.parse(queryBody) as Record<string, unknown>;
       } catch (_e) {
-        // 解包失败，用原始 body 继续
+        rawBody = {};
       }
     } else {
-      // 兼容其他参数名包装
-      const candidates = ['data', 'body', 'params', 'json', 'request', 'input'];
-      for (const key of candidates) {
-        if (parsed[key] && typeof parsed[key] === 'string') {
-          try { rawBody = JSON.parse(parsed[key] as string) as Record<string, unknown>; break; } catch (_e) {}
+      const parsed = await request.json() as Record<string, unknown>;
+      rawBody = parsed;
+
+      // 兼容 Coze 插件：如果 body 被包在 RequestBody 字符串里，先解包
+      if (parsed && typeof parsed['RequestBody'] === 'string') {
+        try {
+          rawBody = JSON.parse(parsed['RequestBody'] as string) as Record<string, unknown>;
+        } catch (_e) {}
+      } else {
+        // 兼容其他参数名包装
+        const candidates = ['data', 'body', 'params', 'json', 'request', 'input'];
+        for (const key of candidates) {
+          if (parsed[key] && typeof parsed[key] === 'string') {
+            try { rawBody = JSON.parse(parsed[key] as string) as Record<string, unknown>; break; } catch (_e) {}
+          }
         }
       }
     }
