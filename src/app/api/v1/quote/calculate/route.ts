@@ -1371,8 +1371,12 @@ export async function POST(request: NextRequest) {
       notes: result.notes,
     };
 
-    // 包装响应：添加 response_data 字符串字段，供 Coze 插件输出参数映射
-    const wrapped = { ...response, response_data: JSON.stringify(response) };
+    // 包装响应：同时提供 Response(Object) 和 response_data(String)，匹配 Coze 插件输出参数
+    const wrapped = {
+      Response: response,
+      response_data: JSON.stringify(response),
+      ...response,
+    };
     return Response.json(wrapped, { headers: CORS_HEADERS });
 
   } catch (error) {
@@ -1473,8 +1477,12 @@ export async function GET(request: NextRequest) {
       notes: result.notes,
     };
 
-    // 包装响应：添加 response_data 字符串字段，供 Coze 插件输出参数映射
-    const wrapped = { ...response, response_data: JSON.stringify(response) };
+    // 包装响应：同时提供 Response(Object) 和 response_data(String)，匹配 Coze 插件输出参数
+    const wrapped = {
+      Response: response,
+      response_data: JSON.stringify(response),
+      ...response,
+    };
     return Response.json(wrapped, { headers: CORS_HEADERS });
 
   } catch (error) {
