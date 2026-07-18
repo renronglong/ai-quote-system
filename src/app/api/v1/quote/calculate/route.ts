@@ -1303,6 +1303,9 @@ export async function POST(request: NextRequest) {
         try {
           rawBody = JSON.parse(parsed['RequestBody'] as string) as Record<string, unknown>;
         } catch (_e) {}
+      } else if (parsed && typeof parsed['RequestBody'] === 'object' && parsed['RequestBody'] !== null) {
+        // Bot 直接发送 Object（Coze 插件参数类型为 Object 时）
+        rawBody = parsed['RequestBody'] as Record<string, unknown>;
       } else {
         // 兼容其他参数名包装
         const candidates = ['data', 'body', 'params', 'json', 'request', 'input'];
