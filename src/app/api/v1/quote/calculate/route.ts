@@ -1284,7 +1284,26 @@ export async function OPTIONS() {
 
 export async function POST(request: NextRequest) {
   try {
-    const body: QuoteRequest = await request.json();
+    let rawBody = await request.json();
+
+    // 兼容 Coze 插件：如果 body 被包在 RequestBody 字符串里，先解包
+    if (rawBody && typeof rawBody.RequestBody === 'string') {
+      try {
+        rawBody = JSON.parse(rawBody.RequestBody);
+      } catch {
+        // 解包失败，用原始 body 继续（会在 validateRequest 中报错）
+      }
+    }
+    // 兼容新端点多种参数名
+    if (rawBody && typeof rawBody === 'object' && !rawBody.product_type) {
+      const candidates = ['data', 'body', 'params', 'json', 'request', 'input'];
+      for (const key of candidates) {
+        if (rawBody[key] && typeof rawBody[key] === 'string') {
+          try { rawBody = JSON.parse(rawBody[key]); break; } catch {}
+        }
+      }
+    }
+    const body: QuoteRequest = rawBody;
 
     // 1. 请求校验
     const validationError = validateRequest(body);
