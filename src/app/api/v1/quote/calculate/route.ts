@@ -1382,7 +1382,7 @@ export async function POST(request: NextRequest) {
     };
 
     // 返回 {"Response": data} 格式，与插件输出参数 "Response"(Object) 名称匹配
-    return Response.json({ Response: response }, { headers: CORS_HEADERS });
+    return Response.json(response, { headers: CORS_HEADERS });
 
   } catch (error) {
     console.error('[quote/calculate] Error:', error);
@@ -1483,7 +1483,7 @@ export async function GET(request: NextRequest) {
     };
 
     // 返回 {"Response": data} 格式，与插件输出参数 "Response"(Object) 名称匹配
-    return Response.json({ Response: response }, { headers: CORS_HEADERS });
+    return Response.json(response, { headers: CORS_HEADERS });
 
   } catch (error) {
     console.error('[quote/calculate GET] Error:', error);
