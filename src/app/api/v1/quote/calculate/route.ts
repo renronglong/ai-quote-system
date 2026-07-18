@@ -42,6 +42,7 @@ interface QuoteRequest {
     width_mm: number;
     height_mm?: number;
     wall_thickness_mm?: number;
+    cross_section_area_mm2?: number; // 截面积 mm²（挤压铝型材）
   };
   volume_cm3?: number;       // 体积 cm³
   surface_area_cm2?: number; // 表面积 cm²
@@ -56,6 +57,7 @@ interface QuoteRequest {
     holes?: { count: number; diameter_range?: string };
     tapped_holes?: { count: number; size?: string };
     slots?: { count: number; type?: string };
+    cut_count?: number;  // 锯切次数（铝型材）
   } | null;
   aluminum_price_override?: number; // 铝锭价覆盖值（元/吨）
   weight_per_piece_kg?: number;     // 单件重量，不填则根据体积×密度估算
