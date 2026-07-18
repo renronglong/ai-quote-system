@@ -1367,42 +1367,101 @@ export async function POST(request: NextRequest) {
 }
 
 // ============================================================
-// GET — 返回 API 使用说明
-// ============================================================
+export async function GET(request: NextRequest) {
+  // 支持 Coze 插件通过 GET + Query 参数调用
+  // 参数格式: ?RequestBody={"product_type":"sheet_metal",...}
+  try {
+    const requestBodyStr = request.nextUrl.searchParams.get('RequestBody');
+    
+    if (!requestBodyStr) {
+      // 没有 RequestBody 参数时返回 API 说明
+      return Response.json({
+        endpoint: '/api/v1/quote/calculate',
+        method: 'GET/POST',
+        description: '制造业零配件报价计算引擎 v1 — Coze Bot 专用',
+        usage: 'GET /api/v1/quote/calculate?RequestBody={...}',
+        supported_product_types: ['sheet_metal', 'die_casting', 'zinc_alloy', 'injection', 'extrusion'],
+      }, { headers: CORS_HEADERS });
+    }
 
-export async function GET() {
-  return Response.json({
-    endpoint: '/api/v1/quote/calculate',
-    method: 'POST',
-    description: '制造业零配件报价计算引擎 v1 — Coze Bot 专用',
-    supported_product_types: ['sheet_metal', 'die_casting', 'zinc_alloy', 'injection', 'extrusion'],
-    supported_materials: {
-      sheet_metal: ['铝板', '冷板SPCC', '不锈钢'],
-      die_casting: ['压铸铝ADC12'],
-      zinc_alloy: ['锌合金ZA-8'],
-      injection: ['ABS', 'PC', 'PA', 'POM', 'PP', 'PMMA'],
-      extrusion: ['挤压铝型材'],
-    },
-    request_example: {
-      product_type: 'sheet_metal',
-      material: { category: '铝板', grade: '5系(5052)' },
-      dimensions: { length_mm: 120, width_mm: 80, height_mm: 45, wall_thickness_mm: 3.2 },
-      volume_cm3: 285.6,
-      surface_area_cm2: 482.3,
-      quantity: 1000,
-      surface_treatment: { type: '氧化本色', color: null },
-      process: {
-        type: '冲压',
-        secondary_operations: ['钻孔', '攻丝', '铣槽', '去毛刺'],
-        holes: { count: 4, diameter_range: 'ø6~10mm' },
-        tapped_holes: { count: 2, size: 'M5~M6' },
-        slots: { count: 1, type: '开口槽' },
-      },
-    },
-    optional_override: {
-      aluminum_price_override: '铝锭价覆盖值（元/吨），不传则自动获取实时价',
-      weight_per_piece_kg: '单件重量覆盖值（kg），不填则根据体积×密度估算',
-      mold_cost: '模具费（元），不填则自动估算',
-    },
-  }, { headers: CORS_HEADERS });
+    const body: QuoteRequest = JSON.parse(decodeURIComponent(requestBodyStr));
+
+    // 1. 请求校验
+    const validationError = validateRequest(body);
+    if (validationError) {
+      return Response.json(
+        { success: false, error: validationError } as QuoteResponse,
+        { status: 400, headers: CORS_HEADERS },
+      );
+    }
+
+    // 2. 并行加载：铝锭价 + 报价规则
+    const [aluminumPrice, rules] = await Promise.all([
+      body.aluminum_price_override ? Promise.resolve(body.aluminum_price_override) : fetchAluminumPrice(),
+      loadPricingRules(),
+    ]);
+
+    // 3. 根据产品类型分发计算
+    let result: { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[] };
+
+    switch (body.product_type) {
+      case 'sheet_metal':
+        result = calcSheetMetal(body, aluminumPrice, rules);
+        break;
+      case 'die_casting':
+        result = calcDieCasting(body, aluminumPrice, rules);
+        break;
+      case 'zinc_alloy':
+        result = calcZincAlloy(body, aluminumPrice, rules);
+        break;
+      case 'injection':
+        result = calcInjection(body, aluminumPrice, rules);
+        break;
+      case 'extrusion':
+        result = calcExtrusion(body, aluminumPrice, rules);
+        break;
+      default:
+        return Response.json(
+          { success: false, error: `未知产品类型: ${body.product_type}` } as QuoteResponse,
+          { status: 400, headers: CORS_HEADERS },
+        );
+    }
+
+    // 4. 计算总价
+    const unitPrice = result.costs.unit_price || 0;
+    const totalPrice = r2(unitPrice * body.quantity);
+
+    // 5. 最低订单量检查（最低 300kg）
+    const totalWeight = result.weight * body.quantity;
+    const minOrderWeight = 300;
+    const minOrderMet = totalWeight >= minOrderWeight;
+    if (!minOrderMet) {
+      result.notes.push(`订单总重量 ${r2(totalWeight)}kg 未达到最低起订量 ${minOrderWeight}kg`);
+    }
+
+    // 6. 构造响应
+    const response: QuoteResponse = {
+      success: true,
+      quotation_id: generateQuotationId(),
+      ...result.costs,
+      total_price: totalPrice,
+      breakdown: result.breakdown,
+      aluminum_index: aluminumPrice,
+      min_order_met: minOrderMet,
+      min_order_weight_kg: minOrderWeight,
+      notes: result.notes,
+    };
+
+    return Response.json(response, { headers: CORS_HEADERS });
+
+  } catch (error) {
+    console.error('[quote/calculate GET] Error:', error);
+    return Response.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : '报价计算失败',
+      } as QuoteResponse,
+      { status: 500, headers: CORS_HEADERS },
+    );
+  }
 }
