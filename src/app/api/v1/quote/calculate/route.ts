@@ -1371,8 +1371,8 @@ export async function POST(request: NextRequest) {
       notes: result.notes,
     };
 
-    // 返回平铺结构，与 OpenAPI spec 一致，确保 Coze 插件正确映射输出参数
-    return Response.json(response, { headers: CORS_HEADERS });
+    // 返回 {"Response": data} 格式，与插件输出参数 "Response"(Object) 名称匹配
+    return Response.json({ Response: response }, { headers: CORS_HEADERS });
 
   } catch (error) {
     console.error('[quote/calculate] Error:', error);
@@ -1472,8 +1472,8 @@ export async function GET(request: NextRequest) {
       notes: result.notes,
     };
 
-    // 返回平铺结构，与 OpenAPI spec 一致，确保 Coze 插件正确映射输出参数
-    return Response.json(response, { headers: CORS_HEADERS });
+    // 返回 {"Response": data} 格式，与插件输出参数 "Response"(Object) 名称匹配
+    return Response.json({ Response: response }, { headers: CORS_HEADERS });
 
   } catch (error) {
     console.error('[quote/calculate GET] Error:', error);
