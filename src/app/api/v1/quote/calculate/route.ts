@@ -1284,26 +1284,26 @@ export async function OPTIONS() {
 
 export async function POST(request: NextRequest) {
   try {
-    let rawBody = await request.json();
+    const parsed = await request.json() as Record<string, unknown>;
+    let rawBody: Record<string, unknown> = parsed;
 
     // 兼容 Coze 插件：如果 body 被包在 RequestBody 字符串里，先解包
-    if (rawBody && typeof rawBody.RequestBody === 'string') {
+    if (parsed && typeof parsed['RequestBody'] === 'string') {
       try {
-        rawBody = JSON.parse(rawBody.RequestBody);
-      } catch {
-        // 解包失败，用原始 body 继续（会在 validateRequest 中报错）
+        rawBody = JSON.parse(parsed['RequestBody'] as string) as Record<string, unknown>;
+      } catch (_e) {
+        // 解包失败，用原始 body 继续
       }
-    }
-    // 兼容新端点多种参数名
-    if (rawBody && typeof rawBody === 'object' && !rawBody.product_type) {
+    } else {
+      // 兼容其他参数名包装
       const candidates = ['data', 'body', 'params', 'json', 'request', 'input'];
       for (const key of candidates) {
-        if (rawBody[key] && typeof rawBody[key] === 'string') {
-          try { rawBody = JSON.parse(rawBody[key]); break; } catch {}
+        if (parsed[key] && typeof parsed[key] === 'string') {
+          try { rawBody = JSON.parse(parsed[key] as string) as Record<string, unknown>; break; } catch (_e) {}
         }
       }
     }
-    const body: QuoteRequest = rawBody;
+    const body = rawBody as unknown as QuoteRequest;
 
     // 1. 请求校验
     const validationError = validateRequest(body);
