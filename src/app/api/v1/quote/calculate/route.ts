@@ -1371,7 +1371,9 @@ export async function POST(request: NextRequest) {
       notes: result.notes,
     };
 
-    return Response.json(response, { headers: CORS_HEADERS });
+    // 包装响应：添加 response_data 字符串字段，供 Coze 插件输出参数映射
+    const wrapped = { ...response, response_data: JSON.stringify(response) };
+    return Response.json(wrapped, { headers: CORS_HEADERS });
 
   } catch (error) {
     console.error('[quote/calculate] Error:', error);
@@ -1471,7 +1473,9 @@ export async function GET(request: NextRequest) {
       notes: result.notes,
     };
 
-    return Response.json(response, { headers: CORS_HEADERS });
+    // 包装响应：添加 response_data 字符串字段，供 Coze 插件输出参数映射
+    const wrapped = { ...response, response_data: JSON.stringify(response) };
+    return Response.json(wrapped, { headers: CORS_HEADERS });
 
   } catch (error) {
     console.error('[quote/calculate GET] Error:', error);
