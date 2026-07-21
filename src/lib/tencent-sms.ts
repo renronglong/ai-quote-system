@@ -88,7 +88,7 @@ async function sendViaTencentCloud(
     SmsSdkAppId: appId,
     SignName: signName,
     TemplateId: templateId,
-    TemplateParamSet: [code],
+    TemplateParamSet: [code, '5'],
     PhoneNumberSet: [`+86${phone}`],
   });
 
