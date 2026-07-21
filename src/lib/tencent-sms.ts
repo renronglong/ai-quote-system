@@ -126,6 +126,7 @@ async function sendViaTencentCloud(
       'X-TC-Action': action,
       'X-TC-Timestamp': timestamp.toString(),
       'X-TC-Version': version,
+      'X-TC-Region': 'ap-guangzhou',
     },
     body: payload,
   });
