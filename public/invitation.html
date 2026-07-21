@@ -1,0 +1,449 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>龙奕琳18岁成人礼暨升学宴邀请函</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #1a1a2e;
+    padding: 20px;
+    font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "STHeiti", sans-serif;
+  }
+
+  .invitation {
+    width: 600px;
+    max-width: 100%;
+    background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+    border-radius: 20px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.5);
+  }
+
+  .top-deco {
+    height: 8px;
+    background: linear-gradient(90deg, #f7971e, #ffd200, #f7971e, #ffd200, #f7971e);
+  }
+
+  .stars {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .stars::before, .stars::after {
+    content: '';
+    position: absolute;
+    width: 4px; height: 4px;
+    background: rgba(255,210,0,0.6);
+    border-radius: 50%;
+    animation: twinkle 3s ease-in-out infinite;
+  }
+  .stars::before { top: 15%; left: 10%; }
+  .stars::after { top: 25%; right: 15%; animation-delay: 1.5s; box-shadow:
+    -80px 40px 0 rgba(255,210,0,0.3),
+    30px 100px 0 rgba(255,210,0,0.4),
+    -50px 200px 0 rgba(255,210,0,0.2),
+    60px 300px 0 rgba(255,210,0,0.5),
+    -20px 400px 0 rgba(255,210,0,0.3),
+    40px 500px 0 rgba(255,210,0,0.2)
+  ;}
+
+  @keyframes twinkle {
+    0%, 100% { opacity: 0.3; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.5); }
+  }
+
+  .content {
+    position: relative;
+    z-index: 1;
+    padding: 50px 40px 30px;
+    text-align: center;
+  }
+
+  .age-number {
+    font-size: 120px;
+    font-weight: 700;
+    background: linear-gradient(180deg, #ffd200 0%, #f7971e 50%, #e8632b 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1;
+    margin-bottom: 5px;
+    filter: drop-shadow(0 4px 20px rgba(255,210,0,0.3));
+  }
+
+  .age-label {
+    font-size: 14px;
+    color: rgba(255,210,0,0.7);
+    letter-spacing: 12px;
+    margin-bottom: 30px;
+  }
+
+  .divider {
+    width: 80px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #ffd200, transparent);
+    margin: 0 auto 30px;
+  }
+
+  .invitation-text {
+    color: rgba(255,255,255,0.6);
+    font-size: 14px;
+    letter-spacing: 3px;
+    margin-bottom: 15px;
+  }
+
+  .name {
+    font-size: 42px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 8px;
+    letter-spacing: 6px;
+  }
+
+  .subtitle {
+    font-size: 16px;
+    color: rgba(255,210,0,0.8);
+    letter-spacing: 4px;
+    margin-bottom: 40px;
+  }
+
+  .message {
+    color: rgba(255,255,255,0.7);
+    font-size: 15px;
+    line-height: 2;
+    margin-bottom: 40px;
+    padding: 0 20px;
+  }
+
+  .info-card {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,210,0,0.15);
+    border-radius: 16px;
+    padding: 30px;
+    margin-bottom: 35px;
+  }
+
+  .info-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 18px;
+    gap: 12px;
+  }
+  .info-row:last-child { margin-bottom: 0; }
+
+  .info-icon {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, rgba(255,210,0,0.2), rgba(247,151,30,0.2));
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  .info-content { text-align: left; }
+
+  .info-label {
+    font-size: 11px;
+    color: rgba(255,210,0,0.6);
+    letter-spacing: 2px;
+    margin-bottom: 2px;
+  }
+
+  .info-value {
+    font-size: 16px;
+    color: #fff;
+    font-weight: 500;
+  }
+
+  .host {
+    color: rgba(255,255,255,0.5);
+    font-size: 14px;
+    margin-bottom: 6px;
+  }
+
+  .host-name {
+    color: rgba(255,210,0,0.9);
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 4px;
+  }
+
+  .footer-note {
+    margin-top: 30px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.3);
+    letter-spacing: 1px;
+  }
+
+  /* RSVP Form Section */
+  .rsvp-section {
+    position: relative;
+    z-index: 1;
+    padding: 0 40px 40px;
+    text-align: center;
+  }
+
+  .rsvp-divider {
+    width: 60px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,210,0,0.4), transparent);
+    margin: 0 auto 25px;
+  }
+
+  .rsvp-title {
+    font-size: 16px;
+    color: rgba(255,210,0,0.8);
+    letter-spacing: 4px;
+    margin-bottom: 8px;
+  }
+
+  .rsvp-hint {
+    font-size: 12px;
+    color: rgba(255,255,255,0.4);
+    margin-bottom: 20px;
+  }
+
+  .rsvp-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .form-label {
+    font-size: 12px;
+    color: rgba(255,210,0,0.6);
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+    text-align: left;
+    width: 100%;
+  }
+
+  .form-input {
+    width: 100%;
+    padding: 12px 16px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,210,0,0.2);
+    border-radius: 10px;
+    color: #fff;
+    font-size: 15px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.3s;
+  }
+
+  .form-input:focus {
+    border-color: rgba(255,210,0,0.5);
+  }
+
+  .form-input::placeholder {
+    color: rgba(255,255,255,0.25);
+  }
+
+  .submit-btn {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, #f7971e, #ffd200);
+    border: none;
+    border-radius: 10px;
+    color: #1a1a2e;
+    font-size: 16px;
+    font-weight: 600;
+    font-family: inherit;
+    letter-spacing: 4px;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    margin-top: 8px;
+  }
+
+  .submit-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(255,210,0,0.3);
+  }
+
+  .submit-btn:active {
+    transform: translateY(0);
+  }
+
+  /* Success message */
+  .success-msg {
+    display: none;
+    padding: 30px 20px;
+    text-align: center;
+  }
+
+  .success-icon {
+    font-size: 48px;
+    margin-bottom: 15px;
+  }
+
+  .success-text {
+    color: rgba(255,255,255,0.8);
+    font-size: 16px;
+    line-height: 1.8;
+  }
+
+  .success-highlight {
+    color: #ffd200;
+    font-weight: 600;
+  }
+
+  .bottom-deco {
+    height: 4px;
+    background: linear-gradient(90deg, #f7971e, #ffd200, #f7971e);
+  }
+
+  @media (max-width: 480px) {
+    .content { padding: 35px 25px 20px; }
+    .rsvp-section { padding: 0 25px 30px; }
+    .age-number { font-size: 80px; }
+    .name { font-size: 32px; letter-spacing: 4px; }
+    .message { padding: 0 10px; font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="invitation">
+  <div class="top-deco"></div>
+  <div class="stars"></div>
+
+  <div class="content">
+    <div class="age-number">18</div>
+    <div class="age-label">岁 成 人 礼 暨 升 学 宴</div>
+
+    <div class="divider"></div>
+
+    <div class="invitation-text">尊敬的嘉宾</div>
+    <div class="invitation-text" style="margin-top: 8px;">诚 邀 您 出 席</div>
+    <div class="name">小女奕琳</div>
+    <div class="subtitle">成 人 立 业 双 喜 临 门</div>
+
+    <div class="message">
+      十八载春秋，雏鹰初长成<br>
+      金榜题名时，鹏程万里行<br>
+      小女奕琳荣幸考入<strong style="color:#ffd200">武汉江汉大学</strong><br>
+      值此成人礼暨升学之喜<br>
+      诚邀您共同见证，分享喜悦
+    </div>
+
+    <div class="info-card">
+      <div class="info-row">
+        <div class="info-icon">📅</div>
+        <div class="info-content">
+          <div class="info-label">日 期</div>
+          <div class="info-value">2026年8月1日（农历六月十九 星期六）</div>
+        </div>
+      </div>
+      <div class="info-row">
+        <div class="info-icon">🕐</div>
+        <div class="info-content">
+          <div class="info-label">时 间</div>
+          <div class="info-value">中午 12:00 入席</div>
+        </div>
+      </div>
+      <div class="info-row">
+        <div class="info-icon">📍</div>
+        <div class="info-content">
+          <div class="info-label">地 点</div>
+          <div class="info-value">江西省萍乡市上栗县长平乡佛溪</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="host">诚挚邀请</div>
+    <div class="host-name">龙任荣&ensp;易金兰</div>
+  </div>
+
+  <!-- RSVP Form -->
+  <div class="rsvp-section" id="rsvpSection">
+    <div class="rsvp-divider"></div>
+    <div class="rsvp-title">回 复 出 席</div>
+    <div class="rsvp-hint">请填写以下信息，方便我们为您安排席位</div>
+
+    <form class="rsvp-form" id="rsvpForm" onsubmit="submitForm(event)">
+      <div class="form-group">
+        <div class="form-label">您的姓名</div>
+        <input type="text" class="form-input" id="guestName" placeholder="请输入姓名" required>
+      </div>
+      <div class="form-group">
+        <div class="form-label">赴宴人数（含本人）</div>
+        <input type="number" class="form-input" id="guestCount" placeholder="请输入人数" min="1" max="20" value="1" required>
+      </div>
+      <button type="submit" class="submit-btn">确 认 出 席</button>
+    </form>
+  </div>
+
+  <!-- Success Message -->
+  <div class="success-msg" id="successMsg">
+    <div class="rsvp-section">
+      <div class="rsvp-divider"></div>
+      <div class="success-icon">🎉</div>
+      <div class="success-text">
+        感谢您的回复！<br>
+        <span class="success-highlight" id="confirmText"></span><br>
+        我们恭候您的光临
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-note" style="position:relative;z-index:1;text-align:center;padding-bottom:15px;">期待您的光临</div>
+  <div class="bottom-deco"></div>
+</div>
+
+<script>
+function submitForm(e) {
+  e.preventDefault();
+  var name = document.getElementById('guestName').value.trim();
+  var count = document.getElementById('guestCount').value;
+  
+  if (!name || !count) return;
+
+  // Send to FormSubmit (email: 3074409285@qq.com)
+  var formData = new FormData();
+  formData.append('姓名', name);
+  formData.append('赴宴人数', count + '人');
+  formData.append('_subject', '【升学宴回复】' + name + ' - ' + count + '人出席');
+  formData.append('_template', 'table');
+
+  fetch('https://formsubmit.co/ajax/3074409285@qq.com', {
+    method: 'POST',
+    body: formData
+  }).then(function(res) {
+    showSuccess(name, count);
+  }).catch(function(err) {
+    // Still show success even if network issue
+    showSuccess(name, count);
+  });
+}
+
+function showSuccess(name, count) {
+  document.getElementById('rsvpSection').style.display = 'none';
+  document.getElementById('successMsg').style.display = 'block';
+  document.getElementById('confirmText').textContent = name + '，共' + count + '人出席';
+}
+</script>
+
+</body>
+</html>
