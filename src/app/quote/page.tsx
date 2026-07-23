@@ -14,6 +14,11 @@ import {
   Upload,
   History,
   User,
+  LayoutGrid,
+  Zap,
+  Package,
+  Warehouse,
+  ClipboardList,
 } from 'lucide-react';
 
 const ChatPanel = dynamic(() => import('@/components/ChatPanel'), {
@@ -24,6 +29,15 @@ const ChatPanel = dynamic(() => import('@/components/ChatPanel'), {
         <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-3" />
         <p className="text-slate-500 text-sm">加载AI报价助手...</p>
       </div>
+    </div>
+  ),
+});
+
+const QuoteForm = dynamic(() => import('@/components/QuoteForm'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-full">
+      <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
     </div>
   ),
 });
@@ -159,33 +173,65 @@ export default function QuotePage() {
         )}
       </header>
 
-      {/* 主内容区：AI报价助手 */}
-      <main className="flex-1 pt-16 flex flex-col">
-        {/* 页面标题栏 */}
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-slate-200 px-4 py-4">
-          <div className="max-w-4xl mx-auto flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold text-slate-800">AI 智能报价</h1>
-              <p className="text-sm text-slate-500 mt-0.5">上传图纸 / 描述需求，实时核算全工序成本</p>
-            </div>
-            <div className="flex items-center gap-3">
-              {aluminumPrice && (
-                <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-slate-200">
-                  <TrendingUp className="w-3.5 h-3.5 text-orange-500" />
-                  <span className="text-xs text-slate-500">铝锭价</span>
-                  <span className="text-sm font-bold text-slate-800">¥{aluminumPrice.price.toLocaleString()}/吨</span>
-                  <span className={`text-xs font-medium ${aluminumPrice.change >= 0 ? 'text-red-500' : 'text-green-500'}`}>
-                    {aluminumPrice.change >= 0 ? '↑' : '↓'}{Math.abs(aluminumPrice.changePercent).toFixed(2)}%
-                  </span>
-                </div>
-              )}
-            </div>
+      {/* 主内容区：侧边栏 + 表单 + AI对话 */}
+      <main className="flex-1 pt-16 flex">
+        {/* 左侧导航栏 */}
+        <aside className="hidden lg:flex flex-col w-48 bg-[#1a2940] border-r border-white/5 shrink-0">
+          <div className="px-3 py-4 space-y-1">
+            {[
+              { icon: LayoutGrid, label: '报价工作台', href: '/quote', active: true },
+              { icon: Zap, label: '快速估价', href: '/quote?mode=quick' },
+              { icon: Package, label: '产品管理', href: '/products' },
+              { icon: Warehouse, label: '库存管理', href: '/inventory' },
+              { icon: ClipboardList, label: '报价历史', href: '/history' },
+            ].map(item => (
+              <Link
+                key={item.label}
+                href={item.href}
+                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm transition-all ${
+                  item.active
+                    ? 'bg-blue-600/20 text-blue-300 font-medium'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                }`}
+              >
+                <item.icon className="w-4 h-4" />
+                {item.label}
+              </Link>
+            ))}
           </div>
+        </aside>
+
+        {/* 左栏：报价参数表单 */}
+        <div className="hidden md:block w-80 border-r border-gray-200 bg-gray-50/50 overflow-y-auto shrink-0">
+          <QuoteForm />
         </div>
 
-        {/* ChatPanel - 占满剩余空间 */}
-        <div className="flex-1 px-4 py-4">
-          <div className="max-w-4xl mx-auto h-full">
+        {/* 右栏：AI报价助手 */}
+        <div className="flex-1 flex flex-col min-w-0 bg-white">
+          {/* 页面标题栏 */}
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-slate-200 px-4 py-3 shrink-0">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-lg font-bold text-slate-800">AI 智能报价</h1>
+                <p className="text-xs text-slate-500 mt-0.5">上传图纸 / 描述需求，AI将自动识别并填入参数</p>
+              </div>
+              <div className="flex items-center gap-3">
+                {aluminumPrice && (
+                  <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-slate-200">
+                    <TrendingUp className="w-3.5 h-3.5 text-orange-500" />
+                    <span className="text-xs text-slate-500">铝锭价</span>
+                    <span className="text-sm font-bold text-slate-800">¥{aluminumPrice.price.toLocaleString()}/吨</span>
+                    <span className={`text-xs font-medium ${aluminumPrice.change >= 0 ? 'text-red-500' : 'text-green-500'}`}>
+                      {aluminumPrice.change >= 0 ? '↑' : '↓'}{Math.abs(aluminumPrice.changePercent).toFixed(2)}%
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ChatPanel - 占满剩余空间 */}
+          <div className="flex-1 p-3 min-h-0">
             <ChatPanel />
           </div>
         </div>
