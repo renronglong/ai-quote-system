@@ -1096,7 +1096,22 @@ function MessageContent({ message }: { message: Message }) {
   return <div className="whitespace-pre-wrap text-[15px] leading-relaxed">{cleanContent}</div>;
 }
 
-export default function ChatPanel() {
+interface ChatPanelProps {
+  onFormUpdate?: (data: {
+    productType?: string;
+    materialCategory?: string;
+    materialGrade?: string;
+    quantity?: number;
+    length?: number;
+    width?: number;
+    height?: number;
+    surfaceTreatment?: string;
+    packaging?: string;
+    secondaryProcessing?: string[];
+  }) => void;
+}
+
+export default function ChatPanel({ onFormUpdate }: ChatPanelProps) {
   const { user } = useAuth();
   
   // localStorage key 前缀，用于按 conversation_id 存储对话历史
@@ -2133,7 +2148,59 @@ export default function ChatPanel() {
         }
       }
 
-      // ===== 纯对话模式：不再从Bot回复中提取参数自动报价 =====
+      // ===== 从Bot回复中提取参数，同步到左侧表单 =====
+      if (onFormUpdate && assistantContent) {
+        const formUpdate: Record<string, unknown> = {};
+
+        // 优先尝试从结构化参数块提取
+        const paramBlock = assistantContent.match(/【产品参数开始】([\s\S]*?)【产品参数结束】/);
+        if (paramBlock) {
+          const block = paramBlock[1];
+          const getVal = (key: string) => {
+            const m = block.match(new RegExp(key + '[：:]\\s*([^\\n]*?)(?:\\n|$)'));
+            return m ? m[1].trim() : '';
+          };
+          const material = getVal('材质');
+          if (material) {
+            if (/6063/i.test(material)) formUpdate.materialGrade = '6063-T5';
+            else if (/6061/i.test(material)) formUpdate.materialGrade = '6061-T6';
+            formUpdate.materialCategory = '铝合金';
+          }
+          const surface = getVal('表面处理');
+          if (surface) formUpdate.surfaceTreatment = surface;
+          const len = getVal('长度');
+          const lenMatch = len.match(/(\d+(?:\.\d+)?)/);
+          if (lenMatch) formUpdate.length = parseFloat(lenMatch[1]);
+          const qty = getVal('数量');
+          const qtyMatch = qty.match(/(\d+)/);
+          if (qtyMatch) formUpdate.quantity = parseInt(qtyMatch[1]);
+        }
+
+        // 从截面尺寸段落提取宽高
+        const sectionMatch = assistantContent.match(/(?:截面尺寸|截面).*?(\d+(?:\.\d+)?)\s*(?:mm)?\s*[（(]?\s*宽\s*[）)]?\s*[×xX*]\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[（(]?\s*高\s*[）)]?/s);
+        if (sectionMatch) {
+          formUpdate.width = parseFloat(sectionMatch[1]);
+          formUpdate.height = parseFloat(sectionMatch[2]);
+        }
+        
+        // 兜底：尝试从全文提取基本参数
+        if (Object.keys(formUpdate).length === 0) {
+          const params = extractPricingParamsFromBotReply(assistantContent);
+          if (params) {
+            formUpdate.width = params.outerWidth;
+            formUpdate.height = params.outerHeight;
+            formUpdate.length = params.length;
+            formUpdate.quantity = params.quantity;
+            if (params.surfaceTreatment && params.surfaceTreatment !== '无') {
+              formUpdate.surfaceTreatment = params.surfaceTreatment;
+            }
+          }
+        }
+
+        if (Object.keys(formUpdate).length > 0) {
+          onFormUpdate(formUpdate as Parameters<NonNullable<typeof onFormUpdate>>[0]);
+        }
+      }
     } catch (error) {
       console.error('发送消息失败:', error);
       setMessages((prev) => [
@@ -2148,7 +2215,7 @@ export default function ChatPanel() {
     } finally {
       setIsLoading(false);
     }
-  }, [input, messages, uploadedImage, cozeFileId, cozeFileIdsBatch, uploadedFileType, extractedText]);
+  }, [input, messages, uploadedImage, cozeFileId, cozeFileIdsBatch, uploadedFileType, extractedText, onFormUpdate]);
 
   // 处理键盘事件
   const handleKeyDown = (e: React.KeyboardEvent) => {

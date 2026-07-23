@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Calculator, ChevronDown } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Calculator, ChevronDown, Sparkles } from 'lucide-react';
 
 interface QuoteFormData {
   productType: string;
@@ -16,13 +16,32 @@ interface QuoteFormData {
   secondaryProcessing: string[];
 }
 
+/** AI 同步到表单的数据（所有字段可选） */
+export interface AiFormUpdate {
+  productType?: string;
+  materialCategory?: string;
+  materialGrade?: string;
+  quantity?: number;
+  length?: number;
+  width?: number;
+  height?: number;
+  surfaceTreatment?: string;
+  packaging?: string;
+  secondaryProcessing?: string[];
+}
+
 interface QuoteFormProps {
   onCalculate?: (data: QuoteFormData) => void;
+  /** 从 ChatPanel 传入的 AI 识别参数 */
+  aiData?: AiFormUpdate | null;
 }
 
 const secondaryOptions = ['CNC精加工', '钻孔', '攻丝', '折弯', '焊接', '切割', '冲压'];
 
-export default function QuoteForm({ onCalculate }: QuoteFormProps) {
+export default function QuoteForm({ onCalculate, aiData }: QuoteFormProps) {
+  const [aiSynced, setAiSynced] = useState(false);
+  const prevAiDataRef = useRef<AiFormUpdate | null | undefined>(null);
+
   const [formData, setFormData] = useState<QuoteFormData>({
     productType: '挤压铝型材',
     materialCategory: '铝合金',
@@ -46,6 +65,46 @@ export default function QuoteForm({ onCalculate }: QuoteFormProps) {
     managementFee: number;
     unitPrice: number;
   } | null>(null);
+
+  // 监听 AI 识别参数，自动填入表单
+  useEffect(() => {
+    if (!aiData || aiData === prevAiDataRef.current) return;
+    prevAiDataRef.current = aiData;
+
+    setFormData(prev => {
+      const next = { ...prev };
+      if (aiData.productType) next.productType = aiData.productType;
+      if (aiData.materialCategory) next.materialCategory = aiData.materialCategory;
+      if (aiData.materialGrade) next.materialGrade = aiData.materialGrade;
+      if (aiData.quantity != null && aiData.quantity > 0) next.quantity = aiData.quantity;
+      if (aiData.length != null && aiData.length > 0) next.length = aiData.length;
+      if (aiData.width != null && aiData.width > 0) next.width = aiData.width;
+      if (aiData.height != null && aiData.height > 0) next.height = aiData.height;
+      if (aiData.surfaceTreatment) {
+        // 映射 AI 常用术语到表单选项
+        const st = aiData.surfaceTreatment;
+        const stMap: Record<string, string> = {
+          '氧化': '阳极氧化-自然色', '阳极氧化': '阳极氧化-自然色',
+          '氧化本色': '阳极氧化-自然色', '自然色': '阳极氧化-自然色',
+          '氧化黑色': '阳极氧化-黑色', '黑色氧化': '阳极氧化-黑色',
+          '喷涂': '粉末喷涂', '喷塑': '粉末喷涂',
+          '电泳': '电泳', '电镀': '电镀', '拉丝': '拉丝', '抛光': '抛光',
+          '无': '无',
+        };
+        next.surfaceTreatment = stMap[st] || st;
+      }
+      if (aiData.packaging) next.packaging = aiData.packaging;
+      if (aiData.secondaryProcessing && aiData.secondaryProcessing.length > 0) {
+        next.secondaryProcessing = aiData.secondaryProcessing;
+      }
+      return next;
+    });
+
+    // 闪烁提示已同步
+    setAiSynced(true);
+    const timer = setTimeout(() => setAiSynced(false), 2000);
+    return () => clearTimeout(timer);
+  }, [aiData]);
 
   const updateField = (key: keyof QuoteFormData, value: string | number | string[]) => {
     setFormData(prev => ({ ...prev, [key]: value }));
@@ -93,9 +152,17 @@ export default function QuoteForm({ onCalculate }: QuoteFormProps) {
     <div className="h-full flex flex-col bg-white">
       {/* 表单区域 */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-        <div className="flex items-center gap-2 mb-2">
-          <Calculator className="w-5 h-5 text-blue-600" />
-          <h3 className="font-bold text-gray-800 text-base">报价参数</h3>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Calculator className="w-5 h-5 text-blue-600" />
+            <h3 className="font-bold text-gray-800 text-base">报价参数</h3>
+          </div>
+          {aiSynced && (
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-medium animate-pulse">
+              <Sparkles className="w-3 h-3" />
+              AI 已填入
+            </div>
+          )}
         </div>
 
         {/* 产品类型 */}

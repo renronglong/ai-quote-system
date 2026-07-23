@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useAuth } from '@/lib/auth-context';
+import type { AiFormUpdate } from '@/components/QuoteForm';
 import {
   TrendingUp,
   LogOut,
@@ -21,7 +22,14 @@ import {
   ClipboardList,
 } from 'lucide-react';
 
-const ChatPanel = dynamic(() => import('@/components/ChatPanel'), {
+// 动态导入 ChatPanel，传入 onFormUpdate prop
+const ChatPanelDynamic = dynamic(() => import('@/components/ChatPanel').then(mod => {
+  // 返回一个包装组件，将 onFormUpdate 传递给 ChatPanel
+  const Wrapper = (props: { onFormUpdate?: (data: AiFormUpdate) => void }) => (
+    <mod.default onFormUpdate={props.onFormUpdate} />
+  );
+  return Wrapper;
+}), {
   ssr: false,
   loading: () => (
     <div className="flex items-center justify-center h-full">
@@ -33,7 +41,12 @@ const ChatPanel = dynamic(() => import('@/components/ChatPanel'), {
   ),
 });
 
-const QuoteForm = dynamic(() => import('@/components/QuoteForm'), {
+const QuoteFormDynamic = dynamic(() => import('@/components/QuoteForm').then(mod => {
+  const Wrapper = (props: { aiData?: AiFormUpdate | null }) => (
+    <mod.default aiData={props.aiData} />
+  );
+  return Wrapper;
+}), {
   ssr: false,
   loading: () => (
     <div className="flex items-center justify-center h-full">
@@ -52,6 +65,14 @@ export default function QuotePage() {
   const { user, loading: authLoading, signOut } = useAuth();
   const [aluminumPrice, setAluminumPrice] = useState<AluminumPrice | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [aiFormData, setAiFormData] = useState<AiFormUpdate | null>(null);
+  const aiDataCounter = useRef(0);
+
+  const handleFormUpdate = useCallback((data: AiFormUpdate) => {
+    // 每次都用新对象引用，触发 QuoteForm 的 useEffect
+    aiDataCounter.current += 1;
+    setAiFormData({ ...data, _v: aiDataCounter.current } as AiFormUpdate);
+  }, []);
 
   // 获取实时铝价
   useEffect(() => {
@@ -203,7 +224,7 @@ export default function QuotePage() {
 
         {/* 左栏：报价参数表单 */}
         <div className="hidden md:block w-80 border-r border-gray-200 bg-gray-50/50 overflow-y-auto shrink-0">
-          <QuoteForm />
+          <QuoteFormDynamic aiData={aiFormData} />
         </div>
 
         {/* 右栏：AI报价助手 */}
@@ -232,7 +253,7 @@ export default function QuotePage() {
 
           {/* ChatPanel - 占满剩余空间 */}
           <div className="flex-1 p-3 min-h-0">
-            <ChatPanel />
+            <ChatPanelDynamic onFormUpdate={handleFormUpdate} />
           </div>
         </div>
       </main>
