@@ -5,6 +5,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useAuth } from '@/lib/auth-context';
 import type { AiFormUpdate } from '@/components/QuoteForm';
+import QuoteForm from '@/components/QuoteForm';
 import {
   TrendingUp,
   LogOut,
@@ -22,14 +23,7 @@ import {
   ClipboardList,
 } from 'lucide-react';
 
-// 动态导入 ChatPanel，传入 onFormUpdate prop
-const ChatPanelDynamic = dynamic(() => import('@/components/ChatPanel').then(mod => {
-  // 返回一个包装组件，将 onFormUpdate 传递给 ChatPanel
-  const Wrapper = (props: { onFormUpdate?: (data: AiFormUpdate) => void }) => (
-    <mod.default onFormUpdate={props.onFormUpdate} />
-  );
-  return Wrapper;
-}), {
+const ChatPanel = dynamic(() => import('@/components/ChatPanel'), {
   ssr: false,
   loading: () => (
     <div className="flex items-center justify-center h-full">
@@ -37,20 +31,6 @@ const ChatPanelDynamic = dynamic(() => import('@/components/ChatPanel').then(mod
         <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-3" />
         <p className="text-slate-500 text-sm">加载AI报价助手...</p>
       </div>
-    </div>
-  ),
-});
-
-const QuoteFormDynamic = dynamic(() => import('@/components/QuoteForm').then(mod => {
-  const Wrapper = (props: { aiData?: AiFormUpdate | null }) => (
-    <mod.default aiData={props.aiData} />
-  );
-  return Wrapper;
-}), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center h-full">
-      <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
     </div>
   ),
 });
@@ -224,7 +204,7 @@ export default function QuotePage() {
 
         {/* 左栏：报价参数表单 */}
         <div className="hidden md:block w-80 border-r border-gray-200 bg-gray-50/50 overflow-y-auto shrink-0">
-          <QuoteFormDynamic aiData={aiFormData} />
+          <QuoteForm aiData={aiFormData} />
         </div>
 
         {/* 右栏：AI报价助手 */}
@@ -253,7 +233,7 @@ export default function QuotePage() {
 
           {/* ChatPanel - 占满剩余空间 */}
           <div className="flex-1 p-3 min-h-0">
-            <ChatPanelDynamic onFormUpdate={handleFormUpdate} />
+            <ChatPanel onFormUpdate={handleFormUpdate} />
           </div>
         </div>
       </main>
