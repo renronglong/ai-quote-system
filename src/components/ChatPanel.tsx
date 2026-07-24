@@ -2151,53 +2151,49 @@ export default function ChatPanel({ onFormUpdate }: ChatPanelProps) {
       // ===== 从Bot回复中提取参数，同步到左侧表单 =====
       if (onFormUpdate && assistantContent) {
         const formUpdate: Record<string, unknown> = {};
+        const t = assistantContent;
 
-        // 优先尝试从结构化参数块提取
-        const paramBlock = assistantContent.match(/【产品参数开始】([\s\S]*?)【产品参数结束】/);
-        if (paramBlock) {
-          const block = paramBlock[1];
-          const getVal = (key: string) => {
-            const m = block.match(new RegExp(key + '[：:]\\s*([^\\n]*?)(?:\\n|$)'));
-            return m ? m[1].trim() : '';
-          };
-          const material = getVal('材质');
-          if (material) {
-            if (/6063/i.test(material)) formUpdate.materialGrade = '6063-T5';
-            else if (/6061/i.test(material)) formUpdate.materialGrade = '6061-T6';
-            formUpdate.materialCategory = '铝合金';
-          }
-          const surface = getVal('表面处理');
-          if (surface) formUpdate.surfaceTreatment = surface;
-          const len = getVal('长度');
-          const lenMatch = len.match(/(\d+(?:\.\d+)?)/);
-          if (lenMatch) formUpdate.length = parseFloat(lenMatch[1]);
-          const qty = getVal('数量');
-          const qtyMatch = qty.match(/(\d+)/);
-          if (qtyMatch) formUpdate.quantity = parseInt(qtyMatch[1]);
-        }
+        // ---- 材质 ----
+        const matMatch = t.match(/材质[：:=]\s*(.*?)(?:\n|$)/);
+        const matText = matMatch ? matMatch[1] : t;
+        if (/6063/i.test(matText)) { formUpdate.materialGrade = '6063-T5'; formUpdate.materialCategory = '铝合金'; }
+        else if (/6061/i.test(matText)) { formUpdate.materialGrade = '6061-T6'; formUpdate.materialCategory = '铝合金'; }
+        else if (/铝合金/i.test(matText)) { formUpdate.materialCategory = '铝合金'; }
+        else if (/304/.test(matText)) { formUpdate.materialGrade = '304不锈钢'; formUpdate.materialCategory = '不锈钢'; }
 
-        // 从截面尺寸段落提取宽高
-        const sectionMatch = assistantContent.match(/(?:截面尺寸|截面).*?(\d+(?:\.\d+)?)\s*(?:mm)?\s*[（(]?\s*宽\s*[）)]?\s*[×xX*]\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[（(]?\s*高\s*[）)]?/s);
-        if (sectionMatch) {
-          formUpdate.width = parseFloat(sectionMatch[1]);
-          formUpdate.height = parseFloat(sectionMatch[2]);
-        }
-        
-        // 兜底：尝试从全文提取基本参数
-        if (Object.keys(formUpdate).length === 0) {
-          const params = extractPricingParamsFromBotReply(assistantContent);
-          if (params) {
-            formUpdate.width = params.outerWidth;
-            formUpdate.height = params.outerHeight;
-            formUpdate.length = params.length;
-            formUpdate.quantity = params.quantity;
-            if (params.surfaceTreatment && params.surfaceTreatment !== '无') {
-              formUpdate.surfaceTreatment = params.surfaceTreatment;
-            }
-          }
-        }
+        // ---- 截面尺寸（宽×高）----
+        // 格式: "38.7mm（宽）×21.7mm（高）" / "38.7×21.7mm" / "宽38.7 高21.7"
+        const wxh1 = t.match(/(\d+(?:\.\d+)?)\s*(?:mm)?\s*[（(]\s*宽\s*[）)]\s*[×xX*]\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[（(]\s*高\s*[）)]/);
+        const wxh2 = t.match(/(?:截面|宽度|外宽).*?(\d+(?:\.\d+)?)\s*[×xX*]\s*(\d+(?:\.\d+)?)/s);
+        const wxh3 = t.match(/宽[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?.*?高[：:=]?\s*(\d+(?:\.\d+)?)/s);
+        const wh = wxh1 || wxh2 || wxh3;
+        if (wh) { formUpdate.width = parseFloat(wh[1]); formUpdate.height = parseFloat(wh[2]); }
 
+        // ---- 长度 ----
+        const lenBlock = t.match(/长度[^\n]*[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
+        const lenFall = t.match(/(\d+(?:\.\d+)?)\s*(?:mm|毫米)\s*[（(]?[长L]/);
+        const lenVal = lenBlock ? parseFloat(lenBlock[1]) : (lenFall ? parseFloat(lenFall[1]) : undefined);
+        if (lenVal && lenVal > 0) formUpdate.length = lenVal;
+
+        // ---- 数量 ----
+        const qtyMatch = t.match(/数量[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:件|支|套|pcs)?/i);
+        const qtyFall = t.match(/(\d+)\s*(?:件|支|套|pcs)/i);
+        const qtyVal = qtyMatch ? parseFloat(qtyMatch[1]) : (qtyFall ? parseInt(qtyFall[1]) : undefined);
+        if (qtyVal && qtyVal > 0) formUpdate.quantity = qtyVal;
+
+        // ---- 表面处理 ----
+        if (/氧化本色|本色氧化/.test(t)) formUpdate.surfaceTreatment = '氧化本色';
+        else if (/氧化黑|黑色氧化/.test(t)) formUpdate.surfaceTreatment = '阳极氧化-黑色';
+        else if (/阳极氧化|氧化(?!黑)/.test(t)) formUpdate.surfaceTreatment = '阳极氧化-自然色';
+        else if (/喷涂|喷粉|粉末/.test(t)) formUpdate.surfaceTreatment = '粉末喷涂';
+        else if (/电泳/.test(t)) formUpdate.surfaceTreatment = '电泳';
+        else if (/拉丝/.test(t)) formUpdate.surfaceTreatment = '拉丝';
+        else if (/抛光/.test(t)) formUpdate.surfaceTreatment = '抛光';
+        else if (/电镀/.test(t)) formUpdate.surfaceTreatment = '电镀';
+
+        // 有任何识别到的参数就填入
         if (Object.keys(formUpdate).length > 0) {
+          console.log('[ChatPanel] AI识别到参数，同步到左侧表单:', formUpdate);
           onFormUpdate(formUpdate as Parameters<NonNullable<typeof onFormUpdate>>[0]);
         }
       }

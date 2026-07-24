@@ -71,9 +71,9 @@ export default function QuotePage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="h-screen bg-white flex flex-col overflow-hidden">
       {/* 顶部导航栏 */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-[#0F2040] shadow-md">
+      <header className="shrink-0 bg-[#0F2040] shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
@@ -175,9 +175,9 @@ export default function QuotePage() {
       </header>
 
       {/* 主内容区：侧边栏 + 表单 + AI对话 */}
-      <main className="flex-1 pt-16 flex">
+      <main className="flex-1 flex min-h-0 overflow-hidden">
         {/* 左侧导航栏 */}
-        <aside className="hidden lg:flex flex-col w-48 bg-[#1a2940] border-r border-white/5 shrink-0">
+        <aside className="hidden lg:flex flex-col w-48 bg-[#1a2940] border-r border-white/5 shrink-0 overflow-y-auto">
           <div className="px-3 py-4 space-y-1">
             {[
               { icon: LayoutGrid, label: '报价工作台', href: '/quote', active: true },
@@ -208,7 +208,7 @@ export default function QuotePage() {
         </div>
 
         {/* 右栏：AI报价助手 */}
-        <div className="flex-1 flex flex-col min-w-0 bg-white">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden bg-white">
           {/* 页面标题栏 */}
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-slate-200 px-4 py-3 shrink-0">
             <div className="flex items-center justify-between">
@@ -232,7 +232,7 @@ export default function QuotePage() {
           </div>
 
           {/* ChatPanel - 占满剩余空间 */}
-          <div className="flex-1 p-3 min-h-0">
+          <div className="flex-1 p-3 min-h-0 overflow-hidden">
             <ChatPanel onFormUpdate={handleFormUpdate} />
           </div>
         </div>
