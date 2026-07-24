@@ -4,8 +4,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useAuth } from '@/lib/auth-context';
-import type { AiFormUpdate } from '@/components/QuoteForm';
-import QuoteForm from '@/components/QuoteForm';
 import {
   TrendingUp,
   LogOut,
@@ -23,6 +21,19 @@ import {
   ClipboardList,
 } from 'lucide-react';
 
+interface AiFormUpdate {
+  productType?: string;
+  materialCategory?: string;
+  materialGrade?: string;
+  quantity?: number;
+  length?: number;
+  width?: number;
+  height?: number;
+  surfaceTreatment?: string;
+  packaging?: string;
+  secondaryProcessing?: string[];
+}
+
 const ChatPanel = dynamic(() => import('@/components/ChatPanel'), {
   ssr: false,
   loading: () => (
@@ -31,6 +42,15 @@ const ChatPanel = dynamic(() => import('@/components/ChatPanel'), {
         <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-3" />
         <p className="text-slate-500 text-sm">加载AI报价助手...</p>
       </div>
+    </div>
+  ),
+});
+
+const QuoteForm = dynamic(() => import('@/components/QuoteForm'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-full">
+      <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
     </div>
   ),
 });
