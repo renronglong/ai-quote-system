@@ -2064,6 +2064,7 @@ export default function ChatPanel({ onFormUpdate }: ChatPanelProps) {
         body: JSON.stringify(requestBody),
       });
       
+      let assistantContent = '';
       if (!response.ok) {
         // 非流式错误响应（如500）
         try {
@@ -2087,7 +2088,6 @@ export default function ChatPanel({ onFormUpdate }: ChatPanelProps) {
         setStatusMessage(null);
       } else {
         // SSE流式读取
-        let assistantContent = '';
         const reader = response.body?.getReader();
         if (!reader) {
           setMessages((prev) =>
