@@ -2164,8 +2164,8 @@ export default function ChatPanel({ onFormUpdate }: ChatPanelProps) {
         // ---- 截面尺寸（宽×高）----
         // 格式: "38.7mm（宽）×21.7mm（高）" / "38.7×21.7mm" / "宽38.7 高21.7"
         const wxh1 = t.match(/(\d+(?:\.\d+)?)\s*(?:mm)?\s*[（(]\s*宽\s*[）)]\s*[×xX*]\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[（(]\s*高\s*[）)]/);
-        const wxh2 = t.match(/(?:截面|宽度|外宽).*?(\d+(?:\.\d+)?)\s*[×xX*]\s*(\d+(?:\.\d+)?)/s);
-        const wxh3 = t.match(/宽[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?.*?高[：:=]?\s*(\d+(?:\.\d+)?)/s);
+        const wxh2 = t.match(/(?:截面|宽度|外宽)[\s\S]*?(\d+(?:\.\d+)?)\s*[×xX*]\s*(\d+(?:\.\d+)?)/);
+        const wxh3 = t.match(/宽[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[\s\S]*?高[：:=]?\s*(\d+(?:\.\d+)?)/);
         const wh = wxh1 || wxh2 || wxh3;
         if (wh) { formUpdate.width = parseFloat(wh[1]); formUpdate.height = parseFloat(wh[2]); }
 
