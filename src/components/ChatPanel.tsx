@@ -2087,6 +2087,7 @@ export default function ChatPanel({ onFormUpdate }: ChatPanelProps) {
         setStatusMessage(null);
       } else {
         // SSE流式读取
+        let assistantContent = '';
         const reader = response.body?.getReader();
         if (!reader) {
           setMessages((prev) =>
@@ -2098,7 +2099,6 @@ export default function ChatPanel({ onFormUpdate }: ChatPanelProps) {
           );
           setStatusMessage(null);
         } else {
-          let assistantContent = '';
           const decoder = new TextDecoder();
           let buffer = '';
           
