@@ -1109,9 +1109,10 @@ interface ChatPanelProps {
     packaging?: string;
     secondaryProcessing?: string[];
   }) => void;
+  onRawText?: (text: string) => void;
 }
 
-export default function ChatPanel({ onFormUpdate }: ChatPanelProps) {
+export default function ChatPanel({ onFormUpdate, onRawText }: ChatPanelProps) {
   const { user } = useAuth();
   
   // localStorage key 前缀，用于按 conversation_id 存储对话历史
@@ -2150,6 +2151,8 @@ export default function ChatPanel({ onFormUpdate }: ChatPanelProps) {
 
       // ===== 从Bot回复中提取参数，同步到左侧表单 =====
       if (onFormUpdate && assistantContent) {
+        // 传递原始文本给 page 组件重新提取
+        if (onRawText) onRawText(assistantContent);
         const formUpdate: Record<string, unknown> = {};
         const t = assistantContent;
 
@@ -2240,7 +2243,7 @@ export default function ChatPanel({ onFormUpdate }: ChatPanelProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [input, messages, uploadedImage, cozeFileId, cozeFileIdsBatch, uploadedFileType, extractedText, onFormUpdate]);
+  }, [input, messages, uploadedImage, cozeFileId, cozeFileIdsBatch, uploadedFileType, extractedText, onFormUpdate, onRawText]);
 
   // 处理键盘事件
   const handleKeyDown = (e: React.KeyboardEvent) => {
