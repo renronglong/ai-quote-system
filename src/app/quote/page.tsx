@@ -112,6 +112,16 @@ export default function QuotePage() {
     return result;
   };
 
+  // 从 ChatPanel 接收原始AI文本，重新提取参数（确保使用最新正则）
+  const handleRawText = useCallback((text: string) => {
+    const extracted = extractParamsFromText(text);
+    if (Object.keys(extracted).length > 0) {
+      aiDataCounter.current += 1;
+      setAiFormData({ ...extracted, _v: aiDataCounter.current } as AiFormUpdate);
+      console.log('[Page] handleRawText 重新提取:', extracted);
+    }
+  }, []);
+
   const handleFormUpdate = useCallback((data: AiFormUpdate) => {
     // 每次都用新对象引用，触发 QuoteForm 的 useEffect
     aiDataCounter.current += 1;
@@ -297,7 +307,7 @@ export default function QuotePage() {
 
           {/* ChatPanel - 占满剩余空间 */}
           <div className="flex-1 p-3 min-h-0 overflow-hidden">
-            <ChatPanel onFormUpdate={handleFormUpdate} />
+            <ChatPanel onFormUpdate={handleFormUpdate} onRawText={handleRawText} />
           </div>
         </div>
       </main>
