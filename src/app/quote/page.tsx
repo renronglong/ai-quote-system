@@ -68,6 +68,50 @@ export default function QuotePage() {
   const [aiFormData, setAiFormData] = useState<AiFormUpdate | null>(null);
   const aiDataCounter = useRef(0);
 
+  // 从 AI 响应文本中提取参数（放在 page 组件中确保 eagerly-loaded）
+  const extractParamsFromText = (text: string): Partial<AiFormUpdate> => {
+    const result: Partial<AiFormUpdate> = {};
+    const t = text;
+    
+    // 尺寸提取 - 多格式兼容
+    const dim1 = t.match(/(?:尺寸[：:]\s*)?长度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*\u00d7\u2715\u2716]\s*宽度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*\u00d7\u2715\u2716]\s*高度[：:=]?\s*(\d+(?:\.\d+)?)/);
+    const dim4 = t.match(/(?:长度|长|L)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[^\n]{0,50}?(?:宽度|宽|W)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[^\n]{0,50}?(?:高度|高|H)[：:=]?\s*(\d+(?:\.\d+)?)/i);
+    const dim2 = t.match(/(\d+(?:\.\d+)?)\s*mm\s*[×xX*\u00d7\u2715\u2716]\s*(\d+(?:\.\d+)?)\s*mm\s*[×xX*\u00d7\u2715\u2716]\s*(\d+(?:\.\d+)?)\s*mm/);
+    const dim3 = t.match(/宽(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[^\n]*?高(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)/);
+    if (dim1) { result.length = parseFloat(dim1[1]); result.width = parseFloat(dim1[2]); result.height = parseFloat(dim1[3]); }
+    else if (dim4) { result.length = parseFloat(dim4[1]); result.width = parseFloat(dim4[2]); result.height = parseFloat(dim4[3]); }
+    else if (dim3) { result.width = parseFloat(dim3[1]); result.height = parseFloat(dim3[2]); }
+    else if (dim2) { result.length = parseFloat(dim2[1]); result.width = parseFloat(dim2[2]); result.height = parseFloat(dim2[3]); }
+    
+    // 单独长度
+    if (!result.length) {
+      const lenMatch = t.match(/长度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
+      if (lenMatch) result.length = parseFloat(lenMatch[1]);
+    }
+    
+    // 数量
+    const qtyMatch = t.match(/(?:最小)?(?:订购)?(?:数量|起订量)[：:=]?\s*(\d+(?:\.\d+)?)/);
+    if (qtyMatch) result.quantity = parseFloat(qtyMatch[1]);
+    
+    // 材料
+    if (/SUS304|304不锈钢/i.test(t)) { result.materialGrade = '304不锈钢'; result.materialCategory = '不锈钢'; }
+    else if (/6063/i.test(t)) { result.materialGrade = '6063-T5'; result.materialCategory = '铝合金'; }
+    else if (/铝合金/i.test(t)) { result.materialCategory = '铝合金'; }
+    
+    // 表面处理
+    if (/氧化本色|本色氧化/.test(t)) result.surfaceTreatment = '氧化本色';
+    else if (/氧化黑|黑色氧化/.test(t)) result.surfaceTreatment = '阳极氧化-黑色';
+    else if (/阳极氧化|氧化(?!黑)/.test(t)) result.surfaceTreatment = '阳极氧化-自然色';
+    else if (/喷涂|喷粉|粉末/.test(t)) result.surfaceTreatment = '粉末喷涂';
+    else if (/电泳/.test(t)) result.surfaceTreatment = '电泳';
+    else if (/拉丝/.test(t)) result.surfaceTreatment = '拉丝';
+    else if (/抛光/.test(t)) result.surfaceTreatment = '抛光';
+    else if (/电镀/.test(t)) result.surfaceTreatment = '电镀';
+    
+    console.log('[Page] 提取参数:', result);
+    return result;
+  };
+
   const handleFormUpdate = useCallback((data: AiFormUpdate) => {
     // 每次都用新对象引用，触发 QuoteForm 的 useEffect
     aiDataCounter.current += 1;
