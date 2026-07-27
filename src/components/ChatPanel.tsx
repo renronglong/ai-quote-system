@@ -2153,33 +2153,55 @@ export default function ChatPanel({ onFormUpdate }: ChatPanelProps) {
         const formUpdate: Record<string, unknown> = {};
         const t = assistantContent;
 
-        // ---- 材质 ----
-        const matMatch = t.match(/材质[：:=]\s*(.*?)(?:\n|$)/);
-        const matText = matMatch ? matMatch[1] : t;
+        // ---- 材质（兼容"材料牌号""材料类别""材质"等多种说法）----
+        const matLine = t.match(/(?:材料牌号|材料类别|材质)[：:=]\s*(.*?)(?:\n|$)/);
+        const matText = matLine ? matLine[1] : t;
         if (/6063/i.test(matText)) { formUpdate.materialGrade = '6063-T5'; formUpdate.materialCategory = '铝合金'; }
         else if (/6061/i.test(matText)) { formUpdate.materialGrade = '6061-T6'; formUpdate.materialCategory = '铝合金'; }
         else if (/铝合金/i.test(matText)) { formUpdate.materialCategory = '铝合金'; }
-        else if (/304/.test(matText)) { formUpdate.materialGrade = '304不锈钢'; formUpdate.materialCategory = '不锈钢'; }
+        else if (/304/i.test(matText)) { formUpdate.materialGrade = '304不锈钢'; formUpdate.materialCategory = '不锈钢'; }
 
-        // ---- 截面尺寸（宽×高）----
-        // 格式: "38.7mm（宽）×21.7mm（高）" / "38.7×21.7mm" / "宽38.7 高21.7"
-        const wxh1 = t.match(/(\d+(?:\.\d+)?)\s*(?:mm)?\s*[（(]\s*宽\s*[）)]\s*[×xX*]\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[（(]\s*高\s*[）)]/);
-        const wxh2 = t.match(/(?:截面|宽度|外宽)[\s\S]*?(\d+(?:\.\d+)?)\s*[×xX*]\s*(\d+(?:\.\d+)?)/);
-        const wxh3 = t.match(/宽[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[\s\S]*?高[：:=]?\s*(\d+(?:\.\d+)?)/);
-        const wh = wxh1 || wxh2 || wxh3;
-        if (wh) { formUpdate.width = parseFloat(wh[1]); formUpdate.height = parseFloat(wh[2]); }
+        // ---- 产品类型 ----
+        const typeMatch = t.match(/产品类型[：:=]\s*(.*?)(?:\n|$)/);
+        if (typeMatch) {
+          const typeText = typeMatch[1];
+          if (/extrusion|挤压/i.test(typeText)) formUpdate.productType = 'extrusion';
+          else if (/压铸|die.cast/i.test(typeText)) formUpdate.productType = 'die-casting';
+          else if (/cnc|机加工/i.test(typeText)) formUpdate.productType = 'cnc';
+          else if (/冲压|stamping/i.test(typeText)) formUpdate.productType = 'stamping';
+        }
 
-        // ---- 长度 ----
-        const lenBlock = t.match(/长度[^\n]*[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
-        const lenFall = t.match(/(\d+(?:\.\d+)?)\s*(?:mm|毫米)\s*[（(]?[长L]/);
-        const lenVal = lenBlock ? parseFloat(lenBlock[1]) : (lenFall ? parseFloat(lenFall[1]) : undefined);
-        if (lenVal && lenVal > 0) formUpdate.length = lenVal;
+        // ---- 尺寸（兼容多种格式）----
+        // 格式1: "长度100mm × 宽度46mm × 高度25.5mm"
+        const dim1 = t.match(/长度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*]\s*宽度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*]\s*高度[：:=]?\s*(\d+(?:\.\d+)?)/);
+        // 格式2: "100mm × 46mm × 25.5mm" 三个数字用×连接
+        const dim2 = t.match(/(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*]\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*]\s*(\d+(?:\.\d+)?)/);
+        // 格式3: "宽46 高25.5" 或 "宽46mm 高25.5mm"
+        const dim3 = t.match(/宽(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[\s\S]*?高(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)/);
+        if (dim1) { formUpdate.length = parseFloat(dim1[1]); formUpdate.width = parseFloat(dim1[2]); formUpdate.height = parseFloat(dim1[3]); }
+        else if (dim3) { formUpdate.width = parseFloat(dim3[1]); formUpdate.height = parseFloat(dim3[2]); }
+        else if (dim2) { formUpdate.length = parseFloat(dim2[1]); formUpdate.width = parseFloat(dim2[2]); formUpdate.height = parseFloat(dim2[3]); }
 
-        // ---- 数量 ----
-        const qtyMatch = t.match(/数量[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:件|支|套|pcs)?/i);
-        const qtyFall = t.match(/(\d+)\s*(?:件|支|套|pcs)/i);
+        // ---- 长度（单独匹配）----
+        if (!formUpdate.length) {
+          const lenBlock = t.match(/长度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
+          const lenFall = t.match(/(\d+(?:\.\d+)?)\s*(?:mm|毫米)\s*[（(]?[长L]/);
+          const lenVal = lenBlock ? parseFloat(lenBlock[1]) : (lenFall ? parseFloat(lenFall[1]) : undefined);
+          if (lenVal && lenVal > 0) formUpdate.length = lenVal;
+        }
+
+        // ---- 数量（兼容"数量""订购数量""最小起订量""起订量"等）----
+        const qtyMatch = t.match(/(?:最小)?(?:订购)?(?:数量|起订量)[：:=]?\s*(\d+(?:\.\d+)?)/);
+        const qtyFall = t.match(/(\d+)\s*(?:件|支|套|pcs|千克|kg)/i);
         const qtyVal = qtyMatch ? parseFloat(qtyMatch[1]) : (qtyFall ? parseInt(qtyFall[1]) : undefined);
         if (qtyVal && qtyVal > 0) formUpdate.quantity = qtyVal;
+
+        // ---- 单件重量 ----
+        const weightMatch = t.match(/(?:单件)?重量[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:g|克|kg|千克)?/i);
+        if (weightMatch) {
+          const wVal = parseFloat(weightMatch[1]);
+          // 只记录重量信息用于显示，暂不填入表单（表单按尺寸计算重量）
+        }
 
         // ---- 表面处理 ----
         if (/氧化本色|本色氧化/.test(t)) formUpdate.surfaceTreatment = '氧化本色';
