@@ -2172,12 +2172,12 @@ export default function ChatPanel({ onFormUpdate }: ChatPanelProps) {
         }
 
         // ---- 尺寸（兼容多种格式）----
-        // 格式1: "长度100mm × 宽度46mm × 高度25.5mm"
-        const dim1 = t.match(/长度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*]\s*宽度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*]\s*高度[：:=]?\s*(\d+(?:\.\d+)?)/);
-        // 格式2: "100mm × 46mm × 25.5mm" 三个数字用×连接
-        const dim2 = t.match(/(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*]\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*]\s*(\d+(?:\.\d+)?)/);
-        // 格式3: "宽46 高25.5" 或 "宽46mm 高25.5mm"
-        const dim3 = t.match(/宽(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[\s\S]*?高(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)/);
+        // 格式1: "尺寸：长度100mm × 宽度46mm × 高度25.5mm" 或 "长度100mm × 宽度46mm × 高度25.5mm"
+        const dim1 = t.match(/(?:尺寸[：:]\s*)?长度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*×]\s*宽度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*×]\s*高度[：:=]?\s*(\d+(?:\.\d+)?)/);
+        // 格式2: "100mm×46mm×25.5mm" 三个带mm的数字用×连接（需在同一行，防止跨行误匹配）
+        const dim2 = t.match(/(\d+(?:\.\d+)?)\s*mm\s*[×xX*×]\s*(\d+(?:\.\d+)?)\s*mm\s*[×xX*×]\s*(\d+(?:\.\d+)?)\s*mm/);
+        // 格式3: "宽46 高25.5" 或 "宽46mm 高25.5mm"（禁止跨行）
+        const dim3 = t.match(/宽(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[^\n]*?高(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)/);
         if (dim1) { formUpdate.length = parseFloat(dim1[1]); formUpdate.width = parseFloat(dim1[2]); formUpdate.height = parseFloat(dim1[3]); }
         else if (dim3) { formUpdate.width = parseFloat(dim3[1]); formUpdate.height = parseFloat(dim3[2]); }
         else if (dim2) { formUpdate.length = parseFloat(dim2[1]); formUpdate.width = parseFloat(dim2[2]); formUpdate.height = parseFloat(dim2[3]); }
