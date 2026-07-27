@@ -2178,7 +2178,10 @@ export default function ChatPanel({ onFormUpdate }: ChatPanelProps) {
         const dim2 = t.match(/(\d+(?:\.\d+)?)\s*mm\s*[×xX*×]\s*(\d+(?:\.\d+)?)\s*mm\s*[×xX*×]\s*(\d+(?:\.\d+)?)\s*mm/);
         // 格式3: "宽46 高25.5" 或 "宽46mm 高25.5mm"（禁止跨行）
         const dim3 = t.match(/宽(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[^\n]*?高(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)/);
+        // 格式4: 超宽松兜底 - 找三个连续数字（允许任意分隔符，包括Unicode乘号）
+        const dim4 = t.match(/(?:长度|长|L)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[^\n]{0,30}?(?:宽度|宽|W)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[^\n]{0,30}?(?:高度|高|H)[：:=]?\s*(\d+(?:\.\d+)?)/i);
         if (dim1) { formUpdate.length = parseFloat(dim1[1]); formUpdate.width = parseFloat(dim1[2]); formUpdate.height = parseFloat(dim1[3]); }
+        else if (dim4) { formUpdate.length = parseFloat(dim4[1]); formUpdate.width = parseFloat(dim4[2]); formUpdate.height = parseFloat(dim4[3]); }
         else if (dim3) { formUpdate.width = parseFloat(dim3[1]); formUpdate.height = parseFloat(dim3[2]); }
         else if (dim2) { formUpdate.length = parseFloat(dim2[1]); formUpdate.width = parseFloat(dim2[2]); formUpdate.height = parseFloat(dim2[3]); }
 
@@ -2213,6 +2216,10 @@ export default function ChatPanel({ onFormUpdate }: ChatPanelProps) {
         else if (/抛光/.test(t)) formUpdate.surfaceTreatment = '抛光';
         else if (/电镀/.test(t)) formUpdate.surfaceTreatment = '电镀';
 
+        // 调试：打印AI文本中的尺寸相关内容
+        const dimDebug = t.match(/.{0,80}(?:尺寸|长度|宽度|高度|mm).{0,80}/);
+        console.log('[ChatPanel] AI文本尺寸相关:', dimDebug ? dimDebug[0] : '无匹配');
+        console.log('[ChatPanel] dim1:', !!dim1, 'dim2:', !!dim2, 'dim3:', !!dim3, 'dim4:', !!dim4);
         // 有任何识别到的参数就填入
         if (Object.keys(formUpdate).length > 0) {
           console.log('[ChatPanel] AI识别到参数，同步到左侧表单:', formUpdate);
