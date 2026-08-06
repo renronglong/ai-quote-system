@@ -210,7 +210,9 @@ export async function POST(request: NextRequest) {
       }
 
       // 4. 调用Coze Chat API（带文件重试机制）
-      const useStream = true;
+      // 有文件时先走非流式探测，失败则重试；无文件直接流式
+      const hasFileRef = !!(cozeFileId || (cozeFileIds && cozeFileIds.length > 0));
+      let useStream = !hasFileRef;
       let chatUrl = `${config.apiBase}/v3/chat?conversation_id=${conversationId}`;
       let chatBody: Record<string, unknown> = {
         bot_id: config.botId,
@@ -229,22 +231,31 @@ export async function POST(request: NextRequest) {
         body: JSON.stringify(chatBody),
       });
 
-      // 如果带文件请求失败(code 4000)，重试不带文件
-      if (!chatResponse.ok && (cozeFileId || (cozeFileIds && cozeFileIds.length > 0))) {
-        const errText = await chatResponse.text();
-        let errCode = 0;
-        try { errCode = JSON.parse(errText).code || 0; } catch { /* ignore */ }
+      // 有文件时：先检查非流式响应是否报错（code 4000=文件无效），自动重试
+      if (hasFileRef && chatResponse.ok) {
+        // 非流式：Coze返回200但body里可能有code!=0
+        const cloned = chatResponse.clone();
+        const bodyText = await cloned.text();
+        let bodyCode = 0;
+        try { bodyCode = JSON.parse(bodyText).code || 0; } catch { /* ignore */ }
         
-        if (errCode === 4000) {
-          console.warn('[Chat] 文件引用无效，重试不带文件的请求');
-          // 重试：只保留文字消息
+        if (bodyCode === 4000 || bodyCode !== 0) {
+          console.warn(`[Chat] 文件请求失败(code=${bodyCode})，重试不带文件的请求`);
+          // 重试：只保留文字消息，使用流式
           const fallbackMessages: CozeMessage[] = [{ role: 'user', content: userContent || '请分析这个文件', content_type: 'text' }];
           if (extractedText) {
             const maxLen = 8000;
             const truncated = extractedText.length > maxLen ? extractedText.substring(0, maxLen) + '\n...(内容过长已截断)' : extractedText;
             fallbackMessages[0].content += `\n\n---以下是文件提取的文字内容---\n${truncated}\n---内容结束---`;
           }
-          chatBody.additional_messages = fallbackMessages;
+          useStream = true;
+          chatBody = {
+            bot_id: config.botId,
+            user_id: userId,
+            stream: true,
+            additional_messages: fallbackMessages,
+            auto_save_history: true,
+          };
           chatResponse = await fetch(chatUrl, {
             method: 'POST',
             headers: {
@@ -253,13 +264,9 @@ export async function POST(request: NextRequest) {
             },
             body: JSON.stringify(chatBody),
           });
-          
-          // 重试成功，提示用户
-          if (chatResponse.ok) {
-            await writer.write(encoder.encode(
-              `data: ${JSON.stringify({ type: 'text', content: '（文件预览暂不可用，已切换为文字模式处理）\n\n' })}\n\n`
-            ));
-          }
+          await writer.write(encoder.encode(
+            `data: ${JSON.stringify({ type: 'text', content: '（文件预览暂不可用，已切换为文字模式处理）\n\n' })}\n\n`
+          ));
         }
       }
 
@@ -272,7 +279,7 @@ export async function POST(request: NextRequest) {
           if (errorJson.code === 4000) errorMessage = '请求参数错误，请重新上传文件后再试';
           else if (errorJson.code === 4006) errorMessage = 'Bot不存在或未发布到API';
           else if (errorJson.code === 4013) errorMessage = '对话频率过高，请稍后再试';
-          else if (rawMsg.includes('file')) errorMessage = '文件处理异常，请重新上传';
+          else if (rawMsg.toLowerCase().includes('file') || rawMsg.toLowerCase().includes('parameter')) errorMessage = '文件处理异常，请重新上传后再试';
           else errorMessage = rawMsg || errorMessage;
         } catch { /* ignore */ }
         await writer.write(encoder.encode(
@@ -420,7 +427,13 @@ export async function POST(request: NextRequest) {
                   ));
                 }
               } else if (eventType === 'conversation.chat.failed') {
-                const errorMsg = json.last_error?.msg || json.data?.msg || json.msg || '对话处理失败';
+                const errCode = json.last_error?.code || 0;
+                let errorMsg = json.last_error?.msg || json.data?.msg || json.msg || '对话处理失败';
+                // 映射Coze错误码为用户友好提示
+                if (errCode === 4000) errorMsg = '请求参数错误，请重新上传文件或简化描述后再试';
+                else if (errCode === 4006) errorMsg = 'Bot配置异常，请联系管理员';
+                else if (errCode === 4013) errorMsg = '请求过于频繁，请稍后再试';
+                else if (errorMsg.toLowerCase().includes('parameter') || errorMsg.toLowerCase().includes('request')) errorMsg = '请求参数错误，请重新上传文件或简化描述后再试';
                 await writer.write(encoder.encode(
                   `data: ${JSON.stringify({ type: 'error', error: errorMsg })}\n\n`
                 ));
