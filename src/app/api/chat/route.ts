@@ -209,12 +209,10 @@ export async function POST(request: NextRequest) {
         additionalMessages.push({ role: 'user', content: userContent, content_type: 'text' });
       }
 
-      // 4. 调用Coze Chat API
-      // 文件消息使用非流式模式，确保能获取完整响应
-      // 文字消息使用流式模式，提供更好的用户体验
+      // 4. 调用Coze Chat API（带文件重试机制）
       const useStream = true;
-      const chatUrl = `${config.apiBase}/v3/chat?conversation_id=${conversationId}`;
-      const chatBody = {
+      let chatUrl = `${config.apiBase}/v3/chat?conversation_id=${conversationId}`;
+      let chatBody: Record<string, unknown> = {
         bot_id: config.botId,
         user_id: userId,
         stream: useStream,
@@ -222,7 +220,7 @@ export async function POST(request: NextRequest) {
         auto_save_history: true,
       };
 
-      const chatResponse = await fetch(chatUrl, {
+      let chatResponse = await fetch(chatUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${config.apiToken}`,
@@ -231,14 +229,51 @@ export async function POST(request: NextRequest) {
         body: JSON.stringify(chatBody),
       });
 
+      // 如果带文件请求失败(code 4000)，重试不带文件
+      if (!chatResponse.ok && (cozeFileId || (cozeFileIds && cozeFileIds.length > 0))) {
+        const errText = await chatResponse.text();
+        let errCode = 0;
+        try { errCode = JSON.parse(errText).code || 0; } catch { /* ignore */ }
+        
+        if (errCode === 4000) {
+          console.warn('[Chat] 文件引用无效，重试不带文件的请求');
+          // 重试：只保留文字消息
+          const fallbackMessages: CozeMessage[] = [{ role: 'user', content: userContent || '请分析这个文件', content_type: 'text' }];
+          if (extractedText) {
+            const maxLen = 8000;
+            const truncated = extractedText.length > maxLen ? extractedText.substring(0, maxLen) + '\n...(内容过长已截断)' : extractedText;
+            fallbackMessages[0].content += `\n\n---以下是文件提取的文字内容---\n${truncated}\n---内容结束---`;
+          }
+          chatBody.additional_messages = fallbackMessages;
+          chatResponse = await fetch(chatUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${config.apiToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(chatBody),
+          });
+          
+          // 重试成功，提示用户
+          if (chatResponse.ok) {
+            await writer.write(encoder.encode(
+              `data: ${JSON.stringify({ type: 'text', content: '（文件预览暂不可用，已切换为文字模式处理）\n\n' })}\n\n`
+            ));
+          }
+        }
+      }
+
       if (!chatResponse.ok) {
         const errorText = await chatResponse.text();
-        let errorMessage = '对话请求失败';
+        let errorMessage = '对话请求失败，请稍后重试';
         try {
           const errorJson = JSON.parse(errorText);
-          errorMessage = errorJson.msg || errorMessage;
-          if (errorJson.code === 4000) errorMessage = '请求参数错误';
+          const rawMsg = errorJson.msg || '';
+          if (errorJson.code === 4000) errorMessage = '请求参数错误，请重新上传文件后再试';
           else if (errorJson.code === 4006) errorMessage = 'Bot不存在或未发布到API';
+          else if (errorJson.code === 4013) errorMessage = '对话频率过高，请稍后再试';
+          else if (rawMsg.includes('file')) errorMessage = '文件处理异常，请重新上传';
+          else errorMessage = rawMsg || errorMessage;
         } catch { /* ignore */ }
         await writer.write(encoder.encode(
           `data: ${JSON.stringify({ type: 'error', error: errorMessage })}\n\n`
