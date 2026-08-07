@@ -2188,6 +2188,22 @@ export default function ChatPanel({ onFormUpdate, onRawText }: ChatPanelProps) {
           const lenFall = t.match(/(\d+(?:\.\d+)?)\s*(?:mm|毫米)\s*[（(]?[长L]/);
           const lenVal = lenBlock ? parseFloat(lenBlock[1]) : (lenFall ? parseFloat(lenFall[1]) : undefined);
           if (lenVal && lenVal > 0) formUpdate.length = lenVal;
+          
+          // ---- 宽度（单独匹配）----
+          if (!formUpdate.width) {
+            const widBlock = t.match(/(?:宽度|宽)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
+            const widFall = t.match(/(\d+(?:\.\d+)?)\s*(?:mm|毫米)\s*[（(]?[宽W]/);
+            const widVal = widBlock ? parseFloat(widBlock[1]) : (widFall ? parseFloat(widFall[1]) : undefined);
+            if (widVal && widVal > 0) formUpdate.width = widVal;
+          }
+          
+          // ---- 高度（单独匹配，排除"重量"）----
+          if (!formUpdate.height) {
+            const hgtBlock = t.match(/(?:高度|高(?!量))[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
+            const hgtFall = t.match(/(\d+(?:\.\d+)?)\s*(?:mm|毫米)\s*[（(]?[高H]/);
+            const hgtVal = hgtBlock ? parseFloat(hgtBlock[1]) : (hgtFall ? parseFloat(hgtFall[1]) : undefined);
+            if (hgtVal && hgtVal > 0) formUpdate.height = hgtVal;
+          }
         }
 
         // ---- 数量（兼容"数量""订购数量""最小起订量""起订量"等）----
