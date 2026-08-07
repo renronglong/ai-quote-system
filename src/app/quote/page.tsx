@@ -60,8 +60,13 @@ export default function QuotePage() {
     const dim4 = t.match(/(?:长度|长|L)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[^\n]{0,50}?(?:宽度|宽|W)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[^\n]{0,50}?(?:高度|高|H)[：:=]?\s*(\d+(?:\.\d+)?)/i);
     const dim2 = t.match(/(\d+(?:\.\d+)?)\s*mm\s*[×xX*\u00d7\u2715\u2716]\s*(\d+(?:\.\d+)?)\s*mm\s*[×xX*\u00d7\u2715\u2716]\s*(\d+(?:\.\d+)?)\s*mm/);
     const dim3 = t.match(/宽(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[^\n]*?高(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)/);
+    // 表格格式: "| 长度 | 112mm |" "| 宽度 | 46.6mm |" "| 高度 | 29mm |"
+    const tblLen = t.match(/[|｜]\s*(?:长度|长)[：:]*\s*[|｜]\s*(\d+(?:\.\d+)?)\s*(?:mm)?/);
+    const tblWid = t.match(/[|｜]\s*(?:宽度|宽)[：:]*\s*[|｜]\s*(\d+(?:\.\d+)?)\s*(?:mm)?/);
+    const tblHgt = t.match(/[|｜]\s*(?:高度|高)[：:]*\s*[|｜]\s*(\d+(?:\.\d+)?)\s*(?:mm)?/);
     if (dim1) { result.length = parseFloat(dim1[1]); result.width = parseFloat(dim1[2]); result.height = parseFloat(dim1[3]); }
     else if (dim4) { result.length = parseFloat(dim4[1]); result.width = parseFloat(dim4[2]); result.height = parseFloat(dim4[3]); }
+    else if (tblLen && tblWid && tblHgt) { result.length = parseFloat(tblLen[1]); result.width = parseFloat(tblWid[1]); result.height = parseFloat(tblHgt[1]); }
     else if (dim3) { result.width = parseFloat(dim3[1]); result.height = parseFloat(dim3[2]); }
     else if (dim2) { result.length = parseFloat(dim2[1]); result.width = parseFloat(dim2[2]); result.height = parseFloat(dim2[3]); }
     
@@ -73,7 +78,9 @@ export default function QuotePage() {
     
     // 数量
     const qtyMatch = t.match(/(?:最小)?(?:订购)?(?:数量|起订量)[：:=]?\s*(\d+(?:\.\d+)?)/);
-    if (qtyMatch) result.quantity = parseFloat(qtyMatch[1]);
+    const qtyTable = t.match(/[|｜]\s*(?:最小)?(?:订购)?(?:数量|起订量)\s*[|｜]\s*(\d+(?:\.\d+)?)/);
+    const qtyVal = qtyMatch ? parseFloat(qtyMatch[1]) : (qtyTable ? parseFloat(qtyTable[1]) : undefined);
+    if (qtyVal && qtyVal > 0) result.quantity = qtyVal;
     
     // 材料
     if (/SUS304|304不锈钢/i.test(t)) { result.materialGrade = '304不锈钢'; result.materialCategory = '不锈钢'; }
