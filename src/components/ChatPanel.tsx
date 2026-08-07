@@ -1,3 +1,4 @@
+// deploy-fix-table-parsing-20260808
 'use client';
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
