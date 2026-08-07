@@ -63,7 +63,7 @@ export default function QuotePage() {
     // 表格格式: "| 长度 | 112mm |" "| 宽度 | 46.6mm |" "| 高度 | 29mm |"
     const tblLen = t.match(/[|｜]\s*(?:长度|长)[：:]*\s*[|｜]\s*(\d+(?:\.\d+)?)\s*(?:mm)?/);
     const tblWid = t.match(/[|｜]\s*(?:宽度|宽)[：:]*\s*[|｜]\s*(\d+(?:\.\d+)?)\s*(?:mm)?/);
-    const tblHgt = t.match(/[|｜]\s*(?:高度|高)[：:]*\s*[|｜]\s*(\d+(?:\.\d+)?)\s*(?:mm)?/);
+    const tblHgt = t.match(/[|｜]\s*(?:高度|高(?!量))[：:]*\s*[|｜]\s*(\d+(?:\.\d+)?)\s*(?:mm)?/);
     if (dim1) { result.length = parseFloat(dim1[1]); result.width = parseFloat(dim1[2]); result.height = parseFloat(dim1[3]); }
     else if (dim4) { result.length = parseFloat(dim4[1]); result.width = parseFloat(dim4[2]); result.height = parseFloat(dim4[3]); }
     else if (tblLen && tblWid && tblHgt) { result.length = parseFloat(tblLen[1]); result.width = parseFloat(tblWid[1]); result.height = parseFloat(tblHgt[1]); }
@@ -72,7 +72,7 @@ export default function QuotePage() {
     
     // 单独长度
     if (!result.length) {
-      const lenMatch = t.match(/长度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
+      const lenMatch = t.match(/(?:长度|长)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
       if (lenMatch) result.length = parseFloat(lenMatch[1]);
     }
     
