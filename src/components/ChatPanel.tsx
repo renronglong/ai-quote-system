@@ -1448,58 +1448,14 @@ export default function ChatPanel({ onFormUpdate, onRawText }: ChatPanelProps) {
   // 处理PDF文件上传（渲染为图片后按图片方式上传）
   const handlePdfUpload = useCallback(async (file: File) => {
     try {
-      setStatusMessage('正在解析PDF文件...');
+      setStatusMessage('正在上传PDF文件...');
       
-      let renderedImages: string[] = [];
-      try {
-        renderedImages = await renderPdfToImages(file);
-      } catch (renderErr) {
-        console.warn('[PDF] 渲染失败，降级为直接上传原始PDF:', renderErr);
-      }
+      // 直接上传原始PDF文件，不做渲染
+      setUploadedFileType('file');
+      setUploadedImage(`文件: ${file.name}`);
       
-      if (renderedImages.length === 0) {
-        // 降级方案：直接上传原始PDF文件
-        console.log('[PDF] 使用降级方案：直接上传原始PDF');
-        setUploadedFileType('file');
-        setUploadedImage(`文件: ${file.name}`);
-        
-        const formData = new FormData();
-        formData.append('file', file);
-        
-        const uploadResponse = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-        });
-        const uploadData = await uploadResponse.json();
-        
-        if (uploadData.success) {
-          setCozeFileId(uploadData.cozeFileId || null);
-          console.log('[PDF] 原始PDF上传成功, cozeFileId:', uploadData.cozeFileId);
-          if (uploadData.extractedText) {
-            setExtractedText(uploadData.extractedText);
-          }
-        } else {
-          alert('PDF上传失败: ' + (uploadData.error || '未知错误'));
-          setUploadedImage(null);
-        }
-        setStatusMessage(null);
-        return;
-      }
-      
-      // 正常方案：渲染为图片上传
-      // 显示第一页作为预览
-      setUploadedImage(renderedImages[0]);
-      setUploadedFileType('image'); // 按图片类型处理
-      
-      // 将第一页渲染的图片作为文件上传到Coze
-      // 把dataURL转为File对象
-      const res = await fetch(renderedImages[0]);
-      const blob = await res.blob();
-      const imageFile = new File([blob], file.name.replace('.pdf', '_page1.png'), { type: 'image/png' });
-      
-      // 上传到服务器
       const formData = new FormData();
-      formData.append('file', imageFile);
+      formData.append('file', file);
       
       const uploadResponse = await fetch('/api/upload', {
         method: 'POST',
@@ -1509,36 +1465,23 @@ export default function ChatPanel({ onFormUpdate, onRawText }: ChatPanelProps) {
       
       if (uploadData.success) {
         setCozeFileId(uploadData.cozeFileId || null);
-        console.log('PDF渲染图片上传成功, cozeFileId:', uploadData.cozeFileId);
-        
-        // 提取PDF文字内容作为补充
-        try {
-          const pdfText = await extractPdfText(file);
-          if (pdfText && !pdfText.startsWith('[')) {
-            setExtractedText(pdfText);
-          }
-        } catch { /* 文字提取可选，失败不影响主流程 */ }
-        
-        // 如果有多页，将其他页的文字信息附加
-        if (renderedImages.length > 1) {
-          setExtractedText(prev => {
-            const base = prev || `[PDF文件: ${file.name}, 共${renderedImages.length}页已渲染为图片发送给AI识别]`;
-            return base;
-          });
+        console.log('[PDF] 上传成功, cozeFileId:', uploadData.cozeFileId);
+        if (uploadData.extractedText) {
+          setExtractedText(uploadData.extractedText);
         }
       } else {
-        alert('PDF图片上传失败: ' + (uploadData.error || '未知错误'));
+        alert('PDF上传失败: ' + (uploadData.error || '未知错误'));
         setUploadedImage(null);
       }
       
       setStatusMessage(null);
     } catch (error) {
       console.error('PDF处理失败:', error);
-      alert('PDF处理失败，请尝试直接截图上传');
+      alert('PDF上传失败，请重试');
       setUploadedImage(null);
       setStatusMessage(null);
     }
-  }, [renderPdfToImages, extractPdfText]);
+  }, []);
 
   // 处理非图片文件上传（Excel等）
   const handleFileUpload = useCallback(async (file: File) => {
