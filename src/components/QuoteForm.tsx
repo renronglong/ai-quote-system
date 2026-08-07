@@ -34,11 +34,22 @@ interface QuoteFormProps {
   onCalculate?: (data: QuoteFormData) => void;
   /** 从 ChatPanel 传入的 AI 识别参数 */
   aiData?: AiFormUpdate | null;
+  /** 从 Bot 回复中解析的报价明细 */
+  pricingResult?: {
+    unitWeight: number;
+    materialCost: number;
+    processingCost: number;
+    surfaceCost: number;
+    packagingCost: number;
+    shippingCost: number;
+    managementFee: number;
+    unitPrice: number;
+  } | null;
 }
 
 const secondaryOptions = ['CNC精加工', '钻孔', '攻丝', '折弯', '焊接', '切割', '冲压'];
 
-export default function QuoteForm({ onCalculate, aiData }: QuoteFormProps) {
+export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingResultProp }: QuoteFormProps) {
   const [aiSynced, setAiSynced] = useState(false);
   const prevAiDataRef = useRef<AiFormUpdate | null | undefined>(null);
 
@@ -65,6 +76,13 @@ export default function QuoteForm({ onCalculate, aiData }: QuoteFormProps) {
     managementFee: number;
     unitPrice: number;
   } | null>(null);
+
+  // 监听 Bot 返回的报价明细，自动更新报价结果
+  useEffect(() => {
+    if (pricingResultProp) {
+      setPricingResult(pricingResultProp);
+    }
+  }, [pricingResultProp]);
 
   // 监听 AI 识别参数，自动填入表单
   useEffect(() => {
