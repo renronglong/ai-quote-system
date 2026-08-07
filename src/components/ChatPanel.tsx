@@ -2191,8 +2191,9 @@ export default function ChatPanel({ onFormUpdate, onRawText }: ChatPanelProps) {
 
         // ---- 数量（兼容"数量""订购数量""最小起订量""起订量"等）----
         const qtyMatch = t.match(/(?:最小)?(?:订购)?(?:数量|起订量)[：:=]?\s*(\d+(?:\.\d+)?)/);
+        const qtyTable = t.match(/[|｜]\s*(?:最小)?(?:订购)?(?:数量|起订量)\s*[|｜]\s*(\d+(?:\.\d+)?)/);
         const qtyFall = t.match(/(\d+)\s*(?:件|支|套|pcs|千克|kg)/i);
-        const qtyVal = qtyMatch ? parseFloat(qtyMatch[1]) : (qtyFall ? parseInt(qtyFall[1]) : undefined);
+        const qtyVal = qtyMatch ? parseFloat(qtyMatch[1]) : (qtyTable ? parseFloat(qtyTable[1]) : (qtyFall ? parseInt(qtyFall[1]) : undefined));
         if (qtyVal && qtyVal > 0) formUpdate.quantity = qtyVal;
 
         // ---- 单件重量 ----
