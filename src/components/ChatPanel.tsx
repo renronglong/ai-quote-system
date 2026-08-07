@@ -2167,8 +2167,17 @@ export default function ChatPanel({ onFormUpdate, onRawText }: ChatPanelProps) {
         const dim3 = t.match(/宽(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[^\n]*?高(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)/);
         // 格式4: 超宽松兜底 - 找三个连续数字（允许任意分隔符，包括Unicode乘号）
         const dim4 = t.match(/(?:长度|长|L)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[^\n]{0,30}?(?:宽度|宽|W)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[^\n]{0,30}?(?:高度|高|H)[：:=]?\s*(\d+(?:\.\d+)?)/i);
+        // 格式5: Bot表格格式 "| 长度 | 112mm |" "| 宽度 | 46.6mm |" "| 高度 | 29mm |"
+        const tblLen = t.match(/[|｜]\s*(?:长度|长)[：:]*\s*[|｜]\s*(\d+(?:\.\d+)?)\s*(?:mm)?/);
+        const tblWid = t.match(/[|｜]\s*(?:宽度|宽)[：:]*\s*[|｜]\s*(\d+(?:\.\d+)?)\s*(?:mm)?/);
+        const tblHgt = t.match(/[|｜]\s*(?:高度|高)[：:]*\s*[|｜]\s*(\d+(?:\.\d+)?)\s*(?:mm)?/);
+        if (tblLen && tblWid && tblHgt) {
+          formUpdate.length = parseFloat(tblLen[1]); formUpdate.width = parseFloat(tblWid[1]); formUpdate.height = parseFloat(tblHgt[1]);
+        }
+
         if (dim1) { formUpdate.length = parseFloat(dim1[1]); formUpdate.width = parseFloat(dim1[2]); formUpdate.height = parseFloat(dim1[3]); }
         else if (dim4) { formUpdate.length = parseFloat(dim4[1]); formUpdate.width = parseFloat(dim4[2]); formUpdate.height = parseFloat(dim4[3]); }
+        else if (tblLen && tblWid && tblHgt) { /* already set above */ }
         else if (dim3) { formUpdate.width = parseFloat(dim3[1]); formUpdate.height = parseFloat(dim3[2]); }
         else if (dim2) { formUpdate.length = parseFloat(dim2[1]); formUpdate.width = parseFloat(dim2[2]); formUpdate.height = parseFloat(dim2[3]); }
 
