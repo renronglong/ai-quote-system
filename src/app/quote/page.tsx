@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import dynamic from 'next/dynamic';
 import { useAuth } from '@/lib/auth-context';
+import ChatPanel from '@/components/ChatPanel';
+import QuoteForm from '@/components/QuoteForm';
 import {
   TrendingUp,
   LogOut,
@@ -44,27 +45,6 @@ interface PricingResult {
   managementFee: number;
   unitPrice: number;
 }
-
-const ChatPanel = dynamic(() => import('@/components/ChatPanel'), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center h-full">
-      <div className="text-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-3" />
-        <p className="text-slate-500 text-sm">加载AI报价助手...</p>
-      </div>
-    </div>
-  ),
-});
-
-const QuoteForm = dynamic(() => import('@/components/QuoteForm'), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center h-full">
-      <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
-    </div>
-  ),
-});
 
 interface AluminumPrice {
   price: number;
