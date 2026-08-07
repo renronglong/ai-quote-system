@@ -74,6 +74,18 @@ export default function QuotePage() {
     if (!result.length) {
       const lenMatch = t.match(/(?:长度|长)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
       if (lenMatch) result.length = parseFloat(lenMatch[1]);
+      
+      // 宽度（单独匹配）
+      if (!result.width) {
+        const widMatch = t.match(/(?:宽度|宽)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
+        if (widMatch) result.width = parseFloat(widMatch[1]);
+      }
+      
+      // 高度（单独匹配，排除"重量"）
+      if (!result.height) {
+        const hgtMatch = t.match(/(?:高度|高(?!量))[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
+        if (hgtMatch) result.height = parseFloat(hgtMatch[1]);
+      }
     }
     
     // 数量
