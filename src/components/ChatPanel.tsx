@@ -1,4 +1,3 @@
-// deploy-fix-table-parsing-20260808
 'use client';
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
@@ -1097,6 +1096,17 @@ function MessageContent({ message }: { message: Message }) {
   return <div className="whitespace-pre-wrap text-[15px] leading-relaxed">{cleanContent}</div>;
 }
 
+interface PricingResult {
+  unitWeight: number;
+  materialCost: number;
+  processingCost: number;
+  surfaceCost: number;
+  packagingCost: number;
+  shippingCost: number;
+  managementFee: number;
+  unitPrice: number;
+}
+
 interface ChatPanelProps {
   onFormUpdate?: (data: {
     productType?: string;
@@ -1110,10 +1120,10 @@ interface ChatPanelProps {
     packaging?: string;
     secondaryProcessing?: string[];
   }) => void;
-  onRawText?: (text: string) => void;
+  onPricingResult?: (result: PricingResult) => void;
 }
 
-export default function ChatPanel({ onFormUpdate, onRawText }: ChatPanelProps) {
+export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelProps) {
   const { user } = useAuth();
   
   // localStorage key 前缀，用于按 conversation_id 存储对话历史
@@ -1449,14 +1459,30 @@ export default function ChatPanel({ onFormUpdate, onRawText }: ChatPanelProps) {
   // 处理PDF文件上传（渲染为图片后按图片方式上传）
   const handlePdfUpload = useCallback(async (file: File) => {
     try {
-      setStatusMessage('正在上传PDF文件...');
+      setStatusMessage('正在解析PDF文件...');
       
-      // 直接上传原始PDF文件，不做渲染
-      setUploadedFileType('file');
-      setUploadedImage(`文件: ${file.name}`);
+      // 将PDF渲染为图片
+      const images = await renderPdfToImages(file);
       
+      if (images.length === 0) {
+        alert('PDF解析失败，无法渲染页面');
+        setStatusMessage(null);
+        return;
+      }
+      
+      // 显示第一页作为预览
+      setUploadedImage(images[0]);
+      setUploadedFileType('image'); // 按图片类型处理
+      
+      // 将第一页渲染的图片作为文件上传到Coze
+      // 把dataURL转为File对象
+      const res = await fetch(images[0]);
+      const blob = await res.blob();
+      const imageFile = new File([blob], file.name.replace('.pdf', '_page1.png'), { type: 'image/png' });
+      
+      // 上传到服务器
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', imageFile);
       
       const uploadResponse = await fetch('/api/upload', {
         method: 'POST',
@@ -1466,23 +1492,23 @@ export default function ChatPanel({ onFormUpdate, onRawText }: ChatPanelProps) {
       
       if (uploadData.success) {
         setCozeFileId(uploadData.cozeFileId || null);
-        console.log('[PDF] 上传成功, cozeFileId:', uploadData.cozeFileId);
-        if (uploadData.extractedText) {
-          setExtractedText(uploadData.extractedText);
-        }
+        console.log('PDF渲染图片上传成功, cozeFileId:', uploadData.cozeFileId);
+        
+        // 如果有多页，将其他页的文字信息附加
+        setExtractedText(`[PDF文件: ${file.name}, 共${images.length}页已渲染为图片发送给AI识别]`);
       } else {
-        alert('PDF上传失败: ' + (uploadData.error || '未知错误'));
+        alert('PDF图片上传失败: ' + (uploadData.error || '未知错误'));
         setUploadedImage(null);
       }
       
       setStatusMessage(null);
     } catch (error) {
       console.error('PDF处理失败:', error);
-      alert('PDF上传失败，请重试');
+      alert('PDF处理失败，请尝试直接截图上传');
       setUploadedImage(null);
       setStatusMessage(null);
     }
-  }, []);
+  }, [renderPdfToImages]);
 
   // 处理非图片文件上传（Excel等）
   const handleFileUpload = useCallback(async (file: File) => {
@@ -2136,8 +2162,6 @@ export default function ChatPanel({ onFormUpdate, onRawText }: ChatPanelProps) {
 
       // ===== 从Bot回复中提取参数，同步到左侧表单 =====
       if (onFormUpdate && assistantContent) {
-        // 传递原始文本给 page 组件重新提取
-        if (onRawText) onRawText(assistantContent);
         const formUpdate: Record<string, unknown> = {};
         const t = assistantContent;
 
@@ -2160,57 +2184,28 @@ export default function ChatPanel({ onFormUpdate, onRawText }: ChatPanelProps) {
         }
 
         // ---- 尺寸（兼容多种格式）----
-        // 格式1: "尺寸：长度100mm × 宽度46mm × 高度25.5mm" 或 "长度100mm × 宽度46mm × 高度25.5mm"
-        const dim1 = t.match(/(?:尺寸[：:]\s*)?长度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*×]\s*宽度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*×]\s*高度[：:=]?\s*(\d+(?:\.\d+)?)/);
-        // 格式2: "100mm×46mm×25.5mm" 三个带mm的数字用×连接（需在同一行，防止跨行误匹配）
-        const dim2 = t.match(/(\d+(?:\.\d+)?)\s*mm\s*[×xX*×]\s*(\d+(?:\.\d+)?)\s*mm\s*[×xX*×]\s*(\d+(?:\.\d+)?)\s*mm/);
-        // 格式3: "宽46 高25.5" 或 "宽46mm 高25.5mm"（禁止跨行）
-        const dim3 = t.match(/宽(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[^\n]*?高(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)/);
-        // 格式4: 超宽松兜底 - 找三个连续数字（允许任意分隔符，包括Unicode乘号）
-        const dim4 = t.match(/(?:长度|长|L)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[^\n]{0,30}?(?:宽度|宽|W)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[^\n]{0,30}?(?:高度|高|H)[：:=]?\s*(\d+(?:\.\d+)?)/i);
-        // 格式5: Bot表格格式 "| 长度 | 112mm |" "| 宽度 | 46.6mm |" "| 高度 | 29mm |"
-        const tblLen = t.match(/[|｜]\s*(?:长度|长)[：:]*\s*[|｜]\s*(\d+(?:\.\d+)?)\s*(?:mm)?/);
-        const tblWid = t.match(/[|｜]\s*(?:宽度|宽)[：:]*\s*[|｜]\s*(\d+(?:\.\d+)?)\s*(?:mm)?/);
-        const tblHgt = t.match(/[|｜]\s*(?:高度|高(?!量))[：:]*\s*[|｜]\s*(\d+(?:\.\d+)?)\s*(?:mm)?/);
-        if (tblLen && tblWid && tblHgt) {
-          formUpdate.length = parseFloat(tblLen[1]); formUpdate.width = parseFloat(tblWid[1]); formUpdate.height = parseFloat(tblHgt[1]);
-        }
-
+        // 格式1: "长度100mm × 宽度46mm × 高度25.5mm"
+        const dim1 = t.match(/长度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*]\s*宽度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*]\s*高度[：:=]?\s*(\d+(?:\.\d+)?)/);
+        // 格式2: "100mm × 46mm × 25.5mm" 三个数字用×连接
+        const dim2 = t.match(/(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*]\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*]\s*(\d+(?:\.\d+)?)/);
+        // 格式3: "宽46 高25.5" 或 "宽46mm 高25.5mm"
+        const dim3 = t.match(/宽(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[\s\S]*?高(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)/);
         if (dim1) { formUpdate.length = parseFloat(dim1[1]); formUpdate.width = parseFloat(dim1[2]); formUpdate.height = parseFloat(dim1[3]); }
-        else if (dim4) { formUpdate.length = parseFloat(dim4[1]); formUpdate.width = parseFloat(dim4[2]); formUpdate.height = parseFloat(dim4[3]); }
-        else if (tblLen && tblWid && tblHgt) { /* already set above */ }
         else if (dim3) { formUpdate.width = parseFloat(dim3[1]); formUpdate.height = parseFloat(dim3[2]); }
         else if (dim2) { formUpdate.length = parseFloat(dim2[1]); formUpdate.width = parseFloat(dim2[2]); formUpdate.height = parseFloat(dim2[3]); }
 
         // ---- 长度（单独匹配）----
         if (!formUpdate.length) {
-          const lenBlock = t.match(/(?:长度|长)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
+          const lenBlock = t.match(/长度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
           const lenFall = t.match(/(\d+(?:\.\d+)?)\s*(?:mm|毫米)\s*[（(]?[长L]/);
           const lenVal = lenBlock ? parseFloat(lenBlock[1]) : (lenFall ? parseFloat(lenFall[1]) : undefined);
           if (lenVal && lenVal > 0) formUpdate.length = lenVal;
-          
-          // ---- 宽度（单独匹配）----
-          if (!formUpdate.width) {
-            const widBlock = t.match(/(?:宽度|宽)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
-            const widFall = t.match(/(\d+(?:\.\d+)?)\s*(?:mm|毫米)\s*[（(]?[宽W]/);
-            const widVal = widBlock ? parseFloat(widBlock[1]) : (widFall ? parseFloat(widFall[1]) : undefined);
-            if (widVal && widVal > 0) formUpdate.width = widVal;
-          }
-          
-          // ---- 高度（单独匹配，排除"重量"）----
-          if (!formUpdate.height) {
-            const hgtBlock = t.match(/(?:高度|高(?!量))[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
-            const hgtFall = t.match(/(\d+(?:\.\d+)?)\s*(?:mm|毫米)\s*[（(]?[高H]/);
-            const hgtVal = hgtBlock ? parseFloat(hgtBlock[1]) : (hgtFall ? parseFloat(hgtFall[1]) : undefined);
-            if (hgtVal && hgtVal > 0) formUpdate.height = hgtVal;
-          }
         }
 
         // ---- 数量（兼容"数量""订购数量""最小起订量""起订量"等）----
         const qtyMatch = t.match(/(?:最小)?(?:订购)?(?:数量|起订量)[：:=]?\s*(\d+(?:\.\d+)?)/);
-        const qtyTable = t.match(/[|｜]\s*(?:最小)?(?:订购)?(?:数量|起订量)\s*[|｜]\s*(\d+(?:\.\d+)?)/);
         const qtyFall = t.match(/(\d+)\s*(?:件|支|套|pcs|千克|kg)/i);
-        const qtyVal = qtyMatch ? parseFloat(qtyMatch[1]) : (qtyTable ? parseFloat(qtyTable[1]) : (qtyFall ? parseInt(qtyFall[1]) : undefined));
+        const qtyVal = qtyMatch ? parseFloat(qtyMatch[1]) : (qtyFall ? parseInt(qtyFall[1]) : undefined);
         if (qtyVal && qtyVal > 0) formUpdate.quantity = qtyVal;
 
         // ---- 单件重量 ----
@@ -2230,14 +2225,88 @@ export default function ChatPanel({ onFormUpdate, onRawText }: ChatPanelProps) {
         else if (/抛光/.test(t)) formUpdate.surfaceTreatment = '抛光';
         else if (/电镀/.test(t)) formUpdate.surfaceTreatment = '电镀';
 
-        // 调试：打印AI文本中的尺寸相关内容
-        const dimDebug = t.match(/.{0,80}(?:尺寸|长度|宽度|高度|mm).{0,80}/);
-        console.log('[ChatPanel] AI文本尺寸相关:', dimDebug ? dimDebug[0] : '无匹配');
-        console.log('[ChatPanel] dim1:', !!dim1, 'dim2:', !!dim2, 'dim3:', !!dim3, 'dim4:', !!dim4);
         // 有任何识别到的参数就填入
         if (Object.keys(formUpdate).length > 0) {
           console.log('[ChatPanel] AI识别到参数，同步到左侧表单:', formUpdate);
           onFormUpdate(formUpdate as Parameters<NonNullable<typeof onFormUpdate>>[0]);
+        }
+
+        // ===== 从Bot回复的报价明细中提取费用数据，同步到左侧报价结果 =====
+        if (onPricingResult) {
+          // 通用提取函数：从文本中提取某费用项的金额
+          const extractCost = (keyword: string, text: string): number | null => {
+            // 格式1: 编号列表 "**材料费**：32.26元" 或 "**材料费**：32.26元（说明）"
+            const listMatch = text.match(new RegExp(keyword + '[\\*]*[：:]\\s*(\\d+(?:\\.\\d+)?)\\s*(?:元|元/件|/件)'));
+            if (listMatch) return parseFloat(listMatch[1]);
+            
+            // 格式2: markdown表格，关键词在第一列
+            const lineMatch = text.split('\n').find(l => {
+              if (!l.includes('|')) return false;
+              const cells = l.split('|').map(c => c.trim()).filter(Boolean);
+              return cells.length >= 2 && cells[0].includes(keyword);
+            });
+            if (lineMatch) {
+              const cells = lineMatch.split('|').map(c => c.trim()).filter(Boolean);
+              // 跳过第一列（费用名），找第二个纯数字
+              for (let i = 1; i < cells.length; i++) {
+                const num = cells[i].match(/^(\d+(?:\.\d+)?)\s*(?:元)?$/);
+                if (num) return parseFloat(num[1]);
+              }
+            }
+            return null;
+          };
+
+          let matCost = extractCost('材料费', t);
+          let procCost = extractCost('加工费', t);
+          let surfCost = extractCost('表面处理费', t);
+          let packCost = extractCost('包装费', t);
+          let shipCost = extractCost('运输费', t) || extractCost('运费', t);
+          let mgmtCost = extractCost('管理费', t);
+          let unitPrice: number | null = null;
+          let unitWeight: number | null = null;
+
+          // 尝试从表格获取单件单价 "| 单件单价 | 38.71元 |"
+          const unitPriceMatch = t.match(/单件单价[|\s]*[|：:]\s*(\d+(?:\.\d+)?)\s*元?/);
+          if (unitPriceMatch) {
+            unitPrice = parseFloat(unitPriceMatch[1]);
+          }
+
+          // 如果没找到单件单价，从合计行获取
+          if (unitPrice === null) {
+            const totalMatch = t.match(/\*\*合计\*\*\s*[|]\s*\*\*(\d+(?:\.\d+)?)\*\*/);
+            if (totalMatch) unitPrice = parseFloat(totalMatch[1]);
+          }
+
+          // 从参数表中提取单件重量（75g → 0.075kg）
+          const wMatch = t.match(/(?:单重|单件重量|重量)[|\s]*[|：:=]\s*(\d+(?:\.\d+)?)\s*(?:g|克)/i);
+          if (wMatch) {
+            const wVal = parseFloat(wMatch[1]);
+            unitWeight = wVal > 1 ? wVal / 1000 : wVal; // g → kg
+          }
+
+          // 如果没拿到合计单价，从各项费用累加
+          if (unitPrice === null) {
+            const items = [matCost, procCost, surfCost, packCost, shipCost, mgmtCost].filter(v => v !== null) as number[];
+            if (items.length > 0) {
+              unitPrice = Math.round(items.reduce((a, b) => a + b, 0) * 100) / 100;
+            }
+          }
+
+          // 至少要有材料费才算有效报价
+          if (matCost !== null && matCost > 0) {
+            const pricingResult: PricingResult = {
+              unitWeight: unitWeight ?? 0,
+              materialCost: matCost,
+              processingCost: procCost ?? 0,
+              surfaceCost: surfCost ?? 0,
+              packagingCost: packCost ?? 0,
+              shippingCost: shipCost ?? 0,
+              managementFee: mgmtCost ?? 0,
+              unitPrice: unitPrice ?? 0,
+            };
+            console.log('[ChatPanel] 从Bot回复中解析到报价明细:', pricingResult);
+            onPricingResult(pricingResult);
+          }
         }
       }
     } catch (error) {
@@ -2254,7 +2323,7 @@ export default function ChatPanel({ onFormUpdate, onRawText }: ChatPanelProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [input, messages, uploadedImage, cozeFileId, cozeFileIdsBatch, uploadedFileType, extractedText, onFormUpdate, onRawText]);
+  }, [input, messages, uploadedImage, cozeFileId, cozeFileIdsBatch, uploadedFileType, extractedText, onFormUpdate]);
 
   // 处理键盘事件
   const handleKeyDown = (e: React.KeyboardEvent) => {
