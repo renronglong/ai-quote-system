@@ -53,9 +53,10 @@ export async function sendVerificationCode(
       phone,
       code
     );
+    console.log('[SMS] 发送结果:', JSON.stringify(result));
     return result;
   } catch (error: any) {
-    console.error('[SMS] 发送失败:', error);
+    console.error('[SMS] 发送异常:', error);
     return {
       success: false,
       message: `短信发送失败: ${error.message}`,
@@ -134,9 +135,10 @@ async function sendViaTencentCloud(
   const result = await response.json();
 
   if (result.Response?.Error) {
+    console.error('[SMS] 腾讯云API错误:', JSON.stringify(result));
     return {
       success: false,
-      message: `腾讯云短信错误: ${result.Response.Error.Message}`,
+      message: `腾讯云短信错误[${result.Response.Error.Code}]: ${result.Response.Error.Message}`,
     };
   }
 

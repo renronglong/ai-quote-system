@@ -347,9 +347,28 @@ export async function POST(request: NextRequest) {
               
               const status = retrieveResult.data?.status;
               if (status === 'completed' || status === 'failed') {
-                const messages = retrieveResult.data?.messages || [];
-                const answers = messages.filter((m: { role: string; type: string }) => m.role === 'assistant' && m.type === 'answer');
-                botReply = answers.map((m: { content: string }) => m.content).join('\n');
+                // ★ retrieve端点不返回messages，需通过message/list单独获取
+                try {
+                  const msgListUrl = `${config.apiBase}/v3/chat/message/list?conversation_id=${conversationId}&chat_id=${chatId}`;
+                  const msgListResp = await fetch(msgListUrl, {
+                    headers: {
+                      'Authorization': `Bearer ${config.apiToken}`,
+                      'Content-Type': 'application/json',
+                    },
+                  });
+                  if (msgListResp.ok) {
+                    const msgListResult = await msgListResp.json() as {
+                      code?: number;
+                      data?: Array<{ role: string; content: string; type: string }>;
+                    };
+                    if (msgListResult.code === 0 && msgListResult.data) {
+                      const answers = msgListResult.data.filter((m) => m.role === 'assistant' && m.type === 'answer');
+                      botReply = answers.map((m) => m.content).join('\n');
+                    }
+                  }
+                } catch (msgErr) {
+                  console.error('[Chat] 获取消息列表失败:', msgErr);
+                }
                 break;
               }
             }
