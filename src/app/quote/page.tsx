@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useAuth } from '@/lib/auth-context';
 import {
   TrendingUp,
@@ -33,9 +34,37 @@ interface AiFormUpdate {
   secondaryProcessing?: string[];
 }
 
-import ChatPanel from '@/components/ChatPanel';
+interface PricingResult {
+  unitWeight: number;
+  materialCost: number;
+  processingCost: number;
+  surfaceCost: number;
+  packagingCost: number;
+  shippingCost: number;
+  managementFee: number;
+  unitPrice: number;
+}
 
-import QuoteForm from '@/components/QuoteForm';
+const ChatPanel = dynamic(() => import('@/components/ChatPanel'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-full">
+      <div className="text-center">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-3" />
+        <p className="text-slate-500 text-sm">加载AI报价助手...</p>
+      </div>
+    </div>
+  ),
+});
+
+const QuoteForm = dynamic(() => import('@/components/QuoteForm'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-full">
+      <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+    </div>
+  ),
+});
 
 interface AluminumPrice {
   price: number;
@@ -48,85 +77,17 @@ export default function QuotePage() {
   const [aluminumPrice, setAluminumPrice] = useState<AluminumPrice | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [aiFormData, setAiFormData] = useState<AiFormUpdate | null>(null);
+  const [pricingResult, setPricingResult] = useState<PricingResult | null>(null);
   const aiDataCounter = useRef(0);
-
-  // 从 AI 响应文本中提取参数（放在 page 组件中确保 eagerly-loaded）
-  const extractParamsFromText = (text: string): Partial<AiFormUpdate> => {
-    const result: Partial<AiFormUpdate> = {};
-    const t = text;
-    
-    // 尺寸提取 - 多格式兼容
-    const dim1 = t.match(/(?:尺寸[：:]\s*)?长度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*\u00d7\u2715\u2716]\s*宽度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*\u00d7\u2715\u2716]\s*高度[：:=]?\s*(\d+(?:\.\d+)?)/);
-    const dim4 = t.match(/(?:长度|长|L)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[^\n]{0,50}?(?:宽度|宽|W)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[^\n]{0,50}?(?:高度|高|H)[：:=]?\s*(\d+(?:\.\d+)?)/i);
-    const dim2 = t.match(/(\d+(?:\.\d+)?)\s*mm\s*[×xX*\u00d7\u2715\u2716]\s*(\d+(?:\.\d+)?)\s*mm\s*[×xX*\u00d7\u2715\u2716]\s*(\d+(?:\.\d+)?)\s*mm/);
-    const dim3 = t.match(/宽(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[^\n]*?高(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)/);
-    // 表格格式: "| 长度 | 112mm |" "| 宽度 | 46.6mm |" "| 高度 | 29mm |"
-    const tblLen = t.match(/[|｜]\s*(?:长度|长)[：:]*\s*[|｜]\s*(\d+(?:\.\d+)?)\s*(?:mm)?/);
-    const tblWid = t.match(/[|｜]\s*(?:宽度|宽)[：:]*\s*[|｜]\s*(\d+(?:\.\d+)?)\s*(?:mm)?/);
-    const tblHgt = t.match(/[|｜]\s*(?:高度|高(?!量))[：:]*\s*[|｜]\s*(\d+(?:\.\d+)?)\s*(?:mm)?/);
-    if (dim1) { result.length = parseFloat(dim1[1]); result.width = parseFloat(dim1[2]); result.height = parseFloat(dim1[3]); }
-    else if (dim4) { result.length = parseFloat(dim4[1]); result.width = parseFloat(dim4[2]); result.height = parseFloat(dim4[3]); }
-    else if (tblLen && tblWid && tblHgt) { result.length = parseFloat(tblLen[1]); result.width = parseFloat(tblWid[1]); result.height = parseFloat(tblHgt[1]); }
-    else if (dim3) { result.width = parseFloat(dim3[1]); result.height = parseFloat(dim3[2]); }
-    else if (dim2) { result.length = parseFloat(dim2[1]); result.width = parseFloat(dim2[2]); result.height = parseFloat(dim2[3]); }
-    
-    // 单独长度
-    if (!result.length) {
-      const lenMatch = t.match(/(?:长度|长)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
-      if (lenMatch) result.length = parseFloat(lenMatch[1]);
-      
-      // 宽度（单独匹配）
-      if (!result.width) {
-        const widMatch = t.match(/(?:宽度|宽)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
-        if (widMatch) result.width = parseFloat(widMatch[1]);
-      }
-      
-      // 高度（单独匹配，排除"重量"）
-      if (!result.height) {
-        const hgtMatch = t.match(/(?:高度|高(?!量))[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
-        if (hgtMatch) result.height = parseFloat(hgtMatch[1]);
-      }
-    }
-    
-    // 数量
-    const qtyMatch = t.match(/(?:最小)?(?:订购)?(?:数量|起订量)[：:=]?\s*(\d+(?:\.\d+)?)/);
-    const qtyTable = t.match(/[|｜]\s*(?:最小)?(?:订购)?(?:数量|起订量)\s*[|｜]\s*(\d+(?:\.\d+)?)/);
-    const qtyVal = qtyMatch ? parseFloat(qtyMatch[1]) : (qtyTable ? parseFloat(qtyTable[1]) : undefined);
-    if (qtyVal && qtyVal > 0) result.quantity = qtyVal;
-    
-    // 材料
-    if (/SUS304|304不锈钢/i.test(t)) { result.materialGrade = '304不锈钢'; result.materialCategory = '不锈钢'; }
-    else if (/6063/i.test(t)) { result.materialGrade = '6063-T5'; result.materialCategory = '铝合金'; }
-    else if (/铝合金/i.test(t)) { result.materialCategory = '铝合金'; }
-    
-    // 表面处理
-    if (/氧化本色|本色氧化/.test(t)) result.surfaceTreatment = '氧化本色';
-    else if (/氧化黑|黑色氧化/.test(t)) result.surfaceTreatment = '阳极氧化-黑色';
-    else if (/阳极氧化|氧化(?!黑)/.test(t)) result.surfaceTreatment = '阳极氧化-自然色';
-    else if (/喷涂|喷粉|粉末/.test(t)) result.surfaceTreatment = '粉末喷涂';
-    else if (/电泳/.test(t)) result.surfaceTreatment = '电泳';
-    else if (/拉丝/.test(t)) result.surfaceTreatment = '拉丝';
-    else if (/抛光/.test(t)) result.surfaceTreatment = '抛光';
-    else if (/电镀/.test(t)) result.surfaceTreatment = '电镀';
-    
-    console.log('[Page] 提取参数:', result);
-    return result;
-  };
-
-  // 从 ChatPanel 接收原始AI文本，重新提取参数（确保使用最新正则）
-  const handleRawText = useCallback((text: string) => {
-    const extracted = extractParamsFromText(text);
-    if (Object.keys(extracted).length > 0) {
-      aiDataCounter.current += 1;
-      setAiFormData({ ...extracted, _v: aiDataCounter.current } as AiFormUpdate);
-      console.log('[Page] handleRawText 重新提取:', extracted);
-    }
-  }, []);
 
   const handleFormUpdate = useCallback((data: AiFormUpdate) => {
     // 每次都用新对象引用，触发 QuoteForm 的 useEffect
     aiDataCounter.current += 1;
     setAiFormData({ ...data, _v: aiDataCounter.current } as AiFormUpdate);
+  }, []);
+
+  const handlePricingResult = useCallback((result: PricingResult) => {
+    setPricingResult(result);
   }, []);
 
   // 获取实时铝价
@@ -279,7 +240,7 @@ export default function QuotePage() {
 
         {/* 左栏：报价参数表单 */}
         <div className="hidden md:block w-80 border-r border-gray-200 bg-gray-50/50 overflow-y-auto shrink-0">
-          <QuoteForm aiData={aiFormData} />
+          <QuoteForm aiData={aiFormData} pricingResult={pricingResult} />
         </div>
 
         {/* 右栏：AI报价助手 */}
@@ -308,7 +269,7 @@ export default function QuotePage() {
 
           {/* ChatPanel - 占满剩余空间 */}
           <div className="flex-1 p-3 min-h-0 overflow-hidden">
-            <ChatPanel onFormUpdate={handleFormUpdate} onRawText={handleRawText} />
+            <ChatPanel onFormUpdate={handleFormUpdate} onPricingResult={handlePricingResult} />
           </div>
         </div>
       </main>
