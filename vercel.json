@@ -1,5 +1,4 @@
 {
-  "buildCommand": "rm -rf .next && next build",
   "functions": {
     "src/app/api/chat/route.ts": {
       "maxDuration": 60
