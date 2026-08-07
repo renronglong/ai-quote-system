@@ -212,7 +212,7 @@ export async function POST(request: NextRequest) {
       // 4. 调用Coze Chat API（带文件重试机制）
       // 有文件时先走非流式探测，失败则重试；无文件直接流式
       const hasFileRef = !!(cozeFileId || (cozeFileIds && cozeFileIds.length > 0));
-      let useStream = true; // 始终使用流式模式，避免非流式轮询的复杂性
+      const useStream = true; // 始终使用流式模式
       let chatUrl = `${config.apiBase}/v3/chat?conversation_id=${conversationId}`;
       let chatBody: Record<string, unknown> = {
         bot_id: config.botId,
@@ -231,7 +231,6 @@ export async function POST(request: NextRequest) {
         body: JSON.stringify(chatBody),
       });
 
-      // 流式模式下如果Bot返回文件处理错误(code 4000)，在流解析中自动降级处理
 
       if (!chatResponse.ok) {
         const errorText = await chatResponse.text();
@@ -252,109 +251,7 @@ export async function POST(request: NextRequest) {
         return;
       }
 
-      // 5. 处理响应
-      if (!useStream) {
-        // 非流式模式：解析初始响应获取chat_id
-        const chatResult = await chatResponse.json() as {
-          code?: number;
-          data?: {
-            id?: string;
-            conversation_id?: string;
-            status?: string;
-            messages?: Array<{ role: string; content: string; type: string }>;
-            last_error?: { msg: string };
-          };
-          msg?: string;
-        };
-        
-        if (chatResult.code !== 0 || !chatResult.data) {
-          await writer.write(encoder.encode(
-            `data: ${JSON.stringify({ type: 'error', error: chatResult.msg || 'Bot处理失败' })}\n\n`
-          ));
-          await writer.close();
-          return;
-        }
-        
-        const chatId = chatResult.data.id;
-        let botReply = '';
-        
-        // 检查初始响应是否已有完整结果
-        const initialMessages = chatResult.data.messages || [];
-        const initialAnswers = initialMessages.filter((m: { role: string; type: string }) => m.role === 'assistant' && m.type === 'answer');
-        if (initialAnswers.length > 0) {
-          botReply = initialAnswers.map((m: { content: string }) => m.content).join('\n');
-        }
-        
-        // 如果初始响应没有内容，轮询获取结果
-        if (!botReply && chatId) {
-          const maxRetries = 10;
-          for (let i = 0; i < maxRetries; i++) {
-            await new Promise(resolve => setTimeout(resolve, 2000)); // 等2秒
-            
-            const retrieveUrl = `${config.apiBase}/v3/chat/retrieve?conversation_id=${conversationId}&chat_id=${chatId}`;
-            const retrieveResponse = await fetch(retrieveUrl, {
-              headers: {
-                'Authorization': `Bearer ${config.apiToken}`,
-                'Content-Type': 'application/json',
-              },
-            });
-            
-            if (retrieveResponse.ok) {
-              const retrieveResult = await retrieveResponse.json() as {
-                code?: number;
-                data?: {
-                  status?: string;
-                  messages?: Array<{ role: string; content: string; type: string }>;
-                };
-              };
-              
-              const status = retrieveResult.data?.status;
-              if (status === 'completed' || status === 'failed') {
-                // ★ retrieve端点不返回messages，需通过message/list单独获取
-                try {
-                  const msgListUrl = `${config.apiBase}/v3/chat/message/list?conversation_id=${conversationId}&chat_id=${chatId}`;
-                  const msgListResp = await fetch(msgListUrl, {
-                    headers: {
-                      'Authorization': `Bearer ${config.apiToken}`,
-                      'Content-Type': 'application/json',
-                    },
-                  });
-                  if (msgListResp.ok) {
-                    const msgListResult = await msgListResp.json() as {
-                      code?: number;
-                      data?: Array<{ role: string; content: string; type: string }>;
-                    };
-                    if (msgListResult.code === 0 && msgListResult.data) {
-                      const answers = msgListResult.data.filter((m) => m.role === 'assistant' && m.type === 'answer');
-                      botReply = answers.map((m) => m.content).join('\n');
-                    }
-                  }
-                } catch (msgErr) {
-                  console.error('[Chat] 获取消息列表失败:', msgErr);
-                }
-                break;
-              }
-            }
-          }
-        }
-        
-        if (botReply) {
-          await writer.write(encoder.encode(
-            `data: ${JSON.stringify({ type: 'text', content: botReply })}\n\n`
-          ));
-        } else {
-          await writer.write(encoder.encode(
-            `data: ${JSON.stringify({ type: 'text', content: '已收到您的文件，但暂时无法解析内容。请尝试用文字描述产品的尺寸、材质和数量，我将为您识别参数。' })}\n\n`
-          ));
-        }
-        await writer.write(encoder.encode(
-          `data: ${JSON.stringify({ type: 'done' })}\n\n`
-        ));
-        await writer.close();
-        return;
-      }
-      
-      // 流式模式：转发Coze流式响应到前端
+      // 5. 流式模式：转发Coze流式响应到前端
       const reader = chatResponse.body?.getReader();
       if (!reader) {
         await writer.write(encoder.encode(
@@ -410,63 +307,8 @@ export async function POST(request: NextRequest) {
                 }
               } else if (eventType === 'conversation.chat.failed') {
                 const errCode = json.last_error?.code || 0;
-                // 文件相关错误(4000)时，自动降级为纯文字重试
-                if ((errCode === 4000 || json.last_error?.msg?.toLowerCase().includes('parameter')) && hasFileRef) {
-                  console.warn('[Chat] 文件请求失败，降级为纯文字重试');
-                  const fallbackMessages: CozeMessage[] = [{ role: 'user', content: userContent || '请分析这个文件', content_type: 'text' }];
-                  if (extractedText) {
-                    const maxLen = 8000;
-                    const truncated = extractedText.length > maxLen ? extractedText.substring(0, maxLen) + '\n...(内容过长已截断)' : extractedText;
-                    fallbackMessages[0].content += `\n\n---以下是文件提取的文字内容---\n${truncated}\n---内容结束---`;
-                  }
-                  // 重新发起流式请求（不带文件）
-                  chatBody = {
-                    bot_id: config.botId,
-                    user_id: userId,
-                    stream: true,
-                    additional_messages: fallbackMessages,
-                    auto_save_history: true,
-                  };
-                  chatResponse = await fetch(chatUrl, {
-                    method: 'POST',
-                    headers: { 'Authorization': \`Bearer \${config.apiToken}\`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify(chatBody),
-                  });
-                  await writer.write(encoder.encode(
-                    \`data: \${JSON.stringify({ type: 'text', content: '（文件预览暂不可用，已切换为文字模式处理）\n\n' })}\n\n\`
-                  ));
-                  // 重新启动流式读取
-                  const retryReader = chatResponse.body?.getReader();
-                  if (retryReader) {
-                    while (true) {
-                      const { done: rDone, value: rValue } = await retryReader.read();
-                      if (rDone) break;
-                      const rLines = decoder.decode(rValue, { stream: true }).split('\n');
-                      for (const rLine of rLines) {
-                        if (!rLine || rLine.startsWith(':')) continue;
-                        if (rLine.startsWith('data:')) {
-                          const rData = rLine.slice(5).trim();
-                          if (!rData || rData === '[DONE]') continue;
-                          try {
-                            const rJson = JSON.parse(rData);
-                            const rEvent = rJson.event || '';
-                            if (rEvent === 'conversation.message.delta' || rEvent === 'conversation.message.completed') {
-                              const rContent = rJson.data?.content || '';
-                              if (rContent) {
-                                hasReceivedContent = true;
-                                await writer.write(encoder.encode(\`data: \${JSON.stringify({ type: 'text', content: rContent })}\n\n\`));
-                              }
-                            }
-                          } catch { /* ignore */ }
-                        }
-                      }
-                    }
-                  }
-                  await writer.write(encoder.encode(\`data: \${JSON.stringify({ type: 'done' })}\n\n\`));
-                  await writer.close();
-                  return;
-                }
                 let errorMsg = json.last_error?.msg || json.data?.msg || json.msg || '对话处理失败';
+                // 映射Coze错误码为用户友好提示
                 if (errCode === 4000) errorMsg = '请求参数错误，请重新上传文件或简化描述后再试';
                 else if (errCode === 4006) errorMsg = 'Bot配置异常，请联系管理员';
                 else if (errCode === 4013) errorMsg = '请求过于频繁，请稍后再试';
