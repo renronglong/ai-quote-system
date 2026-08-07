@@ -1,3 +1,4 @@
+// Build trigger: pricing-result-sync 2026-08-08T07:20:00
 'use client';
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
