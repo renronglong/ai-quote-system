@@ -296,14 +296,17 @@ export async function POST(request: NextRequest) {
                   ));
                 }
               } else if (eventType === 'conversation.message.completed') {
-                // 处理 completed 消息（某些情况下 delta 不会发送，只有 completed）
-                const msgType = json.data?.type || json.type || '';
-                const content = json.data?.content || json.content || '';
-                const role = json.data?.role || json.role || '';
-                if (role === 'assistant' && content && (msgType === 'answer' || msgType === 'text')) {
-                  await writer.write(encoder.encode(
-                    `data: ${JSON.stringify({ type: 'text', content })}\n\n`
-                  ));
+                // 仅在未通过 delta 收到内容时才处理 completed（避免重复）
+                if (!hasReceivedContent) {
+                  const msgType = json.data?.type || json.type || '';
+                  const content = json.data?.content || json.content || '';
+                  const role = json.data?.role || json.role || '';
+                  if (role === 'assistant' && content && (msgType === 'answer' || msgType === 'text')) {
+                    hasReceivedContent = true;
+                    await writer.write(encoder.encode(
+                      `data: ${JSON.stringify({ type: 'text', content })}\n\n`
+                    ));
+                  }
                 }
               } else if (eventType === 'conversation.chat.failed') {
                 const errCode = json.last_error?.code || 0;
