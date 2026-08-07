@@ -2171,7 +2171,7 @@ export default function ChatPanel({ onFormUpdate, onRawText }: ChatPanelProps) {
         // 格式5: Bot表格格式 "| 长度 | 112mm |" "| 宽度 | 46.6mm |" "| 高度 | 29mm |"
         const tblLen = t.match(/[|｜]\s*(?:长度|长)[：:]*\s*[|｜]\s*(\d+(?:\.\d+)?)\s*(?:mm)?/);
         const tblWid = t.match(/[|｜]\s*(?:宽度|宽)[：:]*\s*[|｜]\s*(\d+(?:\.\d+)?)\s*(?:mm)?/);
-        const tblHgt = t.match(/[|｜]\s*(?:高度|高)[：:]*\s*[|｜]\s*(\d+(?:\.\d+)?)\s*(?:mm)?/);
+        const tblHgt = t.match(/[|｜]\s*(?:高度|高(?!量))[：:]*\s*[|｜]\s*(\d+(?:\.\d+)?)\s*(?:mm)?/);
         if (tblLen && tblWid && tblHgt) {
           formUpdate.length = parseFloat(tblLen[1]); formUpdate.width = parseFloat(tblWid[1]); formUpdate.height = parseFloat(tblHgt[1]);
         }
@@ -2184,7 +2184,7 @@ export default function ChatPanel({ onFormUpdate, onRawText }: ChatPanelProps) {
 
         // ---- 长度（单独匹配）----
         if (!formUpdate.length) {
-          const lenBlock = t.match(/长度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
+          const lenBlock = t.match(/(?:长度|长)[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
           const lenFall = t.match(/(\d+(?:\.\d+)?)\s*(?:mm|毫米)\s*[（(]?[长L]/);
           const lenVal = lenBlock ? parseFloat(lenBlock[1]) : (lenFall ? parseFloat(lenFall[1]) : undefined);
           if (lenVal && lenVal > 0) formUpdate.length = lenVal;
