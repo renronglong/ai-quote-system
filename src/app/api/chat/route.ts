@@ -212,7 +212,7 @@ export async function POST(request: NextRequest) {
       // 4. 调用Coze Chat API（带文件重试机制）
       // 有文件时先走非流式探测，失败则重试；无文件直接流式
       const hasFileRef = !!(cozeFileId || (cozeFileIds && cozeFileIds.length > 0));
-      let useStream = !hasFileRef;
+      let useStream = true; // 始终使用流式模式，避免非流式轮询的复杂性
       let chatUrl = `${config.apiBase}/v3/chat?conversation_id=${conversationId}`;
       let chatBody: Record<string, unknown> = {
         bot_id: config.botId,
@@ -231,44 +231,7 @@ export async function POST(request: NextRequest) {
         body: JSON.stringify(chatBody),
       });
 
-      // 有文件时：先检查非流式响应是否报错（code 4000=文件无效），自动重试
-      if (hasFileRef && chatResponse.ok) {
-        // 非流式：Coze返回200但body里可能有code!=0
-        const cloned = chatResponse.clone();
-        const bodyText = await cloned.text();
-        let bodyCode = 0;
-        try { bodyCode = JSON.parse(bodyText).code || 0; } catch { /* ignore */ }
-        
-        if (bodyCode === 4000 || bodyCode !== 0) {
-          console.warn(`[Chat] 文件请求失败(code=${bodyCode})，重试不带文件的请求`);
-          // 重试：只保留文字消息，使用流式
-          const fallbackMessages: CozeMessage[] = [{ role: 'user', content: userContent || '请分析这个文件', content_type: 'text' }];
-          if (extractedText) {
-            const maxLen = 8000;
-            const truncated = extractedText.length > maxLen ? extractedText.substring(0, maxLen) + '\n...(内容过长已截断)' : extractedText;
-            fallbackMessages[0].content += `\n\n---以下是文件提取的文字内容---\n${truncated}\n---内容结束---`;
-          }
-          useStream = true;
-          chatBody = {
-            bot_id: config.botId,
-            user_id: userId,
-            stream: true,
-            additional_messages: fallbackMessages,
-            auto_save_history: true,
-          };
-          chatResponse = await fetch(chatUrl, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${config.apiToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(chatBody),
-          });
-          await writer.write(encoder.encode(
-            `data: ${JSON.stringify({ type: 'text', content: '（文件预览暂不可用，已切换为文字模式处理）\n\n' })}\n\n`
-          ));
-        }
-      }
+      // 流式模式下如果Bot返回文件处理错误(code 4000)，在流解析中自动降级处理
 
       if (!chatResponse.ok) {
         const errorText = await chatResponse.text();
@@ -447,8 +410,63 @@ export async function POST(request: NextRequest) {
                 }
               } else if (eventType === 'conversation.chat.failed') {
                 const errCode = json.last_error?.code || 0;
+                // 文件相关错误(4000)时，自动降级为纯文字重试
+                if ((errCode === 4000 || json.last_error?.msg?.toLowerCase().includes('parameter')) && hasFileRef) {
+                  console.warn('[Chat] 文件请求失败，降级为纯文字重试');
+                  const fallbackMessages: CozeMessage[] = [{ role: 'user', content: userContent || '请分析这个文件', content_type: 'text' }];
+                  if (extractedText) {
+                    const maxLen = 8000;
+                    const truncated = extractedText.length > maxLen ? extractedText.substring(0, maxLen) + '\n...(内容过长已截断)' : extractedText;
+                    fallbackMessages[0].content += `\n\n---以下是文件提取的文字内容---\n${truncated}\n---内容结束---`;
+                  }
+                  // 重新发起流式请求（不带文件）
+                  chatBody = {
+                    bot_id: config.botId,
+                    user_id: userId,
+                    stream: true,
+                    additional_messages: fallbackMessages,
+                    auto_save_history: true,
+                  };
+                  chatResponse = await fetch(chatUrl, {
+                    method: 'POST',
+                    headers: { 'Authorization': \`Bearer \${config.apiToken}\`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify(chatBody),
+                  });
+                  await writer.write(encoder.encode(
+                    \`data: \${JSON.stringify({ type: 'text', content: '（文件预览暂不可用，已切换为文字模式处理）\n\n' })}\n\n\`
+                  ));
+                  // 重新启动流式读取
+                  const retryReader = chatResponse.body?.getReader();
+                  if (retryReader) {
+                    while (true) {
+                      const { done: rDone, value: rValue } = await retryReader.read();
+                      if (rDone) break;
+                      const rLines = decoder.decode(rValue, { stream: true }).split('\n');
+                      for (const rLine of rLines) {
+                        if (!rLine || rLine.startsWith(':')) continue;
+                        if (rLine.startsWith('data:')) {
+                          const rData = rLine.slice(5).trim();
+                          if (!rData || rData === '[DONE]') continue;
+                          try {
+                            const rJson = JSON.parse(rData);
+                            const rEvent = rJson.event || '';
+                            if (rEvent === 'conversation.message.delta' || rEvent === 'conversation.message.completed') {
+                              const rContent = rJson.data?.content || '';
+                              if (rContent) {
+                                hasReceivedContent = true;
+                                await writer.write(encoder.encode(\`data: \${JSON.stringify({ type: 'text', content: rContent })}\n\n\`));
+                              }
+                            }
+                          } catch { /* ignore */ }
+                        }
+                      }
+                    }
+                  }
+                  await writer.write(encoder.encode(\`data: \${JSON.stringify({ type: 'done' })}\n\n\`));
+                  await writer.close();
+                  return;
+                }
                 let errorMsg = json.last_error?.msg || json.data?.msg || json.msg || '对话处理失败';
-                // 映射Coze错误码为用户友好提示
                 if (errCode === 4000) errorMsg = '请求参数错误，请重新上传文件或简化描述后再试';
                 else if (errCode === 4006) errorMsg = 'Bot配置异常，请联系管理员';
                 else if (errCode === 4013) errorMsg = '请求过于频繁，请稍后再试';
