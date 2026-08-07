@@ -222,6 +222,16 @@ export async function POST(request: NextRequest) {
         auto_save_history: true,
       };
 
+      // 记录请求参数用于调试4000错误
+      console.log('[Chat] 请求参数:', JSON.stringify({
+        cozeFileId, cozeFileIds, fileType: contentType,
+        msgCount: additionalMessages.length,
+        hasExtractedText: !!extractedText,
+        firstMsgType: additionalMessages[0]?.content_type,
+        lastMsgType: additionalMessages[additionalMessages.length-1]?.content_type,
+        lastMsgContent: additionalMessages[additionalMessages.length-1]?.content?.substring(0, 100),
+      }));
+
       let chatResponse = await fetch(chatUrl, {
         method: 'POST',
         headers: {
@@ -234,6 +244,7 @@ export async function POST(request: NextRequest) {
 
       if (!chatResponse.ok) {
         const errorText = await chatResponse.text();
+        console.error('[Chat] Coze API错误:', chatResponse.status, errorText.substring(0, 500));
         let errorMessage = '对话请求失败，请稍后重试';
         try {
           const errorJson = JSON.parse(errorText);
