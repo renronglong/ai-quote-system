@@ -23,7 +23,6 @@ function getCozeConfig(): CozeConfig {
 interface CozeMessage {
   role: 'user' | 'assistant';
   content: string;
-  content_type: 'text' | 'object_string';
 }
 
 // 创建新会话
@@ -184,9 +183,9 @@ export async function POST(request: NextRequest) {
             : extractedText;
           textContent = `${textContent}\n\n---以下是PDF图纸的结构化标注（由文字层提取，请优先使用这些精确数据）---\n${truncated}\n---结构化标注结束。同时上传了页面图片供识别几何形状和整体布局---`;
         }
-        additionalMessages.push({ role: 'user', content: textContent, content_type: 'text' });
+        additionalMessages.push({ role: 'user', content: textContent });
         const imageObjects = cozeFileIds.map(id => ({ type: 'image' as const, file_id: id }));
-        additionalMessages.push({ role: 'user', content: JSON.stringify(imageObjects), content_type: 'object_string' });
+        additionalMessages.push({ role: 'user', content: JSON.stringify(imageObjects) });
       } else if (cozeFileId) {
         let textContent = userContent || '请分析这个文件';
         if (extractedText) {
@@ -196,17 +195,17 @@ export async function POST(request: NextRequest) {
             : extractedText;
           textContent = `${textContent}\n\n---以下是PDF图纸的结构化标注（由文字层提取，请优先使用这些精确数据）---\n${truncated}\n---结构化标注结束。同时上传了页面图片供识别几何形状和整体布局---`;
         }
-        additionalMessages.push({ role: 'user', content: textContent, content_type: 'text' });
-        additionalMessages.push({ role: 'user', content: JSON.stringify([{ type: contentType, file_id: cozeFileId }]), content_type: 'object_string' });
+        additionalMessages.push({ role: 'user', content: textContent });
+        additionalMessages.push({ role: 'user', content: JSON.stringify([{ type: contentType, file_id: cozeFileId }]) });
       } else if (extractedText) {
         const maxLen = 8000;
         const truncated = extractedText.length > maxLen 
           ? extractedText.substring(0, maxLen) + '\n...(内容过长已截断)' 
           : extractedText;
         const textContent = `${userContent || '请分析以下内容'}\n\n---以下是文件提取的文字内容---\n${truncated}\n---内容结束---`;
-        additionalMessages.push({ role: 'user', content: textContent, content_type: 'text' });
+        additionalMessages.push({ role: 'user', content: textContent });
       } else {
-        additionalMessages.push({ role: 'user', content: userContent, content_type: 'text' });
+        additionalMessages.push({ role: 'user', content: userContent });
       }
 
       // 4. 调用Coze Chat API（带文件重试机制）
@@ -227,8 +226,8 @@ export async function POST(request: NextRequest) {
         cozeFileId, cozeFileIds, fileType: contentType,
         msgCount: additionalMessages.length,
         hasExtractedText: !!extractedText,
-        firstMsgType: additionalMessages[0]?.content_type,
-        lastMsgType: additionalMessages[additionalMessages.length-1]?.content_type,
+        
+        
         lastMsgContent: additionalMessages[additionalMessages.length-1]?.content?.substring(0, 100),
       }));
 
