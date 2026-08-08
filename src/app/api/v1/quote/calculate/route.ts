@@ -561,23 +561,17 @@ function calcExtrusion(
     detail: `模具费: ${moldCost}元（单独列出）`,
   };
   
-  // 3. 以下全部复用板材的加工逻辑
-  // 构造一个临时的板材请求，用铝型材的重量和尺寸
-  const sheetReq: QuoteRequest = {
-    ...req,
-    product_type: 'sheet_metal',
-    material: { category: '铝板', grade: req.material.grade || '6063-T5' },
-    weight_per_piece_kg: mat.weight,
-    volume_cm3: (mat.weight * 1000) / 2.7, // 反算体积 cm³
+  // 3. 挤压铝型材加工费（按重量计算，1000元/吨 = 1元/kg）
+  // 挤压加工费已包含在材料单价中，此处仅计算二次加工（锯切、去毛刺等）
+  const EXTRUSION_PROCESSING_RATE_PER_KG = 1.0; // 1000元/吨 = 1元/kg
+  const processingCost = r2(mat.weight * EXTRUSION_PROCESSING_RATE_PER_KG);
+  accumulated += processingCost;
+  breakdown['processing'] = {
+    formula: '重量 × 1000元/吨',
+    detail: `${r2(mat.weight)}kg × 1元/kg = ${processingCost}元`,
   };
   
-  // 3.1 冲压加工费（复用板材逻辑）
-  const volumeCm3 = sheetReq.volume_cm3 || (dims.length_mm * dims.width_mm * (dims.wall_thickness_mm || dims.height_mm || 2)) / 1000;
-  const proc = calcSheetProcessingFee(dims, volumeCm3, '铝板', rules);
-  accumulated += proc.cost;
-  breakdown['processing'] = { formula: proc.formula, detail: proc.detail };
-  
-  const stampingSurcharge = proc.sizeSurcharge + proc.volumeSurcharge;
+  const stampingSurcharge = 0;
   
   // 3.2 表面处理费（复用板材逻辑）
   let surfaceCost = 0;
@@ -597,14 +591,7 @@ function calcExtrusion(
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
   }
   
-  // 3.4 锯切下料费（铝型材特有，每根2元）
-  const cutCount = req.process?.cut_count || 1;
-  const cutCost = cutCount * 2;
-  accumulated += cutCost;
-  breakdown['cutting'] = {
-    formula: '锯切次数 × 2元',
-    detail: `${cutCount}次 × 2元 = ${cutCost}元`,
-  };
+  // 3.4 锯切下料费（已包含在挤压加工费1000元/吨中，不单独计费）
   
   // 3.5 包装 + 运输（复用板材逻辑）
   const packagingCost = r2(mat.weight * 0.5);
@@ -627,7 +614,7 @@ function calcExtrusion(
   return {
     costs: {
       material_cost: mat.cost,
-      processing_cost: r2(proc.cost + cutCost),
+      processing_cost: processingCost,
       surface_treatment_cost: r2(surfaceCost),
       secondary_operations_cost: r2(secondaryCost),
       packaging_cost: packagingCost,
