@@ -2037,15 +2037,28 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
     }
     
     try {
+      // 判断是否有新文件上传
+      const hasNewFile = !!(currentCozeFileId || currentCozeFileIdsBatch.length > 0);
+      
       const requestBody: Record<string, unknown> = {
-        messages: [...messages, userMessage].map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
+        // 新文件上传时只发当前消息，不携带历史上下文；纯对话则携带历史
+        messages: hasNewFile
+          ? [{ role: userMessage.role, content: userMessage.content }]
+          : [...messages, userMessage].map((m) => ({
+              role: m.role,
+              content: m.content,
+            })),
         fileType: currentFileType || 'file',
       };
-      // 传递 conversationId 以维持对话上下文
-      if (conversationId) {
+      
+      if (hasNewFile) {
+        // 新文件上传：创建新会话，清空历史，避免Bot被之前的图纸干扰
+        console.log('[Chat] 新文件上传，创建新会话（不复用旧上下文）');
+        setConversationId(null);
+        localStorage.removeItem(CURRENT_CONV_KEY);
+        setMessages([userMessage]);
+      } else if (conversationId) {
+        // 纯文字对话：继续使用当前会话
         requestBody.conversationId = conversationId;
       }
       // 优先使用批量文件ID（压缩包场景），否则使用单文件ID
