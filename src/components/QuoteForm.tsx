@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { Calculator, ChevronDown, Loader2, Sparkles } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Calculator, ChevronDown, Loader2, Sparkles, Search, Package, X } from 'lucide-react';
 
 interface QuoteFormData {
   productType: string;
@@ -16,7 +16,6 @@ interface QuoteFormData {
   secondaryProcessing: string[];
 }
 
-/** AI 同步到表单的数据（所有字段可选） */
 export interface AiFormUpdate {
   productType?: string;
   materialCategory?: string;
@@ -32,9 +31,7 @@ export interface AiFormUpdate {
 
 interface QuoteFormProps {
   onCalculate?: (data: QuoteFormData) => void;
-  /** 从 ChatPanel 传入的 AI 识别参数 */
   aiData?: AiFormUpdate | null;
-  /** 从 Bot 回复中解析的报价明细 */
   pricingResult?: {
     unitWeight: number;
     materialCost: number;
@@ -47,15 +44,51 @@ interface QuoteFormProps {
   } | null;
 }
 
+interface SearchResult {
+  id: number;
+  product_code: string;
+  name: string;
+  material: string;
+  process: string;
+  surface_treatment: string;
+  oxidation_color?: string;
+  cost_price: string;
+  min_price?: string;
+  specs: Record<string, unknown>;
+  supplier: string;
+  similarity?: number;
+}
+
 const secondaryOptions = ['CNC精加工', '钻孔', '攻丝', '折弯', '焊接', '切割', '冲压'];
 
-// 产品类型到 API product_type 的映射
 const PRODUCT_TYPE_API_MAP: Record<string, string> = {
   '挤压铝型材': 'extrusion',
   '铝板/铝平板': 'sheet_metal',
   '压铸铝件': 'die_casting',
   'CNC加工件': 'die_casting',
   '冲压件': 'sheet_metal',
+};
+
+// 产品库 process 到表单 productType 的映射
+const PROCESS_TO_PRODUCT_TYPE: Record<string, string> = {
+  '铝挤压': '挤压铝型材',
+  '挤压': '挤压铝型材',
+  '冲压': '冲压件',
+  '铝压铸': '压铸铝件',
+  '压铸': '压铸铝件',
+  '注塑': 'CNC加工件',
+  'CNC加工': 'CNC加工件',
+  '车加工': 'CNC加工件',
+};
+
+// 产品库 material 到表单 materialCategory 的映射
+const MATERIAL_TO_CATEGORY: Record<string, string> = {
+  '铝型材': '铝合金',
+  '铝合金': '铝合金',
+  '冷轧板': '碳钢',
+  '不锈钢': '不锈钢',
+  '压铸铝': '铝合金',
+  '塑胶': '铝合金',
 };
 
 export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingResultProp }: QuoteFormProps) {
@@ -89,18 +122,34 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
   const [calculating, setCalculating] = useState(false);
   const [calcError, setCalcError] = useState<string | null>(null);
 
-  // 监听 Bot 返回的报价明细，自动更新报价结果
+  // 产品搜索相关
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchBoxRef = useRef<HTMLDivElement>(null);
+
+  // 点击外部关闭搜索结果
   useEffect(() => {
-    if (pricingResultProp) {
-      setPricingResult(pricingResultProp);
-    }
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) {
+        setShowResults(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // 监听 Bot 返回的报价明细
+  useEffect(() => {
+    if (pricingResultProp) setPricingResult(pricingResultProp);
   }, [pricingResultProp]);
 
-  // 监听 AI 识别参数，自动填入表单
+  // 监听 AI 参数同步
   useEffect(() => {
     if (!aiData || aiData === prevAiDataRef.current) return;
     prevAiDataRef.current = aiData;
-
     setFormData(prev => {
       const next = { ...prev };
       if (aiData.productType) next.productType = aiData.productType;
@@ -117,8 +166,7 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
           '氧化本色': '阳极氧化-自然色', '自然色': '阳极氧化-自然色',
           '氧化黑色': '阳极氧化-黑色', '黑色氧化': '阳极氧化-黑色',
           '喷涂': '粉末喷涂', '喷塑': '粉末喷涂',
-          '电泳': '电泳', '电镀': '电镀', '拉丝': '拉丝', '抛光': '抛光',
-          '无': '无',
+          '电泳': '电泳', '电镀': '电镀', '拉丝': '拉丝', '抛光': '抛光', '无': '无',
         };
         next.surfaceTreatment = stMap[st] || st;
       }
@@ -128,11 +176,75 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
       }
       return next;
     });
-
     setAiSynced(true);
     const timer = setTimeout(() => setAiSynced(false), 2000);
     return () => clearTimeout(timer);
   }, [aiData]);
+
+  // 搜索产品（防抖）
+  const doSearch = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      setShowResults(false);
+      return;
+    }
+    setSearching(true);
+    try {
+      const res = await fetch(`/api/products?search=${encodeURIComponent(query)}&limit=8`);
+      const json = await res.json();
+      if (json.success) {
+        setSearchResults(json.data || []);
+        setShowResults(true);
+      }
+    } catch (err) {
+      console.error('搜索产品失败:', err);
+    } finally {
+      setSearching(false);
+    }
+  }, []);
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => doSearch(value), 400);
+  };
+
+  // 选择产品 → 填充表单
+  const handleSelectProduct = (product: SearchResult) => {
+    const s = product.specs || {};
+    setFormData(prev => {
+      const next = { ...prev };
+      // 产品类型
+      if (product.process) {
+        const mapped = PROCESS_TO_PRODUCT_TYPE[product.process];
+        if (mapped) next.productType = mapped;
+      }
+      // 材料
+      if (product.material) {
+        const cat = MATERIAL_TO_CATEGORY[product.material];
+        if (cat) next.materialCategory = cat;
+      }
+      // 尺寸
+      if (s.width) next.width = Number(s.width);
+      if (s.height) next.height = Number(s.height);
+      if (s.length) next.length = Number(s.length);
+      // 表面处理
+      if (product.surface_treatment) {
+        const st = product.surface_treatment;
+        if (/氧化/.test(st) && /黑/.test(st)) next.surfaceTreatment = '阳极氧化-黑色';
+        else if (/氧化/.test(st)) next.surfaceTreatment = '阳极氧化-自然色';
+        else if (/喷涂|喷粉/.test(st)) next.surfaceTreatment = '粉末喷涂';
+        else if (/电泳/.test(st)) next.surfaceTreatment = '电泳';
+        else if (/电镀/.test(st)) next.surfaceTreatment = '电镀';
+        else if (/拉丝/.test(st)) next.surfaceTreatment = '拉丝';
+        else if (/抛光/.test(st)) next.surfaceTreatment = '抛光';
+        else next.surfaceTreatment = st;
+      }
+      return next;
+    });
+    setSearchQuery(product.product_code);
+    setShowResults(false);
+  };
 
   const updateField = (key: keyof QuoteFormData, value: string | number | string[]) => {
     setFormData(prev => ({ ...prev, [key]: value }));
@@ -150,40 +262,26 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
   const handleCalculate = async () => {
     setCalculating(true);
     setCalcError(null);
-
     try {
       const apiProductType = PRODUCT_TYPE_API_MAP[formData.productType] || 'extrusion';
-
       const requestBody: Record<string, unknown> = {
         product_type: apiProductType,
-        material: {
-          category: formData.materialCategory,
-          grade: formData.materialGrade,
-        },
-        dimensions: {
-          length_mm: formData.length,
-          width_mm: formData.width,
-          height_mm: formData.height,
-        },
+        material: { category: formData.materialCategory, grade: formData.materialGrade },
+        dimensions: { length_mm: formData.length, width_mm: formData.width, height_mm: formData.height },
         quantity: formData.quantity,
       };
-
       if (formData.surfaceTreatment && formData.surfaceTreatment !== '无') {
         requestBody.surface_treatment = { type: formData.surfaceTreatment };
       }
-
       if (formData.secondaryProcessing.length > 0) {
         requestBody.process = { secondary_operations: formData.secondaryProcessing };
       }
-
       const res = await fetch('/api/v1/quote/calculate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
       });
-
       const result = await res.json();
-
       if (result.success) {
         setPricingResult({
           unitWeight: result.weight_per_piece_kg || 0,
@@ -209,7 +307,6 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
 
   return (
     <div className="h-full flex flex-col bg-white">
-      {/* 表单区域 */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
@@ -220,6 +317,62 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
             <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-medium animate-pulse">
               <Sparkles className="w-3 h-3" />
               AI 已填入
+            </div>
+          )}
+        </div>
+
+        {/* 产品搜索 */}
+        <div ref={searchBoxRef} className="relative">
+          <label className="block text-xs font-medium text-gray-500 mb-1">搜索现有产品</label>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => handleSearchChange(e.target.value)}
+              onFocus={() => { if (searchResults.length > 0) setShowResults(true); }}
+              placeholder="输入产品编号或名称..."
+              className="w-full rounded-lg border border-gray-200 pl-9 pr-8 py-2 text-sm bg-gray-50 focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => { setSearchQuery(''); setSearchResults([]); setShowResults(false); }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          {/* 搜索结果下拉 */}
+          {showResults && (
+            <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+              {searching ? (
+                <div className="flex items-center gap-2 px-3 py-3 text-sm text-gray-500">
+                  <Loader2 className="w-4 h-4 animate-spin" /> 搜索中...
+                </div>
+              ) : searchResults.length === 0 ? (
+                <div className="px-3 py-3 text-sm text-gray-400 text-center">未找到匹配产品</div>
+              ) : (
+                searchResults.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => handleSelectProduct(p)}
+                    className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b border-gray-100 last:border-b-0 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Package className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                      <span className="text-sm font-medium text-gray-700">{p.product_code}</span>
+                      <span className="text-xs text-gray-400 truncate">{p.name}</span>
+                    </div>
+                    <div className="text-[11px] text-gray-400 mt-0.5 ml-[22px]">
+                      {p.material} · {p.process}
+                      {p.specs && (p.specs as Record<string, unknown>).width && (
+                        <span> · {String((p.specs as Record<string, unknown>).width)}×{String((p.specs as Record<string, unknown>).height)}mm</span>
+                      )}
+                    </div>
+                  </button>
+                ))
+              )}
             </div>
           )}
         </div>
@@ -410,14 +563,12 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
           )}
         </button>
 
-        {/* 计算错误 */}
         {calcError && (
           <div className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2 border border-red-200">
             {calcError}
           </div>
         )}
 
-        {/* 报价结果 */}
         {pricingResult && (
           <div className="rounded-lg border border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-3 space-y-2">
             <h4 className="text-sm font-bold text-emerald-700">报价结果</h4>
