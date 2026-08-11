@@ -366,7 +366,7 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
                     </div>
                     <div className="text-[11px] text-gray-400 mt-0.5 ml-[22px]">
                       {p.material} · {p.process}
-                      {p.specs && (p.specs as Record<string, unknown>).width && (
+                      {p.specs && Boolean((p.specs as Record<string, unknown>).width) && (
                         <span> · {String((p.specs as Record<string, unknown>).width)}×{String((p.specs as Record<string, unknown>).height)}mm</span>
                       )}
                     </div>
