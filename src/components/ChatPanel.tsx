@@ -1,4 +1,3 @@
-// Build trigger: pricing-result-sync 2026-08-08T07:20:00
 'use client';
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
@@ -1998,10 +1997,15 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
       }
     }
     
+    // 如果用户只上传了文件但没输入文字，使用默认消息
+    const effectiveInput = input.trim() || (cozeFileId || cozeFileIdsBatch.length > 0) 
+      ? (input.trim() || '请根据我上传的图纸/图片帮我报价') 
+      : '';
+    
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: input,
+      content: effectiveInput,
       imageUrl: uploadedImage || undefined,
       timestamp: new Date(),
     };
@@ -2037,28 +2041,15 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
     }
     
     try {
-      // 判断是否有新文件上传
-      const hasNewFile = !!(currentCozeFileId || currentCozeFileIdsBatch.length > 0);
-      
       const requestBody: Record<string, unknown> = {
-        // 新文件上传时只发当前消息，不携带历史上下文；纯对话则携带历史
-        messages: hasNewFile
-          ? [{ role: userMessage.role, content: userMessage.content }]
-          : [...messages, userMessage].map((m) => ({
-              role: m.role,
-              content: m.content,
-            })),
+        messages: [...messages, userMessage].map((m) => ({
+          role: m.role,
+          content: m.content,
+        })),
         fileType: currentFileType || 'file',
       };
-      
-      if (hasNewFile) {
-        // 新文件上传：创建新会话，清空历史，避免Bot被之前的图纸干扰
-        console.log('[Chat] 新文件上传，创建新会话（不复用旧上下文）');
-        setConversationId(null);
-        localStorage.removeItem(CURRENT_CONV_KEY);
-        setMessages([userMessage]);
-      } else if (conversationId) {
-        // 纯文字对话：继续使用当前会话
+      // 传递 conversationId 以维持对话上下文
+      if (conversationId) {
         requestBody.conversationId = conversationId;
       }
       // 优先使用批量文件ID（压缩包场景），否则使用单文件ID
@@ -2175,74 +2166,74 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
       }
 
       // ===== 从Bot回复中提取参数，同步到左侧表单 =====
+      // 【保守模式】只有Bot在回复中包含【FORM_PARAMS】标记块时才提取参数
+      // 避免Bot分析图纸时误匹配数字导致表单被错误填充
       if (onFormUpdate && assistantContent) {
-        const formUpdate: Record<string, unknown> = {};
         const t = assistantContent;
+        const formUpdate: Record<string, unknown> = {};
 
-        // ---- 材质（兼容"材料牌号""材料类别""材质"等多种说法）----
-        const matLine = t.match(/(?:材料牌号|材料类别|材质)[：:=]\s*(.*?)(?:\n|$)/);
-        const matText = matLine ? matLine[1] : t;
-        if (/6063/i.test(matText)) { formUpdate.materialGrade = '6063-T5'; formUpdate.materialCategory = '铝合金'; }
-        else if (/6061/i.test(matText)) { formUpdate.materialGrade = '6061-T6'; formUpdate.materialCategory = '铝合金'; }
-        else if (/铝合金/i.test(matText)) { formUpdate.materialCategory = '铝合金'; }
-        else if (/304/i.test(matText)) { formUpdate.materialGrade = '304不锈钢'; formUpdate.materialCategory = '不锈钢'; }
+        // 检查是否有结构化参数标记
+        const paramsBlock = t.match(/【FORM_PARAMS】([\s\S]*?)(?:【\/FORM_PARAMS】|$)/);
+        if (paramsBlock) {
+          const block = paramsBlock[1];
 
-        // ---- 产品类型 ----
-        const typeMatch = t.match(/产品类型[：:=]\s*(.*?)(?:\n|$)/);
-        if (typeMatch) {
-          const typeText = typeMatch[1];
-          if (/extrusion|挤压/i.test(typeText)) formUpdate.productType = 'extrusion';
-          else if (/压铸|die.cast/i.test(typeText)) formUpdate.productType = 'die-casting';
-          else if (/cnc|机加工/i.test(typeText)) formUpdate.productType = 'cnc';
-          else if (/冲压|stamping/i.test(typeText)) formUpdate.productType = 'stamping';
-        }
+          // ---- 材质 ----
+          const matMatch = block.match(/material[_-]?grade[：:=]\s*(\S+)/i) || block.match(/材质[：:=]\s*(.*?)(?:\n|$)/);
+          if (matMatch) {
+            const mat = matMatch[1];
+            if (/6063/i.test(mat)) { formUpdate.materialGrade = '6063-T5'; formUpdate.materialCategory = '铝合金'; }
+            else if (/6061/i.test(mat)) { formUpdate.materialGrade = '6061-T6'; formUpdate.materialCategory = '铝合金'; }
+            else if (/铝合金/i.test(mat)) { formUpdate.materialCategory = '铝合金'; }
+            else if (/304/i.test(mat)) { formUpdate.materialGrade = '304不锈钢'; formUpdate.materialCategory = '不锈钢'; }
+          }
 
-        // ---- 尺寸（兼容多种格式）----
-        // 格式1: "长度100mm × 宽度46mm × 高度25.5mm"
-        const dim1 = t.match(/长度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*]\s*宽度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*]\s*高度[：:=]?\s*(\d+(?:\.\d+)?)/);
-        // 格式2: "100mm × 46mm × 25.5mm" 三个数字用×连接
-        const dim2 = t.match(/(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*]\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×xX*]\s*(\d+(?:\.\d+)?)/);
-        // 格式3: "宽46 高25.5" 或 "宽46mm 高25.5mm"
-        const dim3 = t.match(/宽(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?[\s\S]*?高(?:度)?[：:=]?\s*(\d+(?:\.\d+)?)/);
-        if (dim1) { formUpdate.length = parseFloat(dim1[1]); formUpdate.width = parseFloat(dim1[2]); formUpdate.height = parseFloat(dim1[3]); }
-        else if (dim3) { formUpdate.width = parseFloat(dim3[1]); formUpdate.height = parseFloat(dim3[2]); }
-        else if (dim2) { formUpdate.length = parseFloat(dim2[1]); formUpdate.width = parseFloat(dim2[2]); formUpdate.height = parseFloat(dim2[3]); }
+          // ---- 产品类型 ----
+          const typeMatch = block.match(/product[_-]?type[：:=]\s*(\S+)/i) || block.match(/产品类型[：:=]\s*(.*?)(?:\n|$)/);
+          if (typeMatch) {
+            const typeText = typeMatch[1];
+            if (/extrusion|挤压/i.test(typeText)) formUpdate.productType = 'extrusion';
+            else if (/压铸|die.cast/i.test(typeText)) formUpdate.productType = 'die-casting';
+            else if (/cnc|机加工/i.test(typeText)) formUpdate.productType = 'cnc';
+            else if (/冲压|stamping/i.test(typeText)) formUpdate.productType = 'stamping';
+          }
 
-        // ---- 长度（单独匹配）----
-        if (!formUpdate.length) {
-          const lenBlock = t.match(/长度[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm|毫米)?/);
-          const lenFall = t.match(/(\d+(?:\.\d+)?)\s*(?:mm|毫米)\s*[（(]?[长L]/);
-          const lenVal = lenBlock ? parseFloat(lenBlock[1]) : (lenFall ? parseFloat(lenFall[1]) : undefined);
-          if (lenVal && lenVal > 0) formUpdate.length = lenVal;
-        }
+          // ---- 尺寸 ----
+          const lengthMatch = block.match(/(?:length|长度|长)[：:=]\s*(\d+(?:\.\d+)?)/i);
+          const widthMatch = block.match(/(?:width|宽度|宽)[：:=]\s*(\d+(?:\.\d+)?)/i);
+          const heightMatch = block.match(/(?:height|高度|高)[：:=]\s*(\d+(?:\.\d+)?)/i);
+          if (lengthMatch) formUpdate.length = parseFloat(lengthMatch[1]);
+          if (widthMatch) formUpdate.width = parseFloat(widthMatch[1]);
+          if (heightMatch) formUpdate.height = parseFloat(heightMatch[1]);
 
-        // ---- 数量（兼容"数量""订购数量""最小起订量""起订量"等）----
-        const qtyMatch = t.match(/(?:最小)?(?:订购)?(?:数量|起订量)[：:=]?\s*(\d+(?:\.\d+)?)/);
-        const qtyFall = t.match(/(\d+)\s*(?:件|支|套|pcs|千克|kg)/i);
-        const qtyVal = qtyMatch ? parseFloat(qtyMatch[1]) : (qtyFall ? parseInt(qtyFall[1]) : undefined);
-        if (qtyVal && qtyVal > 0) formUpdate.quantity = qtyVal;
+          // ---- 壁厚 ----
+          const wallMatch = block.match(/(?:wall[_-]?thickness|壁厚)[：:=]\s*(\d+(?:\.\d+)?)/i);
+          if (wallMatch) formUpdate.wallThickness = parseFloat(wallMatch[1]);
 
-        // ---- 单件重量 ----
-        const weightMatch = t.match(/(?:单件)?重量[：:=]?\s*(\d+(?:\.\d+)?)\s*(?:g|克|kg|千克)?/i);
-        if (weightMatch) {
-          const wVal = parseFloat(weightMatch[1]);
-          // 只记录重量信息用于显示，暂不填入表单（表单按尺寸计算重量）
-        }
+          // ---- 数量 ----
+          const qtyMatch = block.match(/(?:quantity|数量|起订量)[：:=]\s*(\d+(?:\.\d+)?)/i);
+          if (qtyMatch) {
+            const qtyVal = parseFloat(qtyMatch[1]);
+            if (qtyVal > 0) formUpdate.quantity = qtyVal;
+          }
 
-        // ---- 表面处理 ----
-        if (/氧化本色|本色氧化/.test(t)) formUpdate.surfaceTreatment = '氧化本色';
-        else if (/氧化黑|黑色氧化/.test(t)) formUpdate.surfaceTreatment = '阳极氧化-黑色';
-        else if (/阳极氧化|氧化(?!黑)/.test(t)) formUpdate.surfaceTreatment = '阳极氧化-自然色';
-        else if (/喷涂|喷粉|粉末/.test(t)) formUpdate.surfaceTreatment = '粉末喷涂';
-        else if (/电泳/.test(t)) formUpdate.surfaceTreatment = '电泳';
-        else if (/拉丝/.test(t)) formUpdate.surfaceTreatment = '拉丝';
-        else if (/抛光/.test(t)) formUpdate.surfaceTreatment = '抛光';
-        else if (/电镀/.test(t)) formUpdate.surfaceTreatment = '电镀';
+          // ---- 表面处理 ----
+          const surfaceMatch = block.match(/(?:surface[_-]?treatment|表面处理)[：:=]\s*(.*?)(?:\n|$)/i);
+          if (surfaceMatch) {
+            const st = surfaceMatch[1];
+            if (/氧化本色|本色氧化/.test(st)) formUpdate.surfaceTreatment = '氧化本色';
+            else if (/氧化黑|黑色氧化/.test(st)) formUpdate.surfaceTreatment = '阳极氧化-黑色';
+            else if (/阳极氧化|氧化/.test(st)) formUpdate.surfaceTreatment = '阳极氧化-自然色';
+            else if (/喷涂|喷粉|粉末/.test(st)) formUpdate.surfaceTreatment = '粉末喷涂';
+            else if (/电泳/.test(st)) formUpdate.surfaceTreatment = '电泳';
+            else if (/拉丝/.test(st)) formUpdate.surfaceTreatment = '拉丝';
+            else if (/抛光/.test(st)) formUpdate.surfaceTreatment = '抛光';
+            else if (/电镀/.test(st)) formUpdate.surfaceTreatment = '电镀';
+          }
 
-        // 有任何识别到的参数就填入
-        if (Object.keys(formUpdate).length > 0) {
-          console.log('[ChatPanel] AI识别到参数，同步到左侧表单:', formUpdate);
-          onFormUpdate(formUpdate as Parameters<NonNullable<typeof onFormUpdate>>[0]);
+          if (Object.keys(formUpdate).length > 0) {
+            console.log('[ChatPanel] 从结构化参数同步到左侧表单:', formUpdate);
+            onFormUpdate(formUpdate as Parameters<NonNullable<typeof onFormUpdate>>[0]);
+          }
         }
 
         // ===== 从Bot回复的报价明细中提取费用数据，同步到左侧报价结果 =====
