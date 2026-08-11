@@ -140,6 +140,7 @@ export async function PUT(request: NextRequest) {
       model_cost,
       total_credits,
       conversation_log,
+      quote_result,
     } = body;
 
     if (!id) {
@@ -171,6 +172,7 @@ export async function PUT(request: NextRequest) {
     if (model_cost !== undefined) updateData.model_cost = model_cost;
     if (total_credits !== undefined) updateData.total_credits = total_credits;
     if (conversation_log !== undefined) updateData.conversation_log = conversation_log;
+    if (quote_result !== undefined) updateData.quote_result = quote_result;
 
     const { data, error } = await client
       .from("tasks")
