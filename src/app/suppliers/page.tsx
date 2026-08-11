@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useAuth } from '@/lib/auth-context';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -190,6 +192,16 @@ const SUPPLIERS: Supplier[] = [
 ];
 
 export default function SuppliersPage() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+
+  // 登录检查
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [authLoading, user, router]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('全部');
   const [expandedId, setExpandedId] = useState<number | null>(null);
