@@ -1173,6 +1173,7 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
   const [cozeFileId, setCozeFileId] = useState<string | null>(null);
   const [cozeFileIdsBatch, setCozeFileIdsBatch] = useState<string[]>([]); // 批量文件ID（用于压缩包多文件）
   const [extractedText, setExtractedText] = useState<string | null>(null);
+  const [uploadedFileInfo, setUploadedFileInfo] = useState<{name: string, url: string | null, type: string, size: number} | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1267,8 +1268,8 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
     console.log('[Chat] Started new conversation');
   }, []);
 
-  // 创建任务工单（文件上传时自动触发）
-  const createTask = useCallback(async (uploadedFiles: Array<{name: string, size: number, type: string}>, title?: string) => {
+  // 创建任务工单（文件上传时自动触发，创建图纸报价工单）
+  const createTask = useCallback(async (uploadedFiles: Array<{name: string, size: number, type: string, url?: string}>, title?: string, userMsg?: string) => {
     try {
       // 获取当前登录用户
       const { data: { session } } = await import('@/lib/supabase-browser').then(m => m.supabase.auth.getSession());
@@ -1291,10 +1292,12 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
           title: title || `文件上传 - ${uploadedFiles.map(f => f.name).join(', ')}`,
           files: uploadedFiles,
           conversation_log: recentMessages,
+          type: uploadedFiles.length > 0 ? 'manual_quote' : undefined,
+          user_message: userMsg || title || '',
         }),
       });
       if (response.ok) {
-        console.log('[Task] 任务创建成功');
+        console.log('[Task] 图纸报价工单创建成功');
       }
     } catch (err) {
       console.error('[Task] 创建任务失败:', err);
@@ -1321,9 +1324,10 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
     };
     reader.readAsDataURL(file);
     
-    // 上传到服务器（服务器会直接上传到Coze，返回cozeFileId）
+    // 上传到服务器（同时存储到Supabase供工单查看）
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('task_mode', 'true');
     
     try {
       const response = await fetch('/api/upload', {
@@ -1334,7 +1338,13 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
       if (data.success) {
         setUploadedImageUrl(data.url || null);
         setCozeFileId(data.cozeFileId || null);
-        console.log('图片上传成功, cozeFileId:', data.cozeFileId);
+        setUploadedFileInfo({
+          name: data.fileName || file.name,
+          url: data.url || null,
+          type: data.fileType || file.type,
+          size: data.fileSize || file.size,
+        });
+        console.log('图片上传成功, cozeFileId:', data.cozeFileId, 'url:', data.url);
       } else {
         alert('图片上传失败: ' + (data.error || '未知错误'));
       }
@@ -1483,6 +1493,7 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
       // 上传到服务器
       const formData = new FormData();
       formData.append('file', imageFile);
+      formData.append('task_mode', 'true');
       
       const uploadResponse = await fetch('/api/upload', {
         method: 'POST',
@@ -1492,7 +1503,13 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
       
       if (uploadData.success) {
         setCozeFileId(uploadData.cozeFileId || null);
-        console.log('PDF渲染图片上传成功, cozeFileId:', uploadData.cozeFileId);
+        setUploadedFileInfo({
+          name: uploadData.fileName || file.name,
+          url: uploadData.url || null,
+          type: uploadData.fileType || 'image/png',
+          size: uploadData.fileSize || 0,
+        });
+        console.log('PDF渲染图片上传成功, cozeFileId:', uploadData.cozeFileId, 'url:', uploadData.url);
         
         // 如果有多页，将其他页的文字信息附加
         setExtractedText(`[PDF文件: ${file.name}, 共${images.length}页已渲染为图片发送给AI识别]`);
@@ -1526,9 +1543,10 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
     // 显示预览（文件名）
     setUploadedImage(`文件: ${file.name}`);
     
-    // 上传到服务器（服务器会直接上传到Coze，返回cozeFileId）
+    // 上传到服务器（同时存储到Supabase供工单查看）
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('task_mode', 'true');
     
     try {
       const response = await fetch('/api/upload', {
@@ -1541,7 +1559,13 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
         if (data.extractedText) {
           setExtractedText(data.extractedText);
         }
-        console.log('文件上传成功, cozeFileId:', data.cozeFileId);
+        setUploadedFileInfo({
+          name: data.fileName || file.name,
+          url: data.url || null,
+          type: data.fileType || file.type,
+          size: data.fileSize || file.size,
+        });
+        console.log('文件上传成功, cozeFileId:', data.cozeFileId, 'url:', data.url);
       } else {
         alert('文件上传失败: ' + (data.error || '未知错误'));
         setUploadedImage(null);
@@ -2026,18 +2050,29 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
     setCozeFileId(null);
     setCozeFileIdsBatch([]);
     setExtractedText(null);
+    const currentFileInfo = uploadedFileInfo;
+    setUploadedFileInfo(null);
     setIsLoading(true);
     setStatusMessage(null);
 
-    // 如果有文件上传，自动创建任务工单
+    // 如果有文件上传，自动创建图纸报价工单
     if (currentCozeFileId || currentCozeFileIdsBatch.length > 0) {
-      const fileInfoList: Array<{name: string, size: number, type: string}> = [];
-      // 收集文件信息（从消息内容或上下文中获取）
-      const fileData = currentCozeFileIdsBatch.length > 0
-        ? currentCozeFileIdsBatch.map((id, idx) => ({ name: `file_${idx + 1}`, size: 0, type: currentFileType || 'file' }))
-        : [{ name: currentCozeFileId || 'file', size: 0, type: currentFileType || 'file' }];
-      fileInfoList.push(...fileData);
-      createTask(fileInfoList, input || '文件上传处理');
+      const fileInfoList: Array<{name: string, size: number, type: string, url?: string}> = [];
+      if (currentCozeFileIdsBatch.length > 0) {
+        currentCozeFileIdsBatch.forEach((_id, idx) => {
+          fileInfoList.push({ name: `file_${idx + 1}`, size: 0, type: currentFileType || 'file' });
+        });
+      } else if (currentFileInfo) {
+        fileInfoList.push({
+          name: currentFileInfo.name,
+          size: currentFileInfo.size,
+          type: currentFileInfo.type,
+          url: currentFileInfo.url || undefined,
+        });
+      } else {
+        fileInfoList.push({ name: currentCozeFileId || 'file', size: 0, type: currentFileType || 'file' });
+      }
+      createTask(fileInfoList, effectiveInput || '图纸报价', effectiveInput);
     }
     
     try {
