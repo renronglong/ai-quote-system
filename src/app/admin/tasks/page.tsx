@@ -811,11 +811,11 @@ export default function AdminTasksPage() {
                   id="quote_result"
                   value={processForm.quote_result}
                   onChange={(e) => setProcessForm({ ...processForm, quote_result: e.target.value })}
-                  placeholder={"填写报价明细，例如：
+                  placeholder={`填写报价明细，例如：
 材料费：XXX 元
 加工费：XXX 元
 表面处理：XXX 元
-合计单价：XXX 元/件"}
+合计单价：XXX 元/件`}
                   rows={6}
                   className="mt-1 font-mono text-sm"
                 />
