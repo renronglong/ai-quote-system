@@ -8,6 +8,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status");
     const userId = searchParams.get("user_id");
     const isAdmin = searchParams.get("is_admin") === "true";
+    const taskType = searchParams.get("type");
 
     const client = getSupabaseClient();
     
@@ -27,6 +28,11 @@ export async function GET(request: NextRequest) {
     // 按状态筛选
     if (status && status !== "all") {
       query = query.eq("status", status);
+    }
+    
+    // 按类型筛选（如 manual_quote 图纸工单）
+    if (taskType) {
+      query = query.eq("type", taskType);
     }
 
     const { data, error } = await query;
@@ -56,7 +62,9 @@ export async function POST(request: NextRequest) {
       user_id, 
       title, 
       files, 
-      conversation_log 
+      conversation_log,
+      type: taskType,
+      user_message,
     } = body;
 
     if (!user_id) {
@@ -82,16 +90,20 @@ export async function POST(request: NextRequest) {
     const taskCode = `T${dateStr}${seqNum}`;
 
     // 插入新任务
+    const insertData: Record<string, unknown> = {
+      user_id,
+      task_code: taskCode,
+      title: title || "新任务",
+      files: files || [],
+      conversation_log: conversation_log || [],
+      status: "pending",
+    };
+    if (taskType) insertData.type = taskType;
+    if (user_message) insertData.admin_notes = user_message; // 复用 admin_notes 暂存用户留言
+
     const { data, error } = await client
       .from("tasks")
-      .insert({
-        user_id,
-        task_code: taskCode,
-        title: title || "新任务",
-        files: files || [],
-        conversation_log: conversation_log || [],
-        status: "pending",
-      })
+      .insert(insertData)
       .select()
       .single();
 
