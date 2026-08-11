@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getSupabaseClient } from "@/storage/database/supabase-client";
 
 // Coze支持的文件格式
 const SUPPORTED_IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
@@ -37,12 +38,13 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get('file') as File;
+    const taskMode = formData.get('task_mode') === 'true'; // 是否同时存储到Supabase供工单使用
 
     if (!file) {
       return NextResponse.json({ error: '未收到文件' }, { status: 400 });
     }
 
-    console.log(`[Upload] 收到文件: name="${file.name}", type="${file.type}", size=${file.size} bytes`);
+    console.log(`[Upload] 收到文件: name="${file.name}", type="${file.type}", size=${file.size} bytes, taskMode=${taskMode}`);
 
     let fileName = file.name;
     let fileType = file.type;
@@ -66,29 +68,22 @@ export async function POST(request: NextRequest) {
     const extMatch = lowerName.match(/\.[a-z0-9]+$/);
     const currentExt = extMatch ? extMatch[0] : '';
 
-    // 如果扩展名不在支持列表中，尝试从MIME类型推断
     if (currentExt && !SUPPORTED_EXTS.includes(currentExt)) {
-      console.log(`[Upload] 不支持的扩展名: ${currentExt}，尝试从MIME类型推断`);
       const inferredExt = MIME_TO_EXT[fileType];
       if (inferredExt) {
         fileName = fileName.replace(/\.[^.]*$/, '') + inferredExt;
-        console.log(`[Upload] 扩展名已修正为: ${inferredExt}`);
       }
     }
 
-    // 如果没有扩展名，从MIME类型添加
     if (!currentExt) {
       const inferredExt = MIME_TO_EXT[fileType];
       if (inferredExt) {
         fileName = fileName + inferredExt;
-        console.log(`[Upload] 已添加扩展名: ${inferredExt}`);
       } else {
-        fileName = fileName + '.png'; // 默认PNG
-        console.log('[Upload] 已添加默认扩展名: .png');
+        fileName = fileName + '.png';
       }
     }
 
-    // 确保MIME类型正确
     if (!fileType || fileType === 'application/octet-stream') {
       const ext = fileName.toLowerCase().match(/\.[a-z0-9]+$/)?.[0] || '.png';
       const mimeFromExt = Object.entries(MIME_TO_EXT).find(([_, e]) => e === ext)?.[0];
@@ -101,7 +96,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Upload] 最终文件名: "${fileName}", MIME: "${fileType}"`);
 
-    // 上传到 Coze
+    // ===== 上传到 Coze =====
     const uploadFormData = new FormData();
     const blob = new Blob([buffer], { type: fileType });
     uploadFormData.append('file', blob, fileName);
@@ -122,12 +117,47 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[Upload] 成功: cozeFileId=${result.data.id}`);
+    console.log(`[Upload] Coze成功: cozeFileId=${result.data.id}`);
+
+    // ===== 同时存储到 Supabase Storage（工单模式） =====
+    let publicUrl: string | null = null;
+    if (taskMode) {
+      try {
+        const supabase = getSupabaseClient();
+        const now = new Date();
+        const dateFolder = now.toISOString().slice(0, 10).replace(/-/g, '');
+        const uniqueName = `${Date.now()}_${fileName}`;
+        const storagePath = `${dateFolder}/${uniqueName}`;
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('task-files')
+          .upload(storagePath, Buffer.from(buffer), {
+            contentType: fileType,
+            upsert: false,
+          });
+        
+        if (uploadError) {
+          console.error('[Upload] Supabase存储失败:', uploadError.message);
+        } else {
+          const { data: urlData } = supabase.storage
+            .from('task-files')
+            .getPublicUrl(storagePath);
+          publicUrl = urlData.publicUrl;
+          console.log(`[Upload] 已存储到Supabase: ${publicUrl}`);
+        }
+      } catch (storageErr) {
+        console.error('[Upload] Supabase存储异常:', storageErr);
+        // 不阻断主流程
+      }
+    }
 
     return NextResponse.json({
       success: true,
       cozeFileId: result.data.id,
-      url: null,
+      url: publicUrl,
+      fileName: fileName,
+      fileType: fileType,
+      fileSize: file.size,
     });
   } catch (err) {
     console.error('[Upload] 上传失败:', err);
