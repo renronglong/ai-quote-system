@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Calculator, ChevronDown, Search, Loader2, Package, CheckCircle, Sparkles } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Calculator, ChevronDown, Loader2, Sparkles } from 'lucide-react';
 
 interface QuoteFormData {
   productType: string;
@@ -47,20 +47,6 @@ interface QuoteFormProps {
   } | null;
 }
 
-interface SimilarProduct {
-  id: number;
-  product_code: string;
-  name: string;
-  material: string;
-  process: string;
-  surface_treatment: string;
-  cost_price: string;
-  min_price?: string;
-  specs: Record<string, unknown>;
-  supplier: string;
-  similarity: number;
-}
-
 const secondaryOptions = ['CNC精加工', '钻孔', '攻丝', '折弯', '焊接', '切割', '冲压'];
 
 // 产品类型到 API product_type 的映射
@@ -70,15 +56,6 @@ const PRODUCT_TYPE_API_MAP: Record<string, string> = {
   '压铸铝件': 'die_casting',
   'CNC加工件': 'die_casting',
   '冲压件': 'sheet_metal',
-};
-
-// 产品类型到产品库 material/process 的映射（用于搜索相似产品）
-const PRODUCT_TYPE_SEARCH_MAP: Record<string, { material: string; process: string }> = {
-  '挤压铝型材': { material: '铝', process: '挤压' },
-  '铝板/铝平板': { material: '铝', process: '冲压' },
-  '压铸铝件': { material: '铝', process: '压铸' },
-  'CNC加工件': { material: '', process: 'CNC' },
-  '冲压件': { material: '', process: '冲压' },
 };
 
 export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingResultProp }: QuoteFormProps) {
@@ -109,13 +86,6 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
     unitPrice: number;
   } | null>(null);
 
-  // 相似产品搜索
-  const [similarProducts, setSimilarProducts] = useState<SimilarProduct[]>([]);
-  const [searchingProducts, setSearchingProducts] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<SimilarProduct | null>(null);
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // 计算状态
   const [calculating, setCalculating] = useState(false);
   const [calcError, setCalcError] = useState<string | null>(null);
 
@@ -164,53 +134,8 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
     return () => clearTimeout(timer);
   }, [aiData]);
 
-  // 防抖搜索相近产品：当关键参数变化时自动搜索
-  useEffect(() => {
-    const hasDim = formData.width > 0 || formData.height > 0;
-    if (!hasDim) {
-      setSimilarProducts([]);
-      return;
-    }
-
-    if (searchTimerRef.current) {
-      clearTimeout(searchTimerRef.current);
-    }
-
-    searchTimerRef.current = setTimeout(async () => {
-      setSearchingProducts(true);
-      try {
-        const searchMap = PRODUCT_TYPE_SEARCH_MAP[formData.productType] || { material: '', process: '' };
-        const params = new URLSearchParams();
-        if (formData.width > 0) params.set('width', String(formData.width));
-        if (formData.height > 0) params.set('height', String(formData.height));
-        if (formData.length > 0) params.set('length', String(formData.length));
-        if (searchMap.material) params.set('material', searchMap.material);
-        if (searchMap.process) params.set('process', searchMap.process);
-        params.set('limit', '5');
-
-        const res = await fetch(`/api/products/similar?${params.toString()}`);
-        const json = await res.json();
-        if (json.success) {
-          setSimilarProducts(json.data || []);
-        }
-      } catch (err) {
-        console.error('搜索相近产品失败:', err);
-      } finally {
-        setSearchingProducts(false);
-      }
-    }, 800); // 800ms 防抖
-
-    return () => {
-      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    };
-  }, [formData.width, formData.height, formData.length, formData.productType]);
-
   const updateField = (key: keyof QuoteFormData, value: string | number | string[]) => {
     setFormData(prev => ({ ...prev, [key]: value }));
-    // 用户手动修改参数时清除已选产品
-    if (['width', 'height', 'length', 'productType'].includes(key)) {
-      setSelectedProduct(null);
-    }
   };
 
   const toggleSecondary = (item: string) => {
@@ -222,39 +147,6 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
     }));
   };
 
-  // 选择相似产品 → 自动填充参数
-  const handleSelectProduct = useCallback((product: SimilarProduct) => {
-    setSelectedProduct(product);
-    const s = product.specs || {};
-    setFormData(prev => {
-      const next = { ...prev };
-      // 填充尺寸
-      if (s.width) next.width = Number(s.width);
-      if (s.height) next.height = Number(s.height);
-      if (s.length) next.length = Number(s.length);
-      if (s.wall_thickness) {
-        // wall_thickness 没有对应的 formData 字段，但可以用于计算
-      }
-      // 填充材料
-      if (product.material) {
-        if (/铝/.test(product.material)) next.materialCategory = '铝合金';
-        else if (/不锈钢/.test(product.material)) next.materialCategory = '不锈钢';
-        else if (/冷/.test(product.material)) next.materialCategory = '冷轧板';
-      }
-      if (product.surface_treatment) {
-        const st = product.surface_treatment;
-        if (/氧化/.test(st) && /黑/.test(st)) next.surfaceTreatment = '阳极氧化-黑色';
-        else if (/氧化/.test(st)) next.surfaceTreatment = '阳极氧化-自然色';
-        else if (/喷涂|喷粉/.test(st)) next.surfaceTreatment = '粉末喷涂';
-        else if (/电泳/.test(st)) next.surfaceTreatment = '电泳';
-        else if (/电镀/.test(st)) next.surfaceTreatment = '电镀';
-        else if (/拉丝/.test(st)) next.surfaceTreatment = '拉丝';
-        else if (/抛光/.test(st)) next.surfaceTreatment = '抛光';
-      }
-      return next;
-    });
-  }, []);
-
   const handleCalculate = async () => {
     setCalculating(true);
     setCalcError(null);
@@ -262,7 +154,6 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
     try {
       const apiProductType = PRODUCT_TYPE_API_MAP[formData.productType] || 'extrusion';
 
-      // 构建请求体
       const requestBody: Record<string, unknown> = {
         product_type: apiProductType,
         material: {
@@ -277,18 +168,12 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
         quantity: formData.quantity,
       };
 
-      // 表面处理
       if (formData.surfaceTreatment && formData.surfaceTreatment !== '无') {
-        requestBody.surface_treatment = {
-          type: formData.surfaceTreatment,
-        };
+        requestBody.surface_treatment = { type: formData.surfaceTreatment };
       }
 
-      // 二次加工
       if (formData.secondaryProcessing.length > 0) {
-        requestBody.process = {
-          secondary_operations: formData.secondaryProcessing,
-        };
+        requestBody.process = { secondary_operations: formData.secondaryProcessing };
       }
 
       const res = await fetch('/api/v1/quote/calculate', {
@@ -443,51 +328,6 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
             </div>
           </div>
         </div>
-
-        {/* 相近规格产品推荐 */}
-        {(searchingProducts || similarProducts.length > 0) && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 space-y-2">
-            <div className="flex items-center gap-1.5">
-              <Search className="w-3.5 h-3.5 text-amber-600" />
-              <span className="text-xs font-medium text-amber-700">
-                {searchingProducts ? '搜索相近规格中...' : `找到 ${similarProducts.length} 个相近规格产品`}
-              </span>
-              {searchingProducts && <Loader2 className="w-3 h-3 text-amber-500 animate-spin" />}
-            </div>
-            {!searchingProducts && similarProducts.length > 0 && (
-              <div className="space-y-1.5">
-                {similarProducts.map(p => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => handleSelectProduct(p)}
-                    className={`w-full text-left px-2.5 py-2 rounded-md border text-xs transition-all ${
-                      selectedProduct?.id === p.id
-                        ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-200'
-                        : 'border-amber-200 bg-white hover:border-blue-300 hover:bg-blue-50/50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        {selectedProduct?.id === p.id && <CheckCircle className="w-3 h-3 text-blue-500" />}
-                        <Package className="w-3 h-3 text-gray-400" />
-                        <span className="font-medium text-gray-700">{p.product_code}</span>
-                      </div>
-                      <span className="text-[10px] text-amber-600 font-medium">匹配 {p.similarity}%</span>
-                    </div>
-                    <div className="text-[11px] text-gray-500 mt-0.5 ml-[18px]">
-                      {p.name}
-                      {p.specs.width && p.specs.height && (
-                        <span> · {String(p.specs.width)}×{String(p.specs.height)}mm</span>
-                      )}
-                      {p.cost_price && <span> · ¥{Number(p.cost_price).toFixed(2)}/kg</span>}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* 表面处理 */}
         <div>
