@@ -414,6 +414,7 @@ export default function ProductsPage() {
 
 function ProductsPageContent() {
   const { user } = useAuth();
+  const router = useRouter();
   const searchParams = useSearchParams();
 
   const [products, setProducts] = useState<Product[]>([]);
