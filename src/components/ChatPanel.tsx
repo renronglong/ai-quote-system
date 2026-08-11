@@ -1273,7 +1273,11 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
     try {
       // 获取当前登录用户
       const { data: { session } } = await import('@/lib/supabase-browser').then(m => m.supabase.auth.getSession());
-      const userId = session?.user?.id || 'guest';
+      const userId = session?.user?.id;
+      if (!userId) {
+        console.log('[Task] 用户未登录，跳过任务创建');
+        return;
+      }
       // 收集最近10条对话作为 conversation_log
       const recentMessages = messages.slice(-10).map(msg => ({
         role: msg.role,
