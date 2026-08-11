@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
+import { useRouter } from 'next/navigation';
 import ChatPanel from '@/components/ChatPanel';
 import QuoteForm from '@/components/QuoteForm';
 import {
@@ -54,6 +55,7 @@ interface AluminumPrice {
 
 export default function QuotePage() {
   const { user, loading: authLoading, signOut } = useAuth();
+  const router = useRouter();
   const [aluminumPrice, setAluminumPrice] = useState<AluminumPrice | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [aiFormData, setAiFormData] = useState<AiFormUpdate | null>(null);
@@ -69,6 +71,13 @@ export default function QuotePage() {
   const handlePricingResult = useCallback((result: PricingResult) => {
     setPricingResult(result);
   }, []);
+
+  // 登录检查：未登录用户重定向到登录页
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login?redirect=/quote');
+    }
+  }, [authLoading, user, router]);
 
   // 获取实时铝价
   useEffect(() => {
