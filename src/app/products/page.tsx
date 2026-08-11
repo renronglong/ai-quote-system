@@ -389,6 +389,16 @@ function SupplierSidebar({
 }
 
 export default function ProductsPage() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+
+  // 登录检查
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [authLoading, user, router]);
+
   return (
     <Suspense fallback={
       <AppLayout>
@@ -404,7 +414,6 @@ export default function ProductsPage() {
 
 function ProductsPageContent() {
   const { user } = useAuth();
-  const router = useRouter();
   const searchParams = useSearchParams();
 
   const [products, setProducts] = useState<Product[]>([]);
