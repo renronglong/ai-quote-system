@@ -1,19 +1,39 @@
-'use client';
+import { useState, useEffect, useRef } from 'react';
+import { Calculator, ChevronDown, Sparkles, Loader2 } from 'lucide-react';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Calculator, ChevronDown, Loader2, Sparkles, Search, Package, X } from 'lucide-react';
+// ==================== Types ====================
 
 interface QuoteFormData {
   productType: string;
   materialCategory: string;
-  materialGrade: string;
   quantity: number;
-  length: number;
-  width: number;
-  height: number;
-  surfaceTreatment: string;
-  packaging: string;
-  secondaryProcessing: string[];
+  width?: number;
+  height?: number;
+  length?: number;
+  thickness?: number;
+  productSize?: string;
+  netWeight?: number;
+  materialSurfaceTreatment: string;
+  materialColor: string;
+  processes: ProcessSelection[];
+  productSurfaceTreatment: string;
+  productColor: string;
+}
+
+interface ProcessSelection {
+  name: string;
+  quantity?: number;
+}
+
+interface PricingResult {
+  unitWeight: number;
+  materialCost: number;
+  processingCost: number;
+  surfaceCost: number;
+  packagingCost: number;
+  shippingCost: number;
+  managementFee: number;
+  unitPrice: number;
 }
 
 export interface AiFormUpdate {
@@ -32,571 +52,823 @@ export interface AiFormUpdate {
 interface QuoteFormProps {
   onCalculate?: (data: QuoteFormData) => void;
   aiData?: AiFormUpdate | null;
-  pricingResult?: {
-    unitWeight: number;
-    materialCost: number;
-    processingCost: number;
-    surfaceCost: number;
-    packagingCost: number;
-    shippingCost: number;
-    managementFee: number;
-    unitPrice: number;
-  } | null;
+  pricingResult?: PricingResult | null;
 }
 
-interface SearchResult {
-  id: number;
-  product_code: string;
+// ==================== Configuration Data ====================
+
+interface ProcessOption {
   name: string;
-  material: string;
-  process: string;
-  surface_treatment: string;
-  oxidation_color?: string;
-  cost_price: string;
-  min_price?: string;
-  specs: Record<string, unknown>;
-  supplier: string;
-  similarity?: number;
+  unit?: string; // '次' | '分钟' | '米'
 }
 
-const secondaryOptions = ['CNC精加工', '钻孔', '攻丝', '折弯', '焊接', '切割', '冲压'];
+interface ProductSurfaceOption {
+  name: string;
+  colors?: string[];
+}
 
-const PRODUCT_TYPE_API_MAP: Record<string, string> = {
-  '挤压铝型材': 'extrusion',
-  '铝板/铝平板': 'sheet_metal',
-  '压铸铝件': 'die_casting',
-  'CNC加工件': 'die_casting',
-  '冲压件': 'sheet_metal',
+interface MaterialCategoryConfig {
+  label: string;
+  fields: string[]; // 'width'|'height'|'length'|'thickness'|'productSize'|'quantity'|'netWeight'
+  materialSurfaceTreatment?: string[];
+  materialColorMap?: Record<string, string[]>; // surfaceTreatment -> colors
+  processes: ProcessOption[];
+  productSurfaceTreatmentMap?: Record<string, ProductSurfaceOption[]>; // materialSurfaceTreatment -> options
+  productSurfaceTreatment?: ProductSurfaceOption[]; // for categories without material surface treatment
+}
+
+interface ProductTypeConfig {
+  label: string;
+  icon: string;
+  materialCategories: Record<string, MaterialCategoryConfig>;
+}
+
+const ALL_COLORS_OXIDATION = ['本色', '红色', '黑色', '金色', '铁灰色'];
+
+const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
+  '挤出': {
+    label: '挤出',
+    icon: '⊞',
+    materialCategories: {
+      '铝型材': {
+        label: '铝型材',
+        fields: ['width', 'height', 'length', 'quantity', 'netWeight'],
+        materialSurfaceTreatment: ['无', '喷砂氧化', '抛光氧化', '拉丝氧化', '喷涂'],
+        materialColorMap: {
+          '喷砂氧化': ['本色', '黑色', '铁灰色', '金色'],
+        },
+        processes: [
+          { name: '无' },
+          { name: '锯切' },
+          { name: '冲压', unit: '次' },
+          { name: 'CNC加工', unit: '分钟' },
+          { name: '车加工', unit: '分钟' },
+          { name: '钻孔', unit: '次' },
+          { name: '攻牙', unit: '次' },
+        ],
+        productSurfaceTreatmentMap: {
+          '无': [
+            { name: '无' },
+            { name: '除油' },
+            { name: '氧化', colors: ALL_COLORS_OXIDATION },
+            { name: '喷砂氧化' },
+            { name: '抛光氧化' },
+            { name: '拉丝氧化' },
+            { name: '喷涂' },
+          ],
+          '喷砂氧化': [
+            { name: '除油' },
+            { name: '氧化', colors: ALL_COLORS_OXIDATION },
+            { name: '喷砂氧化' },
+            { name: '抛光氧化' },
+            { name: '拉丝氧化' },
+            { name: '喷涂' },
+          ],
+          '抛光氧化': [
+            { name: '氧化', colors: ALL_COLORS_OXIDATION },
+            { name: '喷砂氧化' },
+            { name: '抛光氧化' },
+            { name: '拉丝氧化' },
+            { name: '喷涂' },
+          ],
+          '拉丝氧化': [
+            { name: '抛光氧化' },
+            { name: '拉丝氧化' },
+            { name: '喷涂' },
+          ],
+          '喷涂': [
+            { name: '喷涂' },
+          ],
+        },
+      },
+    },
+  },
+  '板材': {
+    label: '板材',
+    icon: '▤',
+    materialCategories: {
+      '铝板': {
+        label: '铝板',
+        fields: ['thickness', 'productSize', 'quantity', 'netWeight'],
+        processes: [
+          { name: '无' },
+          { name: '冲压', unit: '次' },
+          { name: 'CNC加工', unit: '分钟' },
+          { name: '钻孔', unit: '次' },
+          { name: '攻牙', unit: '次' },
+          { name: '激光切割', unit: '米' },
+          { name: '折弯', unit: '次' },
+        ],
+        productSurfaceTreatment: [
+          { name: '无' },
+          { name: '除油' },
+          { name: '氧化', colors: ALL_COLORS_OXIDATION },
+          { name: '喷砂氧化' },
+          { name: '抛光氧化' },
+          { name: '拉丝氧化' },
+          { name: '喷涂' },
+        ],
+      },
+      '冷轧板': {
+        label: '冷轧板',
+        fields: ['thickness', 'productSize', 'quantity', 'netWeight'],
+        processes: [
+          { name: '无' },
+          { name: '冲压', unit: '次' },
+          { name: 'CNC加工', unit: '分钟' },
+          { name: '钻孔', unit: '次' },
+          { name: '攻牙', unit: '次' },
+          { name: '激光切割', unit: '米' },
+          { name: '折弯', unit: '次' },
+          { name: '抛光' },
+        ],
+        productSurfaceTreatment: [
+          { name: '无' },
+          { name: '喷涂' },
+          { name: '电镀' },
+        ],
+      },
+      '不锈钢': {
+        label: '不锈钢',
+        fields: ['thickness', 'productSize', 'quantity', 'netWeight'],
+        processes: [
+          { name: '无' },
+          { name: '冲压', unit: '次' },
+          { name: 'CNC加工', unit: '分钟' },
+          { name: '钻孔', unit: '次' },
+          { name: '攻牙', unit: '次' },
+          { name: '激光切割', unit: '米' },
+          { name: '折弯', unit: '次' },
+          { name: '抛光' },
+        ],
+        productSurfaceTreatment: [
+          { name: '无' },
+          { name: '喷涂' },
+          { name: '电镀' },
+        ],
+      },
+      '镀锌板': {
+        label: '镀锌板',
+        fields: ['thickness', 'productSize', 'quantity', 'netWeight'],
+        processes: [
+          { name: '无' },
+          { name: '冲压', unit: '次' },
+          { name: 'CNC加工', unit: '分钟' },
+          { name: '钻孔', unit: '次' },
+          { name: '攻牙', unit: '次' },
+          { name: '激光切割', unit: '米' },
+          { name: '折弯', unit: '次' },
+          { name: '抛光' },
+        ],
+        productSurfaceTreatment: [
+          { name: '无' },
+          { name: '喷涂' },
+          { name: '电镀' },
+        ],
+      },
+    },
+  },
+  '压铸': {
+    label: '压铸',
+    icon: '◈',
+    materialCategories: {
+      '铝': {
+        label: '铝',
+        fields: ['quantity', 'netWeight', 'productSize'],
+        processes: [
+          { name: '无' },
+          { name: '开合' },
+          { name: '冲压', unit: '次' },
+          { name: 'CNC加工', unit: '分钟' },
+          { name: '钻孔', unit: '次' },
+          { name: '攻牙', unit: '次' },
+          { name: '抛光' },
+          { name: '除披锋' },
+        ],
+        productSurfaceTreatment: [
+          { name: '无' },
+          { name: '喷涂' },
+          { name: '电镀' },
+        ],
+      },
+      '锌合金': {
+        label: '锌合金',
+        fields: ['quantity', 'netWeight', 'productSize'],
+        processes: [
+          { name: '无' },
+          { name: '开合' },
+          { name: '冲压', unit: '次' },
+          { name: 'CNC加工', unit: '分钟' },
+          { name: '钻孔', unit: '次' },
+          { name: '攻牙', unit: '次' },
+          { name: '抛光' },
+          { name: '除披锋' },
+        ],
+        productSurfaceTreatment: [
+          { name: '无' },
+          { name: '喷涂' },
+          { name: '电镀' },
+        ],
+      },
+    },
+  },
+  '注塑': {
+    label: '注塑',
+    icon: '◉',
+    materialCategories: {
+      'ABS': { label: 'ABS', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }] },
+      'PP': { label: 'PP', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }] },
+      'PC': { label: 'PC', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }] },
+      'PA': { label: 'PA', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }] },
+      'POM': { label: 'POM', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }] },
+      'PMMA': { label: 'PMMA', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }] },
+    },
+  },
 };
 
-// 产品库 process 到表单 productType 的映射
-const PROCESS_TO_PRODUCT_TYPE: Record<string, string> = {
-  '铝挤压': '挤压铝型材',
-  '挤压': '挤压铝型材',
-  '冲压': '冲压件',
-  '铝压铸': '压铸铝件',
-  '压铸': '压铸铝件',
-  '注塑': 'CNC加工件',
-  'CNC加工': 'CNC加工件',
-  '车加工': 'CNC加工件',
+// Field display labels
+const FIELD_LABELS: Record<string, string> = {
+  width: '截面宽度(mm)',
+  height: '截面高度(mm)',
+  length: '长度(mm)',
+  thickness: '厚度(mm)',
+  productSize: '产品尺寸(长×宽×高mm)',
+  quantity: '数量',
+  netWeight: '产品净重(kg)(选填)',
 };
 
-// 产品库 material 到表单 materialCategory 的映射
-const MATERIAL_TO_CATEGORY: Record<string, string> = {
-  '铝型材': '铝合金',
-  '铝合金': '铝合金',
-  '冷轧板': '碳钢',
-  '不锈钢': '不锈钢',
-  '压铸铝': '铝合金',
-  '塑胶': '铝合金',
-};
+// ==================== Component ====================
 
 export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingResultProp }: QuoteFormProps) {
   const [aiSynced, setAiSynced] = useState(false);
   const prevAiDataRef = useRef<AiFormUpdate | null | undefined>(null);
+  const [loading, setLoading] = useState(false);
 
-  const [formData, setFormData] = useState<QuoteFormData>({
-    productType: '挤压铝型材',
-    materialCategory: '铝合金',
-    materialGrade: '6063-T5',
-    quantity: 1,
-    length: 100,
-    width: 50,
-    height: 20,
-    surfaceTreatment: '无',
-    packaging: '标准包装',
-    secondaryProcessing: [],
+  // Core form state
+  const [productType, setProductType] = useState('挤出');
+  const [materialCategory, setMaterialCategory] = useState('铝型材');
+  const [fields, setFields] = useState<Record<string, number | string>>({
+    width: 50, height: 20, length: 100, quantity: 1,
   });
+  const [materialSurfaceTreatment, setMaterialSurfaceTreatment] = useState('无');
+  const [materialColor, setMaterialColor] = useState('');
+  const [processes, setProcesses] = useState<ProcessSelection[]>([]);
+  const [productSurfaceTreatment, setProductSurfaceTreatment] = useState('无');
+  const [productColor, setProductColor] = useState('');
+  const [pricingResult, setPricingResult] = useState<PricingResult | null>(null);
 
-  const [pricingResult, setPricingResult] = useState<{
-    unitWeight: number;
-    materialCost: number;
-    processingCost: number;
-    surfaceCost: number;
-    packagingCost: number;
-    shippingCost: number;
-    managementFee: number;
-    unitPrice: number;
-  } | null>(null);
+  // Get current config
+  const productConfig = PRODUCT_TYPES[productType];
+  const categoryConfig = productConfig?.materialCategories[materialCategory];
 
-  const [calculating, setCalculating] = useState(false);
-  const [calcError, setCalcError] = useState<string | null>(null);
-
-  // 产品搜索相关
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [showResults, setShowResults] = useState(false);
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const searchBoxRef = useRef<HTMLDivElement>(null);
-
-  // 点击外部关闭搜索结果
+  // Reset material category when product type changes
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) {
-        setShowResults(false);
+    const config = PRODUCT_TYPES[productType];
+    if (config) {
+      const firstCat = Object.keys(config.materialCategories)[0];
+      setMaterialCategory(firstCat);
+      resetCategoryState(firstCat);
+    }
+  }, [productType]);
+
+  // Reset dependent states when material category changes
+  const resetCategoryState = (catKey: string) => {
+    const cat = PRODUCT_TYPES[productType]?.materialCategories[catKey];
+    if (!cat) return;
+
+    // Reset fields
+    const defaultFields: Record<string, number | string> = { quantity: 1 };
+    if (cat.fields.includes('width')) defaultFields.width = 50;
+    if (cat.fields.includes('height')) defaultFields.height = 20;
+    if (cat.fields.includes('length')) defaultFields.length = 100;
+    if (cat.fields.includes('thickness')) defaultFields.thickness = 2;
+    if (cat.fields.includes('productSize')) defaultFields.productSize = '';
+    if (cat.fields.includes('netWeight')) defaultFields.netWeight = '';
+    setFields(defaultFields);
+
+    // Reset material surface treatment
+    if (cat.materialSurfaceTreatment) {
+      setMaterialSurfaceTreatment('无');
+      setMaterialColor('');
+    } else {
+      setMaterialSurfaceTreatment('');
+      setMaterialColor('');
+    }
+
+    // Reset processes
+    setProcesses([]);
+
+    // Reset product surface treatment
+    setProductSurfaceTreatment('');
+    setProductColor('');
+
+    // Set defaults for product surface treatment
+    if (cat.productSurfaceTreatment && cat.productSurfaceTreatment.length > 0) {
+      setProductSurfaceTreatment(cat.productSurfaceTreatment[0].name);
+    } else if (cat.productSurfaceTreatmentMap) {
+      const mst = cat.materialSurfaceTreatment ? '无' : '';
+      const opts = cat.productSurfaceTreatmentMap[mst];
+      if (opts && opts.length > 0) {
+        setProductSurfaceTreatment(opts[0].name);
       }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    }
+  };
 
-  // 监听 Bot 返回的报价明细
-  useEffect(() => {
-    if (pricingResultProp) setPricingResult(pricingResultProp);
-  }, [pricingResultProp]);
+  // Get available product surface treatments based on material surface treatment
+  const getProductSurfaceOptions = (): ProductSurfaceOption[] => {
+    if (!categoryConfig) return [];
+    if (productType === '注塑') return [];
+    if (categoryConfig.productSurfaceTreatmentMap) {
+      return categoryConfig.productSurfaceTreatmentMap[materialSurfaceTreatment] || [];
+    }
+    if (categoryConfig.productSurfaceTreatment) {
+      return categoryConfig.productSurfaceTreatment;
+    }
+    return [];
+  };
 
-  // 监听 AI 参数同步
+  // Get material colors based on surface treatment
+  const getMaterialColorOptions = (): string[] => {
+    if (!categoryConfig?.materialColorMap) return [];
+    return categoryConfig.materialColorMap[materialSurfaceTreatment] || [];
+  };
+
+  // Get product color options
+  const getProductColorOptions = (): string[] => {
+    const opts = getProductSurfaceOptions();
+    const selected = opts.find(o => o.name === productSurfaceTreatment);
+    return selected?.colors || [];
+  };
+
+  // Handle product type change
+  const handleProductTypeChange = (pt: string) => {
+    setProductType(pt);
+  };
+
+  // Handle material category change
+  const handleMaterialCategoryChange = (mc: string) => {
+    setMaterialCategory(mc);
+    resetCategoryState(mc);
+  };
+
+  // Toggle process
+  const toggleProcess = (procName: string) => {
+    if (procName === '无') {
+      setProcesses([]);
+      return;
+    }
+    setProcesses(prev => {
+      const exists = prev.find(p => p.name === procName);
+      if (exists) {
+        return prev.filter(p => p.name !== procName);
+      }
+      return [...prev, { name: procName }];
+    });
+  };
+
+  // Update process quantity
+  const updateProcessQuantity = (procName: string, qty: number) => {
+    setProcesses(prev => prev.map(p => p.name === procName ? { ...p, quantity: qty } : p));
+  };
+
+  // Handle product surface treatment change
+  const handleProductSurfaceChange = (val: string) => {
+    setProductSurfaceTreatment(val);
+    setProductColor('');
+  };
+
+  // Sync AI data
   useEffect(() => {
     if (!aiData || aiData === prevAiDataRef.current) return;
     prevAiDataRef.current = aiData;
-    setFormData(prev => {
-      const next = { ...prev };
-      if (aiData.productType) next.productType = aiData.productType;
-      if (aiData.materialCategory) next.materialCategory = aiData.materialCategory;
-      if (aiData.materialGrade) next.materialGrade = aiData.materialGrade;
-      if (aiData.quantity != null && aiData.quantity > 0) next.quantity = aiData.quantity;
-      if (aiData.length != null && aiData.length > 0) next.length = aiData.length;
-      if (aiData.width != null && aiData.width > 0) next.width = aiData.width;
-      if (aiData.height != null && aiData.height > 0) next.height = aiData.height;
-      if (aiData.surfaceTreatment) {
-        const st = aiData.surfaceTreatment;
-        const stMap: Record<string, string> = {
-          '氧化': '阳极氧化-自然色', '阳极氧化': '阳极氧化-自然色',
-          '氧化本色': '阳极氧化-自然色', '自然色': '阳极氧化-自然色',
-          '氧化黑色': '阳极氧化-黑色', '黑色氧化': '阳极氧化-黑色',
-          '喷涂': '粉末喷涂', '喷塑': '粉末喷涂',
-          '电泳': '电泳', '电镀': '电镀', '拉丝': '拉丝', '抛光': '抛光', '无': '无',
-        };
-        next.surfaceTreatment = stMap[st] || st;
+
+    if (aiData.productType) {
+      const ptMap: Record<string, string> = {
+        '挤压铝型材': '挤出', '挤出': '挤出', '铝型材': '挤出',
+        '铝板/铝平板': '板材', '板材': '板材', '铝板': '板材',
+        '压铸铝件': '压铸', '压铸': '压铸',
+        '注塑': '注塑', '注塑件': '注塑',
+      };
+      const mapped = ptMap[aiData.productType] || aiData.productType;
+      if (PRODUCT_TYPES[mapped]) {
+        setProductType(mapped);
       }
-      if (aiData.packaging) next.packaging = aiData.packaging;
-      if (aiData.secondaryProcessing && aiData.secondaryProcessing.length > 0) {
-        next.secondaryProcessing = aiData.secondaryProcessing;
-      }
-      return next;
-    });
+    }
+    if (aiData.materialCategory) {
+      setMaterialCategory(aiData.materialCategory);
+    }
+    if (aiData.quantity) {
+      setFields(prev => ({ ...prev, quantity: aiData.quantity! }));
+    }
+    if (aiData.width) {
+      setFields(prev => ({ ...prev, width: aiData.width! }));
+    }
+    if (aiData.height) {
+      setFields(prev => ({ ...prev, height: aiData.height! }));
+    }
+    if (aiData.length) {
+      setFields(prev => ({ ...prev, length: aiData.length! }));
+    }
+    if (aiData.surfaceTreatment) {
+      setMaterialSurfaceTreatment(aiData.surfaceTreatment);
+    }
+
     setAiSynced(true);
     const timer = setTimeout(() => setAiSynced(false), 2000);
     return () => clearTimeout(timer);
   }, [aiData]);
 
-  // 搜索产品（防抖）
-  const doSearch = useCallback(async (query: string) => {
-    if (!query.trim()) {
-      setSearchResults([]);
-      setShowResults(false);
-      return;
+  // Sync pricing result from parent
+  useEffect(() => {
+    if (pricingResultProp) {
+      setPricingResult(pricingResultProp);
     }
-    setSearching(true);
-    try {
-      const res = await fetch(`/api/products?search=${encodeURIComponent(query)}&limit=8`);
-      const json = await res.json();
-      if (json.success) {
-        setSearchResults(json.data || []);
-        setShowResults(true);
-      }
-    } catch (err) {
-      console.error('搜索产品失败:', err);
-    } finally {
-      setSearching(false);
-    }
-  }, []);
+  }, [pricingResultProp]);
 
-  const handleSearchChange = (value: string) => {
-    setSearchQuery(value);
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = setTimeout(() => doSearch(value), 400);
-  };
-
-  // 选择产品 → 填充表单
-  const handleSelectProduct = (product: SearchResult) => {
-    const s = product.specs || {};
-    setFormData(prev => {
-      const next = { ...prev };
-      // 产品类型
-      if (product.process) {
-        const mapped = PROCESS_TO_PRODUCT_TYPE[product.process];
-        if (mapped) next.productType = mapped;
-      }
-      // 材料
-      if (product.material) {
-        const cat = MATERIAL_TO_CATEGORY[product.material];
-        if (cat) next.materialCategory = cat;
-      }
-      // 尺寸
-      if (s.width) next.width = Number(s.width);
-      if (s.height) next.height = Number(s.height);
-      if (s.length) next.length = Number(s.length);
-      // 表面处理
-      if (product.surface_treatment) {
-        const st = product.surface_treatment;
-        if (/氧化/.test(st) && /黑/.test(st)) next.surfaceTreatment = '阳极氧化-黑色';
-        else if (/氧化/.test(st)) next.surfaceTreatment = '阳极氧化-自然色';
-        else if (/喷涂|喷粉/.test(st)) next.surfaceTreatment = '粉末喷涂';
-        else if (/电泳/.test(st)) next.surfaceTreatment = '电泳';
-        else if (/电镀/.test(st)) next.surfaceTreatment = '电镀';
-        else if (/拉丝/.test(st)) next.surfaceTreatment = '拉丝';
-        else if (/抛光/.test(st)) next.surfaceTreatment = '抛光';
-        else next.surfaceTreatment = st;
-      }
-      return next;
-    });
-    setSearchQuery(product.product_code);
-    setShowResults(false);
-  };
-
-  const updateField = (key: keyof QuoteFormData, value: string | number | string[]) => {
-    setFormData(prev => ({ ...prev, [key]: value }));
-  };
-
-  const toggleSecondary = (item: string) => {
-    setFormData(prev => ({
-      ...prev,
-      secondaryProcessing: prev.secondaryProcessing.includes(item)
-        ? prev.secondaryProcessing.filter(s => s !== item)
-        : [...prev.secondaryProcessing, item],
-    }));
-  };
-
+  // Calculate
   const handleCalculate = async () => {
-    setCalculating(true);
-    setCalcError(null);
+    setLoading(true);
     try {
-      const apiProductType = PRODUCT_TYPE_API_MAP[formData.productType] || 'extrusion';
-      const requestBody: Record<string, unknown> = {
-        product_type: apiProductType,
-        material: { category: formData.materialCategory, grade: formData.materialGrade },
-        dimensions: { length_mm: formData.length, width_mm: formData.width, height_mm: formData.height },
-        quantity: formData.quantity,
+      const payload = {
+        productType,
+        materialCategory,
+        quantity: fields.quantity || 1,
+        width: fields.width || 0,
+        height: fields.height || 0,
+        length: fields.length || 0,
+        thickness: fields.thickness || 0,
+        productSize: fields.productSize || '',
+        netWeight: fields.netWeight || 0,
+        materialSurfaceTreatment,
+        materialColor,
+        processes,
+        productSurfaceTreatment,
+        productColor,
       };
-      if (formData.surfaceTreatment && formData.surfaceTreatment !== '无') {
-        requestBody.surface_treatment = { type: formData.surfaceTreatment };
-      }
-      if (formData.secondaryProcessing.length > 0) {
-        requestBody.process = { secondary_operations: formData.secondaryProcessing };
-      }
-      const res = await fetch('/api/v1/quote/calculate', {
+
+      const res = await fetch('/api/quote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify(payload),
       });
-      const result = await res.json();
-      if (result.success) {
-        setPricingResult({
-          unitWeight: result.weight_per_piece_kg || 0,
-          materialCost: result.material_cost || 0,
-          processingCost: result.processing_cost || 0,
-          surfaceCost: result.surface_treatment_cost || 0,
-          packagingCost: result.packaging_cost || 0,
-          shippingCost: result.transport_cost || 0,
-          managementFee: result.management_fee || 0,
-          unitPrice: result.unit_price || 0,
-        });
-        if (onCalculate) onCalculate(formData);
-      } else {
-        setCalcError(result.error || '计算失败');
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.data) {
+          setPricingResult(data.data);
+        }
       }
-    } catch (err) {
-      console.error('报价计算失败:', err);
-      setCalcError('网络错误，请重试');
+    } catch (error) {
+      console.error('报价计算失败:', error);
     } finally {
-      setCalculating(false);
+      setLoading(false);
+    }
+
+    if (onCalculate) {
+      onCalculate({
+        productType,
+        materialCategory,
+        quantity: (fields.quantity as number) || 1,
+        width: fields.width as number,
+        height: fields.height as number,
+        length: fields.length as number,
+        thickness: fields.thickness as number,
+        productSize: fields.productSize as string,
+        netWeight: fields.netWeight as number,
+        materialSurfaceTreatment,
+        materialColor,
+        processes,
+        productSurfaceTreatment,
+        productColor,
+      });
     }
   };
+
+  // Helper: render field inputs
+  const renderFields = () => {
+    if (!categoryConfig) return null;
+    const fieldOrder = ['width', 'height', 'length', 'thickness', 'productSize', 'quantity', 'netWeight'];
+    const visibleFields = fieldOrder.filter(f => categoryConfig.fields.includes(f));
+
+    return (
+      <div className="space-y-2">
+        {visibleFields.map(fieldKey => {
+          if (fieldKey === 'productSize') {
+            return (
+              <div key={fieldKey}>
+                <label className="block text-[11px] font-medium text-gray-500 mb-0.5">
+                  {FIELD_LABELS[fieldKey]}
+                </label>
+                <input
+                  type="text"
+                  placeholder="如 100×50×30"
+                  value={(fields[fieldKey] as string) || ''}
+                  onChange={e => setFields(prev => ({ ...prev, [fieldKey]: e.target.value }))}
+                  className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-xs bg-gray-50 focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none"
+                />
+              </div>
+            );
+          }
+
+          const label = FIELD_LABELS[fieldKey] || fieldKey;
+          const isOptional = fieldKey === 'netWeight';
+
+          return (
+            <div key={fieldKey}>
+              <label className="block text-[11px] font-medium text-gray-500 mb-0.5">
+                {label}
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={(fields[fieldKey] as number) ?? ''}
+                onChange={e => setFields(prev => ({ ...prev, [fieldKey]: parseFloat(e.target.value) || 0 }))}
+                className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-xs bg-gray-50 focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none"
+              />
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // Get available product types
+  const productTypeOptions = Object.entries(PRODUCT_TYPES).map(([key, cfg]) => ({
+    key,
+    label: cfg.label,
+    icon: cfg.icon,
+  }));
+
+  // Get available material categories for current product type
+  const materialCategoryOptions = productConfig
+    ? Object.entries(productConfig.materialCategories).map(([key, cfg]) => ({ key, label: cfg.label }))
+    : [];
+
+  // Product surface treatment options
+  const productSurfaceOpts = getProductSurfaceOptions();
+  const materialColorOpts = getMaterialColorOptions();
+  const productColorOpts = getProductColorOptions();
+
+  // Determine if we should show material surface treatment section
+  const showMaterialSurface = categoryConfig?.materialSurfaceTreatment && categoryConfig.materialSurfaceTreatment.length > 0;
+  const showProductSurface = productType !== '注塑' && (productSurfaceOpts.length > 0);
 
   return (
     <div className="h-full flex flex-col bg-white">
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <Calculator className="w-5 h-5 text-blue-600" />
-            <h3 className="font-bold text-gray-800 text-base">报价计算器</h3>
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <Calculator className="w-4 h-4 text-blue-600" />
+            <h3 className="font-bold text-gray-800 text-sm">报价参数</h3>
           </div>
           {aiSynced && (
-            <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-medium animate-pulse">
-              <Sparkles className="w-3 h-3" />
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-medium animate-pulse">
+              <Sparkles className="w-2.5 h-2.5" />
               AI 已填入
             </div>
           )}
         </div>
 
-        {/* 产品搜索 */}
-        <div ref={searchBoxRef} className="relative">
-          <label className="block text-xs font-medium text-gray-500 mb-1">搜索现有产品</label>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => handleSearchChange(e.target.value)}
-              onFocus={() => { if (searchResults.length > 0) setShowResults(true); }}
-              placeholder="输入产品编号或名称..."
-              className="w-full rounded-lg border border-gray-200 pl-9 pr-8 py-2 text-sm bg-gray-50 focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none"
-            />
-            {searchQuery && (
+        {/* ---- 产品类型 ---- */}
+        <div>
+          <label className="block text-[11px] font-medium text-gray-500 mb-1">产品类型</label>
+          <div className="grid grid-cols-2 gap-1.5">
+            {productTypeOptions.map(opt => (
               <button
-                onClick={() => { setSearchQuery(''); setSearchResults([]); setShowResults(false); }}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-          {/* 搜索结果下拉 */}
-          {showResults && (
-            <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-              {searching ? (
-                <div className="flex items-center gap-2 px-3 py-3 text-sm text-gray-500">
-                  <Loader2 className="w-4 h-4 animate-spin" /> 搜索中...
-                </div>
-              ) : searchResults.length === 0 ? (
-                <div className="px-3 py-3 text-sm text-gray-400 text-center">未找到匹配产品</div>
-              ) : (
-                searchResults.map(p => (
-                  <button
-                    key={p.id}
-                    onClick={() => handleSelectProduct(p)}
-                    className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b border-gray-100 last:border-b-0 transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Package className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                      <span className="text-sm font-medium text-gray-700">{p.product_code}</span>
-                      <span className="text-xs text-gray-400 truncate">{p.name}</span>
-                    </div>
-                    <div className="text-[11px] text-gray-400 mt-0.5 ml-[22px]">
-                      {p.material} · {p.process}
-                      {p.specs && Boolean((p.specs as Record<string, unknown>).width) && (
-                        <span> · {String((p.specs as Record<string, unknown>).width)}×{String((p.specs as Record<string, unknown>).height)}mm</span>
-                      )}
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* 产品类型 */}
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">产品类型</label>
-          <div className="relative">
-            <select
-              value={formData.productType}
-              onChange={e => updateField('productType', e.target.value)}
-              className="w-full appearance-none rounded-lg border border-gray-200 px-3 py-2 text-sm bg-gray-50 focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none"
-            >
-              <option>挤压铝型材</option>
-              <option>铝板/铝平板</option>
-              <option>压铸铝件</option>
-              <option>CNC加工件</option>
-              <option>冲压件</option>
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          </div>
-        </div>
-
-        {/* 材料类别 */}
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">材料类别</label>
-          <div className="relative">
-            <select
-              value={formData.materialCategory}
-              onChange={e => updateField('materialCategory', e.target.value)}
-              className="w-full appearance-none rounded-lg border border-gray-200 px-3 py-2 text-sm bg-gray-50 focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none"
-            >
-              <option>铝合金</option>
-              <option>不锈钢</option>
-              <option>碳钢</option>
-              <option>铜合金</option>
-              <option>锌合金</option>
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          </div>
-        </div>
-
-        {/* 材料牌号 */}
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">材料牌号</label>
-          <div className="relative">
-            <select
-              value={formData.materialGrade}
-              onChange={e => updateField('materialGrade', e.target.value)}
-              className="w-full appearance-none rounded-lg border border-gray-200 px-3 py-2 text-sm bg-gray-50 focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none"
-            >
-              <option>6063-T5</option>
-              <option>6061-T6</option>
-              <option>6063-T6</option>
-              <option>6061-T4</option>
-              <option>5052-H32</option>
-              <option>304不锈钢</option>
-              <option>316L不锈钢</option>
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          </div>
-        </div>
-
-        {/* 数量 */}
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">数量（件）</label>
-          <input
-            type="number"
-            min={1}
-            value={formData.quantity}
-            onChange={e => updateField('quantity', parseInt(e.target.value) || 1)}
-            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-gray-50 focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none"
-          />
-        </div>
-
-        {/* 尺寸 */}
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">尺寸（mm）</label>
-          <div className="grid grid-cols-3 gap-2">
-            <div className="relative">
-              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">长</span>
-              <input
-                type="number"
-                value={formData.length}
-                onChange={e => updateField('length', parseFloat(e.target.value) || 0)}
-                className="w-full rounded-lg border border-gray-200 pl-7 pr-2 py-2 text-sm bg-gray-50 focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none"
-              />
-            </div>
-            <div className="relative">
-              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">宽</span>
-              <input
-                type="number"
-                value={formData.width}
-                onChange={e => updateField('width', parseFloat(e.target.value) || 0)}
-                className="w-full rounded-lg border border-gray-200 pl-7 pr-2 py-2 text-sm bg-gray-50 focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none"
-              />
-            </div>
-            <div className="relative">
-              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">高</span>
-              <input
-                type="number"
-                value={formData.height}
-                onChange={e => updateField('height', parseFloat(e.target.value) || 0)}
-                className="w-full rounded-lg border border-gray-200 pl-7 pr-2 py-2 text-sm bg-gray-50 focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* 表面处理 */}
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">表面处理</label>
-          <div className="relative">
-            <select
-              value={formData.surfaceTreatment}
-              onChange={e => updateField('surfaceTreatment', e.target.value)}
-              className="w-full appearance-none rounded-lg border border-gray-200 px-3 py-2 text-sm bg-gray-50 focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none"
-            >
-              <option>无</option>
-              <option>阳极氧化-自然色</option>
-              <option>阳极氧化-黑色</option>
-              <option>粉末喷涂</option>
-              <option>电泳</option>
-              <option>电镀</option>
-              <option>拉丝</option>
-              <option>抛光</option>
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          </div>
-        </div>
-
-        {/* 包装方式 */}
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">包装方式</label>
-          <div className="relative">
-            <select
-              value={formData.packaging}
-              onChange={e => updateField('packaging', e.target.value)}
-              className="w-full appearance-none rounded-lg border border-gray-200 px-3 py-2 text-sm bg-gray-50 focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none"
-            >
-              <option>标准包装</option>
-              <option>气泡膜包装</option>
-              <option>纸箱包装</option>
-              <option>木箱包装</option>
-              <option>托盘包装</option>
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          </div>
-        </div>
-
-        {/* 二次加工 */}
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-2">二次加工（可多选）</label>
-          <div className="flex flex-wrap gap-2">
-            {secondaryOptions.map(item => (
-              <button
-                key={item}
+                key={opt.key}
                 type="button"
-                onClick={() => toggleSecondary(item)}
-                className={`px-2.5 py-1.5 text-xs rounded-md border transition-all ${
-                  formData.secondaryProcessing.includes(item)
-                    ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
-                    : 'bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300'
+                onClick={() => handleProductTypeChange(opt.key)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs transition-all ${
+                  productType === opt.key
+                    ? 'bg-blue-50 border-blue-400 text-blue-700 font-medium shadow-sm'
+                    : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-300'
                 }`}
               >
-                {item}
+                <span className="text-sm">{opt.icon}</span>
+                {opt.label}
               </button>
             ))}
           </div>
         </div>
 
-        {/* 计算按钮 */}
+        {/* ---- 材料类别 ---- */}
+        <div>
+          <label className="block text-[11px] font-medium text-gray-500 mb-1">材料类别</label>
+          <div className="flex flex-wrap gap-1.5">
+            {materialCategoryOptions.map(opt => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => handleMaterialCategoryChange(opt.key)}
+                className={`px-2.5 py-1 rounded-md border text-[11px] transition-all ${
+                  materialCategory === opt.key
+                    ? 'bg-blue-50 border-blue-400 text-blue-700 font-medium'
+                    : 'bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ---- 参数输入区 ---- */}
+        <div className="bg-gray-50/80 rounded-lg p-2.5 border border-gray-100">
+          <label className="block text-[11px] font-medium text-gray-500 mb-1.5">基本参数</label>
+          {renderFields()}
+        </div>
+
+        {/* ---- 材料表面处理 (仅挤出有) ---- */}
+        {showMaterialSurface && categoryConfig?.materialSurfaceTreatment && (
+          <div>
+            <label className="block text-[11px] font-medium text-gray-500 mb-1">材料表面处理</label>
+            <CustomSelect
+              value={materialSurfaceTreatment}
+              options={categoryConfig.materialSurfaceTreatment}
+              onChange={val => {
+                setMaterialSurfaceTreatment(val);
+                setMaterialColor('');
+              }}
+            />
+          </div>
+        )}
+
+        {/* ---- 材料颜色 (跟材料表面处理联动) ---- */}
+        {showMaterialSurface && materialColorOpts.length > 0 && (
+          <div>
+            <label className="block text-[11px] font-medium text-gray-500 mb-1">材料颜色</label>
+            <CustomSelect
+              value={materialColor}
+              options={materialColorOpts}
+              onChange={setMaterialColor}
+            />
+          </div>
+        )}
+
+        {/* ---- 加工工艺 ---- */}
+        {categoryConfig && (
+          <div>
+            <label className="block text-[11px] font-medium text-gray-500 mb-1">加工工艺（可多选）</label>
+            <div className="flex flex-wrap gap-1.5">
+              {categoryConfig.processes.map(proc => {
+                const isNone = proc.name === '无';
+                const isSelected = isNone
+                  ? processes.length === 0
+                  : processes.some(p => p.name === proc.name);
+
+                return (
+                  <div key={proc.name}>
+                    <button
+                      type="button"
+                      onClick={() => toggleProcess(proc.name)}
+                      className={`px-2 py-1 text-[11px] rounded-md border transition-all ${
+                        isSelected
+                          ? 'bg-blue-50 border-blue-400 text-blue-700 font-medium'
+                          : 'bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300'
+                      }`}
+                    >
+                      {proc.name}
+                    </button>
+                    {/* Show quantity input if selected and has unit */}
+                    {isSelected && proc.unit && !isNone && (
+                      <div className="mt-1">
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder={`数量(${proc.unit})`}
+                          value={processes.find(p => p.name === proc.name)?.quantity ?? ''}
+                          onChange={e => updateProcessQuantity(proc.name, parseFloat(e.target.value) || 0)}
+                          className="w-full rounded border border-gray-200 px-2 py-1 text-[11px] bg-white focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none"
+                        />
+                        <span className="text-[10px] text-gray-400">{proc.unit}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ---- 产品表面处理 ---- */}
+        {showProductSurface && (
+          <div>
+            <label className="block text-[11px] font-medium text-gray-500 mb-1">产品表面处理</label>
+            <CustomSelect
+              value={productSurfaceTreatment}
+              options={productSurfaceOpts.map(o => o.name)}
+              onChange={handleProductSurfaceChange}
+            />
+          </div>
+        )}
+
+        {/* ---- 产品颜色 ---- */}
+        {showProductSurface && productColorOpts.length > 0 && (
+          <div>
+            <label className="block text-[11px] font-medium text-gray-500 mb-1">产品颜色</label>
+            <CustomSelect
+              value={productColor}
+              options={productColorOpts}
+              onChange={setProductColor}
+            />
+          </div>
+        )}
+
+        {/* ---- 计算按钮 ---- */}
         <button
           onClick={handleCalculate}
-          disabled={calculating}
-          className="w-full py-2.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium text-sm hover:from-blue-700 hover:to-indigo-700 transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          disabled={loading}
+          className="w-full py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium text-xs hover:from-blue-700 hover:to-indigo-700 transition-all shadow-sm disabled:opacity-60 flex items-center justify-center gap-1.5"
         >
-          {calculating ? (
+          {loading ? (
             <>
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
               计算中...
             </>
           ) : (
             <>
-              <Calculator className="w-4 h-4" />
+              <Calculator className="w-3.5 h-3.5" />
               计算报价
             </>
           )}
         </button>
 
-        {calcError && (
-          <div className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2 border border-red-200">
-            {calcError}
-          </div>
-        )}
-
+        {/* ---- 报价结果 ---- */}
         {pricingResult && (
-          <div className="rounded-lg border border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-3 space-y-2">
-            <h4 className="text-sm font-bold text-emerald-700">报价结果</h4>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+          <div className="rounded-lg border border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-2.5 space-y-1.5">
+            <h4 className="text-xs font-bold text-emerald-700">报价结果</h4>
+            <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[11px]">
               <span className="text-gray-500">单件重量</span>
               <span className="text-right font-medium text-gray-800">{pricingResult.unitWeight.toFixed(3)} kg</span>
               <span className="text-gray-500">材料费</span>
-              <span className="text-right font-medium text-gray-800">¥{pricingResult.materialCost}</span>
+              <span className="text-right font-medium text-gray-800">¥{pricingResult.materialCost.toFixed(2)}</span>
               <span className="text-gray-500">加工费</span>
-              <span className="text-right font-medium text-gray-800">¥{pricingResult.processingCost}</span>
+              <span className="text-right font-medium text-gray-800">¥{pricingResult.processingCost.toFixed(2)}</span>
               <span className="text-gray-500">表面处理费</span>
-              <span className="text-right font-medium text-gray-800">¥{pricingResult.surfaceCost}</span>
+              <span className="text-right font-medium text-gray-800">¥{pricingResult.surfaceCost.toFixed(2)}</span>
               <span className="text-gray-500">包装费</span>
-              <span className="text-right font-medium text-gray-800">¥{pricingResult.packagingCost}</span>
+              <span className="text-right font-medium text-gray-800">¥{pricingResult.packagingCost.toFixed(2)}</span>
               <span className="text-gray-500">运费</span>
-              <span className="text-right font-medium text-gray-800">¥{pricingResult.shippingCost}</span>
+              <span className="text-right font-medium text-gray-800">¥{pricingResult.shippingCost.toFixed(2)}</span>
               <span className="text-gray-500">管理费</span>
-              <span className="text-right font-medium text-gray-800">¥{pricingResult.managementFee}</span>
+              <span className="text-right font-medium text-gray-800">¥{pricingResult.managementFee.toFixed(2)}</span>
             </div>
-            <div className="pt-2 border-t border-emerald-200">
+            <div className="pt-1.5 border-t border-emerald-200">
               <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-gray-700">单价</span>
-                <span className="text-lg font-bold text-emerald-600">¥{pricingResult.unitPrice}</span>
+                <span className="text-[11px] font-medium text-gray-700">单价</span>
+                <span className="text-base font-bold text-emerald-600">¥{pricingResult.unitPrice.toFixed(2)}</span>
               </div>
             </div>
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ==================== Custom Select Component ====================
+
+function CustomSelect({ value, options, onChange }: { value: string; options: string[]; onChange: (val: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between rounded-md border border-gray-200 px-2.5 py-1.5 text-xs bg-gray-50 focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none text-left"
+      >
+        <span className={value ? 'text-gray-800' : 'text-gray-400'}>{value || '请选择'}</span>
+        <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-40 overflow-y-auto">
+          {options.map(opt => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => { onChange(opt); setOpen(false); }}
+              className={`w-full text-left px-2.5 py-1.5 text-xs hover:bg-blue-50 transition-colors ${
+                value === opt ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+              }`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
