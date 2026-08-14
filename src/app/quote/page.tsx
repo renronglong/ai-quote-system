@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
 import ChatPanel from '@/components/ChatPanel';
-import QuoteForm from '@/components/QuoteForm';
+import QuoteForm, { PricingResult } from '@/components/QuoteForm';
 import {
   TrendingUp,
   LogOut,
@@ -36,31 +36,6 @@ interface AiFormUpdate {
   secondaryProcessing?: string[];
 }
 
-interface PricingResult {
-  quotation_id?: string;
-  material_cost?: number;
-  processing_cost?: number;
-  surface_treatment_cost?: number;
-  secondary_operations_cost?: number;
-  packaging_cost?: number;
-  transport_cost?: number;
-  management_fee?: number;
-  unit_price?: number;
-  total_price?: number;
-  weight_per_piece_kg?: number;
-  breakdown?: Record<string, { formula: string; detail: string }>;
-  aluminum_index?: number;
-  notes?: string[];
-  // 兼容旧字段
-  unitWeight?: number;
-  materialCost?: number;
-  processingCost?: number;
-  surfaceCost?: number;
-  packagingCost?: number;
-  shippingCost?: number;
-  managementFee?: number;
-  unitPrice?: number;
-}
 
 interface AluminumPrice {
   price: number;
