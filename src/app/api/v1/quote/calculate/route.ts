@@ -996,20 +996,12 @@ function calcDieCasting(
   let accumulated = mat.cost + proc.cost;
   accumulated *= (1 + (rules.die_casting_rates?.['压铸铝ADC12_A380']?.loss_rate || 0.05));
 
-  // 3. 模具摊销
-  let moldAmortize = 0;
-  if (req.mold_cost && req.mold_cost > 0) {
-    moldAmortize = req.mold_cost / req.quantity;
-  } else {
-    // 估算模具费: 简单件 15000~30000
-    const estimatedMold = 20000;
-    moldAmortize = estimatedMold / req.quantity;
-    notes.push(`模具费估算: ${estimatedMold}元 / ${req.quantity}件 = ${r2(moldAmortize)}元/件`);
-  }
-  accumulated += moldAmortize;
+  // 3. 模具费（单独列出，不计入单价）
+  let moldTotal = req.mold_cost && req.mold_cost > 0 ? req.mold_cost : 20000;
+  notes.push(`压铸模具费: ${moldTotal}元（一次性，不计入单件价格）`);
   breakdown['mold'] = {
-    formula: '模具费 ÷ 数量',
-    detail: `${r2(moldAmortize * req.quantity)}元 ÷ ${req.quantity}件 = ${r2(moldAmortize)}元/件`,
+    formula: '模具费（一次性，不分摊）',
+    detail: `模具费: ${moldTotal}元（单独列出）`,
   };
 
   // 4. 表面处理费
@@ -1086,19 +1078,12 @@ function calcZincAlloy(
   let accumulated = mat.cost + proc.cost;
   accumulated *= (1 + (rules.die_casting_rates?.['锌合金压铸']?.loss_rate || 0.06));
 
-  // 3. 模具摊销
-  let moldAmortize = 0;
-  if (req.mold_cost && req.mold_cost > 0) {
-    moldAmortize = req.mold_cost / req.quantity;
-  } else {
-    const estimatedMold = 25000; // 锌合金模具费估算
-    moldAmortize = estimatedMold / req.quantity;
-    notes.push(`模具费估算: ${estimatedMold}元 / ${req.quantity}件 = ${r2(moldAmortize)}元/件`);
-  }
-  accumulated += moldAmortize;
+  // 3. 模具费（单独列出，不计入单价）
+  let moldTotal = req.mold_cost && req.mold_cost > 0 ? req.mold_cost : 25000;
+  notes.push(`锌合金模具费: ${moldTotal}元（一次性，不计入单件价格）`);
   breakdown['mold'] = {
-    formula: '模具费 ÷ 数量',
-    detail: `${r2(moldAmortize * req.quantity)}元 ÷ ${req.quantity}件 = ${r2(moldAmortize)}元/件`,
+    formula: '模具费（一次性，不分摊）',
+    detail: `模具费: ${moldTotal}元（单独列出）`,
   };
 
   // 4. 表面处理费
@@ -1177,19 +1162,12 @@ function calcInjection(
   let accumulated = mat.cost + proc.cost;
   accumulated *= (1 + lossRate);
 
-  // 3. 模具摊销
-  let moldAmortize = 0;
-  if (req.mold_cost && req.mold_cost > 0) {
-    moldAmortize = req.mold_cost / req.quantity;
-  } else {
-    const estimatedMold = 18000; // 注塑模具费估算
-    moldAmortize = estimatedMold / req.quantity;
-    notes.push(`模具费估算: ${estimatedMold}元 / ${req.quantity}件 = ${r2(moldAmortize)}元/件`);
-  }
-  accumulated += moldAmortize;
+  // 3. 模具费（单独列出，不计入单价）
+  let moldTotal = req.mold_cost && req.mold_cost > 0 ? req.mold_cost : 18000;
+  notes.push(`注塑模具费: ${moldTotal}元（一次性，不计入单件价格）`);
   breakdown['mold'] = {
-    formula: '模具费 ÷ 数量',
-    detail: `${r2(moldAmortize * req.quantity)}元 ÷ ${req.quantity}件 = ${r2(moldAmortize)}元/件`,
+    formula: '模具费（一次性，不分摊）',
+    detail: `模具费: ${moldTotal}元（单独列出）`,
   };
 
   // 4. 表面处理费（注塑件表面处理较少）
