@@ -294,8 +294,8 @@ const FIELD_LABELS: Record<string, string> = {
   thickness: '厚度(mm)',
   productSize: '产品尺寸(长×宽×高mm)',
   quantity: '数量',
-  meterWeight: '米重(kg/m)',
-  netWeight: '产品净重(kg)(选填)',
+  meterWeight: '米重(g/m)',
+  netWeight: '产品净重(g)(选填)',
 };
 
 // ==================== Component ====================
