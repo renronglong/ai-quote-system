@@ -92,7 +92,7 @@ const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
     materialCategories: {
       '铝型材': {
         label: '铝型材',
-        fields: ['width', 'height', 'length', 'quantity', 'netWeight'],
+        fields: ['width', 'height', 'length', 'meterWeight', 'quantity', 'netWeight'],
         materialSurfaceTreatment: ['无', '喷砂氧化', '抛光氧化', '拉丝氧化', '喷涂'],
         materialColorMap: {
           '喷砂氧化': ['本色', '黑色', '铁灰色', '金色'],
@@ -294,6 +294,7 @@ const FIELD_LABELS: Record<string, string> = {
   thickness: '厚度(mm)',
   productSize: '产品尺寸(长×宽×高mm)',
   quantity: '数量',
+  meterWeight: '米重(kg/m)',
   netWeight: '产品净重(kg)(选填)',
 };
 
@@ -343,6 +344,7 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
     if (cat.fields.includes('length')) defaultFields.length = 100;
     if (cat.fields.includes('thickness')) defaultFields.thickness = 2;
     if (cat.fields.includes('productSize')) defaultFields.productSize = '';
+    if (cat.fields.includes('meterWeight')) defaultFields.meterWeight = '';
     if (cat.fields.includes('netWeight')) defaultFields.netWeight = '';
     setFields(defaultFields);
 
@@ -498,6 +500,7 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
         length: fields.length || 0,
         thickness: fields.thickness || 0,
         productSize: fields.productSize || '',
+        meterWeight: fields.meterWeight || 0,
         netWeight: fields.netWeight || 0,
         materialSurfaceTreatment,
         materialColor,
@@ -534,6 +537,7 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
         length: fields.length as number,
         thickness: fields.thickness as number,
         productSize: fields.productSize as string,
+        meterWeight: fields.meterWeight as number,
         netWeight: fields.netWeight as number,
         materialSurfaceTreatment,
         materialColor,
@@ -547,7 +551,7 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
   // Helper: render field inputs
   const renderFields = () => {
     if (!categoryConfig) return null;
-    const fieldOrder = ['width', 'height', 'length', 'thickness', 'productSize', 'quantity', 'netWeight'];
+    const fieldOrder = ['width', 'height', 'length', 'meterWeight', 'thickness', 'productSize', 'quantity', 'netWeight'];
     const visibleFields = fieldOrder.filter(f => categoryConfig.fields.includes(f));
 
     return (
