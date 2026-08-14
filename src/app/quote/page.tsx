@@ -49,7 +49,7 @@ export default function QuotePage() {
   const [aluminumPrice, setAluminumPrice] = useState<AluminumPrice | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [aiFormData, setAiFormData] = useState<AiFormUpdate | null>(null);
-  const [pricingResult, setPricingResult] = useState<PricingResult | null>(null);
+  const [pricingResult, setPricingResult] = useState<any>(null);
   const aiDataCounter = useRef(0);
 
   const handleFormUpdate = useCallback((data: AiFormUpdate) => {
@@ -58,7 +58,7 @@ export default function QuotePage() {
     setAiFormData({ ...data, _v: aiDataCounter.current } as AiFormUpdate);
   }, []);
 
-  const handlePricingResult = useCallback((result: PricingResult) => {
+  const handlePricingResult = useCallback((result: any) => {
     setPricingResult(result);
   }, []);
 
