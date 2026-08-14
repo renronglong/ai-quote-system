@@ -27,20 +27,20 @@ interface ProcessSelection {
 }
 
 export interface PricingResult {
-  quotation_id?: string;
-  material_cost?: number;
-  processing_cost?: number;
-  surface_treatment_cost?: number;
-  secondary_operations_cost?: number;
-  packaging_cost?: number;
-  transport_cost?: number;
-  management_fee?: number;
-  unit_price?: number;
-  total_price?: number;
-  weight_per_piece_kg?: number;
-  breakdown?: Record<string, { formula: string; detail: string }>;
-  aluminum_index?: number;
-  notes?: string[];
+  quotation_id: string;
+  material_cost: number;
+  processing_cost: number;
+  surface_treatment_cost: number;
+  secondary_operations_cost: number;
+  packaging_cost: number;
+  transport_cost: number;
+  management_fee: number;
+  unit_price: number;
+  total_price: number;
+  weight_per_piece_kg: number;
+  breakdown: Record<string, { formula: string; detail: string }>;
+  aluminum_index: number;
+  notes: string[];
 }
 
 export interface AiFormUpdate {
@@ -1036,20 +1036,20 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
             {/* Unit price */}
             <div className="flex justify-between items-center text-[11px]">
               <span className="font-medium text-gray-700">单价</span>
-              <span className="text-sm font-bold text-emerald-600">¥{pricingResult.unit_price.toFixed(2)}</span>
+              <span className="text-sm font-bold text-emerald-600">¥{(pricingResult.unit_price || 0).toFixed(2)}</span>
             </div>
 
             {/* Total price */}
             <div className="flex justify-between items-center text-[11px]">
               <span className="font-medium text-gray-700">总价 (×{(fields.quantity as number) || 1})</span>
-              <span className="text-base font-bold text-red-600">¥{pricingResult.total_price.toFixed(2)}</span>
+              <span className="text-base font-bold text-red-600">¥{(pricingResult.total_price || 0).toFixed(2)}</span>
             </div>
 
             {/* Weight info */}
             {pricingResult.weight_per_piece_kg > 0 && (
               <div className="flex justify-between items-center text-[11px]">
                 <span className="text-gray-500">单件重量</span>
-                <span className="font-medium text-gray-700">{pricingResult.weight_per_piece_kg.toFixed(3)} kg</span>
+                <span className="font-medium text-gray-700">{(pricingResult.weight_per_piece_kg || 0).toFixed(3)} kg</span>
               </div>
             )}
 
