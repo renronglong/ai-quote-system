@@ -37,14 +37,29 @@ interface AiFormUpdate {
 }
 
 interface PricingResult {
-  unitWeight: number;
-  materialCost: number;
-  processingCost: number;
-  surfaceCost: number;
-  packagingCost: number;
-  shippingCost: number;
-  managementFee: number;
-  unitPrice: number;
+  quotation_id?: string;
+  material_cost?: number;
+  processing_cost?: number;
+  surface_treatment_cost?: number;
+  secondary_operations_cost?: number;
+  packaging_cost?: number;
+  transport_cost?: number;
+  management_fee?: number;
+  unit_price?: number;
+  total_price?: number;
+  weight_per_piece_kg?: number;
+  breakdown?: Record<string, { formula: string; detail: string }>;
+  aluminum_index?: number;
+  notes?: string[];
+  // 兼容旧字段
+  unitWeight?: number;
+  materialCost?: number;
+  processingCost?: number;
+  surfaceCost?: number;
+  packagingCost?: number;
+  shippingCost?: number;
+  managementFee?: number;
+  unitPrice?: number;
 }
 
 interface AluminumPrice {
