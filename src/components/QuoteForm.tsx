@@ -12,6 +12,7 @@ interface QuoteFormData {
   length?: number;
   thickness?: number;
   productSize?: string;
+  meterWeight?: number;
   netWeight?: number;
   materialSurfaceTreatment: string;
   materialColor: string;
@@ -26,14 +27,20 @@ interface ProcessSelection {
 }
 
 interface PricingResult {
-  unitWeight: number;
-  materialCost: number;
-  processingCost: number;
-  surfaceCost: number;
-  packagingCost: number;
-  shippingCost: number;
-  managementFee: number;
-  unitPrice: number;
+  quotation_id: string;
+  material_cost: number;
+  processing_cost: number;
+  surface_treatment_cost: number;
+  secondary_operations_cost: number;
+  packaging_cost: number;
+  transport_cost: number;
+  management_fee: number;
+  unit_price: number;
+  total_price: number;
+  weight_per_piece_kg: number;
+  breakdown: Record<string, { formula: string; detail: string }>;
+  aluminum_index: number;
+  notes: string[];
 }
 
 export interface AiFormUpdate {
@@ -487,29 +494,204 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
     }
   }, [pricingResultProp]);
 
+  // ==================== Mapping Helpers ====================
+
+  // Map productType + materialCategory → API product_type
+  const mapProductType = (): string => {
+    if (productType === '挤出') return 'extrusion';
+    if (productType === '板材') return 'sheet_metal';
+    if (productType === '压铸') {
+      return materialCategory === '锌合金' ? 'zinc_alloy' : 'die_casting';
+    }
+    if (productType === '注塑') return 'injection';
+    return 'sheet_metal';
+  };
+
+  // Map materialCategory → API material.category
+  const mapMaterialCategory = (): string => {
+    const map: Record<string, string> = {
+      '铝型材': '挤压铝型材',
+      '铝板': '铝板',
+      '冷轧板': '冷板SPCC',
+      '不锈钢': '不锈钢',
+      '镀锌板': '冷板SPCC',
+      '铝': '压铸铝ADC12',
+      '锌合金': '锌合金ZA-8',
+      'ABS': 'ABS',
+      'PP': 'PP',
+      'PC': 'PC',
+      'PA': 'PA',
+      'POM': 'POM',
+      'PMMA': 'PMMA',
+    };
+    return map[materialCategory] || materialCategory;
+  };
+
+  // Parse productSize string like "100×200×50" or "100x200x50"
+  const parseProductSize = (size: string): { l: number; w: number; h: number } | null => {
+    if (!size || typeof size !== 'string') return null;
+    const cleaned = size.replace(/[×xX*]/g, ' ').trim();
+    const parts = cleaned.split(/\s+/).map(Number).filter(n => !isNaN(n) && n > 0);
+    if (parts.length >= 3) return { l: parts[0], w: parts[1], h: parts[2] };
+    if (parts.length === 2) return { l: parts[0], w: parts[1], h: 0 };
+    return null;
+  };
+
+  // Map surface treatment to API format
+  const mapSurfaceTreatment = (): { type: string; color?: string | null } | null => {
+    const surfaceMap: Record<string, string> = {
+      '喷砂氧化': '喷砂',
+      '抛光氧化': '抛光/镀铬',
+      '拉丝氧化': '拉丝',
+      '喷涂': '喷涂/喷粉',
+      '氧化': '氧化本色',
+      '电镀': '镀锌/镀镍',
+    };
+
+    // Material surface treatment takes priority (only for extrusion)
+    if (materialSurfaceTreatment && materialSurfaceTreatment !== '无') {
+      const mapped = surfaceMap[materialSurfaceTreatment];
+      if (mapped) {
+        const color = materialColor || null;
+        return { type: mapped, color };
+      }
+    }
+
+    // Fallback to product surface treatment
+    if (productSurfaceTreatment && productSurfaceTreatment !== '无' && productSurfaceTreatment !== '除油') {
+      let mapped = surfaceMap[productSurfaceTreatment];
+      if (!mapped) return null;
+
+      // For oxidation, determine color
+      if (productSurfaceTreatment === '氧化') {
+        if (productColor && productColor !== '本色') {
+          mapped = '氧化上色';
+        } else {
+          mapped = '氧化本色';
+        }
+      }
+
+      const color = productColor || null;
+      return { type: mapped, color };
+    }
+
+    return null;
+  };
+
+  // Map processes to API secondary_operations
+  const mapProcesses = (): { secondary_operations: string[]; cut_count?: number } => {
+    const processMap: Record<string, string> = {
+      '冲压': '冲压',
+      'CNC加工': 'CNC加工',
+      '车加工': '车加工',
+      '钻孔': '钻孔',
+      '攻牙': '攻丝',
+      '激光切割': '激光切割',
+      '折弯': '折弯',
+      '抛光': '抛光',
+      '除披锋': '去毛刺',
+    };
+
+    const secondaryOps: string[] = [];
+    let cutCount: number | undefined;
+
+    for (const proc of processes) {
+      if (proc.name === '锯切') {
+        cutCount = proc.quantity || 1;
+      } else if (processMap[proc.name]) {
+        secondaryOps.push(processMap[proc.name]);
+      }
+    }
+
+    return { secondary_operations: secondaryOps, cut_count: cutCount };
+  };
+
+  // Calculate weight_per_piece_kg
+  const calcWeightKg = (): number | undefined => {
+    const netWeight = fields.netWeight as number;
+    if (netWeight && netWeight > 0) {
+      return netWeight / 1000;
+    }
+
+    // For extrusion with meterWeight
+    if (productType === '挤出') {
+      const meterWeight = fields.meterWeight as number;
+      const length = fields.length as number;
+      if (meterWeight && length) {
+        return (meterWeight * length) / 1000000;
+      }
+    }
+
+    return undefined;
+  };
+
+  // Build dimensions object
+  const buildDimensions = () => {
+    const parsed = parseProductSize(fields.productSize as string);
+
+    if (productType === '挤出') {
+      const width = fields.width as number;
+      const height = fields.height as number;
+      const length = fields.length as number;
+      if (width || height || length) {
+        return {
+          length_mm: length || 0,
+          width_mm: width || 0,
+          height_mm: height || undefined,
+        };
+      }
+    }
+
+    if (productType === '板材') {
+      const thickness = fields.thickness as number;
+      if (parsed) {
+        return {
+          length_mm: parsed.l,
+          width_mm: parsed.w,
+          wall_thickness_mm: thickness || undefined,
+        };
+      }
+    }
+
+    if (productType === '压铸' || productType === '注塑') {
+      if (parsed) {
+        return {
+          length_mm: parsed.l,
+          width_mm: parsed.w,
+          height_mm: parsed.h || undefined,
+        };
+      }
+    }
+
+    return undefined;
+  };
+
   // Calculate
   const handleCalculate = async () => {
     setLoading(true);
+    setPricingResult(null);
     try {
-      const payload = {
-        productType,
-        materialCategory,
-        quantity: fields.quantity || 1,
-        width: fields.width || 0,
-        height: fields.height || 0,
-        length: fields.length || 0,
-        thickness: fields.thickness || 0,
-        productSize: fields.productSize || '',
-        meterWeight: fields.meterWeight || 0,
-        netWeight: fields.netWeight || 0,
-        materialSurfaceTreatment,
-        materialColor,
-        processes,
-        productSurfaceTreatment,
-        productColor,
+      const surfaceTreatment = mapSurfaceTreatment();
+      const processInfo = mapProcesses();
+      const weightKg = calcWeightKg();
+      const dimensions = buildDimensions();
+
+      const payload: Record<string, any> = {
+        product_type: mapProductType(),
+        material: {
+          category: mapMaterialCategory(),
+        },
+        quantity: (fields.quantity as number) || 1,
       };
 
-      const res = await fetch('/api/quote', {
+      if (dimensions) payload.dimensions = dimensions;
+      if (weightKg !== undefined) payload.weight_per_piece_kg = weightKg;
+      if (surfaceTreatment) payload.surface_treatment = surfaceTreatment;
+      if (processInfo.secondary_operations.length > 0 || processInfo.cut_count !== undefined) {
+        payload.process = processInfo;
+      }
+
+      const res = await fetch('/api/v1/quote/calculate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -517,8 +699,23 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
 
       if (res.ok) {
         const data = await res.json();
-        if (data.success && data.data) {
-          setPricingResult(data.data);
+        if (data.success) {
+          setPricingResult({
+            quotation_id: data.quotation_id || '',
+            material_cost: data.material_cost || 0,
+            processing_cost: data.processing_cost || 0,
+            surface_treatment_cost: data.surface_treatment_cost || 0,
+            secondary_operations_cost: data.secondary_operations_cost || 0,
+            packaging_cost: data.packaging_cost || 0,
+            transport_cost: data.transport_cost || 0,
+            management_fee: data.management_fee || 0,
+            unit_price: data.unit_price || 0,
+            total_price: data.total_price || 0,
+            weight_per_piece_kg: data.weight_per_piece_kg || 0,
+            breakdown: data.breakdown || {},
+            aluminum_index: data.aluminum_index || 0,
+            notes: data.notes || [],
+          });
         }
       }
     } catch (error) {
@@ -800,30 +997,78 @@ export default function QuoteForm({ onCalculate, aiData, pricingResult: pricingR
 
         {/* ---- 报价结果 ---- */}
         {pricingResult && (
-          <div className="rounded-lg border border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-2.5 space-y-1.5">
-            <h4 className="text-xs font-bold text-emerald-700">报价结果</h4>
-            <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[11px]">
-              <span className="text-gray-500">单件重量</span>
-              <span className="text-right font-medium text-gray-800">{pricingResult.unitWeight.toFixed(3)} kg</span>
-              <span className="text-gray-500">材料费</span>
-              <span className="text-right font-medium text-gray-800">¥{pricingResult.materialCost.toFixed(2)}</span>
-              <span className="text-gray-500">加工费</span>
-              <span className="text-right font-medium text-gray-800">¥{pricingResult.processingCost.toFixed(2)}</span>
-              <span className="text-gray-500">表面处理费</span>
-              <span className="text-right font-medium text-gray-800">¥{pricingResult.surfaceCost.toFixed(2)}</span>
-              <span className="text-gray-500">包装费</span>
-              <span className="text-right font-medium text-gray-800">¥{pricingResult.packagingCost.toFixed(2)}</span>
-              <span className="text-gray-500">运费</span>
-              <span className="text-right font-medium text-gray-800">¥{pricingResult.shippingCost.toFixed(2)}</span>
-              <span className="text-gray-500">管理费</span>
-              <span className="text-right font-medium text-gray-800">¥{pricingResult.managementFee.toFixed(2)}</span>
+          <div className="rounded-lg border border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-2.5 space-y-2">
+            <h4 className="text-xs font-bold text-emerald-700">📋 报价明细</h4>
+
+            {/* Cost breakdown items */}
+            <div className="space-y-1">
+              {[
+                { label: '材料费', value: pricingResult.material_cost, key: 'material_cost' },
+                { label: '加工费', value: pricingResult.processing_cost, key: 'processing_cost' },
+                { label: '表面处理费', value: pricingResult.surface_treatment_cost, key: 'surface_treatment_cost' },
+                { label: '二次加工费', value: pricingResult.secondary_operations_cost, key: 'secondary_operations_cost' },
+                { label: '包装费', value: pricingResult.packaging_cost, key: 'packaging_cost' },
+                { label: '运输费', value: pricingResult.transport_cost, key: 'transport_cost' },
+                { label: '管理费', value: pricingResult.management_fee, key: 'management_fee' },
+              ].map((item) => (
+                <div key={item.key} className="text-[11px]">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-500">{item.label}</span>
+                    <span className="font-medium text-gray-800">¥{item.value.toFixed(2)}</span>
+                  </div>
+                  {pricingResult.breakdown?.[item.key] && (
+                    <div className="text-[10px] text-gray-400 ml-2 mt-0.5">
+                      {pricingResult.breakdown[item.key].formula && (
+                        <span className="italic">{pricingResult.breakdown[item.key].formula}</span>
+                      )}
+                      {pricingResult.breakdown[item.key].detail && (
+                        <span className="ml-1">— {pricingResult.breakdown[item.key].detail}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
-            <div className="pt-1.5 border-t border-emerald-200">
-              <div className="flex justify-between items-center">
-                <span className="text-[11px] font-medium text-gray-700">单价</span>
-                <span className="text-base font-bold text-emerald-600">¥{pricingResult.unitPrice.toFixed(2)}</span>
+
+            {/* Divider */}
+            <div className="border-t border-emerald-200" />
+
+            {/* Unit price */}
+            <div className="flex justify-between items-center text-[11px]">
+              <span className="font-medium text-gray-700">单价</span>
+              <span className="text-sm font-bold text-emerald-600">¥{pricingResult.unit_price.toFixed(2)}</span>
+            </div>
+
+            {/* Total price */}
+            <div className="flex justify-between items-center text-[11px]">
+              <span className="font-medium text-gray-700">总价 (×{(fields.quantity as number) || 1})</span>
+              <span className="text-base font-bold text-red-600">¥{pricingResult.total_price.toFixed(2)}</span>
+            </div>
+
+            {/* Weight info */}
+            {pricingResult.weight_per_piece_kg > 0 && (
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-gray-500">单件重量</span>
+                <span className="font-medium text-gray-700">{pricingResult.weight_per_piece_kg.toFixed(3)} kg</span>
               </div>
-            </div>
+            )}
+
+            {/* Aluminum index */}
+            {pricingResult.aluminum_index > 0 && (
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-gray-500">铝锭指数</span>
+                <span className="font-medium text-gray-700">¥{pricingResult.aluminum_index.toLocaleString()}/吨</span>
+              </div>
+            )}
+
+            {/* Notes */}
+            {pricingResult.notes && pricingResult.notes.length > 0 && (
+              <div className="mt-1 pt-1 border-t border-emerald-100">
+                {pricingResult.notes.map((note, i) => (
+                  <div key={i} className="text-[10px] text-amber-600">⚠ {note}</div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
