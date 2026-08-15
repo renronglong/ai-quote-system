@@ -175,26 +175,24 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
   productCode: string;
   compact?: boolean;
 }) {
-  if (!pricingResult) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
-          <BarChart3 className="w-7 h-7 text-gray-300" />
-        </div>
-        <p className="text-sm text-gray-400 font-medium">请填写参数</p>
-        <p className="text-xs text-gray-300 mt-1">系统将自动计算报价</p>
-      </div>
-    );
-  }
+  // 保留UI结构，只显示占位数据
+  const isPlaceholder = !pricingResult;
+  const p = pricingResult || {
+    material_cost: 0, processing_cost: 0, surface_treatment_cost: 0,
+    secondary_operations_cost: 0, packaging_cost: 0, transport_cost: 0,
+    management_fee: 0, unit_price: 0, total_price: 0, weight_per_piece_kg: 0,
+    breakdown: {} as Record<string, { formula: string; detail: string }>,
+    aluminum_index: 0, notes: [] as string[],
+  };
 
   const breakdownItems = [
-    { label: '材料费', value: pricingResult.material_cost, key: 'material_cost' },
-    { label: '加工费', value: pricingResult.processing_cost, key: 'processing_cost' },
-    { label: '表面处理费', value: pricingResult.surface_treatment_cost, key: 'surface_treatment_cost' },
-    { label: '二次加工费', value: pricingResult.secondary_operations_cost, key: 'secondary_operations_cost' },
-    { label: '包装费', value: pricingResult.packaging_cost, key: 'packaging_cost' },
-    { label: '运输费', value: pricingResult.transport_cost, key: 'transport_cost' },
-    { label: '管理费', value: pricingResult.management_fee, key: 'management_fee' },
+    { label: '材料费', value: p.material_cost, key: 'material_cost' },
+    { label: '加工费', value: p.processing_cost, key: 'processing_cost' },
+    { label: '表面处理费', value: p.surface_treatment_cost, key: 'surface_treatment_cost' },
+    { label: '二次加工费', value: p.secondary_operations_cost, key: 'secondary_operations_cost' },
+    { label: '包装费', value: p.packaging_cost, key: 'packaging_cost' },
+    { label: '运输费', value: p.transport_cost, key: 'transport_cost' },
+    { label: '管理费', value: p.management_fee, key: 'management_fee' },
   ];
 
   return (
@@ -224,15 +222,15 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
           <span className="text-[11px] font-medium text-emerald-600 uppercase tracking-wide">单价</span>
         </div>
         <div className="flex items-baseline gap-1">
-          <span className={`font-bold text-emerald-700 ${compact ? 'text-2xl' : 'text-4xl'}`}>
-            ¥{pricingResult.unit_price.toFixed(2)}
+          <span className={`font-bold ${isPlaceholder ? 'text-gray-300' : 'text-emerald-700'} ${compact ? 'text-2xl' : 'text-4xl'}`}>
+            {isPlaceholder ? '¥--' : `¥${p.unit_price.toFixed(2)}`}
           </span>
-          <span className="text-sm text-emerald-500">/件</span>
+          <span className={`text-sm ${isPlaceholder ? 'text-gray-300' : 'text-emerald-500'}`}>/件</span>
         </div>
         <div className="mt-1.5 flex items-baseline gap-1">
           <span className="text-xs text-gray-500">总价</span>
-          <span className={`font-bold text-gray-800 ${compact ? 'text-lg' : 'text-2xl'}`}>
-            ¥{pricingResult.total_price.toFixed(2)}
+          <span className={`font-bold ${isPlaceholder ? 'text-gray-300' : 'text-gray-800'} ${compact ? 'text-lg' : 'text-2xl'}`}>
+            {isPlaceholder ? '¥--' : `¥${p.total_price.toFixed(2)}`}
           </span>
         </div>
       </div>
@@ -247,11 +245,13 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
             <div key={item.key} className={`flex justify-between items-center px-3 py-2 ${idx % 2 === 1 ? 'bg-gray-50/50' : ''}`}>
               <span className="text-xs text-gray-500">{item.label}</span>
               <div className="text-right">
-                <span className="text-sm font-semibold text-gray-800">¥{item.value.toFixed(2)}</span>
-                {pricingResult.breakdown?.[item.key] && (
+                <span className={`text-sm font-semibold ${isPlaceholder ? 'text-gray-300' : 'text-gray-800'}`}>
+                  {isPlaceholder ? '--' : `¥${item.value.toFixed(2)}`}
+                </span>
+                {!isPlaceholder && p.breakdown?.[item.key] && (
                   <div className="text-[10px] text-gray-400 leading-tight">
-                    {pricingResult.breakdown[item.key].formula && (
-                      <span className="italic">{pricingResult.breakdown[item.key].formula}</span>
+                    {p.breakdown[item.key].formula && (
+                      <span className="italic">{p.breakdown[item.key].formula}</span>
                     )}
                   </div>
                 )}
@@ -266,19 +266,21 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         {/* 单价汇总 */}
         <div className="flex justify-between items-center px-3 py-2 bg-emerald-50/50">
           <span className="text-xs font-medium text-gray-600">单价合计</span>
-          <span className="text-base font-bold text-emerald-600">¥{pricingResult.unit_price.toFixed(2)}</span>
+          <span className={`text-base font-bold ${isPlaceholder ? 'text-gray-300' : 'text-emerald-600'}`}>
+            {isPlaceholder ? '--' : `¥${p.unit_price.toFixed(2)}`}
+          </span>
         </div>
       </div>
 
       {/* 辅助信息 */}
       <div className="rounded-xl bg-gray-50 border border-gray-100 p-3 space-y-1.5">
-        {pricingResult.weight_per_piece_kg > 0 && (
+        {(!isPlaceholder && p.weight_per_piece_kg > 0) && (
           <div className="flex justify-between items-center">
             <span className="text-[11px] text-gray-400">单件重量</span>
             <span className="text-xs font-medium text-gray-600">
-              {pricingResult.weight_per_piece_kg >= 1
-                ? `${pricingResult.weight_per_piece_kg.toFixed(3)} kg`
-                : `${(pricingResult.weight_per_piece_kg * 1000).toFixed(1)} g`}
+              {p.weight_per_piece_kg >= 1
+                ? `${p.weight_per_piece_kg.toFixed(3)} kg`
+                : `${(p.weight_per_piece_kg * 1000).toFixed(1)} g`}
             </span>
           </div>
         )}
@@ -288,23 +290,30 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
             <span className="text-xs font-medium text-gray-600">¥{aluminumPrice.price.toLocaleString()}/吨</span>
           </div>
         )}
-        {pricingResult.aluminum_index > 0 && (
+        {!isPlaceholder && p.aluminum_index > 0 && (
           <div className="flex justify-between items-center">
             <span className="text-[11px] text-gray-400">计价铝锭价</span>
-            <span className="text-xs font-medium text-gray-600">¥{pricingResult.aluminum_index.toLocaleString()}/吨</span>
+            <span className="text-xs font-medium text-gray-600">¥{p.aluminum_index.toLocaleString()}/吨</span>
           </div>
         )}
       </div>
 
       {/* 警告提示 */}
-      {pricingResult.notes && pricingResult.notes.length > 0 && (
+      {!isPlaceholder && p.notes && p.notes.length > 0 && (
         <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
-          {pricingResult.notes.map((note, i) => (
+          {p.notes.map((note: string, i: number) => (
             <div key={i} className="flex items-start gap-1.5 text-xs text-amber-700">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
               <span>{note}</span>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* 无数据时的提示 */}
+      {isPlaceholder && (
+        <div className="flex items-center justify-center py-3">
+          <p className="text-xs text-gray-300">请填写参数，系统将自动计算报价</p>
         </div>
       )}
     </div>

@@ -102,7 +102,7 @@ const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
     materialCategories: {
       '铝型材': {
         label: '铝型材',
-        fields: ['width', 'height', 'length', 'meterWeight', 'quantity', 'netWeight'],
+        fields: ['width', 'height', 'length', 'perimeter', 'num_cavities', 'meterWeight', 'quantity', 'netWeight'],
         materialSurfaceTreatment: ['无', '喷砂氧化', '抛光氧化', '拉丝氧化', '喷涂'],
         materialColorMap: {
           '喷砂氧化': ['本色', '黑色', '铁灰色', '金色'],
@@ -301,6 +301,8 @@ const FIELD_LABELS: Record<string, string> = {
   width: '截面宽度(mm)',
   height: '截面高度(mm)',
   length: '长度(mm)',
+  perimeter: '产品周长(mm)',
+  num_cavities: '面域数',
   thickness: '厚度(mm)',
   productSize: '产品尺寸(长×宽×高mm)',
   quantity: '数量(件)',
@@ -358,6 +360,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [productColor, setProductColor] = useState('');
   const [meterWeightManual, setMeterWeightManual] = useState(false);
   const [quantityManual, setQuantityManual] = useState(false);
+  const [perimeterManual, setPerimeterManual] = useState(false);
 
   // File upload state
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -392,6 +395,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (cat.fields.includes('productSize')) defaultFields.productSize = '';
     if (cat.fields.includes('meterWeight')) defaultFields.meterWeight = '';
     if (cat.fields.includes('netWeight')) defaultFields.netWeight = '';
+    if (cat.fields.includes('perimeter')) defaultFields.perimeter = '';
+    if (cat.fields.includes('num_cavities')) defaultFields.num_cavities = 1;
     setFields(defaultFields);
     if (cat.materialSurfaceTreatment) {
       setMaterialSurfaceTreatment('无');
@@ -425,6 +430,18 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const meterWeight = w * h * 2.7;
       const rounded = Math.round(meterWeight * 100) / 100;
       setFields(prev => ({ ...prev, meterWeight: rounded }));
+    }
+  }, [fields.width, fields.height, productType]);
+
+  // ==================== Auto-calculate perimeter from cross-section ====================
+  useEffect(() => {
+    if (productType !== '挤出') return;
+    if (perimeterManual) return; // 用户手动修改后不再自动更新
+    const w = fields.width as number;
+    const h = fields.height as number;
+    if (w && h && w > 0 && h > 0) {
+      const perimeter = 2 * (w + h);
+      setFields(prev => ({ ...prev, perimeter }));
     }
   }, [fields.width, fields.height, productType]);
 
@@ -674,7 +691,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const width = fields.width as number;
       const height = fields.height as number;
       const length = fields.length as number;
-      if (width || height || length) return { length_mm: length || 0, width_mm: width || 0, height_mm: height || undefined };
+      if (width || height || length) return {
+        length_mm: length || 0,
+        width_mm: width || 0,
+        height_mm: height || undefined,
+        perimeter_mm: (fields.perimeter as number) || undefined,
+        num_cavities: parseInt(fields.num_cavities as string) || 1,
+      };
     }
     if (productType === '板材') {
       const thickness = fields.thickness as number;
@@ -804,7 +827,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   // Field rendering with two-column grid
   const renderFields = () => {
     if (!categoryConfig) return null;
-    const fieldOrder = ['width', 'height', 'length', 'meterWeight', 'thickness', 'productSize', 'quantity', 'netWeight'];
+    const fieldOrder = ['width', 'height', 'length', 'perimeter', 'num_cavities', 'meterWeight', 'thickness', 'productSize', 'quantity', 'netWeight'];
     const visibleFields = fieldOrder.filter(f => categoryConfig.fields.includes(f));
 
     // Group into pairs for two-column layout
@@ -832,6 +855,31 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   </div>
                 );
               }
+              // num_cavities 用 select 渲染
+              if (fieldKey === 'num_cavities') {
+                const cavVal = (fields[fieldKey] as number) ?? 1;
+                const cavLabel = cavVal >= 2 ? '分流模' : '平模';
+                return (
+                  <div key={fieldKey}>
+                    <label className="block text-[11px] text-gray-500 mb-1">
+                      {FIELD_LABELS[fieldKey]}
+                      <span className="ml-1 text-[10px] text-blue-500">({cavLabel})</span>
+                    </label>
+                    <select
+                      value={cavVal}
+                      onChange={e => {
+                        const val = parseInt(e.target.value) || 1;
+                        setFields(prev => ({ ...prev, [fieldKey]: val }));
+                      }}
+                      className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+                    >
+                      {['1', '2', '3', '4'].map(opt => (
+                        <option key={opt} value={opt}>{opt}{parseInt(opt) === 1 ? ' (平模)' : ' (分流模)'}</option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              }
               return (
                 <div key={fieldKey}>
                   <label className="block text-[11px] text-gray-500 mb-1">{FIELD_LABELS[fieldKey]}</label>
@@ -852,6 +900,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                         if (fieldKey === 'width' || fieldKey === 'height') {
                           setMeterWeightManual(false);
                           setQuantityManual(false);
+                        }
+                        if (fieldKey === 'perimeter') {
+                          setPerimeterManual(val > 0);
                         }
                       }}
                     className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"

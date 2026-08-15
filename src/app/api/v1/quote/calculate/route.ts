@@ -43,6 +43,8 @@ interface QuoteRequest {
     height_mm?: number;
     wall_thickness_mm?: number;
     cross_section_area_mm2?: number; // 截面积 mm²（挤压铝型材）
+    perimeter_mm?: number;    // 产品周长(mm)
+    num_cavities?: number;    // 面域数（1=平模，>=2=分流模）
   };
   volume_cm3?: number;       // 体积 cm³
   surface_area_cm2?: number; // 表面积 cm²
@@ -555,18 +557,121 @@ function calcExtrusion(
   let moldCost = 0;
   if (req.mold_cost && req.mold_cost > 0) {
     moldCost = req.mold_cost;
+    notes.push(`挤压模具费: ${moldCost}元（用户指定，一次性，不计入单件价格）`);
+    breakdown['mold'] = {
+      formula: '用户指定模具费',
+      detail: `模具费: ${moldCost}元（单独列出）`,
+    };
   } else {
-    // 估算挤压模具费
-    const maxDim = Math.max(dims.width_mm || 50, dims.height_mm || 25);
-    const perimeter = 2 * ((dims.width_mm || 50) + (dims.height_mm || 25));
-    moldCost = 600 + perimeter * 0.1 + maxDim * 0.05;
-    moldCost = Math.round(moldCost);
+    // ====== 新挤压模具费计算 ======
+
+    // 标准模具规格（mm）
+    const STANDARD_DIE_SIZES = [139, 158, 178, 198, 218, 248, 278, 297, 338, 397];
+
+    // 分流模标准厚度档位（mm）
+    const STANDARD_THICKNESS = [90, 110, 120, 130, 160, 190, 230, 260, 360];
+
+    // 安全米重上限表：key="Φ×H" → 上限值(kg/m)
+    const SAFE_METER_WEIGHT_LIMITS: Record<string, number> = {
+      '139x55': 1.03, '139x65': 1.20, '139x90': 1.71, '139x110': 1.71,
+      '158x60': 1.33, '158x65': 1.55, '158x120': 2.21, '158x130': 2.21,
+      '178x60': 1.75, '178x130': 2.92,
+      '198x130': 3.46, '198x160': 3.46,
+      '218x160': 4.24,
+      '248x160': 5.37, '248x190': 5.37,
+      '278x190': 6.88, '278x230': 6.88,
+      '297x190': 7.71, '297x230': 7.71, '297x260': 7.71,
+      '338x190': 9.84, '338x230': 9.84, '338x260': 9.84,
+      '397x230': 13.33, '397x260': 13.33, '397x360': 13.33,
+    };
+
+    // 每个规格的最大米重上限（=最厚档位的值）
+    const MAX_METER_WEIGHT_BY_SIZE: Record<number, number> = {
+      139: 1.71, 158: 2.21, 178: 2.92, 198: 3.46, 218: 4.24,
+      248: 5.37, 278: 6.88, 297: 7.71, 338: 9.84, 397: 13.33,
+    };
+
+    // 管理费率（按厚度H递减，保底15%封顶35%）
+    function getManagementRate(H: number): number {
+      if (H <= 60) return 0.35;
+      if (H <= 130) return 0.25;
+      if (H <= 190) return 0.18;
+      return 0.15; // H >= 230
+    }
+
+    // 步骤1：对角线 → 模具直径
+    const W = dims.width_mm || 50;
+    const H_dim = dims.height_mm || 25;
+    const diagonal = Math.sqrt(W * W + H_dim * H_dim);
+    let phiDiag = diagonal * 1.1 + 80;
+    let dieDiameter = STANDARD_DIE_SIZES.find(s => s >= phiDiag) || STANDARD_DIE_SIZES[STANDARD_DIE_SIZES.length - 1];
+    if (phiDiag <= 140) dieDiameter = 139;
+
+    // 步骤2：面域数 → 模具类型和基础厚度
+    const numCavities = dims.num_cavities || 1;
+    const isFlatDie = numCavities <= 1;
+    let dieThickness: number;
+
+    if (isFlatDie) {
+      dieThickness = 60; // 平模固定H=60
+    } else {
+      // 分流模：判断异型复杂度
+      const straightPerimeter = 2 * (W + H_dim);
+      const actualPerimeter = dims.perimeter_mm || straightPerimeter;
+      const complexityRatio = actualPerimeter / straightPerimeter;
+
+      const estimatedH = (W + H_dim) / 5;
+
+      if (complexityRatio < 1.5) {
+        dieThickness = STANDARD_THICKNESS.find(t => t >= estimatedH) || 90;
+      } else {
+        const idx = STANDARD_THICKNESS.findIndex(t => t >= estimatedH);
+        dieThickness = idx >= 0 && idx < STANDARD_THICKNESS.length - 1
+          ? STANDARD_THICKNESS[idx + 1]
+          : (STANDARD_THICKNESS[idx] || 130);
+      }
+    }
+
+    // 步骤3：米重负载校验
+    const meterWeightKgPerM = (dims.cross_section_area_mm2
+      ? dims.cross_section_area_mm2 * 2.7 / 1000
+      : (W * H_dim * 2.7 / 1000));
+
+    const limitKey = `${dieDiameter}x${dieThickness}`;
+    let safeLimit = SAFE_METER_WEIGHT_LIMITS[limitKey];
+    if (safeLimit === undefined) {
+      const maxLimit = MAX_METER_WEIGHT_BY_SIZE[dieDiameter] || 13.33;
+      safeLimit = maxLimit;
+    }
+
+    while (meterWeightKgPerM > safeLimit) {
+      const currentIdx = STANDARD_DIE_SIZES.indexOf(dieDiameter);
+      if (currentIdx < STANDARD_DIE_SIZES.length - 1) {
+        dieDiameter = STANDARD_DIE_SIZES[currentIdx + 1];
+        const newKey = `${dieDiameter}x${dieThickness}`;
+        safeLimit = SAFE_METER_WEIGHT_LIMITS[newKey] || MAX_METER_WEIGHT_BY_SIZE[dieDiameter] || 13.33;
+      } else {
+        break;
+      }
+    }
+
+    // 步骤4：计算模具费
+    const materialFee = 0.0001726 * dieDiameter * dieDiameter * dieThickness;
+    const processingFee = 0.035 * dieDiameter * dieThickness;
+    const mgmtRate = getManagementRate(dieThickness);
+    moldCost = Math.round((materialFee + processingFee) * (1 + mgmtRate));
+
+    const dieType = isFlatDie ? '平模' : '分流模';
+    notes.push(`模具规格: Φ${dieDiameter}×${dieThickness} ${dieType}`);
+    notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + ${Math.round(processingFee)}加工) × ${(mgmtRate*100).toFixed(0)}%管理费`);
+    notes.push(`模具费一次性，不计入单件价格`);
+
+    breakdown['mold'] = {
+      formula: `(材料费0.0001726×Φ²×H + 加工费0.035×Φ×H) × (1+管理费率)`,
+      detail: `Φ${dieDiameter}×${dieThickness}${dieType}: 材料费${Math.round(materialFee)} + 加工费${Math.round(processingFee)} → ×${(1+mgmtRate).toFixed(2)} = ${moldCost}元`,
+    };
   }
-  notes.push(`挤压模具费: ${moldCost}元（一次性，不计入单件价格）`);
-  breakdown['mold'] = {
-    formula: '基础费600 + 截面周长×0.1 + 最大尺寸×0.05',
-    detail: `模具费: ${moldCost}元（单独列出）`,
-  };
+
   
   // 3. 挤压铝型材加工费（按重量计算，1000元/吨 = 1元/kg）
   // 挤压加工费已包含在材料单价中，此处仅计算二次加工（锯切、去毛刺等）
