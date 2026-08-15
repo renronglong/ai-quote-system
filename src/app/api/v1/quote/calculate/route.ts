@@ -642,6 +642,26 @@ function calcExtrusion(
       }
     }
 
+
+    // 步骤2.5：校验 Φ×H 组合是否实际存在于安全表
+    // 若不存在，升级到该规格的最小可用厚度
+    const availableThicknessBySize: Record<number, number[]> = {};
+    for (const key of Object.keys(SAFE_METER_WEIGHT_LIMITS)) {
+      const parts = key.split('x');
+      const sz = parseInt(parts[0]);
+      const th = parseInt(parts[1]);
+      if (!availableThicknessBySize[sz]) availableThicknessBySize[sz] = [];
+      if (!availableThicknessBySize[sz].includes(th)) availableThicknessBySize[sz].push(th);
+    }
+    const checkKey = `${dieDiameter}x${dieThickness}`;
+    if (SAFE_METER_WEIGHT_LIMITS[checkKey] === undefined) {
+      const available = (availableThicknessBySize[dieDiameter] || []).sort((a, b) => a - b);
+      if (available.length > 0) {
+        const newH = available[0];
+        notes.push(`模具规格 Φ${dieDiameter}×${dieThickness} 不可用，自动升级到 Φ${dieDiameter}×${newH}`);
+        dieThickness = newH;
+      }
+    }
     // 步骤3：米重负载校验
     // 优先使用用户手动输入的米重(g/m转kg/m)，否则用公式计算
     const meterWeightKgPerM = dims.meter_weight_g_per_m
