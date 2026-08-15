@@ -102,7 +102,7 @@ const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
     materialCategories: {
       '铝型材': {
         label: '铝型材',
-        fields: ['width', 'height', 'length', 'perimeter', 'num_cavities', 'meterWeight', 'quantity', 'netWeight'],
+        fields: ['width', 'height', 'length', 'perimeter', 'num_cavities', 'die_type', 'meterWeight', 'quantity', 'netWeight'],
         materialSurfaceTreatment: ['无', '喷砂氧化', '抛光氧化', '拉丝氧化', '喷涂'],
         materialColorMap: {
           '喷砂氧化': ['本色', '黑色', '铁灰色', '金色'],
@@ -303,6 +303,7 @@ const FIELD_LABELS: Record<string, string> = {
   length: '长度(mm)',
   perimeter: '产品周长(mm)',
   num_cavities: '面域数',
+  die_type: '模具类型',
   thickness: '厚度(mm)',
   productSize: '产品尺寸(长×宽×高mm)',
   quantity: '数量(件)',
@@ -397,6 +398,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (cat.fields.includes('netWeight')) defaultFields.netWeight = '';
     if (cat.fields.includes('perimeter')) defaultFields.perimeter = '';
     if (cat.fields.includes('num_cavities')) defaultFields.num_cavities = 1;
+    if (cat.fields.includes('die_type')) defaultFields.die_type = 'flat';
     setFields(defaultFields);
     if (cat.materialSurfaceTreatment) {
       setMaterialSurfaceTreatment('无');
@@ -697,6 +699,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         height_mm: height || undefined,
         perimeter_mm: (fields.perimeter as number) || undefined,
         num_cavities: parseInt(fields.num_cavities as string) || 1,
+        die_type: (fields.die_type as 'flat' | 'split' | 'pseudo') || 'flat',
       };
     }
     if (productType === '板材') {
@@ -827,7 +830,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   // Field rendering with two-column grid
   const renderFields = () => {
     if (!categoryConfig) return null;
-    const fieldOrder = ['width', 'height', 'length', 'perimeter', 'num_cavities', 'meterWeight', 'thickness', 'productSize', 'quantity', 'netWeight'];
+    const fieldOrder = ['width', 'height', 'length', 'perimeter', 'num_cavities', 'die_type', 'meterWeight', 'thickness', 'productSize', 'quantity', 'netWeight'];
     const visibleFields = fieldOrder.filter(f => categoryConfig.fields.includes(f));
 
     // Group into pairs for two-column layout
@@ -869,13 +872,42 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                       value={cavVal}
                       onChange={e => {
                         const val = parseInt(e.target.value) || 1;
-                        setFields(prev => ({ ...prev, [fieldKey]: val }));
+                        setFields(prev => ({
+                          ...prev,
+                          [fieldKey]: val,
+                          die_type: val <= 1 ? 'flat' : 'split',
+                        }));
                       }}
                       className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
                     >
                       {['1', '2', '3', '4'].map(opt => (
                         <option key={opt} value={opt}>{opt}{parseInt(opt) === 1 ? ' (平模)' : ' (分流模)'}</option>
                       ))}
+                    </select>
+                  </div>
+                );
+              }
+              // die_type 用 select 渲染
+              if (fieldKey === 'die_type') {
+                const dtVal = (fields[fieldKey] as string) || 'flat';
+                return (
+                  <div key={fieldKey}>
+                    <label className="block text-[11px] text-gray-500 mb-1">{FIELD_LABELS[fieldKey]}</label>
+                    <select
+                      value={dtVal}
+                      onChange={e => {
+                        const val = e.target.value as 'flat' | 'split' | 'pseudo';
+                        setFields(prev => ({
+                          ...prev,
+                          [fieldKey]: val,
+                          num_cavities: val === 'flat' ? 1 : 2,
+                        }));
+                      }}
+                      className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+                    >
+                      <option value="flat">平模</option>
+                      <option value="split">分流模</option>
+                      <option value="pseudo">假整体模</option>
                     </select>
                   </div>
                 );

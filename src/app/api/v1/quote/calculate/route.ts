@@ -45,6 +45,7 @@ interface QuoteRequest {
     cross_section_area_mm2?: number; // 截面积 mm²（挤压铝型材）
     perimeter_mm?: number;    // 产品周长(mm)
     num_cavities?: number;    // 面域数（1=平模，>=2=分流模）
+    die_type?: 'flat' | 'split' | 'pseudo'; // 模具类型：平模/分流模/假整体模
   };
   volume_cm3?: number;       // 体积 cm³
   surface_area_cm2?: number; // 表面积 cm²
@@ -607,15 +608,22 @@ function calcExtrusion(
     let dieDiameter = STANDARD_DIE_SIZES.find(s => s >= phiDiag) || STANDARD_DIE_SIZES[STANDARD_DIE_SIZES.length - 1];
     if (phiDiag <= 140) dieDiameter = 139;
 
-    // 步骤2：面域数 → 模具类型和基础厚度
+    // 步骤2：模具类型确定 → 基础厚度
+    // 优先使用用户手动选择的 die_type，没有则根据 num_cavities 自动推断
     const numCavities = dims.num_cavities || 1;
-    const isFlatDie = numCavities <= 1;
+    let dieTypeKey: 'flat' | 'split' | 'pseudo';
+    if (dims.die_type) {
+      dieTypeKey = dims.die_type;
+    } else {
+      dieTypeKey = numCavities <= 1 ? 'flat' : 'split';
+    }
+    const isFlatDie = dieTypeKey === 'flat';
     let dieThickness: number;
 
     if (isFlatDie) {
       dieThickness = 60; // 平模固定H=60
     } else {
-      // 分流模：判断异型复杂度
+      // 分流模/假整体模：判断异型复杂度
       const straightPerimeter = 2 * (W + H_dim);
       const actualPerimeter = dims.perimeter_mm || straightPerimeter;
       const complexityRatio = actualPerimeter / straightPerimeter;
@@ -661,7 +669,8 @@ function calcExtrusion(
     const mgmtRate = getManagementRate(dieThickness);
     moldCost = Math.round((materialFee + processingFee) * (1 + mgmtRate));
 
-    const dieType = isFlatDie ? '平模' : '分流模';
+    const dieTypeMap: Record<string, string> = { flat: '平模', split: '分流模', pseudo: '假整体模' };
+    const dieType = dieTypeMap[dieTypeKey] || '分流模';
     notes.push(`模具规格: Φ${dieDiameter}×${dieThickness} ${dieType}`);
     notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + ${Math.round(processingFee)}加工) × ${(mgmtRate*100).toFixed(0)}%管理费`);
     notes.push(`模具费一次性，不计入单件价格`);
