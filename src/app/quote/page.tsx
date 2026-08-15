@@ -1,26 +1,16 @@
-'use client';
-
 import { useState, useEffect, useCallback, useRef } from 'react';
-import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
-import ChatPanel from '@/components/ChatPanel';
 import QuoteForm, { PricingResult } from '@/components/QuoteForm';
 import {
   TrendingUp,
-  LogOut,
-  Menu,
-  X,
   Loader2,
   Factory,
-  Upload,
-  History,
-  User,
-  LayoutGrid,
-  Zap,
+  ChevronDown,
+  ChevronUp,
+  AlertTriangle,
   Package,
-  Warehouse,
-  ClipboardList,
+  BarChart3,
 } from 'lucide-react';
 
 interface AiFormUpdate {
@@ -36,7 +26,6 @@ interface AiFormUpdate {
   secondaryProcessing?: string[];
 }
 
-
 interface AluminumPrice {
   price: number;
   change: number;
@@ -47,31 +36,30 @@ export default function QuotePage() {
   const { user, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
   const [aluminumPrice, setAluminumPrice] = useState<AluminumPrice | null>(null);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [aiFormData, setAiFormData] = useState<AiFormUpdate | null>(null);
-  const [pricingResult, setPricingResult] = useState<any>(null);
+  const [pricingResult, setPricingResult] = useState<PricingResult | null>(null);
+  const [resultExpanded, setResultExpanded] = useState(true);
   const aiDataCounter = useRef(0);
 
   const handleFormUpdate = useCallback((data: AiFormUpdate) => {
-    // 每次都用新对象引用，触发 QuoteForm 的 useEffect
     aiDataCounter.current += 1;
     setAiFormData({ ...data, _v: aiDataCounter.current } as AiFormUpdate);
   }, []);
 
-  const handlePricingResult = useCallback((result: any) => {
+  const handleResult = useCallback((result: PricingResult | null) => {
     setPricingResult(result);
   }, []);
 
-  // 登录检查：未登录用户重定向到登录页
+  // Login check
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login?redirect=/quote');
     }
   }, [authLoading, user, router]);
 
-  // 获取实时铝价
+  // Fetch aluminum price
   useEffect(() => {
-    const fetchAluminumPrice = async () => {
+    const fetchPrice = async () => {
       try {
         const res = await fetch(`/api/market-price?material=${encodeURIComponent('铝型材')}`);
         const data = await res.json();
@@ -80,178 +68,218 @@ export default function QuotePage() {
         console.error('获取铝锭价失败:', error);
       }
     };
-    fetchAluminumPrice();
-    const interval = setInterval(fetchAluminumPrice, 5 * 60 * 1000);
+    fetchPrice();
+    const interval = setInterval(fetchPrice, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
   return (
-    <div className="h-screen bg-white flex flex-col overflow-hidden">
-      {/* 顶部导航栏 */}
-      <header className="shrink-0 bg-[#0F2040] shadow-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            {/* Logo */}
-            <Link href="/" className="flex items-center gap-2 flex-shrink-0">
-              <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center">
-                <Factory className="w-5 h-5 text-white" />
+    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+      {/* 顶部栏 - 紧凑 */}
+      <header className="shrink-0 bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-[1600px] mx-auto px-4 lg:px-6">
+          <div className="flex items-center justify-between h-12">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                <Factory className="w-4 h-4 text-white" />
               </div>
-              <div>
-                <span className="text-lg font-bold text-white">工品报价</span>
-                <span className="hidden sm:inline text-xs text-white/60 ml-1">gyparts.cn</span>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-base font-bold text-gray-800">报价计算器</span>
+                <span className="hidden sm:inline text-[10px] text-gray-400">gyparts.cn</span>
               </div>
-            </Link>
+            </div>
 
-            {/* 桌面导航菜单 */}
-            <nav className="hidden lg:flex items-center gap-5">
-              <Link href="/#ai-quote" className="text-sm text-white/80 hover:text-white transition-colors">
-                AI 智能报价
-              </Link>
-              <Link href="/products" className="text-sm text-white/80 hover:text-white transition-colors">
-                产品库
-              </Link>
-              <Link href="/market" className="text-sm text-white/80 hover:text-white transition-colors">
-                实时金属行情
-              </Link>
-              <Link href="/help" className="text-sm text-white/80 hover:text-white transition-colors">
-                帮助中心
-              </Link>
-
-              {/* 行情小标签 */}
+            <div className="flex items-center gap-3">
               {aluminumPrice && (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10">
-                  <TrendingUp className="w-3.5 h-3.5 text-orange-300" />
-                  <span className="text-xs text-white/60">铝锭价</span>
-                  <span className="text-xs font-semibold text-orange-300">¥{aluminumPrice.price.toLocaleString()}</span>
-                  <span className={`text-xs ${aluminumPrice.change >= 0 ? 'text-red-400' : 'text-green-400'}`}>
+                <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-50 border border-gray-200">
+                  <TrendingUp className="w-3 h-3 text-orange-500" />
+                  <span className="text-[10px] text-gray-500">铝锭</span>
+                  <span className="text-xs font-bold text-gray-800">¥{aluminumPrice.price.toLocaleString()}</span>
+                  <span className={`text-[10px] font-medium ${aluminumPrice.change >= 0 ? 'text-red-500' : 'text-green-500'}`}>
                     {aluminumPrice.change >= 0 ? '↑' : '↓'}{Math.abs(aluminumPrice.changePercent).toFixed(2)}%
                   </span>
                 </div>
               )}
-            </nav>
-
-            {/* 右侧操作区 */}
-            <div className="hidden lg:flex items-center gap-3">
               {authLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin text-white/60" />
+                <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
               ) : user ? (
-                <div className="flex items-center gap-2">
-                  <Link
-                    href="/profile"
-                    className="p-2 text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/10"
-                  >
-                    <User className="w-5 h-5" />
-                  </Link>
-                  <button
-                    onClick={() => signOut()}
-                    className="p-2 text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/10"
-                    title="退出登录"
-                  >
-                    <LogOut className="w-5 h-5" />
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-gray-500">{user.email || '用户'}</span>
+                  <button onClick={() => signOut()} className="text-[10px] text-gray-400 hover:text-gray-600 transition-colors">
+                    退出
                   </button>
                 </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Link href="/login" className="text-sm text-white/70 hover:text-white transition-colors">
-                    登录
-                  </Link>
-                  <span className="text-white/30">/</span>
-                  <Link href="/register" className="text-sm text-white/70 hover:text-white transition-colors">
-                    注册
-                  </Link>
-                </div>
-              )}
+              ) : null}
             </div>
-
-            {/* 移动端菜单按钮 */}
-            <button
-              className="lg:hidden text-white p-2"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
           </div>
         </div>
-
-        {/* 移动端菜单 */}
-        {mobileMenuOpen && (
-          <div className="lg:hidden bg-[#0F2040] border-t border-white/10 px-4 py-3 space-y-2">
-            <Link href="/products" className="block text-sm text-white/80 py-2" onClick={() => setMobileMenuOpen(false)}>产品库</Link>
-            <Link href="/market" className="block text-sm text-white/80 py-2" onClick={() => setMobileMenuOpen(false)}>实时金属行情</Link>
-            <Link href="/help" className="block text-sm text-white/80 py-2" onClick={() => setMobileMenuOpen(false)}>帮助中心</Link>
-            {!user && (
-              <div className="flex gap-3 pt-2 border-t border-white/10">
-                <Link href="/login" className="text-sm text-white/70" onClick={() => setMobileMenuOpen(false)}>登录</Link>
-                <Link href="/register" className="text-sm text-white/70" onClick={() => setMobileMenuOpen(false)}>注册</Link>
-              </div>
-            )}
-          </div>
-        )}
       </header>
 
-      {/* 主内容区：侧边栏 + 表单 + AI对话 */}
+      {/* 主内容区 */}
       <main className="flex-1 flex min-h-0 overflow-hidden">
-        {/* 左侧导航栏 */}
-        <aside className="hidden lg:flex flex-col w-48 bg-[#1a2940] border-r border-white/5 shrink-0 overflow-y-auto">
-          <div className="px-3 py-4 space-y-1">
-            {[
-              { icon: LayoutGrid, label: '报价工作台', href: '/quote', active: true },
-              { icon: Zap, label: '快速估价', href: '/quote?mode=quick' },
-              { icon: Package, label: '产品管理', href: '/products' },
-              { icon: Warehouse, label: '库存管理', href: '/inventory' },
-              { icon: ClipboardList, label: '报价历史', href: '/history' },
-            ].map(item => (
-              <Link
-                key={item.label}
-                href={item.href}
-                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm transition-all ${
-                  item.active
-                    ? 'bg-blue-600/20 text-blue-300 font-medium'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-                }`}
-              >
-                <item.icon className="w-4 h-4" />
-                {item.label}
-              </Link>
-            ))}
+        {/* 左侧：参数输入区 */}
+        <div className="w-full lg:w-[58%] xl:w-[55%] overflow-y-auto bg-gray-50">
+          <div className="max-w-2xl mx-auto">
+            <QuoteForm
+              aiData={aiFormData}
+              onResult={handleResult}
+            />
           </div>
-        </aside>
-
-        {/* 左栏：报价参数表单 */}
-        <div className="hidden md:block w-80 border-r border-gray-200 bg-gray-50/50 overflow-y-auto shrink-0">
-          <QuoteForm aiData={aiFormData} pricingResult={pricingResult} />
         </div>
 
-        {/* 右栏：AI报价助手 */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden bg-white">
-          {/* 页面标题栏 */}
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-slate-200 px-4 py-3 shrink-0">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-lg font-bold text-slate-800">AI 智能报价</h1>
-                <p className="text-xs text-slate-500 mt-0.5">上传图纸 / 描述需求，AI将自动识别并填入参数</p>
-              </div>
-              <div className="flex items-center gap-3">
-                {aluminumPrice && (
-                  <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-slate-200">
-                    <TrendingUp className="w-3.5 h-3.5 text-orange-500" />
-                    <span className="text-xs text-slate-500">铝锭价</span>
-                    <span className="text-sm font-bold text-slate-800">¥{aluminumPrice.price.toLocaleString()}/吨</span>
-                    <span className={`text-xs font-medium ${aluminumPrice.change >= 0 ? 'text-red-500' : 'text-green-500'}`}>
-                      {aluminumPrice.change >= 0 ? '↑' : '↓'}{Math.abs(aluminumPrice.changePercent).toFixed(2)}%
-                    </span>
+        {/* 右侧：实时结果区 - PC sticky */}
+        <div className="hidden lg:flex lg:w-[42%] xl:w-[45%] flex-col border-l border-gray-200 bg-white">
+          <div className="flex-1 overflow-y-auto">
+            <div className="sticky top-0 p-5 space-y-4">
+              {/* 结果卡片 */}
+              <ResultPanel pricingResult={pricingResult} aluminumPrice={aluminumPrice} />
+            </div>
+          </div>
+        </div>
+      </main>
+
+      {/* 移动端底部结果区 - 可折叠 */}
+      <div className="lg:hidden shrink-0 border-t border-gray-200 bg-white">
+        <button
+          onClick={() => setResultExpanded(!resultExpanded)}
+          className="w-full flex items-center justify-between px-4 py-2.5 bg-white border-b border-gray-100"
+        >
+          <span className="text-sm font-medium text-gray-700">
+            {pricingResult ? `¥${pricingResult.unit_price.toFixed(2)}/件` : '报价结果'}
+          </span>
+          {resultExpanded ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronUp className="w-4 h-4 text-gray-400" />}
+        </button>
+        {resultExpanded && (
+          <div className="p-4 max-h-[40vh] overflow-y-auto">
+            <ResultPanel pricingResult={pricingResult} aluminumPrice={aluminumPrice} compact />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ==================== Result Panel Component ====================
+
+function ResultPanel({ pricingResult, aluminumPrice, compact }: {
+  pricingResult: PricingResult | null;
+  aluminumPrice: AluminumPrice | null;
+  compact?: boolean;
+}) {
+  if (!pricingResult) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
+          <BarChart3 className="w-7 h-7 text-gray-300" />
+        </div>
+        <p className="text-sm text-gray-400 font-medium">请填写参数</p>
+        <p className="text-xs text-gray-300 mt-1">系统将自动计算报价</p>
+      </div>
+    );
+  }
+
+  const breakdownItems = [
+    { label: '材料费', value: pricingResult.material_cost, key: 'material_cost' },
+    { label: '加工费', value: pricingResult.processing_cost, key: 'processing_cost' },
+    { label: '表面处理费', value: pricingResult.surface_treatment_cost, key: 'surface_treatment_cost' },
+    { label: '二次加工费', value: pricingResult.secondary_operations_cost, key: 'secondary_operations_cost' },
+    { label: '包装费', value: pricingResult.packaging_cost, key: 'packaging_cost' },
+    { label: '运输费', value: pricingResult.transport_cost, key: 'transport_cost' },
+    { label: '管理费', value: pricingResult.management_fee, key: 'management_fee' },
+  ];
+
+  return (
+    <div className={`space-y-3 ${compact ? 'space-y-2' : ''}`}>
+      {/* 单价大卡片 */}
+      <div className="rounded-2xl bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 border border-emerald-200/60 p-4 shadow-sm">
+        <div className="flex items-center gap-1.5 mb-1">
+          <Package className="w-3.5 h-3.5 text-emerald-600" />
+          <span className="text-[11px] font-medium text-emerald-600 uppercase tracking-wide">单价</span>
+        </div>
+        <div className="flex items-baseline gap-1">
+          <span className={`font-bold text-emerald-700 ${compact ? 'text-2xl' : 'text-4xl'}`}>
+            ¥{pricingResult.unit_price.toFixed(2)}
+          </span>
+          <span className="text-sm text-emerald-500">/件</span>
+        </div>
+        <div className="mt-1.5 flex items-baseline gap-1">
+          <span className="text-xs text-gray-500">总价</span>
+          <span className={`font-bold text-gray-800 ${compact ? 'text-lg' : 'text-2xl'}`}>
+            ¥{pricingResult.total_price.toFixed(2)}
+          </span>
+        </div>
+      </div>
+
+      {/* 费用明细 */}
+      <div className="rounded-xl bg-white border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
+          <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">费用明细</span>
+        </div>
+        <div className="divide-y divide-gray-100">
+          {breakdownItems.map((item, idx) => (
+            <div key={item.key} className={`flex justify-between items-center px-3 py-2 ${idx % 2 === 1 ? 'bg-gray-50/50' : ''}`}>
+              <span className="text-xs text-gray-500">{item.label}</span>
+              <div className="text-right">
+                <span className="text-sm font-semibold text-gray-800">¥{item.value.toFixed(2)}</span>
+                {pricingResult.breakdown?.[item.key] && (
+                  <div className="text-[10px] text-gray-400 leading-tight">
+                    {pricingResult.breakdown[item.key].formula && (
+                      <span className="italic">{pricingResult.breakdown[item.key].formula}</span>
+                    )}
                   </div>
                 )}
               </div>
             </div>
-          </div>
-
-          {/* ChatPanel - 占满剩余空间 */}
-          <div className="flex-1 p-3 min-h-0 overflow-hidden">
-            <ChatPanel onFormUpdate={handleFormUpdate} onPricingResult={handlePricingResult} />
-          </div>
+          ))}
         </div>
-      </main>
+
+        {/* 分割线 */}
+        <div className="border-t-2 border-dashed border-gray-200" />
+
+        {/* 单价汇总 */}
+        <div className="flex justify-between items-center px-3 py-2 bg-emerald-50/50">
+          <span className="text-xs font-medium text-gray-600">单价合计</span>
+          <span className="text-base font-bold text-emerald-600">¥{pricingResult.unit_price.toFixed(2)}</span>
+        </div>
+      </div>
+
+      {/* 辅助信息 */}
+      <div className="rounded-xl bg-gray-50 border border-gray-100 p-3 space-y-1.5">
+        {pricingResult.weight_per_piece_kg > 0 && (
+          <div className="flex justify-between items-center">
+            <span className="text-[11px] text-gray-400">单件重量</span>
+            <span className="text-xs font-medium text-gray-600">
+              {pricingResult.weight_per_piece_kg >= 1
+                ? `${pricingResult.weight_per_piece_kg.toFixed(3)} kg`
+                : `${(pricingResult.weight_per_piece_kg * 1000).toFixed(1)} g`}
+            </span>
+          </div>
+        )}
+        {aluminumPrice && (
+          <div className="flex justify-between items-center">
+            <span className="text-[11px] text-gray-400">铝锭基价</span>
+            <span className="text-xs font-medium text-gray-600">¥{aluminumPrice.price.toLocaleString()}/吨</span>
+          </div>
+        )}
+        {pricingResult.aluminum_index > 0 && (
+          <div className="flex justify-between items-center">
+            <span className="text-[11px] text-gray-400">计价铝锭价</span>
+            <span className="text-xs font-medium text-gray-600">¥{pricingResult.aluminum_index.toLocaleString()}/吨</span>
+          </div>
+        )}
+      </div>
+
+      {/* 警告提示 */}
+      {pricingResult.notes && pricingResult.notes.length > 0 && (
+        <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
+          {pricingResult.notes.map((note, i) => (
+            <div key={i} className="flex items-start gap-1.5 text-xs text-amber-700">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>{note}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
