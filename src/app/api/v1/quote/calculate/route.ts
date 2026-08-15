@@ -491,9 +491,7 @@ function calcExtrusionMaterialCost(
   weightOverride?: number,
 ): { cost: number; weight: number; formula: string; detail: string } {
   const matRule = rules.material_prices['挤压铝型材'] || {};
-  const density = matRule.density || 2.7;
   const extrusionFeePerTon = matRule.extrusion_fee_per_ton || 3000;
-  const fillFactor = matRule.fill_factor || 0.35;
   
   // 材料单价 = 铝锭价 + 挤压加工费 (元/吨)
   const materialPricePerTon = aluminumPrice + extrusionFeePerTon;
@@ -503,25 +501,31 @@ function calcExtrusionMaterialCost(
   let formulaStr: string;
   let detailStr: string;
   
-  if (weightOverride && weightOverride > 0) {
-    // 使用用户提供的重量
+  // 材料费 = 产品米重(g/m) × (长度mm + 5mm) / 1000 → 得到kg
+  const meterWeight = dimensions.meter_weight_g_per_m || 0;
+  const lengthMm = dimensions.length_mm || 1000;
+  
+  if (meterWeight > 0 && lengthMm > 0) {
+    weightKg = meterWeight * (lengthMm + 5) / 1000;
+    formulaStr = '米重 × (长度+5) / 1000';
+    detailStr = `${meterWeight}g/m × (${lengthMm}mm + 5mm) ÷ 1000 = ${r2(weightKg)}kg`;
+  } else if (weightOverride && weightOverride > 0) {
     weightKg = weightOverride;
     formulaStr = '用户提供重量';
     detailStr = `${weightKg}kg`;
-  } else if (dimensions.cross_section_area_mm2 && dimensions.length_mm) {
-    // 有截面面积和长度：重量 = 截面积 × 长度 × 密度 / 1000000
-    weightKg = (dimensions.cross_section_area_mm2 * dimensions.length_mm * density) / 1000000;
-    formulaStr = '截面积 × 长度 × 密度';
-    detailStr = `${dimensions.cross_section_area_mm2}mm² × ${dimensions.length_mm}mm × ${density}g/cm³ ÷ 1000000 = ${r2(weightKg)}kg`;
   } else {
-    // 简化计算：用外形尺寸 × 填充系数
-    const length = dimensions.length_mm || 1000;
-    const width = dimensions.width_mm || 50;
-    const height = dimensions.height_mm || 25;
-    
-    weightKg = (length * width * height * fillFactor * density) / 1000000;
-    formulaStr = '长 × 宽 × 高 × 填充系数 × 密度';
-    detailStr = `${length} × ${width} × ${height} × ${fillFactor} × ${density} ÷ 1000000 = ${r2(weightKg)}kg`;
+    // 降级：截面积 × 长度 × 密度
+    const area = dimensions.cross_section_area_mm2 || 0;
+    const density = matRule.density || 2.7;
+    if (area > 0 && lengthMm > 0) {
+      weightKg = (area * lengthMm * density) / 1000000;
+      formulaStr = '截面积 × 长度 × 密度';
+      detailStr = `${area}mm² × ${lengthMm}mm × ${density}g/cm³ ÷ 1000000 = ${r2(weightKg)}kg`;
+    } else {
+      weightKg = 0;
+      formulaStr = '缺少参数';
+      detailStr = '需提供米重或截面积';
+    }
   }
   
   const cost = weightKg * materialPricePerKg;
