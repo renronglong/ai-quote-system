@@ -45,7 +45,7 @@ interface QuoteRequest {
     cross_section_area_mm2?: number; // 截面积 mm²（挤压铝型材）
     perimeter_mm?: number;    // 产品周长(mm)
     num_cavities?: number;    // 面域数（1=平模，>=2=分流模）
-    die_type?: 'flat' | 'split' | 'pseudo'; // 模具类型：平模/分流模/假整体模
+    die_type?: 'flat' | 'split'; // 模具类型：平模/分流模
   };
   volume_cm3?: number;       // 体积 cm³
   surface_area_cm2?: number; // 表面积 cm²
@@ -611,9 +611,10 @@ function calcExtrusion(
     // 步骤2：模具类型确定 → 基础厚度
     // 优先使用用户手动选择的 die_type，没有则根据 num_cavities 自动推断
     const numCavities = dims.num_cavities || 1;
-    let dieTypeKey: 'flat' | 'split' | 'pseudo';
+    let dieTypeKey: 'flat' | 'split';
     if (dims.die_type) {
-      dieTypeKey = dims.die_type;
+      // 向后兼容：旧版传入 pseudo 按分流模处理
+      dieTypeKey = (dims.die_type as string) === 'pseudo' ? 'split' : dims.die_type;
     } else {
       dieTypeKey = numCavities <= 1 ? 'flat' : 'split';
     }
@@ -669,7 +670,7 @@ function calcExtrusion(
     const mgmtRate = getManagementRate(dieThickness);
     moldCost = Math.round((materialFee + processingFee) * (1 + mgmtRate));
 
-    const dieTypeMap: Record<string, string> = { flat: '平模', split: '分流模', pseudo: '假整体模' };
+    const dieTypeMap: Record<string, string> = { flat: '平模', split: '分流模' };
     const dieType = dieTypeMap[dieTypeKey] || '分流模';
     notes.push(`模具规格: Φ${dieDiameter}×${dieThickness} ${dieType}`);
     notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + ${Math.round(processingFee)}加工) × ${(mgmtRate*100).toFixed(0)}%管理费`);

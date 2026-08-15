@@ -699,7 +699,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         height_mm: height || undefined,
         perimeter_mm: (fields.perimeter as number) || undefined,
         num_cavities: parseInt(fields.num_cavities as string) || 1,
-        die_type: (fields.die_type as 'flat' | 'split' | 'pseudo') || 'flat',
+        die_type: (fields.die_type as 'flat' | 'split') || 'flat',
       };
     }
     if (productType === '板材') {
@@ -896,7 +896,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     <select
                       value={dtVal}
                       onChange={e => {
-                        const val = e.target.value as 'flat' | 'split' | 'pseudo';
+                        const val = e.target.value as 'flat' | 'split';
                         setFields(prev => ({
                           ...prev,
                           [fieldKey]: val,
@@ -907,7 +907,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     >
                       <option value="flat">平模</option>
                       <option value="split">分流模</option>
-                      <option value="pseudo">假整体模</option>
                     </select>
                   </div>
                 );
