@@ -1537,7 +1537,7 @@ export async function POST(request: NextRequest) {
     ]);
 
     // 3. 根据产品类型分发计算
-    let result: { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[] };
+    let result: { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number };
 
     switch (body.product_type) {
       case 'sheet_metal':
@@ -1584,6 +1584,7 @@ export async function POST(request: NextRequest) {
       aluminum_index: aluminumPrice,
       min_order_met: minOrderMet,
       min_order_weight_kg: minOrderWeight,
+      material_utilization_rate: result.utilizationRate,
       notes: result.notes,
       product_name: body.product_name,
       product_code: body.product_code,
@@ -1640,7 +1641,7 @@ export async function GET(request: NextRequest) {
     ]);
 
     // 3. 根据产品类型分发计算
-    let result: { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[] };
+    let result: { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number };
 
     switch (body.product_type) {
       case 'sheet_metal':
@@ -1687,6 +1688,7 @@ export async function GET(request: NextRequest) {
       aluminum_index: aluminumPrice,
       min_order_met: minOrderMet,
       min_order_weight_kg: minOrderWeight,
+      material_utilization_rate: result.utilizationRate,
       notes: result.notes,
       product_name: body.product_name,
       product_code: body.product_code,
