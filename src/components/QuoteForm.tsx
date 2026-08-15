@@ -861,8 +861,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               }
               // num_cavities 用 select 渲染
               if (fieldKey === 'num_cavities') {
-                const cavVal = (fields[fieldKey] as number) ?? 1;
-                const cavLabel = cavVal >= 2 ? '分流模' : '平模';
+                const cavVal = fields[fieldKey] ?? '';
+                const cavLabel = !cavVal ? '' : Number(cavVal) >= 2 ? '分流模' : '平模';
                 return (
                   <div key={fieldKey}>
                     <label className="block text-[11px] text-gray-500 mb-1">
@@ -872,16 +872,18 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     <select
                       value={cavVal}
                       onChange={e => {
-                        const val = parseInt(e.target.value) || 1;
+                        const raw = e.target.value;
+                        const val = raw ? (parseInt(raw) || 1) : '';
                         setFields(prev => ({
                           ...prev,
                           [fieldKey]: val,
-                          die_type: val <= 1 ? 'flat' : 'split',
+                          die_type: val === '' ? '' : (val <= 1 ? 'flat' : 'split'),
                         }));
                       }}
                       className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
                     >
-                      {['1', '2', '3', '4'].map(opt => (
+                      {['', '1', '2', '3', '4'].map(opt => (
+                        opt === '' ? <option key="empty" value="">请选择</option> :
                         <option key={opt} value={opt}>{opt}{parseInt(opt) === 1 ? ' (平模)' : ' (分流模)'}</option>
                       ))}
                     </select>
