@@ -25,6 +25,7 @@ interface QuoteFormData {
 interface ProcessSelection {
   name: string;
   quantity?: number;
+  subParams?: Record<string, any>;
 }
 
 export interface PricingResult {
@@ -307,6 +308,28 @@ const FIELD_LABELS: Record<string, string> = {
   netWeight: '产品净重(g)(选填)',
 };
 
+
+// ==================== Process Sub-Parameters ====================
+const PROCESS_SUB_PARAMS: Record<string, { name: string; type: string; label: string; options?: string[] }[]> = {
+  '冲压': [
+    { name: 'tonnage', type: 'select', label: '吨位', options: ['<=35T', '45T', '60T', '80T', '110T', '160T', '200T', '200T双轴', '250T双轴'] },
+  ],
+  '钻孔': [
+    { name: 'hole_count', type: 'number', label: '孔数量' },
+    { name: 'diameter_range', type: 'select', label: '孔径范围', options: ['ø3~6', 'ø6~10', 'ø10~16', 'ø16~25'] },
+  ],
+  '攻牙': [
+    { name: 'hole_count', type: 'number', label: '孔数量' },
+    { name: 'size', type: 'select', label: '规格', options: ['M3~M4', 'M5~M6', 'M8~M10', 'M12~M16'] },
+  ],
+  'CNC加工': [
+    { name: 'minutes', type: 'number', label: '加工时间(分钟)' },
+  ],
+  '车加工': [
+    { name: 'minutes', type: 'number', label: '加工时间(分钟)' },
+  ],
+};
+
 // Allowed upload extensions
 const ALLOWED_EXTENSIONS = ['.dxf', '.dwg', '.step', '.stp', '.igs', '.pdf', '.jpg', '.png'];
 
@@ -326,13 +349,15 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [productType, setProductType] = useState('挤出');
   const [materialCategory, setMaterialCategory] = useState('铝型材');
   const [fields, setFields] = useState<Record<string, number | string>>({
-    width: 50, height: 20, length: 100, quantity: 1,
+    width: '', height: '', length: '', quantity: 1,
   });
   const [materialSurfaceTreatment, setMaterialSurfaceTreatment] = useState('无');
   const [materialColor, setMaterialColor] = useState('');
   const [processes, setProcesses] = useState<ProcessSelection[]>([]);
   const [productSurfaceTreatment, setProductSurfaceTreatment] = useState('无');
   const [productColor, setProductColor] = useState('');
+  const [meterWeightManual, setMeterWeightManual] = useState(false);
+  const [quantityManual, setQuantityManual] = useState(false);
 
   // File upload state
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -360,9 +385,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     const cat = PRODUCT_TYPES[productType]?.materialCategories[catKey];
     if (!cat) return;
     const defaultFields: Record<string, number | string> = { quantity: 1 };
-    if (cat.fields.includes('width')) defaultFields.width = 50;
-    if (cat.fields.includes('height')) defaultFields.height = 20;
-    if (cat.fields.includes('length')) defaultFields.length = 100;
+    if (cat.fields.includes('width')) defaultFields.width = '';
+    if (cat.fields.includes('height')) defaultFields.height = '';
+    if (cat.fields.includes('length')) defaultFields.length = '';
     if (cat.fields.includes('thickness')) defaultFields.thickness = 2;
     if (cat.fields.includes('productSize')) defaultFields.productSize = '';
     if (cat.fields.includes('meterWeight')) defaultFields.meterWeight = '';
@@ -388,6 +413,35 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       }
     }
   };
+
+
+  // ==================== Auto-calculate meter weight from cross-section ====================
+  useEffect(() => {
+    if (productType !== '挤出') return;
+    if (meterWeightManual) return;
+    const w = fields.width as number;
+    const h = fields.height as number;
+    if (w && h && w > 0 && h > 0) {
+      const meterWeight = w * h * 2.7 * 0.35 / 1000;
+      const rounded = Math.round(meterWeight * 100) / 100;
+      setFields(prev => ({ ...prev, meterWeight: rounded }));
+    }
+  }, [fields.width, fields.height, productType]);
+
+  // ==================== Auto-calculate min order quantity ====================
+  useEffect(() => {
+    if (productType !== '挤出') return;
+    if (quantityManual) return;
+    const mw = fields.meterWeight as number;
+    const len = fields.length as number;
+    if (mw && len && mw > 0 && len > 0) {
+      const singleWeightKg = mw * len / 1000000;
+      if (singleWeightKg > 0) {
+        const minQty = Math.ceil(300 / singleWeightKg);
+        setFields(prev => ({ ...prev, quantity: minQty }));
+      }
+    }
+  }, [fields.meterWeight, fields.length, productType]);
 
   // ==================== Auto-calculate with debounce ====================
   const triggerCalculate = useCallback(() => {
@@ -438,12 +492,28 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     setProcesses(prev => {
       const exists = prev.find(p => p.name === procName);
       if (exists) return prev.filter(p => p.name !== procName);
-      return [...prev, { name: procName }];
+      // Initialize subParams if this process has them
+      const subDef = PROCESS_SUB_PARAMS[procName];
+      const subParams: Record<string, any> = {};
+      if (subDef) {
+        for (const param of subDef) {
+          if (param.type === 'number') subParams[param.name] = '';
+          else if (param.type === 'select' && param.options) subParams[param.name] = param.options[0];
+        }
+      }
+      return [...prev, { name: procName, ...(Object.keys(subParams).length > 0 ? { subParams } : {}) }];
     });
   };
 
   const updateProcessQuantity = (procName: string, qty: number) => {
     setProcesses(prev => prev.map(p => p.name === procName ? { ...p, quantity: qty } : p));
+  };
+
+
+  const updateSubParam = (procName: string, paramName: string, value: any) => {
+    setProcesses(prev => prev.map(p =>
+      p.name === procName ? { ...p, subParams: { ...p.subParams, [paramName]: value } } : p
+    ));
   };
 
   const handleProductSurfaceChange = (val: string) => {
@@ -533,7 +603,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     return null;
   };
 
-  const mapProcesses = (): { secondary_operations: string[]; cut_count?: number } => {
+  const mapProcesses = (): Record<string, any> => {
     const processMap: Record<string, string> = {
       '冲压': '冲压', 'CNC加工': 'CNC加工', '车加工': '车加工',
       '钻孔': '钻孔', '攻牙': '攻丝', '激光切割': '激光切割',
@@ -541,11 +611,50 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     };
     const secondaryOps: string[] = [];
     let cutCount: number | undefined;
+    let stampingTonnage: string | undefined;
+    let stampingCount: number | undefined;
+    let holes: { count: number; diameter_range?: string } | undefined;
+    let tappedHoles: { count: number; size?: string } | undefined;
+    let cncTime: { minutes: number } | undefined;
+
     for (const proc of processes) {
-      if (proc.name === '锯切') { cutCount = proc.quantity || 1; }
-      else if (processMap[proc.name]) { secondaryOps.push(processMap[proc.name]); }
+      if (proc.name === '锯切') {
+        cutCount = proc.quantity || 1;
+      } else if (proc.name === '冲压') {
+        secondaryOps.push('冲压');
+        if (proc.subParams?.tonnage) stampingTonnage = proc.subParams.tonnage;
+        stampingCount = proc.quantity || 1;
+      } else if (proc.name === '钻孔') {
+        secondaryOps.push('钻孔');
+        const hc = proc.subParams?.hole_count || proc.quantity || 0;
+        const dr = proc.subParams?.diameter_range || 'ø6~10';
+        if (hc > 0) holes = { count: hc, diameter_range: dr };
+      } else if (proc.name === '攻牙') {
+        secondaryOps.push('攻丝');
+        const hc = proc.subParams?.hole_count || proc.quantity || 0;
+        const sz = proc.subParams?.size || 'M5~M6';
+        if (hc > 0) tappedHoles = { count: hc, size: sz };
+      } else if (proc.name === 'CNC加工') {
+        secondaryOps.push('CNC加工');
+        const mins = proc.subParams?.minutes || proc.quantity || 0;
+        if (mins > 0) cncTime = { minutes: mins };
+      } else if (proc.name === '车加工') {
+        secondaryOps.push('车加工');
+        const mins = proc.subParams?.minutes || proc.quantity || 0;
+        if (mins > 0) cncTime = { minutes: (cncTime?.minutes || 0) + mins };
+      } else if (processMap[proc.name]) {
+        secondaryOps.push(processMap[proc.name]);
+      }
     }
-    return { secondary_operations: secondaryOps, cut_count: cutCount };
+
+    const result: Record<string, any> = { secondary_operations: secondaryOps };
+    if (cutCount !== undefined) result.cut_count = cutCount;
+    if (stampingTonnage) result.stamping_tonnage = stampingTonnage;
+    if (stampingCount !== undefined) result.stamping_count = stampingCount;
+    if (holes) result.holes = holes;
+    if (tappedHoles) result.tapped_holes = tappedHoles;
+    if (cncTime) result.cnc_time = cncTime;
+    return result;
   };
 
   const calcWeightKg = (): number | undefined => {
@@ -716,7 +825,21 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     type="number"
                     min={0}
                     value={(fields[fieldKey] as number) ?? ''}
-                    onChange={e => setFields(prev => ({ ...prev, [fieldKey]: parseFloat(e.target.value) || 0 }))}
+                    onChange={e => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setFields(prev => ({ ...prev, [fieldKey]: val }));
+                        if (fieldKey === 'meterWeight') {
+                          setMeterWeightManual(val > 0);
+                          if (val > 0) setQuantityManual(false);
+                        }
+                        if (fieldKey === 'quantity') {
+                          setQuantityManual(true);
+                        }
+                        if (fieldKey === 'width' || fieldKey === 'height') {
+                          setMeterWeightManual(false);
+                          setQuantityManual(false);
+                        }
+                      }}
                     className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
                   />
                 </div>
@@ -847,6 +970,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               {categoryConfig.processes.map(proc => {
                 const isNone = proc.name === '无';
                 const isSelected = isNone ? processes.length === 0 : processes.some(p => p.name === proc.name);
+                const hasSubParams = !!PROCESS_SUB_PARAMS[proc.name];
+                const selectedProc = processes.find(p => p.name === proc.name);
+                const showQuantity = isSelected && proc.unit && !isNone && !hasSubParams;
+                const showStampingQty = isSelected && proc.name === '冲压';
                 return (
                   <div key={proc.name} className="flex flex-col items-start">
                     <button
@@ -860,13 +987,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     >
                       {proc.name}
                     </button>
-                    {isSelected && proc.unit && !isNone && (
+                    {showQuantity && (
                       <div className="flex items-center gap-1 mt-1">
                         <input
                           type="number"
                           min={0}
                           placeholder="数量"
-                          value={processes.find(p => p.name === proc.name)?.quantity ?? ''}
+                          value={selectedProc?.quantity ?? ''}
                           onChange={e => updateProcessQuantity(proc.name, parseFloat(e.target.value) || 0)}
                           className="w-16 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
                         />
@@ -877,6 +1004,55 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 );
               })}
             </div>
+            {/* Sub-parameter panels for selected processes */}
+            {processes.filter(p => PROCESS_SUB_PARAMS[p.name]).map(proc => {
+              const subDef = PROCESS_SUB_PARAMS[proc.name];
+              if (!subDef) return null;
+              return (
+                <div key={proc.name + '_params'} className="mt-2 p-2 bg-blue-50/50 rounded-lg border border-blue-100">
+                  <div className="text-[11px] font-medium text-blue-700 mb-1.5">{proc.name} 参数</div>
+                  <div className="flex flex-wrap gap-2">
+                    {proc.name === '冲压' && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-gray-500">冲次:</span>
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="次数"
+                          value={proc.quantity ?? ''}
+                          onChange={e => updateProcessQuantity(proc.name, parseFloat(e.target.value) || 0)}
+                          className="w-16 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
+                        />
+                        <span className="text-[10px] text-gray-400">次</span>
+                      </div>
+                    )}
+                    {subDef.map(param => (
+                      <div key={param.name} className="flex items-center gap-1">
+                        <span className="text-[10px] text-gray-500">{param.label}:</span>
+                        {param.type === 'select' && param.options ? (
+                          <select
+                            value={proc.subParams?.[param.name] ?? param.options[0]}
+                            onChange={e => updateSubParam(proc.name, param.name, e.target.value)}
+                            className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
+                          >
+                            {param.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                          </select>
+                        ) : (
+                          <input
+                            type="number"
+                            min={0}
+                            placeholder={param.label}
+                            value={proc.subParams?.[param.name] ?? ''}
+                            onChange={e => updateSubParam(proc.name, param.name, parseFloat(e.target.value) || '')}
+                            className="w-20 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 

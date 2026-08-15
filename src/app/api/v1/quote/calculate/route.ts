@@ -58,6 +58,9 @@ interface QuoteRequest {
     tapped_holes?: { count: number; size?: string };
     slots?: { count: number; type?: string };
     cut_count?: number;  // 锯切次数（铝型材）
+    stamping_tonnage?: string;   // 冲压吨位（如 '<=35T', '45T', '200T双轴' 等）
+    stamping_count?: number;     // 冲次数量
+    cnc_time?: { minutes: number }; // CNC/车加工时间
   } | null;
   aluminum_price_override?: number; // 铝锭价覆盖值（元/吨）
   weight_per_piece_kg?: number;     // 单件重量，不填则根据体积×密度估算
@@ -588,11 +591,36 @@ function calcExtrusion(
   
   // 3.3 CNC二次加工费（复用板材逻辑）
   let secondaryCost = 0;
+  
+  // 3.3.1 冲压加工费（按吨位费率 × 冲次数量）
+  if (req.process?.stamping_tonnage && req.process?.stamping_count) {
+    const tonnageRates = rules.process_rates?.['冲压吨位费率']?.rates || {};
+    const tonnage = req.process.stamping_tonnage;
+    const count = req.process.stamping_count || 1;
+    const rate = tonnageRates[tonnage] || 0.3;
+    const stampingCost = r2(rate * count);
+    secondaryCost += stampingCost;
+
+  }
+  
   if (req.process) {
     const sec = calcSecondaryOperationsCost(req.process, rules);
-    secondaryCost = sec.cost;
+    secondaryCost += sec.cost;
     accumulated += secondaryCost;
-    breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
+    const detailParts: string[] = [];
+    if (req.process.stamping_tonnage && req.process.stamping_count) {
+      const tonnageRates = rules.process_rates?.['冲压吨位费率']?.rates || {};
+      const rate = tonnageRates[req.process.stamping_tonnage] || 0.3;
+      detailParts.push(`冲压(${req.process.stamping_tonnage}): ${req.process.stamping_count}次×${rate}元/次`);
+    }
+    if (sec.detail && sec.detail !== '无二次加工') detailParts.push(sec.detail);
+    const formulaParts: string[] = [];
+    if (req.process.stamping_tonnage && req.process.stamping_count) formulaParts.push('冲压吨位费率×冲次');
+    formulaParts.push(sec.formula);
+    breakdown['secondary'] = {
+      formula: formulaParts.join(' + '),
+      detail: detailParts.length > 0 ? detailParts.join('; ') : sec.detail,
+    };
   }
   
   // 3.4 锯切下料费（已包含在挤压加工费1000元/吨中，不单独计费）
@@ -876,6 +904,14 @@ function calcSecondaryOperationsCost(
     const deburrCost = rate; // 单位是元/件
     totalCost += deburrCost;
     details.push(`去毛刺: ${rate}元/件`);
+  }
+
+  // CNC/车加工时间费（按分钟计费，0.5元/分钟）
+  if (process.cnc_time && process.cnc_time.minutes > 0) {
+    const CNC_RATE_PER_MIN = 0.5; // 元/分钟
+    const cncCost = r2(process.cnc_time.minutes * CNC_RATE_PER_MIN);
+    totalCost += cncCost;
+    details.push(`CNC/车加工: ${process.cnc_time.minutes}分钟 × ${CNC_RATE_PER_MIN}元/分 = ${cncCost}元`);
   }
 
   if (details.length === 0) {
