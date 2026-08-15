@@ -930,6 +930,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                           setQuantityManual(true);
                         }
                         if (fieldKey === 'width' || fieldKey === 'height') {
+                          setPerimeterManual(false);
                           setMeterWeightManual(false);
                           setQuantityManual(false);
                         }
