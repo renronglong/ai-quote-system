@@ -422,7 +422,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     const w = fields.width as number;
     const h = fields.height as number;
     if (w && h && w > 0 && h > 0) {
-      const meterWeight = w * h * 2.7 * 0.35 / 1000;
+      const meterWeight = w * h * 0.0027;
       const rounded = Math.round(meterWeight * 100) / 100;
       setFields(prev => ({ ...prev, meterWeight: rounded }));
     }
