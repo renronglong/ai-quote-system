@@ -46,6 +46,7 @@ interface QuoteRequest {
     perimeter_mm?: number;    // 产品周长(mm)
     num_cavities?: number;    // 面域数（1=平模，>=2=分流模）
     die_type?: 'flat' | 'split'; // 模具类型：平模/分流模
+    meter_weight_g_per_m?: number; // 用户手动输入的米重(g/m)
   };
   volume_cm3?: number;       // 体积 cm³
   surface_area_cm2?: number; // 表面积 cm²
@@ -642,9 +643,12 @@ function calcExtrusion(
     }
 
     // 步骤3：米重负载校验
-    const meterWeightKgPerM = (dims.cross_section_area_mm2
-      ? dims.cross_section_area_mm2 * 2.7 / 1000
-      : (W * H_dim * 2.7 / 1000));
+    // 优先使用用户手动输入的米重(g/m转kg/m)，否则用公式计算
+    const meterWeightKgPerM = dims.meter_weight_g_per_m
+      ? dims.meter_weight_g_per_m / 1000
+      : (dims.cross_section_area_mm2
+        ? dims.cross_section_area_mm2 * 2.7 / 1000
+        : (W * H_dim * 2.7 / 1000));
 
     const limitKey = `${dieDiameter}x${dieThickness}`;
     let safeLimit = SAFE_METER_WEIGHT_LIMITS[limitKey];

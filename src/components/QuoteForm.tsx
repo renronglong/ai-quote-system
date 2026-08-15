@@ -700,6 +700,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         perimeter_mm: (fields.perimeter as number) || undefined,
         num_cavities: parseInt(fields.num_cavities as string) || 1,
         die_type: (fields.die_type as 'flat' | 'split') || 'flat',
+        meter_weight_g_per_m: (fields.meterWeight as number) || undefined,
       };
     }
     if (productType === '板材') {
