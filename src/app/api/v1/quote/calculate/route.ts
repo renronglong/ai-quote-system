@@ -47,6 +47,7 @@ interface QuoteRequest {
     num_cavities?: number;    // 面域数（1=平模，>=2=分流模）
     die_type?: 'flat' | 'split'; // 模具类型：平模/分流模
     meter_weight_g_per_m?: number; // 用户手动输入的米重(g/m)
+    net_weight_g?: number; // 产品净重(g)，用于计算材料利用率
   };
   volume_cm3?: number;       // 体积 cm³
   surface_area_cm2?: number; // 表面积 cm²
@@ -92,6 +93,7 @@ interface QuoteResponse {
   min_order_met?: boolean;
   min_order_weight_kg?: number;
   min_order_qty?: number;
+  material_utilization_rate?: number; // 材料利用率(0-1)
   notes?: string[];
   product_name?: string;
   product_code?: string;
@@ -364,7 +366,7 @@ function calcSheetMaterialCost(
   dimensions: NonNullable<QuoteRequest['dimensions']>,
   aluminumPrice: number,
   rules: PricingRules,
-): { cost: number; weight: number; formula: string; detail: string } {
+): { cost: number; weight: number; formula: string; detail: string; utilizationRate?: number } {
   const { length_mm, width_mm } = dimensions;
   // 板材厚度优先使用 wall_thickness_mm，其次 height_mm（兼容旧格式）
   const t = dimensions.wall_thickness_mm || dimensions.height_mm || 2;
@@ -439,7 +441,7 @@ function calcVolumetricMaterialCost(
   volumeCm3: number,
   aluminumPrice: number,
   rules: PricingRules,
-): { cost: number; weight: number; formula: string; detail: string } {
+): { cost: number; weight: number; formula: string; detail: string; utilizationRate?: number } {
   const matRule = rules.material_prices;
   let density = 2.7;
   let pricePerKg = 0;
@@ -489,7 +491,7 @@ function calcExtrusionMaterialCost(
   aluminumPrice: number,
   rules: PricingRules,
   weightOverride?: number,
-): { cost: number; weight: number; formula: string; detail: string } {
+): { cost: number; weight: number; formula: string; detail: string; utilizationRate?: number } {
   const matRule = rules.material_prices['挤压铝型材'] || {};
   const extrusionFeePerTon = matRule.extrusion_fee_per_ton || 3000;
   
@@ -533,11 +535,20 @@ function calcExtrusionMaterialCost(
   detailStr += ` | 材料单价: ${aluminumPrice} + ${extrusionFeePerTon} = ${materialPricePerTon}元/吨 = ${r2(materialPricePerKg)}元/kg`;
   detailStr += ` | 材料费: ${r2(weightKg)}kg × ${r2(materialPricePerKg)}元/kg = ${r2(cost)}元`;
   
+  // 计算材料利用率
+  let utilizationRate: number | undefined;
+  if (dimensions.net_weight_g && dimensions.net_weight_g > 0 && weightKg > 0) {
+    const netWeightKg = dimensions.net_weight_g / 1000;
+    utilizationRate = r2(netWeightKg / weightKg);
+    detailStr += ` | 净重: ${dimensions.net_weight_g}g = ${r2(netWeightKg)}kg, 材料利用率: ${(utilizationRate * 100).toFixed(1)}%`;
+  }
+
   return {
     cost: r2(cost),
     weight: r2(weightKg),
     formula: formulaStr,
     detail: detailStr,
+    utilizationRate,
   };
 }
 
@@ -549,7 +560,7 @@ function calcExtrusion(
   req: QuoteRequest,
   aluminumPrice: number,
   rules: PricingRules,
-): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[] } {
+): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number } {
   const dims = req.dimensions || { length_mm: 1000, width_mm: 50, height_mm: 25 };
   const notes: string[] = [];
   const breakdown: Record<string, { formula: string; detail: string }> = {};
@@ -840,6 +851,7 @@ function calcExtrusion(
     breakdown,
     weight: mat.weight,
     notes,
+    utilizationRate: mat.utilizationRate,
   };
 }
 
@@ -1115,7 +1127,7 @@ function calcSheetMetal(
   req: QuoteRequest,
   aluminumPrice: number,
   rules: PricingRules,
-): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[] } {
+): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number } {
   const dims = req.dimensions!;
   // 板材体积：优先使用请求中的值，否则用 长×宽×壁厚 估算（注意是壁厚不是高度）
   const volumeCm3 = req.volume_cm3 || (dims.length_mm * dims.width_mm * (dims.wall_thickness_mm || dims.height_mm || 2)) / 1000;
@@ -1190,6 +1202,7 @@ function calcSheetMetal(
     breakdown,
     weight: mat.weight,
     notes,
+    utilizationRate: mat.utilizationRate,
   };
 }
 
@@ -1201,7 +1214,7 @@ function calcDieCasting(
   req: QuoteRequest,
   aluminumPrice: number,
   rules: PricingRules,
-): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[] } {
+): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number } {
   const volumeCm3 = req.volume_cm3 || 100;
   const notes: string[] = [];
   const breakdown: Record<string, { formula: string; detail: string }> = {};
@@ -1272,6 +1285,7 @@ function calcDieCasting(
     breakdown,
     weight: mat.weight,
     notes,
+    utilizationRate: mat.utilizationRate,
   };
 }
 
@@ -1283,7 +1297,7 @@ function calcZincAlloy(
   req: QuoteRequest,
   _aluminumPrice: number,
   rules: PricingRules,
-): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[] } {
+): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number } {
   const volumeCm3 = req.volume_cm3 || 50;
   const notes: string[] = [];
   const breakdown: Record<string, { formula: string; detail: string }> = {};
@@ -1354,6 +1368,7 @@ function calcZincAlloy(
     breakdown,
     weight: mat.weight,
     notes,
+    utilizationRate: mat.utilizationRate,
   };
 }
 
@@ -1365,7 +1380,7 @@ function calcInjection(
   req: QuoteRequest,
   _aluminumPrice: number,
   rules: PricingRules,
-): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[] } {
+): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number } {
   const volumeCm3 = req.volume_cm3 || 50;
   const wallThickness = req.dimensions?.wall_thickness_mm || 2;
   const notes: string[] = [];
@@ -1438,6 +1453,7 @@ function calcInjection(
     breakdown,
     weight: mat.weight,
     notes,
+    utilizationRate: mat.utilizationRate,
   };
 }
 

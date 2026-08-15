@@ -180,7 +180,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
   const p = pricingResult || {
     material_cost: 0, processing_cost: 0, surface_treatment_cost: 0,
     secondary_operations_cost: 0, packaging_cost: 0, transport_cost: 0,
-    management_fee: 0, unit_price: 0, total_price: 0, weight_per_piece_kg: 0,
+    management_fee: 0, unit_price: 0, total_price: 0, weight_per_piece_kg: 0, material_utilization_rate: undefined as number | undefined,
     breakdown: {} as Record<string, { formula: string; detail: string }>,
     aluminum_index: 0, notes: [] as string[],
   };
@@ -276,11 +276,19 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
       <div className="rounded-xl bg-gray-50 border border-gray-100 p-3 space-y-1.5">
         {(!isPlaceholder && p.weight_per_piece_kg > 0) && (
           <div className="flex justify-between items-center">
-            <span className="text-[11px] text-gray-400">单件重量</span>
+            <span className="text-[11px] text-gray-400">单件型材消耗</span>
             <span className="text-xs font-medium text-gray-600">
               {p.weight_per_piece_kg >= 1
                 ? `${p.weight_per_piece_kg.toFixed(3)} kg`
                 : `${(p.weight_per_piece_kg * 1000).toFixed(1)} g`}
+            </span>
+          </div>
+        )}
+        {(!isPlaceholder && p.material_utilization_rate != null && p.material_utilization_rate > 0) && (
+          <div className="flex justify-between items-center">
+            <span className="text-[11px] text-gray-400">材料利用率</span>
+            <span className={`text-xs font-semibold ${(p.material_utilization_rate * 100) >= 80 ? 'text-emerald-600' : (p.material_utilization_rate * 100) >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
+              {(p.material_utilization_rate * 100).toFixed(1)}%
             </span>
           </div>
         )}

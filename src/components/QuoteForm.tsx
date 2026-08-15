@@ -40,6 +40,7 @@ export interface PricingResult {
   unit_price: number;
   total_price: number;
   weight_per_piece_kg: number;
+  material_utilization_rate?: number;
   breakdown: Record<string, { formula: string; detail: string }>;
   aluminum_index: number;
   notes: string[];
@@ -308,7 +309,7 @@ const FIELD_LABELS: Record<string, string> = {
   productSize: '产品尺寸(长×宽×高mm)',
   quantity: '数量(件)',
   meterWeight: '米重(g/m)',
-  netWeight: '产品净重(g)(选填)',
+  netWeight: '产品净重(g·选填·算利用率)',
 };
 
 
@@ -677,13 +678,15 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   };
 
   const calcWeightKg = (): number | undefined => {
-    const netWeight = fields.netWeight as number;
-    if (netWeight && netWeight > 0) return netWeight / 1000;
     if (productType === '挤出') {
+      // 挤出：始终用米重×长度计算型材消耗重量（净重用于计算利用率，不覆盖重量）
       const meterWeight = fields.meterWeight as number;
       const length = fields.length as number;
       if (meterWeight && length) return (meterWeight * length) / 1000000;
     }
+    // 其他品类：用净重
+    const netWeight = fields.netWeight as number;
+    if (netWeight && netWeight > 0) return netWeight / 1000;
     return undefined;
   };
 
@@ -701,6 +704,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         num_cavities: parseInt(fields.num_cavities as string) || 1,
         die_type: (fields.die_type as 'flat' | 'split') || 'flat',
         meter_weight_g_per_m: (fields.meterWeight as number) || undefined,
+        net_weight_g: (fields.netWeight as number) || undefined,
       };
     }
     if (productType === '板材') {
@@ -768,6 +772,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             unit_price: data.unit_price || 0,
             total_price: data.total_price || 0,
             weight_per_piece_kg: data.weight_per_piece_kg || 0,
+            material_utilization_rate: data.material_utilization_rate,
             breakdown: data.breakdown || {},
             aluminum_index: data.aluminum_index || 0,
             notes: data.notes || [],
