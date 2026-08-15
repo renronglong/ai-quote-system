@@ -363,6 +363,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [meterWeightManual, setMeterWeightManual] = useState(false);
   const [quantityManual, setQuantityManual] = useState(false);
   const [perimeterManual, setPerimeterManual] = useState(false);
+  const [dieSteelPrice, setDieSteelPrice] = useState<string>('');
 
   // File upload state
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -705,6 +706,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         die_type: (fields.die_type as 'flat' | 'split') || 'flat',
         meter_weight_g_per_m: (fields.meterWeight as number) || undefined,
         net_weight_g: (fields.netWeight as number) || undefined,
+        die_steel_price: dieSteelPrice ? parseFloat(dieSteelPrice) : undefined,
       };
     }
     if (productType === '板材') {
@@ -1185,6 +1187,27 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 <CustomSelect value={productColor} options={productColorOpts} onChange={setProductColor} />
               </div>
             )}
+          </div>
+        )}
+
+        {/* ---- 其他参数（挤出专用） ---- */}
+        {productType === '挤出' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+            <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">其他参数</label>
+            <div>
+              <label className="block text-[11px] text-gray-500 mb-1">
+                模具钢价(元/吨)
+                <span className="ml-1 text-[10px] text-gray-400">选填，默认18000(H13均价)</span>
+              </label>
+              <input
+                type="number"
+                min={0}
+                placeholder="18000"
+                value={dieSteelPrice}
+                onChange={e => setDieSteelPrice(e.target.value)}
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+              />
+            </div>
           </div>
         )}
 

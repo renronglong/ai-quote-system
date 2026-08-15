@@ -15,6 +15,9 @@ const DEFAULT_STEEL_304_PRICE = 14500;
 // ---- 默认热卷期货价（元/吨） ----
 const DEFAULT_HOT_ROLL_PRICE = 3800;
 
+// ---- 默认模具钢价（元/吨），H13均价约18000 ----
+const DEFAULT_DIE_STEEL_PRICE = 18000;
+
 // ---- CORS 头，允许 Coze Bot 及任意来源调用 ----
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -48,6 +51,7 @@ interface QuoteRequest {
     die_type?: 'flat' | 'split'; // 模具类型：平模/分流模
     meter_weight_g_per_m?: number; // 用户手动输入的米重(g/m)
     net_weight_g?: number; // 产品净重(g)，用于计算材料利用率
+    die_steel_price?: number; // 模具钢价(元/吨)，可选，默认18000
   };
   volume_cm3?: number;       // 体积 cm³
   surface_area_cm2?: number; // 表面积 cm²
@@ -738,8 +742,9 @@ function calcExtrusion(
       }
     }
 
-    // 步骤4：计算模具费（加入周长影响）
-    const materialFee = 0.0001726 * dieDiameter * dieDiameter * dieThickness;
+    // 步骤4：计算模具费（加入周长影响，支持实时模具钢价）
+    const dieSteelPrice = dims.die_steel_price || DEFAULT_DIE_STEEL_PRICE;
+    const materialFee = dieSteelPrice * dieDiameter * dieDiameter * dieThickness / 1000000000;
     const baseProcessingFee = 0.035 * dieDiameter * dieThickness;
     const perimeterFee = 0.1 * finalPerimeter; // 周长越大加工越复杂，费用越高
     const processingFee = baseProcessingFee + perimeterFee;
@@ -749,12 +754,13 @@ function calcExtrusion(
     const dieTypeMap: Record<string, string> = { flat: '平模', split: '分流模' };
     const dieType = dieTypeMap[dieTypeKey] || '分流模';
     notes.push(`模具规格: Φ${dieDiameter}×${dieThickness} ${dieType}`);
+    notes.push(`模具钢价: ${dieSteelPrice}元/吨${dims.die_steel_price ? '（用户指定）' : '（默认H13均价）'}`);
     notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + ${Math.round(baseProcessingFee)}基础加工 + ${Math.round(perimeterFee)}周长加工) × ${(mgmtRate*100).toFixed(0)}%管理费`);
     notes.push(`模具费一次性，不计入单件价格`);
 
     breakdown['mold'] = {
-      formula: `(材料费0.0001726×Φ²×H + 基础加工费0.035×Φ×H + 周长加工费0.1×周长) × (1+管理费率)`,
-      detail: `Φ${dieDiameter}×${dieThickness}${dieType}: 材料费${Math.round(materialFee)} + 基础加工${Math.round(baseProcessingFee)} + 周长加工${Math.round(perimeterFee)} → ×${(1+mgmtRate).toFixed(2)} = ${moldCost}元`,
+      formula: `(材料费: 钢价×Φ²×H/10⁹ + 基础加工费0.035×Φ×H + 周长加工费0.1×周长) × (1+管理费率)`,
+      detail: `模具钢价${dieSteelPrice}元/吨 | Φ${dieDiameter}×${dieThickness}${dieType}: 材料费${dieSteelPrice}×${dieDiameter}²×${dieThickness}/10⁹=${Math.round(materialFee)} + 基础加工${Math.round(baseProcessingFee)} + 周长加工${Math.round(perimeterFee)} → ×${(1+mgmtRate).toFixed(2)} = ${moldCost}元`,
     };
   }
 
