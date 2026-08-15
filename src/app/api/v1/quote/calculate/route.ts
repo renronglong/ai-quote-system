@@ -655,13 +655,16 @@ function calcExtrusion(
     }
     const isFlatDie = dieTypeKey === 'flat';
     let dieThickness: number;
+    let finalPerimeter = 0; // 用于加工费计算
 
     if (isFlatDie) {
       dieThickness = 60; // 平模固定H=60
+      finalPerimeter = 2 * (W + H_dim); // 平模使用基础矩形周长
     } else {
       // 分流模/假整体模：判断异型复杂度
       const straightPerimeter = 2 * (W + H_dim);
       const actualPerimeter = dims.perimeter_mm || straightPerimeter;
+      finalPerimeter = actualPerimeter; // 保存周长用于加工费计算
       const complexityRatio = actualPerimeter / straightPerimeter;
 
       const estimatedH = (W + H_dim) / 5;
@@ -735,21 +738,23 @@ function calcExtrusion(
       }
     }
 
-    // 步骤4：计算模具费
+    // 步骤4：计算模具费（加入周长影响）
     const materialFee = 0.0001726 * dieDiameter * dieDiameter * dieThickness;
-    const processingFee = 0.035 * dieDiameter * dieThickness;
+    const baseProcessingFee = 0.035 * dieDiameter * dieThickness;
+    const perimeterFee = 0.1 * finalPerimeter; // 周长越大加工越复杂，费用越高
+    const processingFee = baseProcessingFee + perimeterFee;
     const mgmtRate = getManagementRate(dieThickness);
     moldCost = roundByMagnitude((materialFee + processingFee) * (1 + mgmtRate));
 
     const dieTypeMap: Record<string, string> = { flat: '平模', split: '分流模' };
     const dieType = dieTypeMap[dieTypeKey] || '分流模';
     notes.push(`模具规格: Φ${dieDiameter}×${dieThickness} ${dieType}`);
-    notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + ${Math.round(processingFee)}加工) × ${(mgmtRate*100).toFixed(0)}%管理费`);
+    notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + ${Math.round(baseProcessingFee)}基础加工 + ${Math.round(perimeterFee)}周长加工) × ${(mgmtRate*100).toFixed(0)}%管理费`);
     notes.push(`模具费一次性，不计入单件价格`);
 
     breakdown['mold'] = {
-      formula: `(材料费0.0001726×Φ²×H + 加工费0.035×Φ×H) × (1+管理费率)`,
-      detail: `Φ${dieDiameter}×${dieThickness}${dieType}: 材料费${Math.round(materialFee)} + 加工费${Math.round(processingFee)} → ×${(1+mgmtRate).toFixed(2)} = ${moldCost}元`,
+      formula: `(材料费0.0001726×Φ²×H + 基础加工费0.035×Φ×H + 周长加工费0.1×周长) × (1+管理费率)`,
+      detail: `Φ${dieDiameter}×${dieThickness}${dieType}: 材料费${Math.round(materialFee)} + 基础加工${Math.round(baseProcessingFee)} + 周长加工${Math.round(perimeterFee)} → ×${(1+mgmtRate).toFixed(2)} = ${moldCost}元`,
     };
   }
 
