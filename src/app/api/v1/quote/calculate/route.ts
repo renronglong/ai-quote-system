@@ -644,7 +644,7 @@ function calcExtrusion(
 
 
     // 步骤2.5：校验 Φ×H 组合是否实际存在于安全表
-    // 若不存在，升级到该规格的最小可用厚度
+    // 若不存在，升级到该规格的最近可用厚度（优先取≥当前H的最小可用值）
     const availableThicknessBySize: Record<number, number[]> = {};
     for (const key of Object.keys(SAFE_METER_WEIGHT_LIMITS)) {
       const parts = key.split('x');
@@ -657,7 +657,8 @@ function calcExtrusion(
     if (SAFE_METER_WEIGHT_LIMITS[checkKey] === undefined) {
       const available = (availableThicknessBySize[dieDiameter] || []).sort((a, b) => a - b);
       if (available.length > 0) {
-        const newH = available[0];
+        const larger = available.find(t => t >= dieThickness);
+        const newH = larger !== undefined ? larger : available[available.length - 1];
         notes.push(`模具规格 Φ${dieDiameter}×${dieThickness} 不可用，自动升级到 Φ${dieDiameter}×${newH}`);
         dieThickness = newH;
       }
