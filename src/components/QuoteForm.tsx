@@ -1,3 +1,4 @@
+"use client";
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Upload, FileText, X, Sparkles, Loader2, AlertTriangle } from 'lucide-react';
 
