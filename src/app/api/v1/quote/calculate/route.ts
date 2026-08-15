@@ -91,6 +91,7 @@ interface QuoteResponse {
   aluminum_index?: number;
   min_order_met?: boolean;
   min_order_weight_kg?: number;
+  min_order_qty?: number;
   notes?: string[];
   product_name?: string;
   product_code?: string;
@@ -555,6 +556,24 @@ function calcExtrusion(
   
   let accumulated = mat.cost;
   
+
+  // 取整工具：按数量级向上进位（如 350→400, 35→40, 3500→4000）
+  const ceilByMagnitude = (n: number): number => {
+    if (n <= 0) return 0;
+    if (n <= 10) return Math.ceil(n);
+    const digits = Math.floor(Math.log10(n));
+    const unit = Math.pow(10, digits - 1);
+    return Math.ceil(n / unit) * unit;
+  };
+  // 取整工具：按数量级四舍五入（如 350→400, 340→300, 3500→4000）
+  const roundByMagnitude = (n: number): number => {
+    if (n <= 0) return 0;
+    if (n <= 10) return Math.round(n);
+    const digits = Math.floor(Math.log10(n));
+    const unit = Math.pow(10, digits - 1);
+    return Math.round(n / unit) * unit;
+  };
+
   // 2. 模具费（挤压模具，单独列出）
   let moldCost = 0;
   if (req.mold_cost && req.mold_cost > 0) {
@@ -693,7 +712,7 @@ function calcExtrusion(
     const materialFee = 0.0001726 * dieDiameter * dieDiameter * dieThickness;
     const processingFee = 0.035 * dieDiameter * dieThickness;
     const mgmtRate = getManagementRate(dieThickness);
-    moldCost = Math.round((materialFee + processingFee) * (1 + mgmtRate));
+    moldCost = roundByMagnitude((materialFee + processingFee) * (1 + mgmtRate));
 
     const dieTypeMap: Record<string, string> = { flat: '平模', split: '分流模' };
     const dieType = dieTypeMap[dieTypeKey] || '分流模';
@@ -783,6 +802,12 @@ function calcExtrusion(
   
   const unitPrice = r2(accumulated);
   
+  // 最小起订量：按300kg最低起订重量换算件数，按数量级向上进位
+  const minOrderWeightKg = 300;
+  const minOrderQtyRaw = mat.weight > 0 ? Math.ceil(minOrderWeightKg / mat.weight) : 0;
+  const minOrderQty = ceilByMagnitude(minOrderQtyRaw);
+  notes.push(`最小起订量: ${minOrderQty}件（按${minOrderWeightKg}kg换算，向上取整）`);
+  
   return {
     costs: {
       material_cost: mat.cost,
@@ -794,6 +819,7 @@ function calcExtrusion(
       management_fee: r2(managementFee + profitFee),
       unit_price: unitPrice,
       weight_per_piece_kg: mat.weight,
+      min_order_qty: minOrderQty,
     },
     breakdown,
     weight: mat.weight,
