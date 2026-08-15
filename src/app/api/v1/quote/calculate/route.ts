@@ -506,9 +506,9 @@ function calcExtrusionMaterialCost(
   const lengthMm = dimensions.length_mm || 1000;
   
   if (meterWeight > 0 && lengthMm > 0) {
-    weightKg = meterWeight * (lengthMm + 5) / 1000;
-    formulaStr = '米重 × (长度+5) / 1000';
-    detailStr = `${meterWeight}g/m × (${lengthMm}mm + 5mm) ÷ 1000 = ${r2(weightKg)}kg`;
+    weightKg = meterWeight * (lengthMm + 5) / 1000000;
+    formulaStr = '米重 × (长度+5) / 1000000';
+    detailStr = `${meterWeight}g/m × (${lengthMm}mm + 5mm) ÷ 1000000 = ${r2(weightKg)}kg`;
   } else if (weightOverride && weightOverride > 0) {
     weightKg = weightOverride;
     formulaStr = '用户提供重量';
@@ -709,6 +709,18 @@ function calcExtrusion(
         safeLimit = SAFE_METER_WEIGHT_LIMITS[newKey] || MAX_METER_WEIGHT_BY_SIZE[dieDiameter] || 13.33;
       } else {
         break;
+      }
+    }
+
+    // 步骤3.5：步骤3升级直径后，重新校验 Φ×H 组合是否存在于安全表
+    const checkKey2 = `${dieDiameter}x${dieThickness}`;
+    if (SAFE_METER_WEIGHT_LIMITS[checkKey2] === undefined) {
+      const available2 = (availableThicknessBySize[dieDiameter] || []).sort((a, b) => a - b);
+      if (available2.length > 0) {
+        const larger2 = available2.find((t: number) => t >= dieThickness);
+        const newH2 = larger2 !== undefined ? larger2 : available2[available2.length - 1];
+        notes.push(`模具规格 Φ${dieDiameter}×${dieThickness} 不可用，自动升级到 Φ${dieDiameter}×${newH2}`);
+        dieThickness = newH2;
       }
     }
 
