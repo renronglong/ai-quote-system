@@ -688,6 +688,20 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
   // ==================== Calculate ====================
   const doCalculate = async () => {
+    // Check if all required dimension fields are filled
+    const cat = categoryConfig;
+    if (cat) {
+      const requiredDims = cat.fields.filter(f => ['width', 'height', 'length', 'thickness', 'productSize'].includes(f));
+      const allFilled = requiredDims.every(f => {
+        const val = fields[f];
+        return val !== '' && val !== undefined && val !== null && Number(val) > 0;
+      });
+      if (!allFilled) {
+        onResult?.(null);
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       const surfaceTreatment = mapSurfaceTreatment();
