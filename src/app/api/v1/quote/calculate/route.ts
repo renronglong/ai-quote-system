@@ -581,7 +581,7 @@ function calcExtrusion(
     if (n <= 0) return 0;
     if (n <= 10) return Math.ceil(n);
     const digits = Math.floor(Math.log10(n));
-    const unit = Math.pow(10, digits - 1);
+    const unit = Math.pow(10, digits - 2); // 取整到十位，保留更多精度
     return Math.ceil(n / unit) * unit;
   };
   // 取整工具：按数量级四舍五入（如 350→400, 340→300, 3500→4000）
@@ -589,7 +589,7 @@ function calcExtrusion(
     if (n <= 0) return 0;
     if (n <= 10) return Math.round(n);
     const digits = Math.floor(Math.log10(n));
-    const unit = Math.pow(10, digits - 1);
+    const unit = Math.pow(10, digits - 2); // 取整到十位，保留更多精度
     return Math.round(n / unit) * unit;
   };
 
@@ -663,7 +663,12 @@ function calcExtrusion(
 
     if (isFlatDie) {
       dieThickness = 60; // 平模固定H=60
-      finalPerimeter = 2 * (W + H_dim); // 平模使用基础矩形周长
+      // 平模优先使用用户输入的周长
+      if (dims.perimeter_mm && dims.perimeter_mm > 0) {
+        finalPerimeter = dims.perimeter_mm;
+      } else {
+        finalPerimeter = 2 * (W + H_dim); // 未提供时使用矩形周长
+      }
     } else {
       // 分流模/假整体模：判断异型复杂度
       const straightPerimeter = 2 * (W + H_dim);
