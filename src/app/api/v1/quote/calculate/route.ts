@@ -62,6 +62,8 @@ interface QuoteRequest {
   aluminum_price_override?: number; // 铝锭价覆盖值（元/吨）
   weight_per_piece_kg?: number;     // 单件重量，不填则根据体积×密度估算
   mold_cost?: number;               // 模具费（元），可选
+  product_name?: string;            // 产品名称（可选，用于保存报价记录）
+  product_code?: string;            // 产品编号（可选，用于保存报价记录）
 }
 
 /** 响应体类型 */
@@ -83,6 +85,8 @@ interface QuoteResponse {
   min_order_met?: boolean;
   min_order_weight_kg?: number;
   notes?: string[];
+  product_name?: string;
+  product_code?: string;
   error?: string;
 }
 
@@ -1347,6 +1351,8 @@ export async function POST(request: NextRequest) {
       min_order_met: minOrderMet,
       min_order_weight_kg: minOrderWeight,
       notes: result.notes,
+      product_name: body.product_name,
+      product_code: body.product_code,
     };
 
     // 返回 {"Response": data} 格式，与插件输出参数 "Response"(Object) 名称匹配
@@ -1448,6 +1454,8 @@ export async function GET(request: NextRequest) {
       min_order_met: minOrderMet,
       min_order_weight_kg: minOrderWeight,
       notes: result.notes,
+      product_name: body.product_name,
+      product_code: body.product_code,
     };
 
     // 返回 {"Response": data} 格式，与插件输出参数 "Response"(Object) 名称匹配

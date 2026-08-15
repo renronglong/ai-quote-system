@@ -59,6 +59,7 @@ export interface AiFormUpdate {
 interface QuoteFormProps {
   onCalculate?: (data: QuoteFormData) => void;
   onResult?: (result: PricingResult | null) => void;
+  onProductInfoChange?: (info: { productName: string; productCode: string }) => void;
   aiData?: AiFormUpdate | null;
 }
 
@@ -310,11 +311,15 @@ const ALLOWED_EXTENSIONS = ['.dxf', '.dwg', '.step', '.stp', '.igs', '.pdf', '.j
 
 // ==================== Component ====================
 
-export default function QuoteForm({ onCalculate, onResult, aiData }: QuoteFormProps) {
+export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, aiData }: QuoteFormProps) {
   const [aiSynced, setAiSynced] = useState(false);
   const prevAiDataRef = useRef<AiFormUpdate | null | undefined>(null);
   const [loading, setLoading] = useState(false);
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+
+  // Product info state
+  const [productName, setProductName] = useState('');
+  const [productCode, setProductCode] = useState('');
 
   // Core form state
   const [productType, setProductType] = useState('挤出');
@@ -470,6 +475,11 @@ export default function QuoteForm({ onCalculate, onResult, aiData }: QuoteFormPr
     return () => clearTimeout(timer);
   }, [aiData]);
 
+  // Notify parent of product info changes
+  useEffect(() => {
+    onProductInfoChange?.({ productName, productCode });
+  }, [productName, productCode]);
+
   // ==================== Mapping Helpers ====================
 
   const mapProductType = (): string => {
@@ -579,6 +589,8 @@ export default function QuoteForm({ onCalculate, onResult, aiData }: QuoteFormPr
         material: { category: mapMaterialCategory() },
         quantity: (fields.quantity as number) || 1,
       };
+      if (productName) payload.product_name = productName;
+      if (productCode) payload.product_code = productCode;
       if (dimensions) payload.dimensions = dimensions;
       if (weightKg !== undefined) payload.weight_per_piece_kg = weightKg;
       if (surfaceTreatment) payload.surface_treatment = surfaceTreatment;
@@ -728,6 +740,32 @@ export default function QuoteForm({ onCalculate, onResult, aiData }: QuoteFormPr
             AI 已自动填入参数
           </div>
         )}
+
+        {/* ---- 产品名称 & 编号 ---- */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[11px] text-gray-500 mb-1">产品名称</label>
+              <input
+                type="text"
+                placeholder="输入产品名称"
+                value={productName}
+                onChange={e => setProductName(e.target.value)}
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-gray-500 mb-1">产品编号</label>
+              <input
+                type="text"
+                placeholder="输入产品编号"
+                value={productCode}
+                onChange={e => setProductCode(e.target.value)}
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+              />
+            </div>
+          </div>
+        </div>
 
         {/* ---- 产品类型 Tab栏 ---- */}
         <div className="border-b border-gray-200">

@@ -38,6 +38,7 @@ export default function QuotePage() {
   const [aluminumPrice, setAluminumPrice] = useState<AluminumPrice | null>(null);
   const [aiFormData, setAiFormData] = useState<AiFormUpdate | null>(null);
   const [pricingResult, setPricingResult] = useState<PricingResult | null>(null);
+  const [productInfo, setProductInfo] = useState<{ productName: string; productCode: string }>({ productName: '', productCode: '' });
   const [resultExpanded, setResultExpanded] = useState(true);
   const aiDataCounter = useRef(0);
 
@@ -48,6 +49,10 @@ export default function QuotePage() {
 
   const handleResult = useCallback((result: PricingResult | null) => {
     setPricingResult(result);
+  }, []);
+
+  const handleProductInfoChange = useCallback((info: { productName: string; productCode: string }) => {
+    setProductInfo(info);
   }, []);
 
   // Login check
@@ -123,6 +128,7 @@ export default function QuotePage() {
             <QuoteForm
               aiData={aiFormData}
               onResult={handleResult}
+              onProductInfoChange={handleProductInfoChange}
             />
           </div>
         </div>
@@ -132,7 +138,7 @@ export default function QuotePage() {
           <div className="flex-1 overflow-y-auto">
             <div className="sticky top-0 p-5 space-y-4">
               {/* 结果卡片 */}
-              <ResultPanel pricingResult={pricingResult} aluminumPrice={aluminumPrice} />
+              <ResultPanel pricingResult={pricingResult} aluminumPrice={aluminumPrice} productName={productInfo.productName} productCode={productInfo.productCode} />
             </div>
           </div>
         </div>
@@ -151,7 +157,7 @@ export default function QuotePage() {
         </button>
         {resultExpanded && (
           <div className="p-4 max-h-[40vh] overflow-y-auto">
-            <ResultPanel pricingResult={pricingResult} aluminumPrice={aluminumPrice} compact />
+            <ResultPanel pricingResult={pricingResult} aluminumPrice={aluminumPrice} productName={productInfo.productName} productCode={productInfo.productCode} compact />
           </div>
         )}
       </div>
@@ -161,9 +167,11 @@ export default function QuotePage() {
 
 // ==================== Result Panel Component ====================
 
-function ResultPanel({ pricingResult, aluminumPrice, compact }: {
+function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, compact }: {
   pricingResult: PricingResult | null;
   aluminumPrice: AluminumPrice | null;
+  productName: string;
+  productCode: string;
   compact?: boolean;
 }) {
   if (!pricingResult) {
@@ -190,6 +198,24 @@ function ResultPanel({ pricingResult, aluminumPrice, compact }: {
 
   return (
     <div className={`space-y-3 ${compact ? 'space-y-2' : ''}`}>
+      {/* 产品信息 */}
+      {(productName || productCode) && (
+        <div className="rounded-xl bg-white border border-gray-200 shadow-sm px-3 py-2.5">
+          {productName && (
+            <div className="flex items-baseline gap-2">
+              <span className="text-[11px] text-gray-400 shrink-0">名称</span>
+              <span className="text-sm font-semibold text-gray-800 truncate">{productName}</span>
+            </div>
+          )}
+          {productCode && (
+            <div className="flex items-baseline gap-2 mt-0.5">
+              <span className="text-[11px] text-gray-400 shrink-0">编号</span>
+              <span className="text-xs font-medium text-gray-500 font-mono">{productCode}</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 单价大卡片 */}
       <div className="rounded-2xl bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 border border-emerald-200/60 p-4 shadow-sm">
         <div className="flex items-center gap-1.5 mb-1">
