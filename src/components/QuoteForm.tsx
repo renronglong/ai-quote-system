@@ -352,7 +352,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [productType, setProductType] = useState('挤出');
   const [materialCategory, setMaterialCategory] = useState('铝型材');
   const [fields, setFields] = useState<Record<string, number | string>>({
-    width: '', height: '', length: '', quantity: 1,
+    width: '', height: '', length: '', quantity: '',
   });
   const [materialSurfaceTreatment, setMaterialSurfaceTreatment] = useState('无');
   const [materialColor, setMaterialColor] = useState('');
@@ -388,7 +388,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const resetCategoryState = (catKey: string) => {
     const cat = PRODUCT_TYPES[productType]?.materialCategories[catKey];
     if (!cat) return;
-    const defaultFields: Record<string, number | string> = { quantity: 1 };
+    const defaultFields: Record<string, number | string> = { quantity: '' };
     if (cat.fields.includes('width')) defaultFields.width = '';
     if (cat.fields.includes('height')) defaultFields.height = '';
     if (cat.fields.includes('length')) defaultFields.length = '';
@@ -397,8 +397,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (cat.fields.includes('meterWeight')) defaultFields.meterWeight = '';
     if (cat.fields.includes('netWeight')) defaultFields.netWeight = '';
     if (cat.fields.includes('perimeter')) defaultFields.perimeter = '';
-    if (cat.fields.includes('num_cavities')) defaultFields.num_cavities = 1;
-    if (cat.fields.includes('die_type')) defaultFields.die_type = 'flat';
+    if (cat.fields.includes('num_cavities')) defaultFields.num_cavities = '';
+    if (cat.fields.includes('die_type')) defaultFields.die_type = '';
     setFields(defaultFields);
     if (cat.materialSurfaceTreatment) {
       setMaterialSurfaceTreatment('无');
@@ -890,22 +890,31 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               }
               // die_type 用 select 渲染
               if (fieldKey === 'die_type') {
-                const dtVal = (fields[fieldKey] as string) || 'flat';
+                const dtVal = fields[fieldKey] as string;
                 return (
                   <div key={fieldKey}>
                     <label className="block text-[11px] text-gray-500 mb-1">{FIELD_LABELS[fieldKey]}</label>
                     <select
-                      value={dtVal}
+                      value={dtVal || ''}
                       onChange={e => {
-                        const val = e.target.value as 'flat' | 'split';
-                        setFields(prev => ({
-                          ...prev,
-                          [fieldKey]: val,
-                          num_cavities: val === 'flat' ? 1 : 2,
-                        }));
+                        const val = e.target.value;
+                        if (val === 'flat' || val === 'split') {
+                          setFields(prev => ({
+                            ...prev,
+                            [fieldKey]: val,
+                            num_cavities: val === 'flat' ? 1 : 2,
+                          }));
+                        } else {
+                          setFields(prev => ({
+                            ...prev,
+                            [fieldKey]: '',
+                            num_cavities: '',
+                          }));
+                        }
                       }}
                       className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
                     >
+                      <option value="">请选择</option>
                       <option value="flat">平模</option>
                       <option value="split">分流模</option>
                     </select>
