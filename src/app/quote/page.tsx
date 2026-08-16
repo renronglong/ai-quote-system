@@ -12,7 +12,11 @@ import {
   AlertTriangle,
   Package,
   BarChart3,
+  Save,
+  History,
+  CheckCircle2,
 } from 'lucide-react';
+import SavedQuotesPanel, { saveQuoteToStorage } from '@/components/SavedQuotesPanel';
 
 interface AiFormUpdate {
   productType?: string;
@@ -41,6 +45,8 @@ export default function QuotePage() {
   const [pricingResult, setPricingResult] = useState<PricingResult | null>(null);
   const [productInfo, setProductInfo] = useState<{ productName: string; productCode: string }>({ productName: '', productCode: '' });
   const [resultExpanded, setResultExpanded] = useState(true);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [currentParams, setCurrentParams] = useState<Record<string, any> | null>(null);
   const aiDataCounter = useRef(0);
 
   const handleFormUpdate = useCallback((data: AiFormUpdate) => {
@@ -52,9 +58,39 @@ export default function QuotePage() {
     setPricingResult(result);
   }, []);
 
+  // 保存当前计算参数（供保存报价使用）
+  const handleParamsUpdate = useCallback((params: Record<string, any>) => {
+    setCurrentParams(params);
+  }, []);
+
   const handleProductInfoChange = useCallback((info: { productName: string; productCode: string }) => {
     setProductInfo(info);
   }, []);
+
+  // 保存报价
+  const handleSaveQuote = () => {
+    if (!pricingResult) return;
+    const params = currentParams || {};
+    const productType = params.product_type || productInfo.productName || '产品';
+    const result = {
+      material_cost: pricingResult.material_cost,
+      processing_cost: pricingResult.processing_cost,
+      surface_treatment_cost: pricingResult.surface_treatment_cost,
+      packaging_cost: pricingResult.packaging_cost,
+      transport_cost: pricingResult.transport_cost,
+      management_fee: pricingResult.management_fee,
+      unit_price: pricingResult.unit_price,
+      total_price: pricingResult.total_price,
+      weight_per_piece_kg: pricingResult.weight_per_piece_kg,
+      material_utilization_rate: pricingResult.material_utilization_rate,
+      breakdown: pricingResult.breakdown,
+      aluminum_index: pricingResult.aluminum_index,
+      notes: pricingResult.notes,
+    };
+    saveQuoteToStorage(params, result, productType);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 1500);
+  };
 
   // Login check
   useEffect(() => {
@@ -95,7 +131,15 @@ export default function QuotePage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <SavedQuotesPanel
+                trigger={
+                  <button className="hidden sm:flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors">
+                    <History className="w-3.5 h-3.5" />
+                    已保存
+                  </button>
+                }
+              />
               {aluminumPrice && (
                 <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-50 border border-gray-200">
                   <TrendingUp className="w-3 h-3 text-orange-500" />
@@ -130,6 +174,7 @@ export default function QuotePage() {
               aiData={aiFormData}
               onResult={handleResult}
               onProductInfoChange={handleProductInfoChange}
+              onCalculate={handleParamsUpdate}
             />
           </div>
         </div>
@@ -139,7 +184,7 @@ export default function QuotePage() {
           <div className="flex-1 overflow-y-auto">
             <div className="sticky top-0 p-5 space-y-4">
               {/* 结果卡片 */}
-              <ResultPanel pricingResult={pricingResult} aluminumPrice={aluminumPrice} productName={productInfo.productName} productCode={productInfo.productCode} />
+              <ResultPanel pricingResult={pricingResult} aluminumPrice={aluminumPrice} productName={productInfo.productName} productCode={productInfo.productCode} onSave={handleSaveQuote} saveSuccess={saveSuccess} />
             </div>
           </div>
         </div>
@@ -158,7 +203,7 @@ export default function QuotePage() {
         </button>
         {resultExpanded && (
           <div className="p-4 max-h-[40vh] overflow-y-auto">
-            <ResultPanel pricingResult={pricingResult} aluminumPrice={aluminumPrice} productName={productInfo.productName} productCode={productInfo.productCode} compact />
+            <ResultPanel pricingResult={pricingResult} aluminumPrice={aluminumPrice} productName={productInfo.productName} productCode={productInfo.productCode} compact onSave={handleSaveQuote} saveSuccess={saveSuccess} />
           </div>
         )}
       </div>
@@ -168,12 +213,14 @@ export default function QuotePage() {
 
 // ==================== Result Panel Component ====================
 
-function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, compact }: {
+function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, compact, onSave, saveSuccess }: {
   pricingResult: PricingResult | null;
   aluminumPrice: AluminumPrice | null;
   productName: string;
   productCode: string;
   compact?: boolean;
+  onSave?: () => void;
+  saveSuccess?: boolean;
 }) {
   // 保留UI结构，只显示占位数据
   const isPlaceholder = !pricingResult;
@@ -189,7 +236,6 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
     { label: '材料费', value: p.material_cost, key: 'material_cost' },
     { label: '加工费', value: p.processing_cost, key: 'processing_cost' },
     { label: '表面处理费', value: p.surface_treatment_cost, key: 'surface_treatment_cost' },
-    { label: '二次加工费', value: p.secondary_operations_cost, key: 'secondary_operations_cost' },
     { label: '包装费', value: p.packaging_cost, key: 'packaging_cost' },
     { label: '运输费', value: p.transport_cost, key: 'transport_cost' },
     { label: '管理费', value: p.management_fee, key: 'management_fee' },
@@ -234,6 +280,26 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
           </span>
         </div>
       </div>
+
+      {/* 操作按钮 */}
+      {!isPlaceholder && onSave && (
+        <div className="flex gap-2">
+          <button
+            onClick={onSave}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+              saveSuccess
+                ? 'bg-emerald-500 text-white'
+                : 'bg-white border border-gray-200 text-gray-700 hover:border-blue-300 hover:text-blue-600'
+            }`}
+          >
+            {saveSuccess ? (
+              <><CheckCircle2 className="w-4 h-4" /> 已保存</>
+            ) : (
+              <><Save className="w-4 h-4" /> 保存报价</>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* 费用明细 */}
       <div className="rounded-xl bg-white border border-gray-200 shadow-sm overflow-hidden">

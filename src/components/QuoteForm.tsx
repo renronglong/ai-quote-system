@@ -360,6 +360,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [processes, setProcesses] = useState<ProcessSelection[]>([]);
   const [productSurfaceTreatment, setProductSurfaceTreatment] = useState('无');
   const [productColor, setProductColor] = useState('');
+  const [surfaceTreatment, setSurfaceTreatment] = useState('无');
+  const [surfaceColor, setSurfaceColor] = useState('');
   const [meterWeightManual, setMeterWeightManual] = useState(false);
   const [quantityManual, setQuantityManual] = useState(false);
   const [perimeterManual, setPerimeterManual] = useState(false);
@@ -412,6 +414,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     setProcesses([]);
     setProductSurfaceTreatment('');
     setProductColor('');
+    setSurfaceTreatment('无');
+    setSurfaceColor('');
     if (cat.productSurfaceTreatment && cat.productSurfaceTreatment.length > 0) {
       setProductSurfaceTreatment(cat.productSurfaceTreatment[0].name);
     } else if (cat.productSurfaceTreatmentMap) {
@@ -470,13 +474,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     debounceTimer.current = setTimeout(() => {
       doCalculate();
     }, 500);
-  }, [productType, materialCategory, fields, materialSurfaceTreatment, materialColor, processes, productSurfaceTreatment, productColor]);
+  }, [productType, materialCategory, fields, materialSurfaceTreatment, materialColor, processes, productSurfaceTreatment, productColor, surfaceTreatment, surfaceColor]);
 
   // Trigger on any field change
   useEffect(() => {
     triggerCalculate();
     return () => { if (debounceTimer.current) clearTimeout(debounceTimer.current); };
-  }, [productType, materialCategory, fields, materialSurfaceTreatment, materialColor, processes, productSurfaceTreatment, productColor]);
+  }, [productType, materialCategory, fields, materialSurfaceTreatment, materialColor, processes, productSurfaceTreatment, productColor, surfaceTreatment, surfaceColor]);
 
   // Get available product surface treatments
   const getProductSurfaceOptions = (): ProductSurfaceOption[] => {
@@ -499,6 +503,46 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const getProductColorOptions = (): string[] => {
     const opts = getProductSurfaceOptions();
     const selected = opts.find(o => o.name === productSurfaceTreatment);
+    return selected?.colors || [];
+  };
+
+  // 合并材料表面处理 + 产品表面处理选项（去重，默认"无"）
+  const getSurfaceTreatmentOptions = (): { name: string; colors?: string[] }[] => {
+    const seen = new Map<string, string[] | undefined>();
+    const addOption = (name: string, colors?: string[]) => {
+      if (!seen.has(name)) seen.set(name, colors);
+    };
+    addOption('无');
+    if (categoryConfig?.materialSurfaceTreatment) {
+      for (const name of categoryConfig.materialSurfaceTreatment) {
+        if (name === '无') continue;
+        const colorOpts = categoryConfig?.materialColorMap?.[name];
+        addOption(name, colorOpts);
+      }
+    }
+    const productOpts = getProductSurfaceOptions();
+    for (const opt of productOpts) {
+      if (opt.name === '无') continue;
+      if (seen.has(opt.name)) {
+        // 合并颜色
+        const existing = seen.get(opt.name);
+        if (opt.colors && existing) {
+          const merged = [...existing];
+          for (const c of opt.colors) if (!merged.includes(c)) merged.push(c);
+          seen.set(opt.name, merged);
+        } else if (opt.colors) {
+          seen.set(opt.name, opt.colors);
+        }
+      } else {
+        addOption(opt.name, opt.colors);
+      }
+    }
+    return Array.from(seen.entries()).map(([name, colors]) => ({ name, colors }));
+  };
+
+  const getSurfaceColorOptions = (): string[] => {
+    const opts = getSurfaceTreatmentOptions();
+    const selected = opts.find(o => o.name === surfaceTreatment);
     return selected?.colors || [];
   };
 
@@ -607,19 +651,17 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     const surfaceMap: Record<string, string> = {
       '喷砂氧化': '喷砂', '抛光氧化': '抛光/镀铬', '拉丝氧化': '拉丝',
       '喷涂': '喷涂/喷粉', '氧化': '氧化本色', '电镀': '镀锌/镀镍',
+      '除油': '除油',
     };
-    if (materialSurfaceTreatment && materialSurfaceTreatment !== '无') {
-      const mapped = surfaceMap[materialSurfaceTreatment];
-      if (mapped) return { type: mapped, color: materialColor || null };
-    }
-    if (productSurfaceTreatment && productSurfaceTreatment !== '无' && productSurfaceTreatment !== '除油') {
-      let mapped = surfaceMap[productSurfaceTreatment];
+    // 使用合并后的统一表面处理
+    if (surfaceTreatment && surfaceTreatment !== '无') {
+      let mapped = surfaceMap[surfaceTreatment];
       if (!mapped) return null;
-      if (productSurfaceTreatment === '氧化') {
-        if (productColor && productColor !== '本色') mapped = '氧化上色';
+      if (surfaceTreatment === '氧化') {
+        if (surfaceColor && surfaceColor !== '本色') mapped = '氧化上色';
         else mapped = '氧化本色';
       }
-      return { type: mapped, color: productColor || null };
+      return { type: mapped, color: surfaceColor || null };
     }
     return null;
   };
@@ -1060,24 +1102,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           {renderFields()}
         </div>
 
-        {/* ---- 材料表面处理 (仅挤出) ---- */}
-        {showMaterialSurface && categoryConfig?.materialSurfaceTreatment && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-            <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">材料表面处理</label>
-            <CustomSelect
-              value={materialSurfaceTreatment}
-              options={categoryConfig.materialSurfaceTreatment}
-              onChange={val => { setMaterialSurfaceTreatment(val); setMaterialColor(''); }}
-            />
-            {materialColorOpts.length > 0 && (
-              <div className="mt-2">
-                <label className="block text-[11px] text-gray-500 mb-1">材料颜色</label>
-                <CustomSelect value={materialColor} options={materialColorOpts} onChange={setMaterialColor} />
-              </div>
-            )}
-          </div>
-        )}
-
         {/* ---- 加工工艺 ---- */}
         {categoryConfig && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
@@ -1172,19 +1196,19 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           </div>
         )}
 
-        {/* ---- 产品表面处理 + 颜色 ---- */}
-        {showProductSurface && (
+        {/* ---- 表面处理（合并材料+产品，二选一） ---- */}
+        {(showMaterialSurface || showProductSurface) && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-            <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">产品表面处理</label>
+            <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">表面处理</label>
             <CustomSelect
-              value={productSurfaceTreatment}
-              options={productSurfaceOpts.map(o => o.name)}
-              onChange={handleProductSurfaceChange}
+              value={surfaceTreatment}
+              options={getSurfaceTreatmentOptions().map(o => o.name)}
+              onChange={val => { setSurfaceTreatment(val); setSurfaceColor(''); }}
             />
-            {productColorOpts.length > 0 && (
+            {getSurfaceColorOptions().length > 0 && (
               <div className="mt-2">
-                <label className="block text-[11px] text-gray-500 mb-1">产品颜色</label>
-                <CustomSelect value={productColor} options={productColorOpts} onChange={setProductColor} />
+                <label className="block text-[11px] text-gray-500 mb-1">颜色</label>
+                <CustomSelect value={surfaceColor} options={getSurfaceColorOptions()} onChange={setSurfaceColor} />
               </div>
             )}
           </div>
@@ -1194,7 +1218,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         {productType === '挤出' && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
             <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">其他参数</label>
-            <div>
+            {/* 模具钢价输入框已隐藏，后端使用默认值 18000 元/吨 */}
+            <div style={{ display: 'none' }}>
               <label className="block text-[11px] text-gray-500 mb-1">
                 模具钢价(元/吨)
                 <span className="ml-1 text-[10px] text-gray-400">选填，默认18000(H13均价)</span>
