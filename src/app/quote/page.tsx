@@ -15,8 +15,9 @@ import {
   Save,
   History,
   CheckCircle2,
+  Percent,
 } from 'lucide-react';
-import SavedQuotesPanel, { saveQuoteToStorage } from '@/components/SavedQuotesPanel';
+import SavedQuotesPanel, { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
 
 interface AiFormUpdate {
   productType?: string;
@@ -47,6 +48,8 @@ export default function QuotePage() {
   const [resultExpanded, setResultExpanded] = useState(true);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [currentParams, setCurrentParams] = useState<Record<string, any> | null>(null);
+  const [productDiscount, setProductDiscount] = useState<number>(100); // 产品折扣，100=无折扣
+  const [moldDiscount, setMoldDiscount] = useState<number>(100); // 模具费折扣，100=无折扣
   const aiDataCounter = useRef(0);
 
   const handleFormUpdate = useCallback((data: AiFormUpdate) => {
@@ -58,7 +61,6 @@ export default function QuotePage() {
     setPricingResult(result);
   }, []);
 
-  // 保存当前计算参数（供保存报价使用）
   const handleParamsUpdate = useCallback((params: Record<string, any>) => {
     setCurrentParams(params);
   }, []);
@@ -67,9 +69,9 @@ export default function QuotePage() {
     setProductInfo(info);
   }, []);
 
-  // 保存报价
-  const handleSaveQuote = () => {
-    if (!pricingResult) return;
+  // 保存报价 → 调用 API 存入数据库
+  const handleSaveQuote = async () => {
+    if (!pricingResult || !user) return;
     const params = currentParams || {};
     const productType = params.product_type || productInfo.productName || '产品';
     const result = {
@@ -86,10 +88,13 @@ export default function QuotePage() {
       breakdown: pricingResult.breakdown,
       aluminum_index: pricingResult.aluminum_index,
       notes: pricingResult.notes,
+      mold_cost: pricingResult.mold_cost || 0,
     };
-    saveQuoteToStorage(params, result, productType);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 1500);
+    const saved = await saveQuoteToAPI(user.id, params, result, productType);
+    if (saved) {
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 1500);
+    }
   };
 
   // Login check
@@ -115,9 +120,19 @@ export default function QuotePage() {
     return () => clearInterval(interval);
   }, []);
 
+  // 折扣计算
+  const moldFee = pricingResult?.mold_cost || 0;
+  const discountedUnit = pricingResult ? pricingResult.unit_price * (productDiscount / 100) : 0;
+  const discountedMold = moldFee * (moldDiscount / 100);
+  const moldDiffPerPiece = pricingResult ? (moldFee - discountedMold) / (pricingResult.weight_per_piece_kg > 0 ? ((currentParams?.quantity || 1)) : 1) : 0;
+  const finalUnit = discountedUnit; // 产品折后单价
+  const hasProductDiscount = productDiscount < 100;
+  const hasMoldDiscount = moldDiscount < 100 && moldFee > 0;
+  const hasAnyDiscount = hasProductDiscount || hasMoldDiscount;
+
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
-      {/* 顶部栏 - 紧凑 */}
+      {/* 顶部栏 */}
       <header className="shrink-0 bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-[1600px] mx-auto px-4 lg:px-6">
           <div className="flex items-center justify-between h-12">
@@ -132,14 +147,17 @@ export default function QuotePage() {
             </div>
 
             <div className="flex items-center gap-2">
-              <SavedQuotesPanel
-                trigger={
-                  <button className="hidden sm:flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors">
-                    <History className="w-3.5 h-3.5" />
-                    已保存
-                  </button>
-                }
-              />
+              {user && (
+                <SavedQuotesPanel
+                  userId={user.id}
+                  trigger={
+                    <button className="hidden sm:flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors">
+                      <History className="w-3.5 h-3.5" />
+                      已保存
+                    </button>
+                  }
+                />
+              )}
               {aluminumPrice && (
                 <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-50 border border-gray-200">
                   <TrendingUp className="w-3 h-3 text-orange-500" />
@@ -179,31 +197,57 @@ export default function QuotePage() {
           </div>
         </div>
 
-        {/* 右侧：实时结果区 - PC sticky */}
+        {/* 右侧：实时结果区 */}
         <div className="hidden lg:flex lg:w-[42%] xl:w-[45%] flex-col border-l border-gray-200 bg-white">
           <div className="flex-1 overflow-y-auto">
             <div className="sticky top-0 p-5 space-y-4">
-              {/* 结果卡片 */}
-              <ResultPanel pricingResult={pricingResult} aluminumPrice={aluminumPrice} productName={productInfo.productName} productCode={productInfo.productCode} onSave={handleSaveQuote} saveSuccess={saveSuccess} />
+              <ResultPanel
+                pricingResult={pricingResult}
+                aluminumPrice={aluminumPrice}
+                productName={productInfo.productName}
+                productCode={productInfo.productCode}
+                productDiscount={productDiscount}
+                moldDiscount={moldDiscount}
+                onProductDiscountChange={setProductDiscount}
+                onMoldDiscountChange={setMoldDiscount}
+                moldFee={moldFee}
+                onSave={handleSaveQuote}
+                saveSuccess={saveSuccess}
+                user={user}
+              />
             </div>
           </div>
         </div>
       </main>
 
-      {/* 移动端底部结果区 - 可折叠 */}
+      {/* 移动端底部结果区 */}
       <div className="lg:hidden shrink-0 border-t border-gray-200 bg-white">
         <button
           onClick={() => setResultExpanded(!resultExpanded)}
           className="w-full flex items-center justify-between px-4 py-2.5 bg-white border-b border-gray-100"
         >
           <span className="text-sm font-medium text-gray-700">
-            {pricingResult ? `¥${pricingResult.unit_price.toFixed(2)}/件` : '报价结果'}
+            {pricingResult ? `¥${finalUnit.toFixed(2)}/件` : '报价结果'}
           </span>
           {resultExpanded ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronUp className="w-4 h-4 text-gray-400" />}
         </button>
         {resultExpanded && (
           <div className="p-4 max-h-[40vh] overflow-y-auto">
-            <ResultPanel pricingResult={pricingResult} aluminumPrice={aluminumPrice} productName={productInfo.productName} productCode={productInfo.productCode} compact onSave={handleSaveQuote} saveSuccess={saveSuccess} />
+            <ResultPanel
+              pricingResult={pricingResult}
+              aluminumPrice={aluminumPrice}
+              productName={productInfo.productName}
+              productCode={productInfo.productCode}
+              productDiscount={productDiscount}
+              moldDiscount={moldDiscount}
+              onProductDiscountChange={setProductDiscount}
+              onMoldDiscountChange={setMoldDiscount}
+              moldFee={moldFee}
+              compact
+              onSave={handleSaveQuote}
+              saveSuccess={saveSuccess}
+              user={user}
+            />
           </div>
         )}
       </div>
@@ -213,24 +257,37 @@ export default function QuotePage() {
 
 // ==================== Result Panel Component ====================
 
-function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, compact, onSave, saveSuccess }: {
+function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, compact, productDiscount, moldDiscount, onProductDiscountChange, onMoldDiscountChange, moldFee, onSave, saveSuccess, user }: {
   pricingResult: PricingResult | null;
   aluminumPrice: AluminumPrice | null;
   productName: string;
   productCode: string;
   compact?: boolean;
+  productDiscount: number;
+  moldDiscount: number;
+  onProductDiscountChange: (v: number) => void;
+  onMoldDiscountChange: (v: number) => void;
+  moldFee: number;
   onSave?: () => void;
   saveSuccess?: boolean;
+  user: any;
 }) {
-  // 保留UI结构，只显示占位数据
   const isPlaceholder = !pricingResult;
   const p = pricingResult || {
     material_cost: 0, processing_cost: 0, surface_treatment_cost: 0,
     secondary_operations_cost: 0, packaging_cost: 0, transport_cost: 0,
-    management_fee: 0, unit_price: 0, total_price: 0, weight_per_piece_kg: 0, material_utilization_rate: undefined as number | undefined,
+    management_fee: 0, unit_price: 0, total_price: 0, weight_per_piece_kg: 0,
+    material_utilization_rate: undefined as number | undefined,
     breakdown: {} as Record<string, { formula: string; detail: string }>,
-    aluminum_index: 0, notes: [] as string[],
+    aluminum_index: 0, notes: [] as string[], mold_cost: 0,
   };
+
+  const hasProductDiscount = productDiscount < 100;
+  const hasMoldDiscount = moldDiscount < 100 && moldFee > 0;
+  const discountedUnit = p.unit_price * (productDiscount / 100);
+  const discountedMold = moldFee * (moldDiscount / 100);
+  const displayUnit = hasProductDiscount ? discountedUnit : p.unit_price;
+  const qty = 1; // TODO: get from params if available
 
   const breakdownItems = [
     { label: '材料费', value: p.material_cost, key: 'material_cost' },
@@ -269,28 +326,107 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         </div>
         <div className="flex items-baseline gap-1">
           <span className={`font-bold ${isPlaceholder ? 'text-gray-300' : 'text-emerald-700'} ${compact ? 'text-2xl' : 'text-4xl'}`}>
-            {isPlaceholder ? '¥--' : `¥${p.unit_price.toFixed(2)}`}
+            {isPlaceholder ? '¥--' : `¥${displayUnit.toFixed(2)}`}
           </span>
           <span className={`text-sm ${isPlaceholder ? 'text-gray-300' : 'text-emerald-500'}`}>/件</span>
         </div>
+        {hasProductDiscount && !isPlaceholder && (
+          <div className="text-[11px] text-red-500 mt-0.5">
+            原价 ¥{p.unit_price.toFixed(2)} · 产品{productDiscount}%折
+          </div>
+        )}
         <div className="mt-1.5 flex items-baseline gap-1">
           <span className="text-xs text-gray-500">总价</span>
           <span className={`font-bold ${isPlaceholder ? 'text-gray-300' : 'text-gray-800'} ${compact ? 'text-lg' : 'text-2xl'}`}>
-            {isPlaceholder ? '¥--' : `¥${p.total_price.toFixed(2)}`}
+            {isPlaceholder ? '¥--' : `¥${(displayUnit * (p as any).quantity || p.total_price * (productDiscount / 100)).toFixed(2)}`}
           </span>
         </div>
+        {hasMoldDiscount && !isPlaceholder && (
+          <div className="text-[11px] text-amber-600 mt-1">
+            模具费: ¥{moldFee.toFixed(2)} → 折后 ¥{discountedMold.toFixed(2)}（{moldDiscount}%折）
+          </div>
+        )}
       </div>
+
+      {/* 折扣调整区域 */}
+      {!isPlaceholder && (
+        <div className="rounded-xl bg-white border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-3 py-2 bg-amber-50 border-b border-amber-100 flex items-center gap-1.5">
+            <Percent className="w-3.5 h-3.5 text-amber-600" />
+            <span className="text-[11px] font-semibold text-amber-700 uppercase tracking-wide">折扣调整</span>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {/* 产品折扣 */}
+            <div className="flex items-center justify-between px-3 py-2.5">
+              <span className="text-xs text-gray-600">产品价折扣</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min="50"
+                  max="100"
+                  step="1"
+                  value={productDiscount}
+                  onChange={(e) => onProductDiscountChange(Number(e.target.value))}
+                  className="w-20 h-1.5 accent-amber-500"
+                />
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={productDiscount}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (v >= 1 && v <= 100) onProductDiscountChange(v);
+                  }}
+                  className="w-14 text-xs text-right border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-amber-400"
+                />
+                <span className="text-[10px] text-gray-400 w-4">折</span>
+              </div>
+            </div>
+            {/* 模具费折扣 */}
+            {moldFee > 0 && (
+              <div className="flex items-center justify-between px-3 py-2.5">
+                <span className="text-xs text-gray-600">模具费折扣</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min="50"
+                    max="100"
+                    step="1"
+                    value={moldDiscount}
+                    onChange={(e) => onMoldDiscountChange(Number(e.target.value))}
+                    className="w-20 h-1.5 accent-amber-500"
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={moldDiscount}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (v >= 1 && v <= 100) onMoldDiscountChange(v);
+                    }}
+                    className="w-14 text-xs text-right border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-amber-400"
+                  />
+                  <span className="text-[10px] text-gray-400 w-4">折</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 操作按钮 */}
       {!isPlaceholder && onSave && (
         <div className="flex gap-2">
           <button
             onClick={onSave}
+            disabled={!user}
             className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
               saveSuccess
                 ? 'bg-emerald-500 text-white'
                 : 'bg-white border border-gray-200 text-gray-700 hover:border-blue-300 hover:text-blue-600'
-            }`}
+            } ${!user ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             {saveSuccess ? (
               <><CheckCircle2 className="w-4 h-4" /> 已保存</>
@@ -324,16 +460,28 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
               </div>
             </div>
           ))}
+          {/* 模具费（一次性，独立显示） */}
+          {moldFee > 0 && (
+            <div className="flex justify-between items-center px-3 py-2 bg-blue-50/30">
+              <span className="text-xs text-blue-600 font-medium">模具费（一次性）</span>
+              <div className="text-right">
+                <span className="text-sm font-semibold text-blue-700">
+                  {hasMoldDiscount ? `¥${discountedMold.toFixed(2)}` : `¥${moldFee.toFixed(2)}`}
+                </span>
+                {hasMoldDiscount && (
+                  <div className="text-[10px] text-gray-400 line-through">¥{moldFee.toFixed(2)}</div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* 分割线 */}
         <div className="border-t-2 border-dashed border-gray-200" />
 
-        {/* 单价汇总 */}
         <div className="flex justify-between items-center px-3 py-2 bg-emerald-50/50">
           <span className="text-xs font-medium text-gray-600">单价合计</span>
           <span className={`text-base font-bold ${isPlaceholder ? 'text-gray-300' : 'text-emerald-600'}`}>
-            {isPlaceholder ? '--' : `¥${p.unit_price.toFixed(2)}`}
+            {isPlaceholder ? '--' : `¥${displayUnit.toFixed(2)}`}
           </span>
         </div>
       </div>
@@ -372,7 +520,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         )}
       </div>
 
-      {/* 警告提示 */}
+      {/* 备注 */}
       {!isPlaceholder && p.notes && p.notes.length > 0 && (
         <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
           {p.notes.map((note: string, i: number) => (
@@ -384,7 +532,6 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         </div>
       )}
 
-      {/* 无数据时的提示 */}
       {isPlaceholder && (
         <div className="flex items-center justify-center py-3">
           <p className="text-xs text-gray-300">请填写参数，系统将自动计算报价</p>

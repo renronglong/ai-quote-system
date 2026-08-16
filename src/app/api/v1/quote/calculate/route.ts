@@ -102,6 +102,7 @@ interface QuoteResponse {
   product_name?: string;
   product_code?: string;
   error?: string;
+  mold_cost?: number;              // 模具费（元），一次性，不计入单件价
 }
 
 // ============================================================
@@ -870,6 +871,7 @@ function calcExtrusion(
       unit_price: unitPrice,
       weight_per_piece_kg: mat.weight,
       min_order_qty: minOrderQty,
+      mold_cost: moldCost,
     },
     breakdown,
     weight: mat.weight,
@@ -1304,6 +1306,7 @@ function calcDieCasting(
       management_fee: managementFee,
       unit_price: unitPrice,
       weight_per_piece_kg: mat.weight,
+      mold_cost: moldTotal,
     },
     breakdown,
     weight: mat.weight,
@@ -1387,6 +1390,7 @@ function calcZincAlloy(
       management_fee: managementFee,
       unit_price: unitPrice,
       weight_per_piece_kg: mat.weight,
+      mold_cost: moldTotal,
     },
     breakdown,
     weight: mat.weight,
@@ -1472,6 +1476,7 @@ function calcInjection(
       management_fee: managementFee,
       unit_price: unitPrice,
       weight_per_piece_kg: mat.weight,
+      mold_cost: moldTotal,
     },
     breakdown,
     weight: mat.weight,

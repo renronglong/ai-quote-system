@@ -43,6 +43,7 @@ export interface PricingResult {
   material_utilization_rate?: number;
   breakdown: Record<string, { formula: string; detail: string }>;
   aluminum_index: number;
+  mold_cost?: number;
   notes: string[];
 }
 
@@ -820,6 +821,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             breakdown: data.breakdown || {},
             aluminum_index: data.aluminum_index || 0,
             notes: data.notes || [],
+            mold_cost: data.mold_cost || 0,
           };
           onResult?.(result);
           if (onCalculate) {
