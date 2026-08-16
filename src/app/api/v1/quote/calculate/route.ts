@@ -751,7 +751,8 @@ function calcExtrusion(
     const dieSteelPrice = dims.die_steel_price || DEFAULT_DIE_STEEL_PRICE;
     const materialFee = dieSteelPrice * dieDiameter * dieDiameter * dieThickness / 1000000000;
     const baseProcessingFee = 0.035 * dieDiameter * dieThickness;
-    const perimeterFee = 0.1 * finalPerimeter; // 周长越大加工越复杂，费用越高
+    const processingArea = finalPerimeter * dieThickness; // 加工面积 = 周长 × 模具厚度
+    const perimeterFee = 0.0035 * processingArea; // 周长越大、模具越厚，加工面积越大，费用越高
     const processingFee = baseProcessingFee + perimeterFee;
     const mgmtRate = getManagementRate(dieThickness);
     moldCost = roundByMagnitude((materialFee + processingFee) * (1 + mgmtRate));
@@ -760,12 +761,12 @@ function calcExtrusion(
     const dieType = dieTypeMap[dieTypeKey] || '分流模';
     notes.push(`模具规格: Φ${dieDiameter}×${dieThickness} ${dieType}`);
     notes.push(`模具钢价: ${dieSteelPrice}元/吨${dims.die_steel_price ? '（用户指定）' : '（默认H13均价）'}`);
-    notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + ${Math.round(baseProcessingFee)}基础加工 + ${Math.round(perimeterFee)}周长加工) × ${(mgmtRate*100).toFixed(0)}%管理费`);
+    notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + ${Math.round(baseProcessingFee)}基础加工 + ${Math.round(perimeterFee)}周长加工[0.0035×${processingArea}mm²]) × ${(mgmtRate*100).toFixed(0)}%管理费`);
     notes.push(`模具费一次性，不计入单件价格`);
 
     breakdown['mold'] = {
-      formula: `(材料费: 钢价×Φ²×H/10⁹ + 基础加工费0.035×Φ×H + 周长加工费0.1×周长) × (1+管理费率)`,
-      detail: `模具钢价${dieSteelPrice}元/吨 | Φ${dieDiameter}×${dieThickness}${dieType}: 材料费${dieSteelPrice}×${dieDiameter}²×${dieThickness}/10⁹=${Math.round(materialFee)} + 基础加工${Math.round(baseProcessingFee)} + 周长加工${Math.round(perimeterFee)} → ×${(1+mgmtRate).toFixed(2)} = ${moldCost}元`,
+      formula: `(材料费: 钢价×Φ²×H/10⁹ + 基础加工费0.035×Φ×H + 周长加工费0.0035×加工面积) × (1+管理费率)`,
+      detail: `模具钢价${dieSteelPrice}元/吨 | Φ${dieDiameter}×${dieThickness}${dieType}: 材料费${dieSteelPrice}×${dieDiameter}²×${dieThickness}/10⁹=${Math.round(materialFee)} + 基础加工${Math.round(baseProcessingFee)} + 周长加工(0.0035×${processingArea}mm²加工面积)=${Math.round(perimeterFee)} → ×${(1+mgmtRate).toFixed(2)} = ${moldCost}元`,
     };
   }
 
