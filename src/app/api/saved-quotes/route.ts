@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     const userId = getUserId(request) || body.user_id;
     if (!userId) return errorResponse('缺少用户ID', 400);
 
-    const { name, product_type, params, result } = body;
+    const { name, product_type, params, result, product_discount, mold_discount } = body;
 
     if (!name || !product_type) {
       return errorResponse('缺少必填字段 name/product_type', 400);
@@ -68,6 +68,8 @@ export async function POST(request: NextRequest) {
         product_type,
         params: params || {},
         result: result || {},
+        product_discount: product_discount ?? 100,
+        mold_discount: mold_discount ?? 100,
       })
       .select()
       .single();
