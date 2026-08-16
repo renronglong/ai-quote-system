@@ -44,6 +44,7 @@ export interface PricingResult {
   breakdown: Record<string, { formula: string; detail: string }>;
   aluminum_index: number;
   mold_cost?: number;
+  min_order_qty?: number;
   notes: string[];
 }
 
@@ -822,6 +823,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             aluminum_index: data.aluminum_index || 0,
             notes: data.notes || [],
             mold_cost: data.mold_cost || 0,
+            min_order_qty: data.min_order_qty || 0,
           };
           onResult?.(result);
           if (onCalculate) {
