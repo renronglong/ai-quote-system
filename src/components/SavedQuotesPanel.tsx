@@ -303,7 +303,7 @@ export default function SavedQuotesPanel({ userId, trigger, onOpenChange }: Save
                       </div>
                     </div>
                     <div className="text-[11px] text-gray-400 mt-0.5">
-                      {new Date(quote.date || quote.created_at).toLocaleString('zh-CN')}
+                      {new Date(quote.date || quote.created_at || '').toLocaleString('zh-CN')}
                     </div>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-[11px] text-gray-500">
