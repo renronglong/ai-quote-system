@@ -46,7 +46,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const {
       supplier_id, mold_number, product_name, cross_section_mm,
-      weight_per_meter, perimeter, surface_treatments,
+      weight_per_meter, perimeter, surface_treatments, num_dies,
       cross_section_image_url, remarks,
     } = body;
 
@@ -64,6 +64,7 @@ export async function POST(request: Request) {
       perimeter: perimeter != null ? Number(perimeter) : null,
       surface_treatments: surface_treatments || [],
       cross_section_image_url: cross_section_image_url || null,
+      num_dies: num_dies != null ? Number(num_dies) : 1,
       remarks: remarks || null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
