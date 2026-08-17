@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { computePHash, hammingDistance, similarityPercent } from '@/lib/image-hash';
-import { parseDimensions, computeMatchScore } from '@/lib/dimension-parser';
+import { parseDimensions, compareDimensions, compareWeight, computeMatchScore, SectionDimension } from '@/lib/dimension-parser';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jotgxnhueagbsvfeepic.supabase.co',
@@ -12,14 +12,12 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { image, params } = body;
-    // image: base64 string (optional, for fallback image matching)
-    // params: { cross_section_mm, weight_per_meter, perimeter } (optional, for param matching)
 
     if (!image && !params) {
       return NextResponse.json({ error: '请提供图片或参数' }, { status: 400 });
     }
 
-    // Compute image hash (if image provided)
+    // Compute image hash
     let uploadedHash: string | null = null;
     if (image && image.startsWith('data:image')) {
       try {
@@ -31,12 +29,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Parse input parameters
-    const inputDims = params?.cross_section_mm ? parseDimensions(params.cross_section_mm) : [];
+    // Parse input section dimension (宽×高 or ø)
+    const inputDim: SectionDimension | null = params?.cross_section_mm
+      ? parseDimensions(params.cross_section_mm)
+      : null;
     const inputWeight = params?.weight_per_meter ? Number(params.weight_per_meter) : null;
     const inputPerimeter = params?.perimeter ? Number(params.perimeter) : null;
-
-    const hasParams = inputDims.length > 0 || inputWeight !== null || inputPerimeter !== null;
+    const hasParams = inputDim !== null || inputWeight !== null || inputPerimeter !== null;
 
     // Fetch all supplier products
     const { data: allProducts, error } = await supabase
@@ -49,10 +48,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '查询产品失败' }, { status: 500 });
     }
 
-    // Filter: at least one of: has cross-section image OR has dimension data
-    const products = (allProducts || []).filter(p => 
-      p.cross_section_image_url || 
-      p.cross_section_mm || 
+    const products = (allProducts || []).filter((p: any) =>
+      p.cross_section_image_url ||
+      p.cross_section_mm ||
       p.weight_per_meter != null ||
       p.perimeter != null
     );
@@ -61,7 +59,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, matches: [], total_compared: 0, method: 'no_products' });
     }
 
-    // Compare each product
     const matches: Array<{
       product: typeof products[0];
       score: number;
@@ -72,8 +69,7 @@ export async function POST(req: NextRequest) {
 
     for (const product of products) {
       try {
-        // Parse product dimensions
-        const productDims = parseDimensions(product.cross_section_mm);
+        const productDim = parseDimensions(product.cross_section_mm);
         const productWeight = product.weight_per_meter != null ? Number(product.weight_per_meter) : null;
         const productPerimeter = product.perimeter != null ? Number(product.perimeter) : null;
 
@@ -95,25 +91,22 @@ export async function POST(req: NextRequest) {
             const productHash = await computePHash(productBuffer);
             const dist = hammingDistance(uploadedHash, productHash);
             imageSimilarity = dist < 20 ? similarityPercent(dist) : 0;
-          } catch (err) {
-            // Skip image comparison for this product
+          } catch {
+            // Skip image comparison
           }
         }
 
-        // Compute overall match score (dimension → weight → image priority)
         const score = computeMatchScore(
-          inputDims, inputWeight, inputPerimeter,
-          productDims, productWeight, productPerimeter,
+          inputDim, inputWeight, inputPerimeter,
+          productDim, productWeight, productPerimeter,
           imageSimilarity
         );
 
-        // Only include if score >= 40 (reasonable match)
         if (score >= 40) {
-          const { compareDimensions, compareWeight } = await import('@/lib/dimension-parser');
           matches.push({
             product,
             score,
-            dimScore: compareDimensions(inputDims, productDims),
+            dimScore: compareDimensions(inputDim, productDim),
             weightScore: compareWeight(inputWeight, productWeight),
             imageSimilarity,
           });
@@ -124,10 +117,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Sort by score descending
     matches.sort((a, b) => b.score - a.score);
 
-    // Return top 5 matches
     const topMatches = matches.slice(0, 5).map(m => ({
       id: m.product.id,
       mold_number: m.product.mold_number,
@@ -150,7 +141,7 @@ export async function POST(req: NextRequest) {
       total_compared: products.length,
       method: hasParams ? 'param' : 'image',
       input: {
-        dims: inputDims,
+        section: inputDim,
         weight: inputWeight,
         perimeter: inputPerimeter,
       }

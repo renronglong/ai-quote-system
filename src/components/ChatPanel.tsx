@@ -2296,15 +2296,14 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
             onFormUpdate(formUpdate as Parameters<NonNullable<typeof onFormUpdate>>[0]);
 
             // 触发模具参数匹配（提取到参数后）
+            // 截面尺寸固定为 宽×高（矩形）或 ø（圆形）
             const fw = formUpdate.width as number | undefined;
             const fh = formUpdate.height as number | undefined;
-            const ft = formUpdate.wallThickness as number | undefined;
-            const hasDims = fw || fh || ft;
+            const hasDims = fw || fh;
             if (hasDims) {
               const crossSectionParts: string[] = [];
               if (fw) crossSectionParts.push(String(fw));
               if (fh) crossSectionParts.push(String(fh));
-              if (ft) crossSectionParts.push(String(ft));
               const moldParams = {
                 cross_section_mm: crossSectionParts.join('×'),
                 weight_per_meter: null as number | null,
