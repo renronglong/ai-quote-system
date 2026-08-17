@@ -1174,7 +1174,7 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
   const [cozeFileIdsBatch, setCozeFileIdsBatch] = useState<string[]>([]); // 批量文件ID（用于压缩包多文件）
   const [extractedText, setExtractedText] = useState<string | null>(null);
   const [uploadedFileInfo, setUploadedFileInfo] = useState<{name: string, url: string | null, type: string, size: number} | null>(null);
-  const [moldMatches, setMoldMatches] = useState<Array<{id:string;mold_number:string|null;product_name:string|null;cross_section_mm:string|null;weight_per_meter:number|null;perimeter:number|null;similarity:number;cross_section_image_url:string|null}>>([]);
+  const [moldMatches, setMoldMatches] = useState<Array<{id:string;mold_number:string|null;product_name:string|null;cross_section_mm:string|null;weight_per_meter:number|null;perimeter:number|null;similarity:number;score:number;dim_score:number;weight_score:number;image_similarity:number;cross_section_image_url:string|null}>>([]);
   const [moldMatchLoading, setMoldMatchLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -2294,6 +2294,37 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
           if (Object.keys(formUpdate).length > 0) {
             console.log('[ChatPanel] 从结构化参数同步到左侧表单:', formUpdate);
             onFormUpdate(formUpdate as Parameters<NonNullable<typeof onFormUpdate>>[0]);
+
+            // 触发模具参数匹配（提取到参数后）
+            const fw = formUpdate.width as number | undefined;
+            const fh = formUpdate.height as number | undefined;
+            const ft = formUpdate.wallThickness as number | undefined;
+            const hasDims = fw || fh || ft;
+            if (hasDims) {
+              const crossSectionParts: string[] = [];
+              if (fw) crossSectionParts.push(String(fw));
+              if (fh) crossSectionParts.push(String(fh));
+              if (ft) crossSectionParts.push(String(ft));
+              const moldParams = {
+                cross_section_mm: crossSectionParts.join('×'),
+                weight_per_meter: null as number | null,
+                perimeter: null as number | null,
+              };
+              setMoldMatchLoading(true);
+              setMoldMatches([]);
+              fetch('/api/mold-match', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  image: uploadedImage || undefined,
+                  params: moldParams,
+                }),
+              }).then(r => r.json()).then(d => {
+                if (d.success) {
+                  setMoldMatches((d.matches || []).map((m: any) => ({ ...m, similarity: m.score })));
+                }
+              }).catch(() => {}).finally(() => setMoldMatchLoading(false));
+            }
           }
         }
 
@@ -2545,7 +2576,7 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
               </>
             ) : (
               <>
-                <span className="text-sm text-blue-700 font-medium">🔍 找到 {moldMatches.length} 个相似模具</span>
+                <span className="text-sm text-blue-700 font-medium">🔍 找到 {moldMatches.length} 个匹配模具</span>
                 <button onClick={() => setMoldMatches([])} className="ml-auto text-xs text-blue-500 hover:text-blue-700">收起</button>
               </>
             )}
@@ -2553,18 +2584,40 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
           {!moldMatchLoading && moldMatches.length > 0 && (
             <div className="flex gap-3 overflow-x-auto pb-1">
               {moldMatches.map((m) => (
-                <div key={m.id} className="shrink-0 w-[140px] bg-white rounded-lg border border-blue-200 p-2 hover:shadow-md transition-shadow">
+                <div key={m.id} className="shrink-0 w-[150px] bg-white rounded-lg border border-blue-200 p-2 hover:shadow-md transition-shadow">
                   {m.cross_section_image_url && (
-                    <img src={m.cross_section_image_url} alt={m.mold_number || ''} className="w-full h-[80px] object-contain rounded bg-gray-50 mb-1" />
+                    <img src={m.cross_section_image_url} alt={m.mold_number || ''} className="w-full h-[72px] object-contain rounded bg-gray-50 mb-1" />
                   )}
-                  <div className="text-xs font-mono text-gray-700 truncate">{m.mold_number || '无编号'}</div>
+                  <div className="text-xs font-mono text-gray-800 font-medium truncate">{m.mold_number || '无编号'}</div>
                   <div className="text-xs text-gray-500 truncate">{m.product_name || '-'}</div>
-                  <div className="text-xs text-gray-400">{m.cross_section_mm || '-'}</div>
-                  <div className="mt-1 flex items-center gap-1">
-                    <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{width: `${m.similarity}%`, background: m.similarity >= 80 ? '#22c55e' : m.similarity >= 60 ? '#eab308' : '#f97316'}} />
+                  <div className="text-[11px] text-gray-600 mt-0.5">{m.cross_section_mm || '-'}</div>
+                  <div className="mt-1.5 space-y-0.5">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-gray-400 w-6 shrink-0">尺寸</span>
+                      <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full bg-blue-400" style={{width: `${m.dim_score}%`}} />
+                      </div>
+                      <span className="text-[10px] text-gray-500">{m.dim_score}%</span>
                     </div>
-                    <span className="text-[10px] font-medium text-gray-600">{m.similarity}%</span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-gray-400 w-6 shrink-0">米重</span>
+                      <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full bg-green-400" style={{width: `${m.weight_score}%`}} />
+                      </div>
+                      <span className="text-[10px] text-gray-500">{m.weight_score}%</span>
+                    </div>
+                    {m.image_similarity > 0 && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-gray-400 w-6 shrink-0">截面</span>
+                        <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full bg-orange-400" style={{width: `${m.image_similarity}%`}} />
+                        </div>
+                        <span className="text-[10px] text-gray-500">{m.image_similarity}%</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-1 pt-1 border-t border-gray-100">
+                    <span className="text-[10px] font-semibold text-blue-700">综合 {m.score}%</span>
                   </div>
                 </div>
               ))}
