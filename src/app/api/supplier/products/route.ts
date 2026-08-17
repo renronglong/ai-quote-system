@@ -45,37 +45,26 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const {
-      supplier_id, alloy_grade, profile_type, min_width_mm, max_width_mm,
-      min_height_mm, max_height_mm, max_circle_mm, min_wall_mm,
-      min_order_kg, unit_price, price_unit, lead_days,
-      surface_treatments, remarks,
+      supplier_id, mold_number, product_name, cross_section_mm,
+      weight_per_meter, perimeter, surface_treatments,
+      cross_section_image_url, remarks,
     } = body;
 
-    if (!supplier_id || !alloy_grade || !profile_type || unit_price === undefined) {
-      return NextResponse.json(
-        { error: '缺少必填字段（supplier_id, alloy_grade, profile_type, unit_price）' },
-        { status: 400 }
-      );
+    if (!supplier_id) {
+      return NextResponse.json({ error: '缺少supplier_id' }, { status: 400 });
     }
 
     const supabase = getSupabase();
     const payload = {
       supplier_id,
-      alloy_grade,
-      profile_type,
-      min_width_mm: min_width_mm || null,
-      max_width_mm: max_width_mm || null,
-      min_height_mm: min_height_mm || null,
-      max_height_mm: max_height_mm || null,
-      max_circle_mm: max_circle_mm || null,
-      min_wall_mm: min_wall_mm || null,
-      min_order_kg: min_order_kg || 300,
-      unit_price: Number(unit_price),
-      price_unit: price_unit || '元/吨',
-      lead_days: lead_days || 15,
+      mold_number: mold_number || null,
+      product_name: product_name || null,
+      cross_section_mm: cross_section_mm || null,
+      weight_per_meter: weight_per_meter != null ? Number(weight_per_meter) : null,
+      perimeter: perimeter != null ? Number(perimeter) : null,
       surface_treatments: surface_treatments || [],
+      cross_section_image_url: cross_section_image_url || null,
       remarks: remarks || null,
-      is_active: true,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -108,20 +97,21 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: '缺少产品ID' }, { status: 400 });
     }
 
-    // Clean up fields
     const payload: Record<string, any> = { updated_at: new Date().toISOString() };
     const allowedFields = [
-      'alloy_grade', 'profile_type', 'min_width_mm', 'max_width_mm',
-      'min_height_mm', 'max_height_mm', 'max_circle_mm', 'min_wall_mm',
-      'min_order_kg', 'unit_price', 'price_unit', 'lead_days',
-      'surface_treatments', 'remarks', 'is_active',
+      'mold_number', 'product_name', 'cross_section_mm',
+      'weight_per_meter', 'perimeter', 'surface_treatments',
+      'cross_section_image_url', 'remarks',
     ];
     for (const field of allowedFields) {
       if (updates[field] !== undefined) {
-        payload[field] = updates[field];
+        if ((field === 'weight_per_meter' || field === 'perimeter') && updates[field] != null) {
+          payload[field] = Number(updates[field]);
+        } else {
+          payload[field] = updates[field];
+        }
       }
     }
-    if (payload.unit_price !== undefined) payload.unit_price = Number(payload.unit_price);
 
     const supabase = getSupabase();
     const { data, error } = await supabase
