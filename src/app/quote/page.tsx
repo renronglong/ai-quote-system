@@ -17,6 +17,7 @@ import {
   Edit2,
   CheckCircle2,
   Percent,
+  Store,
 } from 'lucide-react';
 import SavedQuotesPanel, { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
 
@@ -175,6 +176,10 @@ export default function QuotePage() {
                   }
                 />
               )}
+              <button onClick={() => router.push('/supplier')} className="hidden sm:flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 transition-colors">
+                <Store className="w-3.5 h-3.5" />
+                供应商
+              </button>
               {aluminumPrice && (
                 <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-50 border border-gray-200">
                   <TrendingUp className="w-3 h-3 text-orange-500" />
