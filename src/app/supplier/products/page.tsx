@@ -193,7 +193,7 @@ function SupplierProductsContent() {
   const handleSave = async () => {
     if (!profile) return;
 
-    if (!form.product_name?.trim()) { setError('请输入产品名称'); return; }
+    if (!form.mold_number?.trim()) { setError('请输入模具编号'); return; }
 
     setSaving(true);
     setError('');
@@ -391,20 +391,20 @@ function SupplierProductsContent() {
               </div>
             )}
 
-            {/* 模具编号 + 产品名称 */}
+            {/* 模具编号 + 产品名称/}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>模具编号</Label>
                 <Input
-                  placeholder="如：MJ-20260801"
+                  placeholder="如：MJ-20260801 *"
                   value={form.mold_number}
                   onChange={(e) => setForm({ ...form, mold_number: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
-                <Label>产品名称 *</Label>
+                <Label>产品名称</Label>
                 <Input
-                  placeholder="如：6063散热铝型材"
+                  placeholder="如：散热器铝型材（选填）"
                   value={form.product_name}
                   onChange={(e) => setForm({ ...form, product_name: e.target.value })}
                 />
