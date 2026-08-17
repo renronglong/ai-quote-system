@@ -26,6 +26,7 @@ import {
   Building2,
   Phone,
   TrendingUp,
+  Handshake,
 } from 'lucide-react';
 
 interface NavItem {
@@ -50,6 +51,7 @@ const navGroups: NavGroup[] = [
       { label: '询价管理', href: '/inquiries', icon: <MessageSquare className="w-5 h-5" /> },
       { label: '报价历史', href: '/history', icon: <History className="w-5 h-5" /> },
       { label: '供应商', href: '/suppliers', icon: <Building2 className="w-5 h-5" /> },
+      { label: '供应商入驻', href: '/supplier', icon: <Handshake className="w-5 h-5" /> },
       { label: '联系我们', href: '/contact', icon: <Phone className="w-5 h-5" /> },
       { label: '铝价行情', href: '/market', icon: <TrendingUp className="w-5 h-5" /> },
     ],
