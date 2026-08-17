@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -107,6 +107,42 @@ function SupplierProductsContent() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+
+  // Handle image file (from upload or paste)
+  const handleImageFile = useCallback((file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setError('图片大小不能超过2MB');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setForm((prev) => ({ ...prev, cross_section_image_url: dataUrl }));
+      setPreviewImage(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  // Paste event listener — global when dialog is open
+  useEffect(() => {
+    if (!dialogOpen) return;
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+          e.preventDefault();
+          const file = items[i].getAsFile();
+          if (file) handleImageFile(file);
+          break;
+        }
+      }
+    };
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, [dialogOpen, handleImageFile]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -335,12 +371,16 @@ function SupplierProductsContent() {
                         </TableCell>
                         <TableCell>
                           {product.cross_section_image_url ? (
-                            <img
-                              src={product.cross_section_image_url}
-                              alt="截面图"
-                              className="w-12 h-12 object-cover rounded border cursor-pointer hover:opacity-80"
-                              onClick={() => window.open(product.cross_section_image_url || '', '_blank')}
-                            />
+                            <div
+                              className="w-12 h-12 rounded border overflow-hidden cursor-pointer hover:ring-2 hover:ring-blue-400 hover:shadow-md transition-all bg-gray-50 flex items-center justify-center group"
+                              onClick={() => setLightboxImage(product.cross_section_image_url)}
+                            >
+                              <img
+                                src={product.cross_section_image_url}
+                                alt="截面图"
+                                className="w-full h-full object-contain group-hover:scale-110 transition-transform"
+                              />
+                            </div>
                           ) : (
                             <span className="text-gray-300">-</span>
                           )}
@@ -479,15 +519,7 @@ function SupplierProductsContent() {
                     input.accept = "image/*";
                     input.onchange = (e: any) => {
                       const file = e.target.files?.[0];
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onload = () => {
-                          const dataUrl = reader.result as string;
-                          setForm({ ...form, cross_section_image_url: dataUrl });
-                          setPreviewImage(dataUrl);
-                        };
-                        reader.readAsDataURL(file);
-                      }
+                      if (file) handleImageFile(file);
                     };
                     input.click();
                   }}
@@ -496,14 +528,25 @@ function SupplierProductsContent() {
                   上传
                 </Button>
               </div>
+              <p className="text-xs text-gray-400">支持上传文件或 Ctrl+V 粘贴截图</p>
               {previewImage && (
-                <div className="mt-2">
+                <div className="mt-2 relative inline-block">
                   <img
                     src={previewImage}
                     alt="截面图预览"
-                    className="w-24 h-24 object-contain border rounded"
+                    className="w-32 h-32 object-contain border-2 border-blue-200 rounded-lg shadow-sm bg-white p-1"
                     onError={() => setPreviewImage(null)}
                   />
+                  <button
+                    type="button"
+                    className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600 shadow"
+                    onClick={() => {
+                      setPreviewImage(null);
+                      setForm({ ...form, cross_section_image_url: '' });
+                    }}
+                  >
+                    ×
+                  </button>
                 </div>
               )}
             </div>
@@ -541,6 +584,27 @@ function SupplierProductsContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* 图片预览弹窗 */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="relative max-w-[80vw] max-h-[80vh]">
+            <img
+              src={lightboxImage}
+              alt="截面图预览"
+              className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl"
+            />
+            <button
+              className="absolute -top-3 -right-3 w-8 h-8 bg-white rounded-full shadow-lg flex items-center justify-center text-gray-600 hover:text-red-500 hover:bg-gray-100 text-lg font-bold transition-colors"
+              onClick={(e) => { e.stopPropagation(); setLightboxImage(null); }}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }
