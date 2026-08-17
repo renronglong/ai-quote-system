@@ -391,7 +391,7 @@ function SupplierProductsContent() {
               </div>
             )}
 
-            {/* 模具编号 + 产品名称/}
+            {/* 模具编号 + 产品名称 */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>模具编号</Label>
@@ -460,14 +460,42 @@ function SupplierProductsContent() {
             {/* 截面图 */}
             <div className="space-y-2">
               <Label>截面图</Label>
-              <Input
-                placeholder="输入图片URL"
-                value={form.cross_section_image_url}
-                onChange={(e) => {
-                  setForm({ ...form, cross_section_image_url: e.target.value });
-                  setPreviewImage(e.target.value || null);
-                }}
-              />
+              <div className="flex gap-2">
+                <Input
+                  placeholder="粘贴图片URL"
+                  value={form.cross_section_image_url}
+                  onChange={(e) => {
+                    setForm({ ...form, cross_section_image_url: e.target.value });
+                    setPreviewImage(e.target.value || null);
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() => {
+                    const input = document.createElement("input");
+                    input.type = "file";
+                    input.accept = "image/*";
+                    input.onchange = (e: any) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          const dataUrl = reader.result as string;
+                          setForm({ ...form, cross_section_image_url: dataUrl });
+                          setPreviewImage(dataUrl);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    };
+                    input.click();
+                  }}
+                >
+                  <ImageIcon className="w-4 h-4 mr-1" />
+                  上传
+                </Button>
+              </div>
               {previewImage && (
                 <div className="mt-2">
                   <img
