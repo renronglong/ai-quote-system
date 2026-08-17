@@ -1174,6 +1174,8 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
   const [cozeFileIdsBatch, setCozeFileIdsBatch] = useState<string[]>([]); // 批量文件ID（用于压缩包多文件）
   const [extractedText, setExtractedText] = useState<string | null>(null);
   const [uploadedFileInfo, setUploadedFileInfo] = useState<{name: string, url: string | null, type: string, size: number} | null>(null);
+  const [moldMatches, setMoldMatches] = useState<Array<{id:string;mold_number:string|null;product_name:string|null;cross_section_mm:string|null;weight_per_meter:number|null;perimeter:number|null;similarity:number;cross_section_image_url:string|null}>>([]);
+  const [moldMatchLoading, setMoldMatchLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1317,12 +1319,13 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
     // 设置文件类型为图片
     setUploadedFileType('image');
     
-    // 显示预览
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setUploadedImage(e.target?.result as string);
-    };
-    reader.readAsDataURL(file);
+    // 读取为base64（Promise包装）
+    const imageBase64: string = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve((e.target?.result as string) || '');
+      reader.readAsDataURL(file);
+    });
+    setUploadedImage(imageBase64);
     
     // 上传到服务器（同时存储到Supabase供工单查看）
     const formData = new FormData();
@@ -1345,6 +1348,29 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
           size: data.fileSize || file.size,
         });
         console.log('图片上传成功, cozeFileId:', data.cozeFileId, 'url:', data.url);
+        
+        // 触发模具匹配
+        const base64Data = imageBase64;
+        if (base64Data && base64Data.startsWith('data:image')) {
+          setMoldMatchLoading(true);
+          setMoldMatches([]);
+          try {
+            const matchRes = await fetch('/api/mold-match', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image: base64Data }),
+            });
+            const matchData = await matchRes.json();
+            if (matchData.success) {
+              setMoldMatches(matchData.matches || []);
+              console.log('模具匹配结果:', matchData.matches?.length || 0, '条');
+            }
+          } catch (err) {
+            console.error('模具匹配失败:', err);
+          } finally {
+            setMoldMatchLoading(false);
+          }
+        }
       } else {
         alert('图片上传失败: ' + (data.error || '未知错误'));
       }
@@ -2505,6 +2531,48 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
               <X className="w-3 h-3 text-white" />
             </button>
           </div>
+        </div>
+      )}
+      
+      {/* 模具匹配结果 */}
+      {(moldMatchLoading || moldMatches.length > 0) && (
+        <div className="px-4 py-2 border-t bg-blue-50 shrink-0">
+          <div className="flex items-center gap-2 mb-2">
+            {moldMatchLoading ? (
+              <>
+                <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full" />
+                <span className="text-sm text-blue-700 font-medium">正在匹配已有模具...</span>
+              </>
+            ) : (
+              <>
+                <span className="text-sm text-blue-700 font-medium">🔍 找到 {moldMatches.length} 个相似模具</span>
+                <button onClick={() => setMoldMatches([])} className="ml-auto text-xs text-blue-500 hover:text-blue-700">收起</button>
+              </>
+            )}
+          </div>
+          {!moldMatchLoading && moldMatches.length > 0 && (
+            <div className="flex gap-3 overflow-x-auto pb-1">
+              {moldMatches.map((m) => (
+                <div key={m.id} className="shrink-0 w-[140px] bg-white rounded-lg border border-blue-200 p-2 hover:shadow-md transition-shadow">
+                  {m.cross_section_image_url && (
+                    <img src={m.cross_section_image_url} alt={m.mold_number || ''} className="w-full h-[80px] object-contain rounded bg-gray-50 mb-1" />
+                  )}
+                  <div className="text-xs font-mono text-gray-700 truncate">{m.mold_number || '无编号'}</div>
+                  <div className="text-xs text-gray-500 truncate">{m.product_name || '-'}</div>
+                  <div className="text-xs text-gray-400">{m.cross_section_mm || '-'}</div>
+                  <div className="mt-1 flex items-center gap-1">
+                    <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{width: `${m.similarity}%`, background: m.similarity >= 80 ? '#22c55e' : m.similarity >= 60 ? '#eab308' : '#f97316'}} />
+                    </div>
+                    <span className="text-[10px] font-medium text-gray-600">{m.similarity}%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {!moldMatchLoading && moldMatches.length === 0 && uploadedImage && (
+            <p className="text-xs text-blue-500">未找到匹配的模具，可能是新产品</p>
+          )}
         </div>
       )}
       
