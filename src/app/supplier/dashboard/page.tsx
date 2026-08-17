@@ -25,8 +25,6 @@ import {
   MapPin,
   Phone,
   User,
-  FileText,
-  AlertTriangle,
 } from 'lucide-react';
 
 interface SupplierProfile {
@@ -35,27 +33,19 @@ interface SupplierProfile {
   contact_name: string;
   phone: string;
   address: string | null;
-  business_license: string | null;
   created_at: string;
 }
 
 interface SupplierProduct {
   id: string;
-  alloy_grade: string;
-  profile_type: string;
-  min_width_mm: number | null;
-  max_width_mm: number | null;
-  min_height_mm: number | null;
-  max_height_mm: number | null;
-  max_circle_mm: number | null;
-  min_wall_mm: number | null;
-  min_order_kg: number;
-  unit_price: number;
-  price_unit: string;
-  lead_days: number;
+  mold_number: string | null;
+  product_name: string | null;
+  cross_section_mm: string | null;
+  weight_per_meter: number | null;
+  perimeter: number | null;
   surface_treatments: string[];
+  cross_section_image_url: string | null;
   remarks: string | null;
-  is_active: boolean;
   created_at: string;
 }
 
@@ -65,7 +55,7 @@ export default function SupplierDashboardPage() {
   const [profile, setProfile] = useState<SupplierProfile | null>(null);
   const [products, setProducts] = useState<SupplierProduct[]>([]);
   const [loading, setLoading] = useState(true);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -80,7 +70,6 @@ export default function SupplierDashboardPage() {
     if (!user) return;
     setLoading(true);
     try {
-      // Get profile
       const profRes = await fetch(`/api/supplier/profile?user_id=${user.id}`);
       const profJson = await profRes.json();
       if (!profJson.data) {
@@ -89,7 +78,6 @@ export default function SupplierDashboardPage() {
       }
       setProfile(profJson.data);
 
-      // Get products
       const prodRes = await fetch(`/api/supplier/products?supplier_id=${profJson.data.id}`);
       const prodJson = await prodRes.json();
       setProducts(prodJson.data || []);
@@ -178,12 +166,6 @@ export default function SupplierDashboardPage() {
                   <span className="text-gray-600">{profile.address}</span>
                 </div>
               )}
-              {profile.business_license && (
-                <div className="flex items-center gap-2 text-sm">
-                  <FileText className="w-4 h-4 text-gray-400" />
-                  <span className="text-gray-600">{profile.business_license}</span>
-                </div>
-              )}
             </div>
           </CardContent>
         </Card>
@@ -197,15 +179,9 @@ export default function SupplierDashboardPage() {
                   <Package className="w-5 h-5 text-blue-600" />
                   产品列表
                 </CardTitle>
-                <CardDescription>
-                  共 {products.length} 个产品
-                </CardDescription>
+                <CardDescription>共 {products.length} 个产品</CardDescription>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => router.push('/supplier/products')}
-              >
+              <Button variant="outline" size="sm" onClick={() => router.push('/supplier/products')}>
                 <Plus className="w-4 h-4 mr-1" />
                 新增产品
               </Button>
@@ -226,49 +202,64 @@ export default function SupplierDashboardPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>合金牌号</TableHead>
-                      <TableHead>型材类型</TableHead>
-                      <TableHead>尺寸范围(mm)</TableHead>
-                      <TableHead>最小壁厚</TableHead>
-                      <TableHead>单价</TableHead>
-                      <TableHead>交期</TableHead>
-                      <TableHead>状态</TableHead>
-                      <TableHead className="text-right">操作</TableHead>
+                      <TableHead className="w-[100px]">模具编号</TableHead>
+                      <TableHead>产品名称</TableHead>
+                      <TableHead className="w-[130px]">截面尺寸(mm)</TableHead>
+                      <TableHead className="w-[80px]">米重</TableHead>
+                      <TableHead className="w-[80px]">周长</TableHead>
+                      <TableHead className="w-[140px]">表面处理</TableHead>
+                      <TableHead className="w-[60px]">截面图</TableHead>
+                      <TableHead className="w-[100px] text-right">操作</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {products.map((product) => (
                       <TableRow key={product.id}>
-                        <TableCell className="font-medium">{product.alloy_grade}</TableCell>
-                        <TableCell>{product.profile_type}</TableCell>
-                        <TableCell>
-                          {product.max_circle_mm
-                            ? `≤∅${product.max_circle_mm}`
-                            : [
-                                product.min_width_mm && product.max_width_mm
-                                  ? `W${product.min_width_mm}-${product.max_width_mm}`
-                                  : null,
-                                product.min_height_mm && product.max_height_mm
-                                  ? `H${product.min_height_mm}-${product.max_height_mm}`
-                                  : null,
-                              ]
-                                .filter(Boolean)
-                                .join(' × ') || '-'}
+                        <TableCell className="font-mono text-xs">
+                          {product.mold_number || '-'}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {product.product_name || '-'}
+                        </TableCell>
+                        <TableCell className="text-gray-600">
+                          {product.cross_section_mm || '-'}
                         </TableCell>
                         <TableCell>
-                          {product.min_wall_mm ? `${product.min_wall_mm}mm` : '-'}
+                          {product.weight_per_meter != null ? `${product.weight_per_meter} g/m` : '-'}
                         </TableCell>
                         <TableCell>
-                          <span className="font-medium text-orange-600">
-                            ¥{product.unit_price}
-                          </span>
-                          <span className="text-xs text-gray-500">/{product.price_unit.replace('元/', '')}</span>
+                          {product.perimeter != null ? `${product.perimeter} mm` : '-'}
                         </TableCell>
-                        <TableCell>{product.lead_days}天</TableCell>
                         <TableCell>
-                          <Badge variant={product.is_active ? 'default' : 'secondary'}>
-                            {product.is_active ? '上架' : '下架'}
-                          </Badge>
+                          <div className="flex flex-wrap gap-1 max-w-[130px]">
+                            {(product.surface_treatments || []).slice(0, 2).map((t) => (
+                              <Badge key={t} variant="secondary" className="text-xs">
+                                {t}
+                              </Badge>
+                            ))}
+                            {(product.surface_treatments || []).length > 2 && (
+                              <Badge variant="secondary" className="text-xs">
+                                +{(product.surface_treatments || []).length - 2}
+                              </Badge>
+                            )}
+                            {(!product.surface_treatments || product.surface_treatments.length === 0) && '-'}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {product.cross_section_image_url ? (
+                            <div
+                              className="w-10 h-10 rounded border overflow-hidden cursor-pointer hover:ring-2 hover:ring-blue-400 hover:shadow-md transition-all bg-gray-50 flex items-center justify-center group"
+                              onClick={() => setLightboxImage(product.cross_section_image_url)}
+                            >
+                              <img
+                                src={product.cross_section_image_url}
+                                alt="截面图"
+                                className="w-full h-full object-contain group-hover:scale-110 transition-transform"
+                              />
+                            </div>
+                          ) : (
+                            <span className="text-gray-300">-</span>
+                          )}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
@@ -298,6 +289,27 @@ export default function SupplierDashboardPage() {
           </CardContent>
         </Card>
       </div>
+      {/* 图片预览弹窗 */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="relative max-w-[80vw] max-h-[80vh]">
+            <img
+              src={lightboxImage}
+              alt="截面图预览"
+              className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl"
+            />
+            <button
+              className="absolute -top-3 -right-3 w-8 h-8 bg-white rounded-full shadow-lg flex items-center justify-center text-gray-600 hover:text-red-500 hover:bg-gray-100 text-lg font-bold transition-colors"
+              onClick={(e) => { e.stopPropagation(); setLightboxImage(null); }}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }
