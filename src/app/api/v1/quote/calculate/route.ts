@@ -759,8 +759,8 @@ function calcExtrusion(
 
     // 步骤4：计算模具费（加入周长影响，支持实时模具钢价）
     const dieSteelPrice = dims.die_steel_price || DEFAULT_DIE_STEEL_PRICE;
-    const materialFee = dieSteelPrice * DIE_STEEL_DENSITY * (dieDiameter / 2) * (dieDiameter / 2) * Math.PI * dieThickness / 1000000000;
-    const baseProcessingFee = 0.035 * dieDiameter * dieThickness;
+    const materialFee = dieSteelPrice * DIE_STEEL_DENSITY * DIE_MATERIAL_WASTE_FACTOR * (dieDiameter / 2) * (dieDiameter / 2) * Math.PI * dieThickness / 1000000000;
+    const baseProcessingFee = 0.028 * dieDiameter * dieThickness;
     const processingArea = finalPerimeter * dieThickness; // 加工面积 = 周长 × 模具厚度
     const perimeterFee = 0.0035 * processingArea; // 周长越大、模具越厚，加工面积越大，费用越高
     const processingFee = (baseProcessingFee + perimeterFee) * cavityMultiplier;
@@ -771,12 +771,12 @@ function calcExtrusion(
     const dieType = dieTypeMap[dieTypeKey] || '分流模';
     notes.push(`模具规格: Φ${dieDiameter}×${dieThickness} ${dieType}`);
     notes.push(`模具钢价: ${dieSteelPrice}元/吨${dims.die_steel_price ? '（用户指定）' : '（默认H13均价）'}`);
-    notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料(${dieSteelPrice}×7.85×πR${dieDiameter/2}²×H${dieThickness}/10⁹) + (${Math.round(baseProcessingFee)}基础加工 + ${Math.round(perimeterFee)}周长加工)×${cavityMultiplier}面域系数) × ${(mgmtRate*100).toFixed(0)}%管理费`);
+    notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料(${dieSteelPrice}×7.85×1.2×πR${dieDiameter/2}²×H${dieThickness}/10⁹) + (${Math.round(baseProcessingFee)}基础加工 + ${Math.round(perimeterFee)}周长加工)×${cavityMultiplier}面域系数) × ${(mgmtRate*100).toFixed(0)}%管理费`);
     notes.push(`模具费一次性，不计入单件价格`);
 
     breakdown['mold'] = {
-      formula: `(材料费: 钢价×密度7.85×πR²×H/10⁹ + (基础加工费0.035×Φ×H + 周长加工费0.0035×加工面积) × 面域系数) × (1+管理费率)`,
-      detail: `模具钢价${dieSteelPrice}元/吨(密度7.85) | Φ${dieDiameter}×${dieThickness}${dieType} | ${numCavities}面域(系数×${cavityMultiplier}): 材料费${dieSteelPrice}×7.85×π×(${dieDiameter}/2)²×${dieThickness}/10⁹=${Math.round(materialFee)} + 加工费(${Math.round(baseProcessingFee)}基础+${Math.round(perimeterFee)}周长)×${cavityMultiplier}=${Math.round((baseProcessingFee + perimeterFee) * cavityMultiplier)} → ×${(1+mgmtRate).toFixed(2)} = ${moldCost}元`,
+      formula: `(材料费: 钢价×密度7.85×损耗1.2×πR²×H/10⁹ + (基础加工费0.028×Φ×H + 周长加工费0.0035×加工面积) × 面域系数) × (1+管理费率)`,
+      detail: `模具钢价${dieSteelPrice}元/吨(密度7.85,损耗1.2) | Φ${dieDiameter}×${dieThickness}${dieType} | ${numCavities}面域(系数×${cavityMultiplier}): 材料费${dieSteelPrice}×7.85×1.2×π×(${dieDiameter}/2)²×${dieThickness}/10⁹=${Math.round(materialFee)} + 加工费(${Math.round(baseProcessingFee)}基础+${Math.round(perimeterFee)}周长)×${cavityMultiplier}=${Math.round((baseProcessingFee + perimeterFee) * cavityMultiplier)} → ×${(1+mgmtRate).toFixed(2)} = ${moldCost}元`,
     };
   }
 
