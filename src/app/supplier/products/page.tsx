@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -123,7 +123,7 @@ const emptyForm: ProductForm = {
   is_active: true,
 };
 
-export default function SupplierProductsPage() {
+function SupplierProductsContent() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -653,5 +653,14 @@ export default function SupplierProductsPage() {
         </DialogContent>
       </Dialog>
     </AppLayout>
+  );
+
+}
+
+export default function SupplierProductsPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+      <SupplierProductsContent />
+    </Suspense>
   );
 }

@@ -20,6 +20,7 @@ const DEFAULT_DIE_STEEL_PRICE = 18000;
 
 // ---- 模具钢密度（吨/m³），H13工具钢约7.85 ----
 const DIE_STEEL_DENSITY = 7.85;
+const DIE_MATERIAL_WASTE_FACTOR = 1.2; // 材料损耗系数（20%）
 
 // ---- CORS 头，允许 Coze Bot 及任意来源调用 ----
 const CORS_HEADERS = {
