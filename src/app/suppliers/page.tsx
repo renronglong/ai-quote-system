@@ -41,6 +41,8 @@ interface Product {
   cross_section_mm: string | null;
   weight_per_meter: number | null;
   perimeter: number | null;
+  mold_type?: string;
+  num_dies?: number;
   surface_treatments: string[];
   cross_section_image_url: string | null;
   remarks: string | null;
@@ -201,7 +203,7 @@ export default function SuppliersPage() {
                               </TableCell>
                               <TableCell>
                                 <Badge variant={product.mold_type === '分流模' ? 'destructive' : 'secondary'} className="text-xs">
-                                  {product.mold_type || (product.num_dies >= 1 ? '分流模' : '平模')}
+                                  {product.mold_type || ((product.num_dies ?? 0) >= 1 ? '分流模' : '平模')}
                                 </Badge>
                               </TableCell>
                               <TableCell>

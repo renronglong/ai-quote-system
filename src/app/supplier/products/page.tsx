@@ -72,6 +72,8 @@ interface SupplierProduct {
   surface_treatments: string[];
   cross_section_image_url: string | null;
   remarks: string | null;
+  mold_type?: string;
+  num_dies?: number;
   created_at: string;
   updated_at: string;
 }
@@ -357,7 +359,7 @@ function SupplierProductsContent() {
                         </TableCell>
                         <TableCell>
                           <Badge variant={product.mold_type === '分流模' ? 'destructive' : 'secondary'} className="text-xs">
-                            {product.mold_type || (product.num_dies >= 1 ? '分流模' : '平模')}
+                            {product.mold_type || ((product.num_dies ?? 0) >= 1 ? '分流模' : '平模')}
                           </Badge>
                         </TableCell>
                         <TableCell>
