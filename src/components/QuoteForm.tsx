@@ -538,11 +538,20 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     const w = fields.width as number;
     const h = fields.height as number;
     if (w && h && w > 0 && h > 0) {
-      const meterWeight = w * h * 0.0027;
+      // 圆管：外径×内径 → π/4 × (D² - d²) × 0.0027
+      // 其他：矩形截面 → 宽 × 高 × 0.0027
+      let meterWeight: number;
+      if (selectedCategory === '铝型材' && w > h) {
+        // 圆管公式（外径 > 内径）
+        meterWeight = (Math.PI / 4) * (w * w - h * h) * 0.0027;
+      } else {
+        // 矩形公式
+        meterWeight = w * h * 0.0027;
+      }
       const rounded = Math.round(meterWeight * 100) / 100;
       setFields(prev => ({ ...prev, meterWeight: rounded }));
     }
-  }, [fields.width, fields.height, productType]);
+  }, [fields.width, fields.height, productType, selectedCategory]);
 
   // ==================== Auto-calculate perimeter from cross-section ====================
   useEffect(() => {
