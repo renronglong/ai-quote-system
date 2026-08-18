@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Upload, FileText, X, Sparkles, Loader2, AlertTriangle } from 'lucide-react';
+import { Upload, FileText, X, Sparkles, Loader2, AlertTriangle, Plus, Trash2 } from 'lucide-react';
 
 // ==================== Types ====================
 
@@ -61,10 +61,20 @@ export interface AiFormUpdate {
   secondaryProcessing?: string[];
 }
 
+export interface BatchVariantResult {
+  name: string;
+  length: number;
+  weight: number;
+  quantity: number;
+  surfaceTreatment?: string;
+  result: PricingResult;
+}
+
 interface QuoteFormProps {
   onCalculate?: (data: QuoteFormData) => void;
   onResult?: (result: PricingResult | null) => void;
   onProductInfoChange?: (info: { productName: string; productCode: string }) => void;
+  onBatchResult?: (results: BatchVariantResult[]) => void;
   aiData?: AiFormUpdate | null;
 }
 
@@ -341,7 +351,7 @@ const ALLOWED_EXTENSIONS = ['.dxf', '.dwg', '.step', '.stp', '.igs', '.pdf', '.j
 
 // ==================== Component ====================
 
-export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, aiData }: QuoteFormProps) {
+export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, onBatchResult, aiData }: QuoteFormProps) {
   const [aiSynced, setAiSynced] = useState(false);
   const prevAiDataRef = useRef<AiFormUpdate | null | undefined>(null);
   const [loading, setLoading] = useState(false);
@@ -369,6 +379,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [quantityManual, setQuantityManual] = useState(false);
   const [perimeterManual, setPerimeterManual] = useState(false);
   const [dieSteelPrice, setDieSteelPrice] = useState<string>('');
+
+  // Batch mode state (multi-length quoting for extrusion)
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchVariants, setBatchVariants] = useState<{id: string, length: string, weight: string, quantity: string, surfaceTreatment: string}[]>([]);
 
   // Standard parts state (异型材/标准件 toggle)
   const [isCustomProfile, setIsCustomProfile] = useState(true);
@@ -534,26 +548,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   }, [isCustomProfile, productType]);
 
   // ==================== Auto-calculate meter weight from cross-section ====================
-  useEffect(() => {
-    if (productType !== '挤出') return;
-    if (meterWeightManual) return;
-    const w = fields.width as number;
-    const h = fields.height as number;
-    if (w && h && w > 0 && h > 0) {
-      // 圆管：外径×内径 → π/4 × (D² - d²) × 0.0027
-      // 其他：矩形截面 → 宽 × 高 × 0.0027
-      let meterWeight: number;
-      if (materialCategory === '铝型材' && w > h) {
-        // 圆管公式（外径 > 内径）
-        meterWeight = (Math.PI / 4) * (w * w - h * h) * 0.0027;
-      } else {
-        // 矩形公式
-        meterWeight = w * h * 0.0027;
-      }
-      const rounded = Math.round(meterWeight * 100) / 100;
-      setFields(prev => ({ ...prev, meterWeight: rounded }));
-    }
-  }, [fields.width, fields.height, productType, materialCategory]);
+  // DISABLED: 米重/重量由用户手动输入，不再根据宽高自动计算
+  // useEffect(() => {
+  //   if (productType !== '挤出') return;
+  //   if (meterWeightManual) return;
+  //   ...
+  // }, [fields.width, fields.height, productType, materialCategory]);
 
   // ==================== Perimeter: only auto-fill from DB on spec select; no formula fallback ====================
   // 2*(w+h) is wrong for non-rectangular cross-sections, removed.
@@ -871,12 +871,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     // Check if all required dimension fields are filled
     const cat = categoryConfig;
     if (cat) {
-      // In standard mode, only require length (perimeter/meterWeight auto-filled)
       const isStdMode = productType === '挤出' && !isCustomProfile;
+      // In batch mode, length is per-variant, not required in main fields
       const requiredDims = isStdMode
-        ? ['length']
+        ? (batchMode ? [] : ['length'])
         : cat.fields.filter(f => ['width', 'height', 'length', 'thickness', 'productSize'].includes(f));
-      const allFilled = requiredDims.every(f => {
+      // Filter out length in batch mode
+      const dimsToCheck = batchMode ? requiredDims.filter(f => f !== 'length') : requiredDims;
+      const allFilled = dimsToCheck.every(f => {
         const val = fields[f];
         return val !== '' && val !== undefined && val !== null && Number(val) > 0;
       });
@@ -884,12 +886,139 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         onResult?.(null);
         return;
       }
+      // In batch mode, check that at least one variant has length and weight
+      if (batchMode && batchVariants.length === 0) {
+        onResult?.(null);
+        return;
+      }
+      if (batchMode) {
+        const hasValidVariant = batchVariants.some(v => {
+          const l = parseFloat(v.length);
+          const w = parseFloat(v.weight);
+          const q = parseFloat(v.quantity) || 1;
+          return l > 0 && w > 0 && q > 0;
+        });
+        if (!hasValidVariant) {
+          onResult?.(null);
+          return;
+        }
+      }
     }
 
     setLoading(true);
     try {
       const surfaceTreatment = mapSurfaceTreatment();
       const processInfo = mapProcesses();
+
+      // ---- Batch mode: calculate each variant separately ----
+      if (batchMode && batchVariants.length > 0) {
+        const baseDimensions = buildDimensions();
+        const batchResults: BatchVariantResult[] = [];
+        let firstResult: PricingResult | null = null;
+
+        for (const variant of batchVariants) {
+          const vLength = parseFloat(variant.length);
+          const vWeight = parseFloat(variant.weight);
+          const vQuantity = parseFloat(variant.quantity) || 1;
+          if (!(vLength > 0) || !(vWeight > 0)) continue;
+
+          const dimensions = baseDimensions ? { ...baseDimensions } : {};
+          (dimensions as any).length_mm = vLength;
+          if (productType === '挤出') (dimensions as any).material_size_type = materialSizeType;
+
+          const vWeightKg = vWeight / 1000;
+
+          // Per-variant surface treatment (fall back to global if not set)
+          let vSurfaceTreatment = surfaceTreatment;
+          if (variant.surfaceTreatment && variant.surfaceTreatment !== '无' && variant.surfaceTreatment !== '') {
+            // Map the variant-specific surface treatment
+            const vSurfMap: Record<string, string> = {
+              '喷砂氧化': '喷砂', '抛光氧化': '抛光/镀铬', '拉丝氧化': '拉丝',
+              '喷涂': '喷涂', '氧化': '氧化本色',
+            };
+            const mapped = vSurfMap[variant.surfaceTreatment];
+            if (mapped) vSurfaceTreatment = { type: mapped, color: null };
+          }
+
+          const payload: Record<string, any> = {
+            product_type: mapProductType(),
+            material: { category: mapMaterialCategory() },
+            quantity: vQuantity,
+          };
+          if (productName) payload.product_name = productName;
+          if (productCode) payload.product_code = productCode;
+          payload.dimensions = dimensions;
+          payload.weight_per_piece_kg = vWeightKg;
+          if (vSurfaceTreatment) payload.surface_treatment = vSurfaceTreatment;
+          if (processInfo.secondary_operations.length > 0 || processInfo.cut_count !== undefined) {
+            payload.process = processInfo;
+          }
+
+          const res = await fetch('/api/v1/quote/calculate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success) {
+              const result: PricingResult = {
+                quotation_id: data.quotation_id || '',
+                material_cost: data.material_cost || 0,
+                processing_cost: data.processing_cost || 0,
+                surface_treatment_cost: data.surface_treatment_cost || 0,
+                secondary_operations_cost: data.secondary_operations_cost || 0,
+                packaging_cost: data.packaging_cost || 0,
+                transport_cost: data.transport_cost || 0,
+                management_fee: data.management_fee || 0,
+                unit_price: data.unit_price || 0,
+                total_price: data.total_price || 0,
+                weight_per_piece_kg: data.weight_per_piece_kg || 0,
+                material_utilization_rate: data.material_utilization_rate,
+                breakdown: data.breakdown || {},
+                aluminum_index: data.aluminum_index || 0,
+                notes: data.notes || [],
+                mold_cost: data.mold_cost || 0,
+                min_order_qty: data.min_order_qty || 0,
+              };
+              batchResults.push({
+                name: productName || '产品',
+                length: vLength,
+                weight: vWeight,
+                quantity: vQuantity,
+                surfaceTreatment: variant.surfaceTreatment || '',
+                result,
+              });
+              if (!firstResult) firstResult = result;
+            }
+          }
+        }
+
+        if (firstResult) {
+          onResult?.(firstResult);
+          onBatchResult?.(batchResults);
+          if (onCalculate) {
+            onCalculate({
+              productType, materialCategory,
+              quantity: (fields.quantity as number) || 1,
+              width: fields.width as number, height: fields.height as number,
+              length: parseFloat(batchVariants[0]?.length) || 0,
+              thickness: fields.thickness as number,
+              productSize: fields.productSize as string,
+              meterWeight: fields.meterWeight as number, netWeight: fields.netWeight as number,
+              materialSurfaceTreatment, materialColor, processes,
+              productSurfaceTreatment, productColor,
+            });
+          }
+        } else {
+          onResult?.(null);
+          onBatchResult?.([]);
+        }
+        setLoading(false);
+        return;
+      }
+
+      // ---- Normal (single) mode ----
       const weightKg = calcWeightKg();
       const dimensions = buildDimensions();
       const payload: Record<string, any> = {
@@ -936,6 +1065,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             min_order_qty: data.min_order_qty || 0,
           };
           onResult?.(result);
+          onBatchResult?.([]);
           if (onCalculate) {
             onCalculate({
               productType, materialCategory,
@@ -999,6 +1129,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     // In standard mode, hide num_cavities and die_type (auto-determined)
     if (productType === '挤出' && !isCustomProfile) {
       visibleFields = visibleFields.filter(f => f !== 'num_cavities' && f !== 'die_type');
+    }
+    // In batch mode, hide length and netWeight (managed in batch variants table)
+    if (batchMode && productType === '挤出') {
+      visibleFields = visibleFields.filter(f => f !== 'length' && f !== 'netWeight');
     }
 
     // Group into pairs for two-column layout
@@ -1504,6 +1638,133 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
               />
             </div>
+
+            {/* 多长度批量报价开关 */}
+            <div className="mt-2">
+              <label className="block text-[11px] text-gray-500 mb-1">报价模式</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBatchMode(false)}
+                  className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-all ${
+                    !batchMode
+                      ? 'bg-blue-500 text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}
+                >
+                  单次报价
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBatchMode(true);
+                    if (batchVariants.length === 0) {
+                      setBatchVariants([{ id: 'v1', length: '', weight: '', quantity: '', surfaceTreatment: '' }]);
+                    }
+                  }}
+                  className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-all ${
+                    batchMode
+                      ? 'bg-blue-500 text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}
+                >
+                  多长度批量
+                </button>
+              </div>
+            </div>
+
+            {/* 批量变体表格 */}
+            {batchMode && (
+              <div className="mt-3">
+                <label className="block text-[11px] text-gray-500 mb-1.5">
+                  长度/重量变体
+                  <span className="ml-1 text-[10px] text-gray-400">(截面参数共用，模具费只算一次)</span>
+                </label>
+                <div className="space-y-1.5">
+                  {/* 表头 */}
+                  <div className="grid grid-cols-[20px_1fr_1fr_60px_1fr_24px] gap-1 px-1">
+                    <span className="text-[10px] text-gray-400 text-center">#</span>
+                    <span className="text-[10px] text-gray-400">长度(mm)</span>
+                    <span className="text-[10px] text-gray-400">重量(g)</span>
+                    <span className="text-[10px] text-gray-400">数量</span>
+                    <span className="text-[10px] text-gray-400">表面处理(可选)</span>
+                    <span></span>
+                  </div>
+                  {batchVariants.map((v, idx) => (
+                    <div key={v.id} className="grid grid-cols-[20px_1fr_1fr_60px_1fr_24px] gap-1 items-center">
+                      <span className="text-[10px] text-gray-400 text-center">{idx + 1}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        placeholder="长度"
+                        value={v.length}
+                        onChange={e => {
+                          const updated = batchVariants.map(bv => bv.id === v.id ? { ...bv, length: e.target.value } : bv);
+                          setBatchVariants(updated);
+                        }}
+                        className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        placeholder="重量"
+                        value={v.weight}
+                        onChange={e => {
+                          const updated = batchVariants.map(bv => bv.id === v.id ? { ...bv, weight: e.target.value } : bv);
+                          setBatchVariants(updated);
+                        }}
+                        className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
+                      />
+                      <input
+                        type="number"
+                        min={1}
+                        placeholder="1"
+                        value={v.quantity}
+                        onChange={e => {
+                          const updated = batchVariants.map(bv => bv.id === v.id ? { ...bv, quantity: e.target.value } : bv);
+                          setBatchVariants(updated);
+                        }}
+                        className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
+                      />
+                      <select
+                        value={v.surfaceTreatment || ''}
+                        onChange={e => {
+                          const updated = batchVariants.map(bv => bv.id === v.id ? { ...bv, surfaceTreatment: e.target.value } : bv);
+                          setBatchVariants(updated);
+                        }}
+                        className="w-full rounded-lg border border-gray-200 bg-white px-1 py-1 text-[11px] text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
+                      >
+                        <option value="">全局</option>
+                        {getSurfaceTreatmentOptions().map(o => (
+                          <option key={o.name} value={o.name}>{o.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = batchVariants.filter(bv => bv.id !== v.id);
+                          setBatchVariants(updated.length > 0 ? updated : [{ id: 'v1', length: '', weight: '', quantity: '', surfaceTreatment: '' }]);
+                        }}
+                        className="p-0.5 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors flex items-center justify-center"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newId = 'v' + Date.now();
+                    setBatchVariants([...batchVariants, { id: newId, length: '', weight: '', quantity: '', surfaceTreatment: '' }]);
+                  }}
+                  className="mt-2 flex items-center gap-1 text-[11px] text-blue-500 hover:text-blue-700 font-medium transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  添加长度
+                </button>
+              </div>
+            )}
           </div>
         )}
 
