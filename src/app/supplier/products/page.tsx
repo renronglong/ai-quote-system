@@ -349,7 +349,7 @@ function SupplierProductsContent() {
                           {product.cross_section_mm || '-'}
                         </TableCell>
                         <TableCell>
-                          {product.weight_per_meter != null ? `${product.weight_per_meter} g/m` : '-'}
+                          {product.weight_per_meter != null ? `${product.weight_per_meter} kg/m` : '-'}
                         </TableCell>
                         <TableCell>
                           {product.perimeter != null ? `${product.perimeter} mm` : '-'}
@@ -462,7 +462,7 @@ function SupplierProductsContent() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>米重(g/m)</Label>
+                <Label>米重(kg/m)</Label>
                 <Input
                   type="number"
                   placeholder="如：850"

@@ -53,7 +53,7 @@ interface QuoteRequest {
     perimeter_mm?: number;    // 产品周长(mm)
     num_dies?: number;    // 公头数（1=平模，>=2=分流模）
     die_type?: 'flat' | 'split'; // 模具类型：平模/分流模
-    meter_weight_g_per_m?: number; // 用户手动输入的米重(g/m)
+    meter_weight_kg_per_m?: number; // 用户手动输入的米重(kg/m)
     net_weight_g?: number; // 产品净重(g)，用于计算材料利用率
     die_steel_price?: number; // 模具钢价(元/吨)，可选，默认18000
   };
@@ -512,14 +512,14 @@ function calcExtrusionMaterialCost(
   let formulaStr: string;
   let detailStr: string;
   
-  // 材料费 = 产品米重(g/m) × (长度mm + 5mm) / 1000 → 得到kg
-  const meterWeight = dimensions.meter_weight_g_per_m || 0;
+  // 材料费 = 产品米重(kg/m) × (长度mm + 5mm) / 1000 → 得到kg
+  const meterWeight = dimensions.meter_weight_kg_per_m || 0;
   const lengthMm = dimensions.length_mm || 1000;
   
   if (meterWeight > 0 && lengthMm > 0) {
-    weightKg = meterWeight * (lengthMm + 5) / 1000000;
-    formulaStr = '米重 × (长度+5) / 1000000';
-    detailStr = `${meterWeight}g/m × (${lengthMm}mm + 5mm) ÷ 1000000 = ${r2(weightKg)}kg`;
+    weightKg = meterWeight * (lengthMm + 5) / 1000;
+    formulaStr = '米重(kg/m) × (长度+5) / 1000';
+    detailStr = `${meterWeight}kg/m × (${lengthMm}mm + 5mm) ÷ 1000 = ${r2(weightKg)}kg`;
   } else if (weightOverride && weightOverride > 0) {
     weightKg = weightOverride;
     formulaStr = '用户提供重量';
@@ -721,9 +721,9 @@ function calcExtrusion(
       }
     }
     // 步骤3：米重负载校验
-    // 优先使用用户手动输入的米重(g/m转kg/m)，否则用公式计算
-    const meterWeightKgPerM = dims.meter_weight_g_per_m
-      ? dims.meter_weight_g_per_m / 1000
+    // 优先使用用户手动输入的米重(kg/m)，否则用公式计算
+    const meterWeightKgPerM = dims.meter_weight_kg_per_m
+      ? dims.meter_weight_kg_per_m
       : (dims.cross_section_area_mm2
         ? dims.cross_section_area_mm2 * 2.7 / 1000
         : (W * H_dim * 2.7 / 1000));

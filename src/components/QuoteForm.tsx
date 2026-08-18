@@ -310,7 +310,7 @@ const FIELD_LABELS: Record<string, string> = {
   thickness: '厚度(mm)',
   productSize: '产品尺寸(长×宽×高mm)',
   quantity: '数量(件)',
-  meterWeight: '米重(g/m)',
+  meterWeight: '米重(kg/m)',
   netWeight: '产品净重(g·选填·算利用率)',
 };
 
@@ -437,7 +437,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     const w = fields.width as number;
     const h = fields.height as number;
     if (w && h && w > 0 && h > 0) {
-      const meterWeight = w * h * 2.7;
+      const meterWeight = w * h * 0.0027;
       const rounded = Math.round(meterWeight * 100) / 100;
       setFields(prev => ({ ...prev, meterWeight: rounded }));
     }
@@ -462,7 +462,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     const mw = fields.meterWeight as number;
     const len = fields.length as number;
     if (mw && len && mw > 0 && len > 0) {
-      const singleWeightKg = mw * len / 1000000;
+      const singleWeightKg = mw * len / 1000;
       if (singleWeightKg > 0) {
         const minQty = Math.ceil(300 / singleWeightKg);
         setFields(prev => ({ ...prev, quantity: minQty }));
@@ -727,7 +727,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       // 挤出：始终用米重×长度计算型材消耗重量（净重用于计算利用率，不覆盖重量）
       const meterWeight = fields.meterWeight as number;
       const length = fields.length as number;
-      if (meterWeight && length) return (meterWeight * length) / 1000000;
+      if (meterWeight && length) return (meterWeight * length) / 1000;
     }
     // 其他品类：用净重
     const netWeight = fields.netWeight as number;
@@ -748,7 +748,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         perimeter_mm: (fields.perimeter as number) || undefined,
         num_cavities: parseInt(fields.num_cavities as string) || 1,
         die_type: (fields.die_type as 'flat' | 'split') || 'flat',
-        meter_weight_g_per_m: (fields.meterWeight as number) || undefined,
+        meter_weight_kg_per_m: (fields.meterWeight as number) || undefined,
         net_weight_g: (fields.netWeight as number) || undefined,
         die_steel_price: dieSteelPrice ? parseFloat(dieSteelPrice) : undefined,
       };

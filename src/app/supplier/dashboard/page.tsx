@@ -225,7 +225,7 @@ export default function SupplierDashboardPage() {
                           {product.cross_section_mm || '-'}
                         </TableCell>
                         <TableCell>
-                          {product.weight_per_meter != null ? `${product.weight_per_meter} g/m` : '-'}
+                          {product.weight_per_meter != null ? `${product.weight_per_meter} kg/m` : '-'}
                         </TableCell>
                         <TableCell>
                           {product.perimeter != null ? `${product.perimeter} mm` : '-'}
