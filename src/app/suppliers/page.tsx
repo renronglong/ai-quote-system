@@ -175,6 +175,7 @@ export default function SuppliersPage() {
                             <TableHead>截面尺寸(mm)</TableHead>
                             <TableHead>米重</TableHead>
                             <TableHead>周长</TableHead>
+                            <TableHead>模具类型</TableHead>
                             <TableHead>表面处理</TableHead>
                             <TableHead>截面图</TableHead>
                             <TableHead>备注</TableHead>
@@ -197,6 +198,11 @@ export default function SuppliersPage() {
                               </TableCell>
                               <TableCell>
                                 {product.perimeter != null ? `${product.perimeter} mm` : '-'}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={product.mold_type === '分流模' ? 'destructive' : 'secondary'} className="text-xs">
+                                  {product.mold_type || (product.num_dies >= 1 ? '分流模' : '平模')}
+                                </Badge>
                               </TableCell>
                               <TableCell>
                                 <div className="flex flex-wrap gap-1 max-w-[140px]">

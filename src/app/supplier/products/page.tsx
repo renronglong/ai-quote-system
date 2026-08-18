@@ -330,6 +330,7 @@ function SupplierProductsContent() {
                       <TableHead className="w-[130px]">截面尺寸(mm)</TableHead>
                       <TableHead className="w-[80px]">米重</TableHead>
                       <TableHead className="w-[80px]">周长</TableHead>
+                      <TableHead className="w-[80px]">模具类型</TableHead>
                       <TableHead className="w-[160px]">表面处理</TableHead>
                       <TableHead className="w-[80px]">截面图</TableHead>
                       <TableHead>备注</TableHead>
@@ -353,6 +354,11 @@ function SupplierProductsContent() {
                         </TableCell>
                         <TableCell>
                           {product.perimeter != null ? `${product.perimeter} mm` : '-'}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={product.mold_type === '分流模' ? 'destructive' : 'secondary'} className="text-xs">
+                            {product.mold_type || (product.num_dies >= 1 ? '分流模' : '平模')}
+                          </Badge>
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-wrap gap-1 max-w-[150px]">

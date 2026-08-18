@@ -4,6 +4,22 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jotgxnhueagbsvfeepic.supabase.co';
 const supabaseServiceKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
+
+// 根据产品属性动态计算模具类型
+function computeMoldType(product: any): string {
+  const { product_name, num_dies } = product;
+  
+  // 标准件：根据产品名判断
+  if (product_name === '铝圆管' || product_name === '铝六角管') return '分流模';
+  if (product_name === '铝方/扁棒' || product_name === '铝圆棒' || 
+      product_name === '铝六角棒' || product_name === '角铝') return '平模';
+  
+  // 供应商产品：根据 num_dies 判断
+  // num_dies=0 → 平模（实心），num_dies≥1 → 分流模（空心）
+  if (num_dies == null || num_dies === 0) return '平模';
+  return '分流模';
+}
+
 function getSupabase() {
   if (!supabaseServiceKey) throw new Error('Supabase service role key not configured');
   return createClient(supabaseUrl, supabaseServiceKey, {
@@ -33,7 +49,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ data: data || [] });
+    const productsWithMoldType = (data || []).map((p: any) => ({
+      ...p,
+      mold_type: computeMoldType(p),
+    }));
+    return NextResponse.json({ data: productsWithMoldType });
   } catch (err: any) {
     console.error('[Supplier Products GET]', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -81,7 +101,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ data });
+    return NextResponse.json({ data: { ...data, mold_type: computeMoldType(data) } });
   } catch (err: any) {
     console.error('[Supplier Products POST]', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -127,7 +147,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ data });
+    return NextResponse.json({ data: { ...data, mold_type: computeMoldType(data) } });
   } catch (err: any) {
     console.error('[Supplier Products PUT]', err);
     return NextResponse.json({ error: err.message }, { status: 500 });

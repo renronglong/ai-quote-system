@@ -8,6 +8,17 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpvdGd4bmh1ZWFnYnN2ZmVlcGljIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MzUwMjEyMywiZXhwIjoyMDk5MDc4MTIzfQ.dSfa-90iQd4jVhpuvNAgqKPqBdzfXPqgYqpxpHl71Fo'
 );
 
+// 动态计算模具类型
+function computeMoldType(product: any): string {
+  const { product_name, num_dies } = product;
+  if (product_name === '铝圆管' || product_name === '铝六角管') return '分流模';
+  if (product_name === '铝方/扁棒' || product_name === '铝圆棒' || 
+      product_name === '铝六角棒' || product_name === '角铝') return '平模';
+  if (num_dies == null || num_dies === 0) return '平模';
+  return '分流模';
+}
+
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -128,6 +139,7 @@ export async function POST(req: NextRequest) {
       perimeter: m.product.perimeter,
       surface_treatments: m.product.surface_treatments,
       cross_section_image_url: m.product.cross_section_image_url,
+      mold_type: computeMoldType(m.product),
       score: m.score,
       dim_score: Math.round(m.dimScore),
       weight_score: Math.round(m.weightScore),
