@@ -491,17 +491,21 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     setStandardSpecOpen(false);
     setStandardSearch(spec.cross_section_mm || '');
 
-    const dims = (spec.cross_section_mm || '').split(/[×xX]/).map((s: string) => parseFloat(s.trim())).filter((n: number) => !isNaN(n) && n > 0);
-    const updates: Record<string, number | string> = {
-      perimeter: spec.perimeter || '',
-      meterWeight: spec.weight_per_meter || '',
-    };
-    if (spec.product_name === '铝圆管' || spec.product_name === '铝方/扁棒' || spec.product_name === '角铝') {
-      if (dims.length >= 1) updates.width = dims[0];
-      if (dims.length >= 2) updates.height = dims[1];
-    } else if (spec.product_name === '铝圆棒' || spec.product_name === '铝六角棒') {
-      if (dims.length >= 1) updates.width = dims[0];
+    const dims = (spec.cross_section_mm || '').split(/[×xX*]/).map((s: string) => parseFloat(s.trim())).filter((n: number) => !isNaN(n) && n > 0);
+    const updates: Record<string, number | string> = {};
+
+    // Always fill width/height from cross_section_mm dims
+    if (dims.length >= 1) updates.width = dims[0];
+    if (dims.length >= 2) updates.height = dims[1];
+
+    // Perimeter: use DB value if available, otherwise auto-calculate
+    if (spec.perimeter) {
+      updates.perimeter = spec.perimeter;
+    } else if (dims.length >= 2) {
+      updates.perimeter = 2 * (dims[0] + dims[1]);
     }
+
+    updates.meterWeight = spec.weight_per_meter || '';
 
     // Set die_type based on category
     const splitMolds = ['铝圆管', '铝六角管'];
