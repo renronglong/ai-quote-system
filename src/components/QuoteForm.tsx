@@ -364,6 +364,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [productColor, setProductColor] = useState('');
   const [surfaceTreatment, setSurfaceTreatment] = useState('无');
   const [surfaceColor, setSurfaceColor] = useState('');
+  const [materialSizeType, setMaterialSizeType] = useState<'long' | 'short'>('short');
   const [meterWeightManual, setMeterWeightManual] = useState(false);
   const [quantityManual, setQuantityManual] = useState(false);
   const [perimeterManual, setPerimeterManual] = useState(false);
@@ -754,7 +755,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const mapSurfaceTreatment = (): { type: string; color?: string | null } | null => {
     const surfaceMap: Record<string, string> = {
       '喷砂氧化': '喷砂', '抛光氧化': '抛光/镀铬', '拉丝氧化': '拉丝',
-      '喷涂': '喷涂/喷粉', '氧化': '氧化本色', '电镀': '镀锌/镀镍',
+      '喷涂': '喷涂', '氧化': '氧化本色', '电镀': '镀锌/镀镍',
       '除油': '除油',
     };
     // 使用合并后的统一表面处理
@@ -898,7 +899,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       };
       if (productName) payload.product_name = productName;
       if (productCode) payload.product_code = productCode;
-      if (dimensions) payload.dimensions = dimensions;
+      if (dimensions) {
+        if (productType === '挤出') (dimensions as any).material_size_type = materialSizeType;
+        payload.dimensions = dimensions;
+      }
       if (weightKg !== undefined) payload.weight_per_piece_kg = weightKg;
       if (surfaceTreatment) payload.surface_treatment = surfaceTreatment;
       if (processInfo.secondary_operations.length > 0 || processInfo.cut_count !== undefined) {
@@ -1446,6 +1450,36 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               <div className="mt-2">
                 <label className="block text-[11px] text-gray-500 mb-1">颜色</label>
                 <CustomSelect value={surfaceColor} options={getSurfaceColorOptions()} onChange={setSurfaceColor} />
+              </div>
+            )}
+            {/* 长料/小料切换 — 仅挤压铝型材显示 */}
+            {productType === '挤出' && surfaceTreatment && surfaceTreatment !== '无' && (
+              <div className="mt-2">
+                <label className="block text-[11px] text-gray-500 mb-1">材料规格</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMaterialSizeType('short')}
+                    className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-all ${
+                      materialSizeType === 'short'
+                        ? 'bg-blue-500 text-white shadow-sm'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    }`}
+                  >
+                    小料 (&lt;3000mm)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMaterialSizeType('long')}
+                    className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-all ${
+                      materialSizeType === 'long'
+                        ? 'bg-blue-500 text-white shadow-sm'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    }`}
+                  >
+                    长料 (≥3000mm)
+                  </button>
+                </div>
               </div>
             )}
           </div>

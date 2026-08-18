@@ -50,6 +50,7 @@ interface QuoteRequest {
     height_mm?: number;
     wall_thickness_mm?: number;
     cross_section_area_mm2?: number; // 截面积 mm²（挤压铝型材）
+    material_size_type?: 'long' | 'short'; // 长料(≥3000mm) / 小料(<3000mm)
     perimeter_mm?: number;    // 产品周长(mm)
     num_dies?: number;    // 公头数（0=平模，≥1=分流模）
     die_type?: 'flat' | 'split'; // 模具类型：平模/分流模
@@ -807,15 +808,58 @@ function calcExtrusion(
     detail: `${r2(mat.weight)}kg × 1元/kg = ${processingCost}元`,
   };
   
-  const stampingSurcharge = 0;
-  
-  // 3.2 表面处理费（复用板材逻辑）
+  // 3.2 表面处理费（铝型材专用：区分长料/小料）
   let surfaceCost = 0;
   if (req.surface_treatment?.type) {
-    const st = calcSurfaceTreatmentCost(req.surface_treatment.type, '铝板', mat.weight, stampingSurcharge, rules);
-    surfaceCost = st.cost;
+    const isLongMaterial = dims.material_size_type === 'long';
+    const treatmentType = req.surface_treatment.type;
+    const weightKg = mat.weight;
+    
+    // 计算体积附加费（仅小料使用）
+    const lengthMm = dims.length_mm || 0;
+    const widthMm = dims.width_mm || 0;
+    const heightMm = dims.height_mm || 0;
+    const volumeMm3 = lengthMm * widthMm * heightMm;
+    const volumeSurcharge = volumeMm3 * 0.00000003;
+    
+    let base = 0;
+    let stampingCoeff = 0;
+    let weightCoeff = 0;
+    
+    if (isLongMaterial) {
+      // 长料（≥3000mm）：无冲压附加费
+      switch (treatmentType) {
+        case '氧化本色': base = 0.2; weightCoeff = 2; break;
+        case '氧化上色': base = 0.3; weightCoeff = 5; break;
+        case '喷涂': base = 0.2; weightCoeff = 2; break; // =氧化本色
+        case '喷砂': base = 0; weightCoeff = 1; break;
+        case '拉丝': base = 0.2; weightCoeff = 2; break; // 同氧化本色
+        default: base = 0; weightCoeff = 2;
+      }
+      stampingCoeff = 0; // 长料无冲压附加费
+    } else {
+      // 小料（<3000mm）：有冲压附加费（体积）
+      switch (treatmentType) {
+        case '氧化本色': base = 0.2; stampingCoeff = 2; weightCoeff = 2; break;
+        case '氧化上色': base = 0.3; stampingCoeff = 3; weightCoeff = 3; break;
+        case '喷涂': base = 0.2; stampingCoeff = 2; weightCoeff = 2; break; // =氧化本色
+        case '喷砂': base = 0; stampingCoeff = 2; weightCoeff = 1; break;
+        case '拉丝': base = 0.3; stampingCoeff = 3; weightCoeff = 3; break; // 同氧化上色
+        default: base = 0; stampingCoeff = 2; weightCoeff = 2;
+      }
+    }
+    
+    const sizeLabel = isLongMaterial ? '长料' : '小料';
+    surfaceCost = r2(base + volumeSurcharge * stampingCoeff + weightKg * weightCoeff);
+    const formulaStr = isLongMaterial
+      ? `${base} + 重量×${weightCoeff}`
+      : `${base} + 体积附加费×${stampingCoeff} + 重量×${weightCoeff}`;
+    const detailStr = isLongMaterial
+      ? `[${sizeLabel}] ${base} + ${r2(weightKg)}×${weightCoeff} = ${r2(surfaceCost)}元`
+      : `[${sizeLabel}] ${base} + ${r2(volumeSurcharge)}×${stampingCoeff} + ${r2(weightKg)}×${weightCoeff} = ${r2(surfaceCost)}元`;
+    
     accumulated += surfaceCost;
-    breakdown['surface'] = { formula: st.formula, detail: st.detail };
+    breakdown['surface'] = { formula: formulaStr, detail: detailStr };
   }
   
   // 3.3 CNC二次加工费（复用板材逻辑）
