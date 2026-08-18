@@ -498,11 +498,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (dims.length >= 1) updates.width = dims[0];
     if (dims.length >= 2) updates.height = dims[1];
 
-    // Perimeter: use DB value if available, otherwise auto-calculate
+    // Perimeter: use DB value only; no fallback formula (2*(w+h) is wrong for non-rectangular)
     if (spec.perimeter) {
       updates.perimeter = spec.perimeter;
-    } else if (dims.length >= 2) {
-      updates.perimeter = 2 * (dims[0] + dims[1]);
     }
 
     updates.meterWeight = spec.weight_per_meter || '';
@@ -556,17 +554,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     }
   }, [fields.width, fields.height, productType, materialCategory]);
 
-  // ==================== Auto-calculate perimeter from cross-section ====================
-  useEffect(() => {
-    if (productType !== '挤出') return;
-    if (perimeterManual) return; // 用户手动修改后不再自动更新
-    const w = fields.width as number;
-    const h = fields.height as number;
-    if (w && h && w > 0 && h > 0) {
-      const perimeter = 2 * (w + h);
-      setFields(prev => ({ ...prev, perimeter }));
-    }
-  }, [fields.width, fields.height, productType]);
+  // ==================== Perimeter: only auto-fill from DB on spec select; no formula fallback ====================
+  // 2*(w+h) is wrong for non-rectangular cross-sections, removed.
 
   // ==================== Auto-calculate min order quantity ====================
   useEffect(() => {
@@ -1306,8 +1295,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                           <span className="text-[10px] text-gray-400">
                             {spec.weight_per_meter}kg/m · {(() => {
                               const dims = (spec.cross_section_mm || '').split(/[×xX*]/).map((s: string) => parseFloat(s.trim())).filter((n: number) => !isNaN(n) && n > 0);
-                              const p = spec.perimeter || (dims.length >= 2 ? Math.round(2 * (dims[0] + dims[1]) * 100) / 100 : 0);
-                              return p ? p + 'mm' : 'mm';
+                              return spec.perimeter ? spec.perimeter + 'mm' : '周长 mm';
                             })()}
                           </span>
                         </button>
