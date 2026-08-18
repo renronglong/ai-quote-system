@@ -8,12 +8,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpvdGd4bmh1ZWFnYnN2ZmVlcGljIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MzUwMjEyMywiZXhwIjoyMDk5MDc4MTIzfQ.dSfa-90iQd4jVhpuvNAgqKPqBdzfXPqgYqpxpHl71Fo'
 );
 
-// 动态计算模具类型
+// 动态计算模具类型：以数据库 num_dies 为准
 function computeMoldType(product: any): string {
-  const { product_name, num_dies } = product;
-  if (product_name === '铝圆管' || product_name === '铝六角管') return '分流模';
-  if (product_name === '铝方/扁棒' || product_name === '铝圆棒' || 
-      product_name === '铝六角棒' || product_name === '角铝') return '平模';
+  const { num_dies } = product;
   if (num_dies == null || num_dies === 0) return '平模';
   return '分流模';
 }

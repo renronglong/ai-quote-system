@@ -6,16 +6,9 @@ const supabaseServiceKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY || process
 
 
 // 根据产品属性动态计算模具类型
+// 以数据库 num_dies 为准：0=平模，≥1=分流模
 function computeMoldType(product: any): string {
-  const { product_name, num_dies } = product;
-  
-  // 标准件：根据产品名判断
-  if (product_name === '铝圆管' || product_name === '铝六角管') return '分流模';
-  if (product_name === '铝方/扁棒' || product_name === '铝圆棒' || 
-      product_name === '铝六角棒' || product_name === '角铝') return '平模';
-  
-  // 供应商产品：根据 num_dies 判断
-  // num_dies=0 → 平模（实心），num_dies≥1 → 分流模（空心）
+  const { num_dies } = product;
   if (num_dies == null || num_dies === 0) return '平模';
   return '分流模';
 }

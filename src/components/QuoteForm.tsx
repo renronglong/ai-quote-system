@@ -507,11 +507,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
     updates.meterWeight = spec.weight_per_meter || '';
 
-    // Set die_type based on category
-    const splitMolds = ['铝圆管', '铝六角管'];
-    if (splitMolds.includes(spec.product_name)) {
+    // Set die_type based on num_dies from DB
+    if (spec.num_dies && spec.num_dies > 0) {
       updates.die_type = 'split';
-      updates.num_cavities = 2;
+      updates.num_cavities = spec.num_dies;
     } else {
       updates.die_type = 'flat';
       updates.num_cavities = 1;
@@ -1037,7 +1036,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               // num_cavities 用 select 渲染
               if (fieldKey === 'num_cavities') {
                 const cavVal = fields[fieldKey] ?? '';
-                const cavLabel = !cavVal ? '' : Number(cavVal) >= 2 ? '分流模' : '平模';
+                const cavLabel = !cavVal ? '' : fields.die_type === 'split' ? '分流模' : '平模';
                 return (
                   <div key={fieldKey}>
                     <label className="block text-[11px] text-gray-500 mb-1">
@@ -1059,7 +1058,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     >
                       {['', '1', '2', '3', '4'].map(opt => (
                         opt === '' ? <option key="empty" value="">请选择</option> :
-                        <option key={opt} value={opt}>{opt}{parseInt(opt) === 1 ? ' (平模)' : ' (分流模)'}</option>
+                        <option key={opt} value={opt}>{opt}{fields.die_type === 'split' ? ' (分流模)' : fields.die_type === 'flat' ? ' (平模)' : ''}</option>
                       ))}
                     </select>
                   </div>

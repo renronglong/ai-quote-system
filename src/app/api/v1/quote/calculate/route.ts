@@ -51,7 +51,7 @@ interface QuoteRequest {
     wall_thickness_mm?: number;
     cross_section_area_mm2?: number; // 截面积 mm²（挤压铝型材）
     perimeter_mm?: number;    // 产品周长(mm)
-    num_dies?: number;    // 公头数（1=平模，>=2=分流模）
+    num_dies?: number;    // 公头数（0=平模，≥1=分流模）
     die_type?: 'flat' | 'split'; // 模具类型：平模/分流模
     meter_weight_kg_per_m?: number; // 用户手动输入的米重(kg/m)
     net_weight_g?: number; // 产品净重(g)，用于计算材料利用率
