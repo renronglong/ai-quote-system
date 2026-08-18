@@ -375,7 +375,7 @@ function calcSheetMaterialCost(
   dimensions: NonNullable<QuoteRequest['dimensions']>,
   aluminumPrice: number,
   rules: PricingRules,
-): { cost: number; weight: number; formula: string; detail: string; utilizationRate?: number } {
+): { cost: number; weight: number; rawWeight: number; formula: string; detail: string; utilizationRate?: number } {
   const { length_mm, width_mm } = dimensions;
   // 板材厚度优先使用 wall_thickness_mm，其次 height_mm（兼容旧格式）
   const t = dimensions.wall_thickness_mm || dimensions.height_mm || 2;
@@ -437,6 +437,7 @@ function calcSheetMaterialCost(
   return {
     cost: r2(materialCost),
     weight: r2(weightKg),
+    rawWeight: weightKg,
     formula: formulaStr,
     detail: detailStr,
   };
@@ -450,7 +451,7 @@ function calcVolumetricMaterialCost(
   volumeCm3: number,
   aluminumPrice: number,
   rules: PricingRules,
-): { cost: number; weight: number; formula: string; detail: string; utilizationRate?: number } {
+): { cost: number; weight: number; rawWeight: number; formula: string; detail: string; utilizationRate?: number } {
   const matRule = rules.material_prices;
   let density = 2.7;
   let pricePerKg = 0;
@@ -482,7 +483,7 @@ function calcVolumetricMaterialCost(
   const weightKg = volumeCm3 * density / 1000;
   const cost = weightKg * pricePerKg;
 
-  return { cost: r2(cost), weight: r2(weightKg), formula: formulaStr, detail: detailStr };
+  return { cost: r2(cost), weight: r2(weightKg), rawWeight: weightKg, formula: formulaStr, detail: detailStr };
 }
 
 // ============================================================
@@ -500,7 +501,7 @@ function calcExtrusionMaterialCost(
   aluminumPrice: number,
   rules: PricingRules,
   weightOverride?: number,
-): { cost: number; weight: number; formula: string; detail: string; utilizationRate?: number } {
+): { cost: number; weight: number; rawWeight: number; formula: string; detail: string; utilizationRate?: number } {
   const matRule = rules.material_prices['挤压铝型材'] || {};
   const extrusionFeePerTon = matRule.extrusion_fee_per_ton || 3000;
   
@@ -555,6 +556,7 @@ function calcExtrusionMaterialCost(
   return {
     cost: r2(cost),
     weight: r2(weightKg),
+    rawWeight: weightKg, // 未舍入的原始重量，用于精确计算MOQ
     formula: formulaStr,
     detail: detailStr,
     utilizationRate,
@@ -870,9 +872,12 @@ function calcExtrusion(
   
   const unitPrice = r2(accumulated);
   
+  // 使用未舍入的原始重量计算MOQ，避免精度丢失导致MOQ为0
+  const rawWeight = mat.rawWeight || mat.weight;
+  
   // 最小起订量：按300kg最低起订重量换算件数，按数量级向上进位
   const minOrderWeightKg = 300;
-  const minOrderQtyRaw = mat.weight > 0 ? Math.ceil(minOrderWeightKg / mat.weight) : 0;
+  const minOrderQtyRaw = rawWeight > 0 ? Math.ceil(minOrderWeightKg / rawWeight) : 0;
   const minOrderQty = ceilByMagnitude(minOrderQtyRaw);
   notes.push(`最小起订量: ${minOrderQty}件（按${minOrderWeightKg}kg换算，向上取整）`);
   
@@ -891,7 +896,7 @@ function calcExtrusion(
       mold_cost: moldCost,
     },
     breakdown,
-    weight: mat.weight,
+    weight: rawWeight, // 返回未舍入的重量，用于后续总重计算
     notes,
     utilizationRate: mat.utilizationRate,
   };

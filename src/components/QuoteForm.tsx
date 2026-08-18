@@ -1304,7 +1304,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                         >
                           <span>{spec.cross_section_mm}</span>
                           <span className="text-[10px] text-gray-400">
-                            {spec.weight_per_meter}kg/m · {spec.perimeter}mm
+                            {spec.weight_per_meter}kg/m · {(() => {
+                              const dims = (spec.cross_section_mm || '').split(/[×xX*]/).map((s: string) => parseFloat(s.trim())).filter((n: number) => !isNaN(n) && n > 0);
+                              const p = spec.perimeter || (dims.length >= 2 ? Math.round(2 * (dims[0] + dims[1]) * 100) / 100 : 0);
+                              return p ? p + 'mm' : 'mm';
+                            })()}
                           </span>
                         </button>
                       ))}
