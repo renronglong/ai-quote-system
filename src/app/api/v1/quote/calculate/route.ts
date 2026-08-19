@@ -582,7 +582,6 @@ function calcExtrusion(
   breakdown['material'] = { formula: mat.formula, detail: mat.detail };
   
   let accumulated = mat.cost;
-  let processingAccumulated = 0; // 工序加工费累计（含×1.03损耗），不含材料费
   
 
   // 取整工具：按数量级向上进位（如 350→400, 35→40, 3500→4000）
@@ -827,13 +826,13 @@ function calcExtrusion(
     const stampingFeePerPass = r2(actualRate + lengthSurcharge + volumeSurcharge);
 
     for (let i = 0; i < count; i++) {
-      processingAccumulated = (processingAccumulated + stampingFeePerPass) * 1.03;
+      accumulated = (accumulated + stampingFeePerPass) * 1.03;
     }
-    totalSecondaryCost += processingAccumulated; // 含×1.03工序损耗
+    totalSecondaryCost += accumulated - mat.cost; // 含×1.03工序损耗
 
     const lengthPart = lengthSurcharge > 0 ? ` + 长度附加${lengthSurcharge}` : '';
     const volumePart = volumeSurcharge > 0 ? ` + 体积附加${r2(volumeSurcharge)}` : '';
-    secondaryDetails.push(`冲压(${req.process.stamping_tonnage}): ${count}次 × (${actualRate}=${rate}×2${lengthPart}${volumePart}) ×1.03损耗 = ${r2(processingAccumulated)}元`);
+    secondaryDetails.push(`冲压(${req.process.stamping_tonnage}): ${count}次 × (${actualRate}=${rate}×2${lengthPart}${volumePart}) ×1.03损耗 = ${r2(accumulated - mat.cost)}元`);
     secondaryFormulaParts.push(`冲压×${count}`);
   }
 
@@ -890,11 +889,11 @@ function calcExtrusion(
     if (sec.cost > 0 && sec.detail && sec.detail !== '无二次加工') {
       const opsCount = countSecondaryOps(req.process);
       const perOpCost = r2(sec.cost / opsCount);
-      const prevProcessing = processingAccumulated;
+      const prevAccumulated = accumulated;
       for (let i = 0; i < opsCount; i++) {
-        processingAccumulated = (processingAccumulated + perOpCost) * 1.03;
+        accumulated = (accumulated + perOpCost) * 1.03;
       }
-      totalSecondaryCost += processingAccumulated - prevProcessing; // 含×1.03工序损耗
+      totalSecondaryCost += accumulated - prevAccumulated; // 含×1.03工序损耗
       secondaryDetails.push(sec.detail);
       secondaryFormulaParts.push(sec.formula);
     }
@@ -904,9 +903,6 @@ function calcExtrusion(
       detail: secondaryDetails.length > 0 ? secondaryDetails.join('; ') : '无二次加工',
     };
   }
-
-  // 将加工费累计（含×1.03损耗）加入总累计
-  accumulated += processingAccumulated;
 
   // 3.4 锯切下料费（已包含在挤压加工费中，不单独计费）
 
