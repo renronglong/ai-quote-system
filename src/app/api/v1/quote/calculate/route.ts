@@ -773,8 +773,8 @@ function calcExtrusion(
       perimeterFee = 0.0035 * processingArea;
       processingFee = baseProcessingFee + perimeterFee;
     } else {
-      // 分流模：加工费 = 基础加工 + 周长×厚度×公头数×系数
-      perimeterFee = 0.0035 * finalPerimeter * dieThickness * numCavities;
+      // 分流模：加工费 = 基础加工 + 周长×2×厚度×系数（内外周长）
+      perimeterFee = 0.0035 * finalPerimeter * 2 * dieThickness;
       processingFee = baseProcessingFee + perimeterFee;
     }
     const mgmtRate = getManagementRate(dieThickness);
@@ -787,12 +787,12 @@ function calcExtrusion(
     if (isFlatDie) {
       notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + (${Math.round(baseProcessingFee)}基础 + ${Math.round(perimeterFee)}周长×厚度加工) × ${(mgmtRate*100).toFixed(0)}%管理费)`);
     } else {
-      notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + (${Math.round(baseProcessingFee)}基础 + ${Math.round(perimeterFee)}周长${finalPerimeter}×公头数${numCavities}加工) × ${(mgmtRate*100).toFixed(0)}%管理费)`);
+      notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + (${Math.round(baseProcessingFee)}基础 + ${Math.round(perimeterFee)}周长×2×厚度加工(含内外)) × ${(mgmtRate*100).toFixed(0)}%管理费)`);
     }
     notes.push(`模具费一次性，不计入单件价格`);
 
     breakdown['mold'] = {
-      formula: `(材料费: 钢价×密度7.85×损耗1.2×πR²×H/10⁹ + (基础加工费0.028×Φ×H + 周长加工费0.0035×加工面积) × 公头系数) × (1+管理费率)`,
+      formula: `(材料费: 钢价×密度7.85×损耗1.2×πR²×H/10⁹ + (基础加工费0.028×Φ×H + 周长加工费0.0035×周长×2×厚度(分流模)或周长×厚度(平模)) × (1+管理费率)`,
       detail: `模具钢价${dieSteelPrice}元/吨(密度7.85,损耗1.2) | Φ${dieDiameter}×${dieThickness}${dieType} | ${numCavities}公头(系数×${cavityMultiplier}): 材料费${dieSteelPrice}×7.85×1.2×π×(${dieDiameter}/2)²×${dieThickness}/10⁹=${Math.round(materialFee)} + 加工费(${Math.round(baseProcessingFee)}基础+${Math.round(perimeterFee)}周长)×${cavityMultiplier}=${Math.round((baseProcessingFee + perimeterFee) * cavityMultiplier)} → ×${(1+mgmtRate).toFixed(2)} = ${moldCost}元`,
     };
   }
