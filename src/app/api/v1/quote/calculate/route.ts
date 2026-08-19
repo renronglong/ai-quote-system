@@ -865,15 +865,14 @@ function calcExtrusion(
   // 3.3 CNC二次加工费（复用板材逻辑）
   let secondaryCost = 0;
   
-  // 3.3.1 冲压加工费（按吨位费率 × 冲次数量）
-  if (req.process?.stamping_tonnage && req.process?.stamping_count) {
+  // 3.3.1 冲压加工费（按吨位费率 × 冲次数量，冲次默认1）
+  if (req.process?.stamping_tonnage) {
     const tonnageRates = rules.process_rates?.['冲压吨位费率']?.rates || {};
     const tonnage = req.process.stamping_tonnage;
     const count = req.process.stamping_count || 1;
     const rate = tonnageRates[tonnage] || 0.3;
     const stampingCost = r2(rate * count);
     secondaryCost += stampingCost;
-
   }
   
   if (req.process) {
@@ -881,14 +880,14 @@ function calcExtrusion(
     secondaryCost += sec.cost;
     accumulated += secondaryCost;
     const detailParts: string[] = [];
-    if (req.process.stamping_tonnage && req.process.stamping_count) {
+    if (req.process.stamping_tonnage) {
       const tonnageRates = rules.process_rates?.['冲压吨位费率']?.rates || {};
       const rate = tonnageRates[req.process.stamping_tonnage] || 0.3;
-      detailParts.push(`冲压(${req.process.stamping_tonnage}): ${req.process.stamping_count}次×${rate}元/次`);
+      detailParts.push(`冲压(${req.process.stamping_tonnage}): ${req.process.stamping_count || 1}次×${rate}元/次`);
     }
     if (sec.detail && sec.detail !== '无二次加工') detailParts.push(sec.detail);
     const formulaParts: string[] = [];
-    if (req.process.stamping_tonnage && req.process.stamping_count) formulaParts.push('冲压吨位费率×冲次');
+    if (req.process.stamping_tonnage) formulaParts.push('冲压吨位费率×冲次');
     formulaParts.push(sec.formula);
     breakdown['secondary'] = {
       formula: formulaParts.join(' + '),
