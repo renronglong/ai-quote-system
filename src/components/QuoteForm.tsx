@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Upload, FileText, X, Sparkles, Loader2, AlertTriangle, Plus, Trash2 } from 'lucide-react';
+import { Upload, FileText, X, Sparkles, Loader2, AlertTriangle, Plus } from 'lucide-react';
 
 // ==================== Types ====================
 
@@ -380,9 +380,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [perimeterManual, setPerimeterManual] = useState(false);
   const [dieSteelPrice, setDieSteelPrice] = useState<string>('');
 
-  // Batch mode state (multi-length quoting for extrusion)
-  const [batchMode, setBatchMode] = useState(false);
-  const [batchVariants, setBatchVariants] = useState<{id: string, length: string, weight: string, quantity: string, surfaceTreatment: string}[]>([]);
+  // Saved variants (multi-length quoting for extrusion)
+  const [savedVariants, setSavedVariants] = useState<{id: string, length: number, weight: number, quantity: number}[]>([]);
 
   // Standard parts state (异型材/标准件 toggle)
   const [isCustomProfile, setIsCustomProfile] = useState(true);
@@ -870,14 +869,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const doCalculate = async () => {
     // Check if all required dimension fields are filled
     const cat = categoryConfig;
+    const hasBatchVariants = productType === '挤出' && savedVariants.length > 0;
     if (cat) {
       const isStdMode = productType === '挤出' && !isCustomProfile;
-      // In batch mode, length is per-variant, not required in main fields
       const requiredDims = isStdMode
-        ? (batchMode ? [] : ['length'])
+        ? ['length']
         : cat.fields.filter(f => ['width', 'height', 'length', 'thickness', 'productSize'].includes(f));
-      // Filter out length in batch mode
-      const dimsToCheck = batchMode ? requiredDims.filter(f => f !== 'length') : requiredDims;
+      // In batch mode with saved variants, length in current form is optional
+      const dimsToCheck = hasBatchVariants ? requiredDims.filter(f => f !== 'length') : requiredDims;
       const allFilled = dimsToCheck.every(f => {
         const val = fields[f];
         return val !== '' && val !== undefined && val !== null && Number(val) > 0;
@@ -886,19 +885,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         onResult?.(null);
         return;
       }
-      // In batch mode, check that at least one variant has length and weight
-      if (batchMode && batchVariants.length === 0) {
-        onResult?.(null);
-        return;
-      }
-      if (batchMode) {
-        const hasValidVariant = batchVariants.some(v => {
-          const l = parseFloat(v.length);
-          const w = parseFloat(v.weight);
-          const q = parseFloat(v.quantity) || 1;
-          return l > 0 && w > 0 && q > 0;
-        });
-        if (!hasValidVariant) {
+      if (hasBatchVariants) {
+        // Need at least some saved variants with valid data
+        const hasValid = savedVariants.some(v => v.length > 0 && v.weight > 0);
+        if (!hasValid) {
           onResult?.(null);
           return;
         }
@@ -910,16 +900,27 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const surfaceTreatment = mapSurfaceTreatment();
       const processInfo = mapProcesses();
 
-      // ---- Batch mode: calculate each variant separately ----
-      if (batchMode && batchVariants.length > 0) {
+      // ---- Batch mode: saved variants + current form value ----
+      if (hasBatchVariants) {
         const baseDimensions = buildDimensions();
         const batchResults: BatchVariantResult[] = [];
         let firstResult: PricingResult | null = null;
 
-        for (const variant of batchVariants) {
-          const vLength = parseFloat(variant.length);
-          const vWeight = parseFloat(variant.weight);
-          const vQuantity = parseFloat(variant.quantity) || 1;
+        // Build all variants: saved variants + current form (if current length > 0)
+        const allVariants: { length: number; weight: number; quantity: number }[] = [...savedVariants];
+        const curLen = parseFloat(fields.length as string) || 0;
+        const curMw = parseFloat(fields.meterWeight as string) || 0;
+        const curWeight = curLen > 0 && curMw > 0 ? Math.round(curMw * curLen / 1000 * 1000) / 1000 : 0;
+        const curQty = parseFloat(fields.quantity as string) || 1;
+        if (curLen > 0 && curWeight > 0) {
+          allVariants.push({ length: curLen, weight: curWeight, quantity: curQty });
+        }
+
+        for (let vi = 0; vi < allVariants.length; vi++) {
+          const variant = allVariants[vi];
+          const vLength = variant.length;
+          const vWeight = variant.weight;
+          const vQuantity = variant.quantity;
           if (!(vLength > 0) || !(vWeight > 0)) continue;
 
           const dimensions = baseDimensions ? { ...baseDimensions } : {};
@@ -927,18 +928,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           if (productType === '挤出') (dimensions as any).material_size_type = materialSizeType;
 
           const vWeightKg = vWeight / 1000;
-
-          // Per-variant surface treatment (fall back to global if not set)
-          let vSurfaceTreatment = surfaceTreatment;
-          if (variant.surfaceTreatment && variant.surfaceTreatment !== '无' && variant.surfaceTreatment !== '') {
-            // Map the variant-specific surface treatment
-            const vSurfMap: Record<string, string> = {
-              '喷砂氧化': '喷砂', '抛光氧化': '抛光/镀铬', '拉丝氧化': '拉丝',
-              '喷涂': '喷涂', '氧化': '氧化本色',
-            };
-            const mapped = vSurfMap[variant.surfaceTreatment];
-            if (mapped) vSurfaceTreatment = { type: mapped, color: null };
-          }
 
           const payload: Record<string, any> = {
             product_type: mapProductType(),
@@ -949,9 +938,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           if (productCode) payload.product_code = productCode;
           payload.dimensions = dimensions;
           payload.weight_per_piece_kg = vWeightKg;
-          if (vSurfaceTreatment) payload.surface_treatment = vSurfaceTreatment;
+          if (surfaceTreatment) payload.surface_treatment = surfaceTreatment;
           if (processInfo.secondary_operations.length > 0 || processInfo.cut_count !== undefined) {
             payload.process = processInfo;
+          }
+          // Mold cost only on first variant
+          if (vi > 0) {
+            payload.skip_mold_cost = true;
           }
 
           const res = await fetch('/api/v1/quote/calculate', {
@@ -986,7 +979,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 length: vLength,
                 weight: vWeight,
                 quantity: vQuantity,
-                surfaceTreatment: variant.surfaceTreatment || '',
+                surfaceTreatment: surfaceTreatment?.type || '',
                 result,
               });
               if (!firstResult) firstResult = result;
@@ -1002,7 +995,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               productType, materialCategory,
               quantity: (fields.quantity as number) || 1,
               width: fields.width as number, height: fields.height as number,
-              length: parseFloat(batchVariants[0]?.length) || 0,
+              length: allVariants[0]?.length || 0,
               thickness: fields.thickness as number,
               productSize: fields.productSize as string,
               meterWeight: fields.meterWeight as number, netWeight: fields.netWeight as number,
@@ -1130,10 +1123,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (productType === '挤出' && !isCustomProfile) {
       visibleFields = visibleFields.filter(f => f !== 'num_cavities' && f !== 'die_type');
     }
-    // In batch mode, hide length and netWeight (managed in batch variants table)
-    if (batchMode && productType === '挤出') {
-      visibleFields = visibleFields.filter(f => f !== 'length' && f !== 'netWeight');
-    }
+
 
     // Group into pairs for two-column layout
     const pairs: string[][] = [];
@@ -1221,6 +1211,52 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                       <option value="flat">平模</option>
                       <option value="split">分流模</option>
                     </select>
+                  </div>
+                );
+              }
+              // Length field with "+" button for extrusion multi-length
+              if (fieldKey === 'length' && productType === '挤出') {
+                const lengthVal = parseFloat(fields.length as string) || 0;
+                const mwVal = parseFloat(fields.meterWeight as string) || 0;
+                const calcWeight = lengthVal > 0 && mwVal > 0 ? Math.round(mwVal * lengthVal / 1000 * 1000) / 1000 : 0;
+                const canAdd = lengthVal > 0 && calcWeight > 0;
+                return (
+                  <div key={fieldKey}>
+                    <label className="block text-[11px] text-gray-500 mb-1">{FIELD_LABELS[fieldKey]}</label>
+                    <div className="flex gap-1">
+                      <input
+                        type="number"
+                        min={0}
+                        value={(fields[fieldKey] as number) ?? ''}
+                        onChange={e => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setFields(prev => ({ ...prev, [fieldKey]: val }));
+                          }}
+                        className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+                      />
+                      <button
+                        type="button"
+                        disabled={!canAdd}
+                        onClick={() => {
+                          const len = parseFloat(fields.length as string) || 0;
+                          const mw = parseFloat(fields.meterWeight as string) || 0;
+                          const w = Math.round(mw * len / 1000 * 1000) / 1000;
+                          const qty = parseFloat(fields.quantity as string) || 1;
+                          if (len > 0 && w > 0) {
+                            setSavedVariants(prev => [...prev, { id: 'v' + Date.now(), length: len, weight: w, quantity: qty }]);
+                            setFields(prev => ({ ...prev, length: 0 }));
+                          }
+                        }}
+                        className={`shrink-0 rounded-lg px-2 text-sm font-bold transition-all min-h-[36px] ${
+                          canAdd
+                            ? 'bg-blue-500 text-white hover:bg-blue-600 shadow-sm'
+                            : 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                        }`}
+                        title="保存当前长度到批量列表"
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
                 );
               }
@@ -1639,129 +1675,37 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               />
             </div>
 
-            {/* 多长度批量报价开关 */}
-            <div className="mt-2">
-              <label className="block text-[11px] text-gray-500 mb-1">报价模式</label>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setBatchMode(false)}
-                  className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-all ${
-                    !batchMode
-                      ? 'bg-blue-500 text-white shadow-sm'
-                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                  }`}
-                >
-                  单次报价
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBatchMode(true);
-                    if (batchVariants.length === 0) {
-                      setBatchVariants([{ id: 'v1', length: '', weight: '', quantity: '', surfaceTreatment: '' }]);
-                    }
-                  }}
-                  className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-all ${
-                    batchMode
-                      ? 'bg-blue-500 text-white shadow-sm'
-                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                  }`}
-                >
-                  多长度批量
-                </button>
-              </div>
-            </div>
-
-            {/* 批量变体表格 */}
-            {batchMode && (
-              <div className="mt-3">
-                <label className="block text-[11px] text-gray-500 mb-1.5">
-                  长度/重量变体
+            {/* 已保存的批量变体标签 */}
+            {savedVariants.length > 0 && (
+              <div className="mt-2">
+                <label className="block text-[11px] text-gray-500 mb-1">
+                  已保存长度
                   <span className="ml-1 text-[10px] text-gray-400">(截面参数共用，模具费只算一次)</span>
                 </label>
-                <div className="space-y-1.5">
-                  {/* 表头 */}
-                  <div className="grid grid-cols-[20px_1fr_1fr_60px_1fr_24px] gap-1 px-1">
-                    <span className="text-[10px] text-gray-400 text-center">#</span>
-                    <span className="text-[10px] text-gray-400">长度(mm)</span>
-                    <span className="text-[10px] text-gray-400">重量(g)</span>
-                    <span className="text-[10px] text-gray-400">数量</span>
-                    <span className="text-[10px] text-gray-400">表面处理(可选)</span>
-                    <span></span>
-                  </div>
-                  {batchVariants.map((v, idx) => (
-                    <div key={v.id} className="grid grid-cols-[20px_1fr_1fr_60px_1fr_24px] gap-1 items-center">
-                      <span className="text-[10px] text-gray-400 text-center">{idx + 1}</span>
-                      <input
-                        type="number"
-                        min={0}
-                        placeholder="长度"
-                        value={v.length}
-                        onChange={e => {
-                          const updated = batchVariants.map(bv => bv.id === v.id ? { ...bv, length: e.target.value } : bv);
-                          setBatchVariants(updated);
-                        }}
-                        className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
-                      />
-                      <input
-                        type="number"
-                        min={0}
-                        placeholder="重量"
-                        value={v.weight}
-                        onChange={e => {
-                          const updated = batchVariants.map(bv => bv.id === v.id ? { ...bv, weight: e.target.value } : bv);
-                          setBatchVariants(updated);
-                        }}
-                        className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
-                      />
-                      <input
-                        type="number"
-                        min={1}
-                        placeholder="1"
-                        value={v.quantity}
-                        onChange={e => {
-                          const updated = batchVariants.map(bv => bv.id === v.id ? { ...bv, quantity: e.target.value } : bv);
-                          setBatchVariants(updated);
-                        }}
-                        className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
-                      />
-                      <select
-                        value={v.surfaceTreatment || ''}
-                        onChange={e => {
-                          const updated = batchVariants.map(bv => bv.id === v.id ? { ...bv, surfaceTreatment: e.target.value } : bv);
-                          setBatchVariants(updated);
-                        }}
-                        className="w-full rounded-lg border border-gray-200 bg-white px-1 py-1 text-[11px] text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
-                      >
-                        <option value="">全局</option>
-                        {getSurfaceTreatmentOptions().map(o => (
-                          <option key={o.name} value={o.name}>{o.name}</option>
-                        ))}
-                      </select>
+                <div className="flex flex-wrap gap-1.5">
+                  {savedVariants.map((v, idx) => (
+                    <span
+                      key={v.id}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-[11px] font-medium"
+                    >
+                      #{idx + 1} {v.length}mm · {Math.round(v.weight)}g
+                      {v.quantity > 1 ? ` ×${v.quantity}` : ''}
                       <button
                         type="button"
-                        onClick={() => {
-                          const updated = batchVariants.filter(bv => bv.id !== v.id);
-                          setBatchVariants(updated.length > 0 ? updated : [{ id: 'v1', length: '', weight: '', quantity: '', surfaceTreatment: '' }]);
-                        }}
-                        className="p-0.5 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors flex items-center justify-center"
+                        onClick={() => setSavedVariants(prev => prev.filter(sv => sv.id !== v.id))}
+                        className="ml-0.5 text-blue-400 hover:text-red-500 transition-colors"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        ×
                       </button>
-                    </div>
+                    </span>
                   ))}
                 </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    const newId = 'v' + Date.now();
-                    setBatchVariants([...batchVariants, { id: newId, length: '', weight: '', quantity: '', surfaceTreatment: '' }]);
-                  }}
-                  className="mt-2 flex items-center gap-1 text-[11px] text-blue-500 hover:text-blue-700 font-medium transition-colors"
+                  onClick={() => setSavedVariants([])}
+                  className="mt-1.5 text-[11px] text-gray-400 hover:text-red-500 transition-colors"
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  添加长度
+                  清空全部
                 </button>
               </div>
             )}
