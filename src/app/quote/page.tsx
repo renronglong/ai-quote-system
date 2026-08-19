@@ -93,7 +93,7 @@ export default function QuotePage() {
       (br.weight / 1000).toFixed(3),
       br.quantity || 1,
       br.result.material_cost.toFixed(2),
-      br.result.processing_cost.toFixed(2),
+      (br.result.processing_cost + (br.result.secondary_operations_cost || 0)).toFixed(2),
       br.result.surface_treatment_cost.toFixed(2),
       br.result.secondary_operations_cost.toFixed(2),
       br.result.unit_price.toFixed(2),
@@ -105,7 +105,7 @@ export default function QuotePage() {
     rows.push([
       '合计', '', '', '', '',
       batchResults.reduce((s, br) => s + br.result.material_cost, 0).toFixed(2),
-      batchResults.reduce((s, br) => s + br.result.processing_cost, 0).toFixed(2),
+      batchResults.reduce((s, br) => s + (br.result.processing_cost + (br.result.secondary_operations_cost || 0)), 0).toFixed(2),
       batchResults.reduce((s, br) => s + br.result.surface_treatment_cost, 0).toFixed(2),
       batchResults.reduce((s, br) => s + br.result.secondary_operations_cost, 0).toFixed(2),
       totalUnit.toFixed(2),
@@ -129,7 +129,7 @@ export default function QuotePage() {
     const productType = params.product_type || productInfo.productName || '产品';
     const result = {
       material_cost: pricingResult.material_cost,
-      processing_cost: pricingResult.processing_cost,
+      processing_cost: pricingResult.processing_cost + (pricingResult.secondary_operations_cost || 0),
       surface_treatment_cost: pricingResult.surface_treatment_cost,
       packaging_cost: pricingResult.packaging_cost,
       transport_cost: pricingResult.transport_cost,
@@ -331,7 +331,7 @@ export default function QuotePage() {
                             <td className="px-2 py-1.5 text-right text-gray-800">{br.weight}</td>
                             <td className="px-2 py-1.5 text-right text-gray-800">{br.quantity || 1}</td>
                             <td className="px-2 py-1.5 text-right text-gray-600">¥{br.result.material_cost.toFixed(2)}</td>
-                            <td className="px-2 py-1.5 text-right text-gray-600">¥{br.result.processing_cost.toFixed(2)}</td>
+                            <td className="px-2 py-1.5 text-right text-gray-600">¥{(br.result.processing_cost + (br.result.secondary_operations_cost || 0)).toFixed(2)}</td>
                             <td className="px-2 py-1.5 text-right text-gray-600">¥{br.result.surface_treatment_cost.toFixed(2)}</td>
                             <td className="px-2 py-1.5 text-right text-emerald-600 font-semibold">¥{br.result.unit_price.toFixed(2)}</td>
                             <td className="px-2 py-1.5 text-right text-blue-600 font-medium">
@@ -352,7 +352,7 @@ export default function QuotePage() {
                             ¥{batchResults.reduce((s, br) => s + br.result.material_cost, 0).toFixed(2)}
                           </td>
                           <td className="px-2 py-2 text-right text-[11px] font-semibold text-gray-700">
-                            ¥{batchResults.reduce((s, br) => s + br.result.processing_cost, 0).toFixed(2)}
+                            ¥{batchResults.reduce((s, br) => s + (br.result.processing_cost + (br.result.secondary_operations_cost || 0)), 0).toFixed(2)}
                           </td>
                           <td className="px-2 py-2 text-right text-[11px] font-semibold text-gray-700">
                             ¥{batchResults.reduce((s, br) => s + br.result.surface_treatment_cost, 0).toFixed(2)}
@@ -464,7 +464,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
 
   const breakdownItems = [
     { label: '材料费', value: p.material_cost, key: 'material_cost' },
-    { label: '加工费', value: p.processing_cost, key: 'processing_cost' },
+    { label: '加工费', value: p.processing_cost + (p.secondary_operations_cost || 0), key: 'processing_cost' },
     { label: '表面处理费', value: p.surface_treatment_cost, key: 'surface_treatment_cost' },
     { label: '包装费', value: p.packaging_cost, key: 'packaging_cost' },
     { label: '运输费', value: p.transport_cost, key: 'transport_cost' },
