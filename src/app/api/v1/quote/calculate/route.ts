@@ -773,8 +773,8 @@ function calcExtrusion(
       perimeterFee = 0.0035 * processingArea;
       processingFee = baseProcessingFee + perimeterFee;
     } else {
-      // 分流模：加工费 = 基础加工 + 周长×公头数×系数
-      perimeterFee = 0.0035 * finalPerimeter * numCavities;
+      // 分流模：加工费 = 基础加工 + 周长×厚度×公头数×系数
+      perimeterFee = 0.0035 * finalPerimeter * dieThickness * numCavities;
       processingFee = baseProcessingFee + perimeterFee;
     }
     const mgmtRate = getManagementRate(dieThickness);
