@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Upload, FileText, X, Sparkles, Loader2, AlertTriangle, Plus } from 'lucide-react';
+import { Upload, FileText, X, Sparkles, Loader2, AlertTriangle, Plus, User, CheckCircle2 } from 'lucide-react';
 
 // ==================== Types ====================
 
@@ -398,6 +398,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [uploading, setUploading] = useState(false);
   const [fileRemark, setFileRemark] = useState('');
   const [dragOver, setDragOver] = useState(false);
+  const [recognizing, setRecognizing] = useState(false);
+  const [recogResult, setRecogResult] = useState<Record<string, any> | null>(null);
+  const [recogError, setRecogError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Get current config
@@ -1085,26 +1088,106 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   };
 
   // ==================== File Upload ====================
-  const handleFileDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file && isValidFile(file)) setUploadedFile(file);
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && isValidFile(file)) setUploadedFile(file);
-  };
+  // 图片扩展名 — 触发AI识别
+  const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
+  // CAD扩展名 — 本地解析或转发
+  const CAD_EXTS = ['.dxf', '.dwg', '.step', '.stp', '.igs'];
 
   const isValidFile = (file: File): boolean => {
     const ext = '.' + file.name.split('.').pop()?.toLowerCase();
     return ALLOWED_EXTENSIONS.includes(ext);
   };
 
+  const applyRecogToForm = (d: Record<string, any>) => {
+    // 产品类型映射
+    if (d.product_type) {
+      const ptMap: Record<string,string> = {
+        extrusion: '挤出', stamping: '板材', die_casting: '压铸',
+        cnc: '板材', injection: '注塑',
+      };
+      const mapped = ptMap[d.product_type];
+      if (mapped && PRODUCT_TYPES[mapped]) setProductType(mapped);
+    }
+    if (d.material_category) setMaterialCategory(d.material_category);
+    setFields(prev => {
+      const next = { ...prev };
+      if (typeof d.width === 'number') next.width = d.width;
+      if (typeof d.height === 'number') next.height = d.height;
+      if (typeof d.length === 'number') next.length = d.length;
+      if (typeof d.perimeter === 'number') next.perimeter = d.perimeter;
+      if (typeof d.num_cavities === 'number') next.num_cavities = d.num_cavities;
+      if (d.die_type === 'flat' || d.die_type === 'split') next.die_type = d.die_type;
+      if (typeof d.meter_weight === 'number') next.meterWeight = d.meter_weight;
+      if (typeof d.quantity === 'number') next.quantity = d.quantity;
+      if (typeof d.wall_thickness === 'number') next.thickness = d.wall_thickness;
+      return next;
+    });
+    if (d.surface_treatment && d.surface_treatment !== '无') setMaterialSurfaceTreatment(d.surface_treatment);
+    setAiSynced(true);
+    setTimeout(() => setAiSynced(false), 2500);
+  };
+
+  const recognizeFile = async (file: File) => {
+    const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+    if (!IMAGE_EXTS.includes(ext)) return; // CAD/PDF走原有流程
+    setRecognizing(true);
+    setRecogError(null);
+    setRecogResult(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const resp = await fetch('/api/recognize-drawing', { method: 'POST', body: fd });
+      const json = await resp.json();
+      if (!resp.ok || !json.success) {
+        setRecogError(json.error || '识别失败');
+        return;
+      }
+      const d = json.data || {};
+      setRecogResult(d);
+      if (json.autoFill && d.confidence >= 0.75) {
+        applyRecogToForm(d);
+      }
+    } catch (e: any) {
+      setRecogError(e?.message || '网络错误');
+    } finally {
+      setRecognizing(false);
+    }
+  };
+
+  const handleFileDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file && isValidFile(file)) {
+      setUploadedFile(file);
+      recognizeFile(file);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && isValidFile(file)) {
+      setUploadedFile(file);
+      recognizeFile(file);
+    }
+  };
+
   const removeFile = () => {
     setUploadedFile(null);
+    setRecogResult(null);
+    setRecogError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const requestDeepQuote = () => {
+    // 跳转发工单/联系客服：复用现有forward-cad或邮件
+    if (!uploadedFile) return;
+    const remark = fileRemark || (recogResult?.handoff_reason as string) || 'AI无法精准识别，申请深度报价';
+    const fd = new FormData();
+    fd.append('file', uploadedFile);
+    fd.append('remark', remark);
+    fetch('/api/forward-cad', { method: 'POST', body: fd }).catch(() => {});
+    setRecogError('已提交深度报价，工程师将尽快联系您');
   };
 
   // ==================== Derived state ====================
@@ -1767,6 +1850,95 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             onChange={e => setFileRemark(e.target.value)}
             className="w-full mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
           />
+
+          {/* 识别中 */}
+          {recognizing && (
+            <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 text-blue-600 text-xs">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              正在AI识别图纸参数...
+            </div>
+          )}
+
+          {/* 识别错误 */}
+          {recogError && (
+            <div className="mt-2 flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
+              <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-amber-700">{recogError}</div>
+                {uploadedFile && (
+                  <button
+                    type="button"
+                    onClick={requestDeepQuote}
+                    className="mt-1.5 inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[11px] font-medium hover:bg-amber-600 transition-colors"
+                  >
+                    <User className="w-3 h-3" />
+                    申请深度报价
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 识别结果 */}
+          {recogResult && !recogError && (
+            <div className={`mt-2 rounded-lg border p-2.5 ${
+              recogResult.needs_human
+                ? 'bg-amber-50 border-amber-200'
+                : 'bg-emerald-50 border-emerald-200'
+            }`}>
+              <div className="flex items-center gap-1.5 mb-1.5">
+                {recogResult.needs_human ? (
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                )}
+                <span className={`text-[11px] font-semibold ${
+                  recogResult.needs_human ? 'text-amber-700' : 'text-emerald-700'
+                }`}>
+                  {recogResult.needs_human ? '识别不确定，请确认参数' : 'AI已自动填入参数'}
+                  {typeof recogResult.confidence === 'number' && (
+                    <span className="ml-1 opacity-70">（置信度{(recogResult.confidence*100).toFixed(0)}%）</span>
+                  )}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] text-gray-600">
+                {recogResult.width != null && <div>宽: <b>{recogResult.width}mm</b></div>}
+                {recogResult.height != null && <div>高: <b>{recogResult.height}mm</b></div>}
+                {recogResult.wall_thickness != null && <div>壁厚: <b>{recogResult.wall_thickness}mm</b></div>}
+                {recogResult.length != null && <div>长: <b>{recogResult.length}mm</b></div>}
+                {recogResult.perimeter != null && <div>周长: <b>{recogResult.perimeter}mm</b></div>}
+                {recogResult.meter_weight != null && <div>米重: <b>{recogResult.meter_weight}kg/m</b></div>}
+                {recogResult.num_cavities != null && <div>面域: <b>{recogResult.num_cavities}</b></div>}
+                {recogResult.material_grade && <div className="col-span-2">材质: <b>{recogResult.material_grade}</b></div>}
+                {recogResult.product_code && <div className="col-span-2">图号: <b>{recogResult.product_code}</b></div>}
+              </div>
+              {recogResult.handoff_reason && (
+                <div className="mt-1.5 text-[10px] text-amber-600">{recogResult.handoff_reason}</div>
+              )}
+              <div className="mt-2 flex gap-2">
+                {recogResult.needs_human && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => applyRecogToForm(recogResult)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-500 text-white text-[11px] font-medium hover:bg-emerald-600 transition-colors"
+                    >
+                      <CheckCircle2 className="w-3 h-3" />
+                      确认填入
+                    </button>
+                    <button
+                      type="button"
+                      onClick={requestDeepQuote}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[11px] font-medium hover:bg-amber-600 transition-colors"
+                    >
+                      <User className="w-3 h-3" />
+                      申请深度报价
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Loading indicator */}
