@@ -1089,7 +1089,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
   // ==================== File Upload ====================
   // 图片扩展名 — 触发AI识别
-  const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
+  const AI_RECOG_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf'];
   // CAD扩展名 — 本地解析或转发
   const CAD_EXTS = ['.dxf', '.dwg', '.step', '.stp', '.igs'];
 
@@ -1129,7 +1129,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
   const recognizeFile = async (file: File) => {
     const ext = '.' + file.name.split('.').pop()?.toLowerCase();
-    if (!IMAGE_EXTS.includes(ext)) return; // CAD/PDF走原有流程
+    if (!AI_RECOG_EXTS.includes(ext)) return; // 3D CAD走原有解析流程
     setRecognizing(true);
     setRecogError(null);
     setRecogResult(null);
