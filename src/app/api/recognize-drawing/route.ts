@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 // pdf-to-image动态加载，见下方PDF处理逻辑
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
 
 export async function POST(request: NextRequest) {
   try {
