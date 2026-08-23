@@ -96,8 +96,8 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         bot_id: botId,
         user_id: 'recognize_drawing',
-        stream: true,
-        auto_save_history: false,
+        stream: false,
+        auto_save_history: true,
         additional_messages: [
           { role: 'user', content: systemPrompt, content_type: 'text', type: 'question' },
           { role: 'user', content: JSON.stringify([{ type: 'image', file_id: fileId }]), content_type: 'object_string', type: 'question' },
