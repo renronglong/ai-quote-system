@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pdfFirstPageToPng } from '@/lib/pdf-to-image';
+// pdf-to-image动态加载，见下方PDF处理逻辑
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
     if (fileName.toLowerCase().endsWith('.pdf') || fileType === 'application/pdf') {
       try {
         console.log('[Recognize] PDF检测到，正在转换为PNG...');
+        const { pdfFirstPageToPng } = await import('@/lib/pdf-to-image');
         buffer = await pdfFirstPageToPng(buffer, 200);
         fileName = fileName.replace(/\.pdf$/i, '.png');
         fileType = 'image/png';
