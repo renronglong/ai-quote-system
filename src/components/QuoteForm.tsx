@@ -1127,6 +1127,46 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     setTimeout(() => setAiSynced(false), 2500);
   };
 
+  // PDF文件在浏览器端用pdf.js转为PNG，再发给AI识别
+  const convertPdfToPng = async (pdfFile: File): Promise<File> => {
+    // 动态加载pdf.js（CDN，禁用Worker避免CORS）
+    if (!(window as any).pdfjsLib) {
+      await new Promise<void>((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+        s.onload = () => {
+          (window as any).pdfjsLib = (window as any).pdfjsLib || (window as any).pdfjs;
+          (window as any).pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+          resolve();
+        };
+        s.onerror = () => reject(new Error('pdf.js加载失败'));
+        document.head.appendChild(s);
+      });
+    }
+    const pdfjsLib = (window as any).pdfjsLib;
+    const arrayBuffer = await pdfFile.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer, disableWorker: true }).promise;
+    const page = await pdf.getPage(1);
+    const scale = 200 / 72;
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, viewport.width, viewport.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    return new Promise<File>((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(new File([blob], pdfFile.name.replace(/\.pdf$/i, '.png'), { type: 'image/png' }));
+        } else {
+          reject(new Error('PDF转图片失败'));
+        }
+      }, 'image/png');
+    });
+  };
+
   const recognizeFile = async (file: File) => {
     const ext = '.' + file.name.split('.').pop()?.toLowerCase();
     if (!AI_RECOG_EXTS.includes(ext)) return; // 3D CAD走原有解析流程
@@ -1134,8 +1174,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     setRecogError(null);
     setRecogResult(null);
     try {
+      let fileToSend = file;
+      if (file.name.toLowerCase().endsWith('.pdf')) {
+        setRecogError('PDF正在转为图片识别...');
+        fileToSend = await convertPdfToPng(file);
+        setRecogError(null);
+      }
       const fd = new FormData();
-      fd.append('file', file);
+      fd.append('file', fileToSend);
       const resp = await fetch('/api/recognize-drawing', { method: 'POST', body: fd });
       const json = await resp.json();
       if (!resp.ok || !json.success) {

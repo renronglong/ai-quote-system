@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-// pdf-to-image动态加载，见下方PDF处理逻辑
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
@@ -25,20 +24,7 @@ export async function POST(request: NextRequest) {
     let fileName = file.name || 'drawing.png';
     let fileType = file.type || 'image/png';
 
-    // PDF自动转PNG（Coze视觉模型只识别图片，不直接读PDF）
-    if (fileName.toLowerCase().endsWith('.pdf') || fileType === 'application/pdf') {
-      try {
-        console.log('[Recognize] PDF检测到，正在转换为PNG...');
-        const { pdfFirstPageToPng } = await import('@/lib/pdf-to-image');
-        buffer = await pdfFirstPageToPng(buffer, 200);
-        fileName = fileName.replace(/\.pdf$/i, '.png');
-        fileType = 'image/png';
-        console.log(`[Recognize] PDF转换完成: ${fileName}, size: ${buffer.length}`);
-      } catch (pdfErr) {
-        console.error('[Recognize] PDF转图片失败:', pdfErr);
-        return NextResponse.json({ error: 'PDF解析失败，请将PDF导出为图片后上传' }, { status: 422 });
-      }
-    }
+    // PDF由前端转为PNG后上传，服务端只处理图片
 
     console.log(`[Recognize] 文件: ${fileName}, type: ${fileType}, size: ${buffer.length}`);
 
