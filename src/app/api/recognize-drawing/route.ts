@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { pdfFirstPageToPng } from '@/lib/pdf-to-image';
 
 export async function POST(request: NextRequest) {
   try {
     const apiToken = process.env.COZE_API_TOKEN;
     const apiBase = process.env.COZE_API_BASE_URL || 'https://api.coze.cn';
-    const botId = process.env.COZE_BOT_ID;
+    // 图纸识别专用Bot（与报价Bot不同，报价Bot的prompt是参数收集器不做识别）
+    const botId = process.env.COZE_RECOG_BOT_ID || '7677190179169796123';
 
     if (!apiToken || !botId) {
       return NextResponse.json({ error: '服务器配置缺失' }, { status: 500 });
@@ -16,15 +18,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '未收到文件' }, { status: 400 });
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const fileName = file.name || 'drawing.png';
-    const fileType = file.type || 'image/png';
+    let buffer: Buffer = Buffer.from(await file.arrayBuffer()) as Buffer;
+    let fileName = file.name || 'drawing.png';
+    let fileType = file.type || 'image/png';
+
+    // PDF自动转PNG（Coze视觉模型只识别图片，不直接读PDF）
+    if (fileName.toLowerCase().endsWith('.pdf') || fileType === 'application/pdf') {
+      try {
+        console.log('[Recognize] PDF检测到，正在转换为PNG...');
+        buffer = await pdfFirstPageToPng(buffer, 200);
+        fileName = fileName.replace(/\.pdf$/i, '.png');
+        fileType = 'image/png';
+        console.log(`[Recognize] PDF转换完成: ${fileName}, size: ${buffer.length}`);
+      } catch (pdfErr) {
+        console.error('[Recognize] PDF转图片失败:', pdfErr);
+        return NextResponse.json({ error: 'PDF解析失败，请将PDF导出为图片后上传' }, { status: 422 });
+      }
+    }
 
     console.log(`[Recognize] 文件: ${fileName}, type: ${fileType}, size: ${buffer.length}`);
 
     // 1. 上传文件到 Coze
     const uploadForm = new FormData();
-    uploadForm.append('file', new Blob([buffer], { type: fileType }), fileName);
+    uploadForm.append('file', new Blob([new Uint8Array(buffer)], { type: fileType }), fileName);
     const uploadResp = await fetch(`${apiBase}/v1/files/upload`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiToken}` },
