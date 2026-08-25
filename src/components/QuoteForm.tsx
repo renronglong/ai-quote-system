@@ -115,7 +115,7 @@ const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
     materialCategories: {
       '铝型材': {
         label: '铝型材',
-        fields: ['width', 'height', 'length', 'perimeter', 'num_cavities', 'die_type', 'meterWeight', 'quantity', 'netWeight'],
+        fields: ['width', 'height', 'length', 'thickness', 'perimeter', 'num_cavities', 'die_type', 'meterWeight', 'quantity', 'netWeight'],
         materialSurfaceTreatment: ['无', '喷砂氧化', '抛光氧化', '拉丝氧化', '喷涂'],
         materialColorMap: {
           '喷砂氧化': ['本色', '黑色', '铁灰色', '金色'],
@@ -1110,7 +1110,15 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const mapped = ptMap[d.product_type];
       if (mapped && PRODUCT_TYPES[mapped]) setProductType(mapped);
     }
-    if (d.material_category) setMaterialCategory(d.material_category);
+    if (d.material_category) {
+      // 归一化：识别返回的类别名映射到表单配置key
+      const catMap: Record<string,string> = {
+        '铝合金': '铝型材', '铝型材': '铝型材', '铝': '铝型材',
+        '不锈钢': '不锈钢', '冷轧板': '冷轧板', '冷板': '冷轧板',
+        '压铸铝': '压铸铝', '塑胶': '塑胶',
+      };
+      setMaterialCategory(catMap[d.material_category] || d.material_category);
+    }
     if (d.product_code) setProductCode(d.product_code);
     if (d.product_name) setProductName(d.product_name);
     setFields(prev => {
