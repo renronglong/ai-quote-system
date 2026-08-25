@@ -402,6 +402,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [recognizing, setRecognizing] = useState(false);
   const [recogResult, setRecogResult] = useState<Record<string, any> | null>(null);
   const [recogError, setRecogError] = useState<string | null>(null);
+  const [deepQuoteLoading, setDeepQuoteLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Get current config
@@ -1243,15 +1244,31 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const requestDeepQuote = () => {
-    // 跳转发工单/联系客服：复用现有forward-cad或邮件
-    if (!uploadedFile) return;
-    const remark = fileRemark || (recogResult?.handoff_reason as string) || 'AI无法精准识别，申请深度报价';
-    const fd = new FormData();
-    fd.append('file', uploadedFile);
-    fd.append('remark', remark);
-    fetch('/api/forward-cad', { method: 'POST', body: fd }).catch(() => {});
-    setRecogError('已提交深度报价，工程师将尽快联系您');
+  const requestDeepQuote = async () => {
+    if (!uploadedFile || deepQuoteLoading) return;
+    setDeepQuoteLoading(true);
+    setRecogError('正在进行深度识别，请稍候...');
+    try {
+      const fd = new FormData();
+      fd.append('file', uploadedFile);
+      fd.append('remark', fileRemark || (recogResult?.handoff_reason as string) || '');
+      const resp = await fetch('/api/forward-cad', { method: 'POST', body: fd });
+      const result = await resp.json();
+      if (result.success && result.autoFill && result.data) {
+        // 置信度高，自动填表
+        applyRecogToForm(result.data);
+        setRecogResult(result.data);
+        setRecogError(null);
+        setUploadedFile(null);
+      } else {
+        // 低置信度或识别失败，已存工单
+        setRecogError(result.message || '深度识别完成，已提交工程师人工报价，将尽快联系您');
+      }
+    } catch {
+      setRecogError('深度报价提交失败，请稍后重试');
+    } finally {
+      setDeepQuoteLoading(false);
+    }
   };
 
   // ==================== Derived state ====================
@@ -1933,10 +1950,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   <button
                     type="button"
                     onClick={requestDeepQuote}
-                    className="mt-1.5 inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[11px] font-medium hover:bg-amber-600 transition-colors"
+                    disabled={deepQuoteLoading}
+                    className="mt-1.5 inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[11px] font-medium hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <User className="w-3 h-3" />
-                    申请深度报价
+                    {deepQuoteLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <User className="w-3 h-3" />}
+                    {deepQuoteLoading ? '深度识别中...' : '申请深度报价'}
                   </button>
                 )}
               </div>
@@ -1993,10 +2011,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     <button
                       type="button"
                       onClick={requestDeepQuote}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[11px] font-medium hover:bg-amber-600 transition-colors"
+                      disabled={deepQuoteLoading}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[11px] font-medium hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <User className="w-3 h-3" />
-                      申请深度报价
+                      {deepQuoteLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <User className="w-3 h-3" />}
+                      {deepQuoteLoading ? '深度识别中...' : '申请深度报价'}
                     </button>
                   </>
                 )}
