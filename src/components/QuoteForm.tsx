@@ -1255,25 +1255,31 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const requestDeepQuote = async () => {
     if (!uploadedFile || deepQuoteLoading) return;
     setDeepQuoteLoading(true);
-    setRecogError('正在进行深度识别，请稍候...');
+    setRecogError('正在进行深度识别，请稍候（可能需要30-60秒）...');
     try {
+      let fileToSend = uploadedFile;
+      // PDF需要先在前端转为PNG
+      if (uploadedFile.name.toLowerCase().endsWith('.pdf')) {
+        setRecogError('PDF正在转为图片识别，请稍候...');
+        fileToSend = await convertPdfToPng(uploadedFile);
+      }
       const fd = new FormData();
-      fd.append('file', uploadedFile);
+      fd.append('file', fileToSend);
       fd.append('remark', fileRemark || (recogResult?.handoff_reason as string) || '');
       const resp = await fetch('/api/forward-cad', { method: 'POST', body: fd });
-      const result = await resp.json();
+      const text = await resp.text();
+      let result: any;
+      try { result = JSON.parse(text); } catch { result = { success: false, message: '服务器返回异常: ' + text.substring(0, 200) }; }
       if (result.success && result.autoFill && result.data) {
-        // 置信度高，自动填表
         applyRecogToForm(result.data);
         setRecogResult(result.data);
         setRecogError(null);
         setUploadedFile(null);
       } else {
-        // 低置信度或识别失败，已存工单
-        setRecogError(result.message || '深度识别完成，已提交工程师人工报价，将尽快联系您');
+        setRecogError(result.message || result.error || '深度识别完成，已提交工程师人工报价');
       }
-    } catch {
-      setRecogError('深度报价提交失败，请稍后重试');
+    } catch (e: any) {
+      setRecogError('深度报价提交失败: ' + (e?.message || '网络错误'));
     } finally {
       setDeepQuoteLoading(false);
     }
