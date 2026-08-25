@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
     const cr = await fetch(`${apiBase}/v3/chat`, {
       method:'POST', headers:{Authorization:`Bearer ${apiToken}`,'Content-Type':'application/json'},
       body:JSON.stringify({
-        bot_id:botId, user_id:'fc_'+Date.now(), stream:false, auto_save_history:false,
+        bot_id:botId, user_id:'fc_'+Date.now(), stream:false, auto_save_history:true,
         additional_messages:[
           {role:'user',content:prompt,content_type:'text',type:'question'},
           {role:'user',content:JSON.stringify([{type:'image',file_id:cozeFileId}]),content_type:'object_string',type:'question'},
