@@ -1109,6 +1109,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       if (mapped && PRODUCT_TYPES[mapped]) setProductType(mapped);
     }
     if (d.material_category) setMaterialCategory(d.material_category);
+    if (d.product_code) setProductCode(d.product_code);
+    if (d.product_name) setProductName(d.product_name);
     setFields(prev => {
       const next = { ...prev };
       if (typeof d.width === 'number') next.width = d.width;
@@ -1122,7 +1124,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       if (typeof d.wall_thickness === 'number') next.thickness = d.wall_thickness;
       return next;
     });
-    if (d.surface_treatment && d.surface_treatment !== '无') setMaterialSurfaceTreatment(d.surface_treatment);
+    if (d.surface_treatment && d.surface_treatment !== '无') {
+      setMaterialSurfaceTreatment(d.surface_treatment);
+      setProductSurfaceTreatment(d.surface_treatment);
+    }
     setAiSynced(true);
     setTimeout(() => setAiSynced(false), 2500);
   };
