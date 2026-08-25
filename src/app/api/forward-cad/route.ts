@@ -94,8 +94,8 @@ export async function POST(request: NextRequest) {
 
     // 4. 轮询(500ms间隔,40次=20秒)
     let rc = '';
-    for (let i = 0; i < 40; i++) {
-      await new Promise(r => setTimeout(r, 500));
+    for (let i = 0; i < 55; i++) {
+      await new Promise(r => setTimeout(r, 1000));
       const sr = await fetch(`${apiBase}/v3/chat/retrieve?chat_id=${chatId}&conversation_id=${convId}`, {headers:{Authorization:`Bearer ${apiToken}`}});
       const sd = await sr.json() as {data?:{status:string}};
       const st = sd.data?.status;
