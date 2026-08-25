@@ -28,14 +28,10 @@ export async function POST(request: NextRequest) {
 
     // 检查文件类型
     const fileName = file.name.toLowerCase();
-    const isCadFile = fileName.endsWith('.dxf') || 
-                      fileName.endsWith('.step') || 
-                      fileName.endsWith('.stp') ||
-                      fileName.endsWith('.zip') ||
-                      fileName.endsWith('.dwg');
+    const isCadFile = /\.(dxf|step|stp|zip|dwg|pdf|png|jpg|jpeg|gif|bmp|webp)$/i.test(fileName);
 
     if (!isCadFile) {
-      return NextResponse.json({ error: '仅支持 DXF/STEP/ZIP/DWG 格式' }, { status: 400 });
+      return NextResponse.json({ error: '不支持的文件格式' }, { status: 400 });
     }
 
     // 获取用户信息
