@@ -368,6 +368,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     width: '', height: '', length: '', quantity: '',
   });
   const [materialSurfaceTreatment, setMaterialSurfaceTreatment] = useState('无');
+  const [materialGrade, setMaterialGrade] = useState('');
   const [materialColor, setMaterialColor] = useState('');
   const [processes, setProcesses] = useState<ProcessSelection[]>([]);
   const [productSurfaceTreatment, setProductSurfaceTreatment] = useState('无');
@@ -934,7 +935,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
           const payload: Record<string, any> = {
             product_type: mapProductType(),
-            material: { category: mapMaterialCategory() },
+            material: { category: mapMaterialCategory(), grade: materialGrade || undefined },
             quantity: vQuantity,
           };
           if (productName) payload.product_name = productName;
@@ -1019,7 +1020,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const dimensions = buildDimensions();
       const payload: Record<string, any> = {
         product_type: mapProductType(),
-        material: { category: mapMaterialCategory() },
+        material: { category: mapMaterialCategory(), grade: materialGrade || undefined },
         quantity: (fields.quantity as number) || 1,
       };
       if (productName) payload.product_name = productName;
@@ -1124,10 +1125,22 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       if (typeof d.wall_thickness === 'number') next.thickness = d.wall_thickness;
       return next;
     });
+    if (d.material_grade) setMaterialGrade(d.material_grade);
     if (d.surface_treatment && d.surface_treatment !== '无') {
       setMaterialSurfaceTreatment(d.surface_treatment);
       setProductSurfaceTreatment(d.surface_treatment);
     }
+    // 工序：Bot返回格式如 "锯切,冲压(3次),CNC加工(10分钟)"
+    if (d.processes && typeof d.processes === 'string' && d.processes !== '无') {
+      const procs: ProcessSelection[] = d.processes.split(/[,，、]/).map((p: string) => {
+        const m = p.trim().match(/^(.+?)(?:\((\d+)(分钟|次|mm|个)?\))?$/);
+        if (m) return { name: m[1], count: m[2] ? parseInt(m[2]) : undefined, unit: m[3] || undefined };
+        return { name: p.trim() };
+      }).filter((p: ProcessSelection) => p.name);
+      if (procs.length > 0) setProcesses(procs);
+    }
+    // 备注/说明
+    if (d.notes) setFileRemark(prev => prev ? prev + '; ' + d.notes : d.notes);
     setAiSynced(true);
     setTimeout(() => setAiSynced(false), 2500);
   };
