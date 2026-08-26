@@ -583,13 +583,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     debounceTimer.current = setTimeout(() => {
       doCalculate();
     }, 500);
-  }, [productType, materialCategory, fields, materialSurfaceTreatment, materialColor, processes, productSurfaceTreatment, productColor, surfaceTreatment, surfaceColor, materialSizeType]);
+  }, [productType, materialCategory, fields, materialSurfaceTreatment, materialColor, processes, productSurfaceTreatment, productColor, surfaceTreatment, surfaceColor, materialSizeType, dieSteelPrice, materialGrade]);
 
   // Trigger on any field change
   useEffect(() => {
     triggerCalculate();
     return () => { if (debounceTimer.current) clearTimeout(debounceTimer.current); };
-  }, [productType, materialCategory, fields, materialSurfaceTreatment, materialColor, processes, productSurfaceTreatment, productColor, surfaceTreatment, surfaceColor, materialSizeType]);
+  }, [productType, materialCategory, fields, materialSurfaceTreatment, materialColor, processes, productSurfaceTreatment, productColor, surfaceTreatment, surfaceColor, materialSizeType, dieSteelPrice, materialGrade]);
 
   // Get available product surface treatments
   const getProductSurfaceOptions = (): ProductSurfaceOption[] => {
