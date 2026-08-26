@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+import { notifyNewCadRequest } from './notify';
+
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
@@ -144,8 +146,12 @@ export async function POST(request: NextRequest) {
       status: autoFill?'auto_recognized':'pending', recognitionResult: parsed,
     });
 
-    if (autoFill) return NextResponse.json({ success:true, autoFill:true, data:parsed, message:'深度识别完成，已自动填入参数' });
+    if (autoFill) {
+      notifyNewCadRequest({ fileName: file.name, companyName: userInfo.company, userPhone: userInfo.phone, autoFill: true, confidence: conf, productCode: parsed.product_code as string }).catch(()=>{});
+      return NextResponse.json({ success:true, autoFill:true, data:parsed, message:'深度识别完成，已自动填入参数' });
+    }
     const reason = conf<0.75 ? `置信度${(conf*100).toFixed(0)}%不足75%` : '缺少关键尺寸';
+    notifyNewCadRequest({ fileName: file.name, companyName: userInfo.company, userPhone: userInfo.phone, autoFill: false, confidence: conf, productCode: parsed.product_code as string }).catch(()=>{});
     return NextResponse.json({ success:true, autoFill:false, data:parsed, message:`识别完成但${reason}，已提交工程师处理` });
 
   } catch (err) {
