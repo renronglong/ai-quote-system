@@ -56,6 +56,7 @@ interface ProductForm {
   cross_section_mm: string;
   weight_per_meter: string;
   perimeter: string;
+  mold_type?: string;
   surface_treatments: string[];
   cross_section_image_url: string;
   remarks: string;
@@ -89,6 +90,7 @@ const emptyForm: ProductForm = {
   cross_section_mm: '',
   weight_per_meter: '',
   perimeter: '',
+  mold_type: '',
   surface_treatments: [],
   cross_section_image_url: '',
   remarks: '',
@@ -210,6 +212,7 @@ function SupplierProductsContent() {
       cross_section_mm: product.cross_section_mm || '',
       weight_per_meter: product.weight_per_meter?.toString() || '',
       perimeter: product.perimeter?.toString() || '',
+      mold_type: product.mold_type || '',
       surface_treatments: product.surface_treatments || [],
       cross_section_image_url: product.cross_section_image_url || '',
       remarks: product.remarks || '',
@@ -242,6 +245,7 @@ function SupplierProductsContent() {
       cross_section_mm: form.cross_section_mm || null,
       weight_per_meter: form.weight_per_meter ? Number(form.weight_per_meter) : null,
       perimeter: form.perimeter ? Number(form.perimeter) : null,
+      mold_type: form.mold_type || null,
       surface_treatments: form.surface_treatments,
       cross_section_image_url: form.cross_section_image_url || null,
       remarks: form.remarks || null,
@@ -487,6 +491,21 @@ function SupplierProductsContent() {
                   onChange={(e) => setForm({ ...form, perimeter: e.target.value })}
                 />
               </div>
+            </div>
+
+
+            {/* 模具类型 */}
+            <div className="space-y-2">
+              <Label>模具类型</Label>
+              <select
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                value={form.mold_type}
+                onChange={(e) => setForm({ ...form, mold_type: e.target.value })}
+              >
+                <option value="">未指定</option>
+                <option value="平模">平模</option>
+                <option value="分流模">分流模</option>
+              </select>
             </div>
 
             {/* 表面处理 */}
