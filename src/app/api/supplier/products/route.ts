@@ -23,6 +23,91 @@ function getSupabase() {
   });
 }
 
+// 解析截面尺寸字符串，返回 {width, height}
+function parseCrossSection(crossSection: string | null): { width?: number; height?: number } {
+  if (!crossSection) return {};
+  const match = crossSection.match(/([\d.]+)\s*[×xX*]\s*([\d.]+)/);
+  if (!match) return {};
+  return {
+    width: parseFloat(match[1]),
+    height: parseFloat(match[2]),
+  };
+}
+
+// 同步供应商产品到标准件库（products表）
+async function syncToStandardProducts(supabase: any, spProduct: any, action: 'create' | 'update' | 'delete', supplierName?: string) {
+  try {
+    const spId = spProduct.id || spProduct.supplier_product_id;
+    
+    if (action === 'delete') {
+      // 删除对应的标准件记录
+      const { data: existing } = await supabase
+        .from('products')
+        .select('id')
+        .eq('specs->>supplier_product_id', spId)
+        .maybeSingle();
+      
+      if (existing) {
+        await supabase.from('products').delete().eq('id', existing.id);
+      }
+      return;
+    }
+
+    // 解析截面尺寸
+    const dims = parseCrossSection(spProduct.cross_section_mm);
+    
+    // 构建specs
+    const specs: Record<string, any> = {
+      weight_per_meter: spProduct.weight_per_meter,
+      perimeter: spProduct.perimeter,
+      cross_section_mm: spProduct.cross_section_mm,
+      num_dies: spProduct.num_dies,
+      mold_type: computeMoldType(spProduct),
+      supplier: supplierName || '',
+      supplier_product_id: spId,
+    };
+    if (dims.width) specs.width = dims.width;
+    if (dims.height) specs.height = dims.height;
+    if (spProduct.cross_section_image_url) specs.svg_path = spProduct.cross_section_image_url;
+
+    // 查找是否已有对应的标准件记录
+    const { data: existing } = await supabase
+      .from('products')
+      .select('id')
+      .eq('specs->>supplier_product_id', spId)
+      .maybeSingle();
+
+    const productData = {
+      product_code: spProduct.mold_number || spId,
+      name: (supplierName ? supplierName + ' ' : '') + (spProduct.mold_number || spId),
+      material: '6063-T5',
+      process: '挤压铝型材',
+      surface_treatment: (spProduct.surface_treatments && spProduct.surface_treatments.length > 0)
+        ? spProduct.surface_treatments[0] : '素材',
+      oxidation_color: null,
+      cost_price: 0,
+      min_price: 0,
+      specs: specs,
+      description: spProduct.remarks || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existing) {
+      // 更新已有记录
+      await supabase.from('products').update(productData).eq('id', existing.id);
+    } else {
+      // 创建新记录
+      await supabase.from('products').insert([{
+        ...productData,
+        created_at: new Date().toISOString(),
+      }]);
+    }
+  } catch (err) {
+    console.error('[syncToStandardProducts] 同步标准件失败:', err);
+    // 不抛出异常，避免影响主流程
+  }
+}
+
 // GET: 获取供应商产品列表
 export async function GET(request: Request) {
   try {
@@ -97,6 +182,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // 查询供应商名称用于同步
+    let supplierName = '';
+    const { data: supplierData } = await supabase
+      .from('suppliers')
+      .select('name')
+      .eq('id', supplier_id)
+      .maybeSingle();
+    if (supplierData) {
+      supplierName = supplierData.name || '';
+    }
+
+    // 自动同步到标准件库
+    await syncToStandardProducts(supabase, data, 'create', supplierName);
+
     return NextResponse.json({ data: { ...data, mold_type: computeMoldType(data) } });
   } catch (err: any) {
     console.error('[Supplier Products POST]', err);
@@ -146,6 +245,22 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // 查询供应商名称用于同步
+    let supplierName = '';
+    if (data?.supplier_id) {
+      const { data: supplierData } = await supabase
+        .from('suppliers')
+        .select('name')
+        .eq('id', data.supplier_id)
+        .maybeSingle();
+      if (supplierData) {
+        supplierName = supplierData.name || '';
+      }
+    }
+
+    // 自动同步到标准件库
+    await syncToStandardProducts(supabase, data, 'update', supplierName);
+
     return NextResponse.json({ data: { ...data, mold_type: computeMoldType(data) } });
   } catch (err: any) {
     console.error('[Supplier Products PUT]', err);
@@ -164,6 +279,14 @@ export async function DELETE(request: Request) {
     }
 
     const supabase = getSupabase();
+    
+    // 先获取产品信息用于同步删除
+    const { data: productToDelete } = await supabase
+      .from('supplier_products')
+      .select('id')
+      .eq('id', id)
+      .maybeSingle();
+
     const { error } = await supabase
       .from('supplier_products')
       .delete()
@@ -174,10 +297,14 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // 自动从标准件库删除对应记录
+    if (productToDelete) {
+      await syncToStandardProducts(supabase, productToDelete, 'delete');
+    }
+
     return NextResponse.json({ success: true });
   } catch (err: any) {
     console.error('[Supplier Products DELETE]', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
-
