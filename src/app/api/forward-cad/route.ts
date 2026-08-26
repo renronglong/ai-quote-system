@@ -164,13 +164,26 @@ async function saveReq(sk:string,su:string,opts:{userId:string;cozeFileId:string
   if (!sk) return;
   try {
     const s = createClient(su,sk);
-    await s.from('cad_requests').upsert({
+    // 先尝试完整插入，缺列时降级为核心字段
+    const fullData = {
       user_id:opts.userId||null, file_name:opts.fileName, file_size:opts.fileSize,
       coze_file_id:opts.cozeFileId, status:opts.status,
       user_email:opts.userInfo.email, user_phone:opts.userInfo.phone,
       company_name:opts.userInfo.company, remark:opts.remark||'',
       recognition_result:opts.recognitionResult?JSON.stringify(opts.recognitionResult):null,
       created_at:new Date().toISOString(),
-    });
-  } catch {}
+    };
+    const { error } = await s.from('cad_requests').insert(fullData);
+    if (error && error.message?.includes('column')) {
+      // 降级：只存核心字段
+      console.warn('[FC] 表结构不完整，降级存储:', error.message);
+      await s.from('cad_requests').insert({
+        file_name: opts.fileName,
+        file_size: opts.fileSize,
+        status: opts.status,
+      });
+    }
+  } catch (e) {
+    console.warn('[FC] DB save failed:', e);
+  }
 }
