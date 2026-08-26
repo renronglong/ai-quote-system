@@ -6,8 +6,11 @@ const supabaseServiceKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY || process
 
 
 // 根据产品属性动态计算模具类型
-// 以数据库 num_dies 为准：0=平模，≥1=分流模
+// 优先使用用户选择的 mold_type，否则根据 num_dies 计算：0=平模，≥1=分流模
 function computeMoldType(product: any): string {
+  if (product.mold_type && ['平模', '分流模'].includes(product.mold_type)) {
+    return product.mold_type;
+  }
   const { num_dies } = product;
   if (num_dies == null || num_dies === 0) return '平模';
   return '分流模';
@@ -115,12 +118,15 @@ export async function PUT(request: Request) {
     const allowedFields = [
       'mold_number', 'product_name', 'cross_section_mm',
       'weight_per_meter', 'perimeter', 'surface_treatments',
-      'cross_section_image_url', 'remarks',
+      'cross_section_image_url', 'remarks', 'mold_type',
     ];
     for (const field of allowedFields) {
       if (updates[field] !== undefined) {
         if ((field === 'weight_per_meter' || field === 'perimeter') && updates[field] != null) {
           payload[field] = Number(updates[field]);
+        } else if (field === 'mold_type') {
+          // mold_type → num_dies: 平模=0, 分流模=1
+          payload['num_dies'] = updates[field] === '平模' ? 0 : 1;
         } else {
           payload[field] = updates[field];
         }
@@ -174,3 +180,4 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
