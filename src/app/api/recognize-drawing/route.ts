@@ -23,8 +23,8 @@ function autoComputeGeometry(params: Record<string, unknown>): Record<string, un
   const notes: string[] = [];
   const result: Record<string, unknown> = {};
 
-  // 如果已经有这些数据就直接跳过
-  if (params.perimeter == null && w && h && t && cav > 0) {
+  // 只有明确有空腔时才计算（cav > 0 = 有空心腔体）
+  if (params.perimeter == null && w && h && t && cav >= 1) {
     // 矩形管类挤压型材（最常见）
     let cols = 1;
     let rows = 1;
@@ -70,17 +70,16 @@ function autoComputeGeometry(params: Record<string, unknown>): Record<string, un
     notes.push(
       `几何估算（${cols}×${rows}腔矩形管，壁厚${t}mm，密度${density}）：外周长${outerPerimeter.toFixed(1)}+内周长${innerPerimeter.toFixed(1)}=${totalPerimeter.toFixed(1)}mm；截面积${crossSectionArea.toFixed(1)}mm²；米重${meterWeight.toFixed(3)}kg/m；外接圆${diagonal.toFixed(1)}mm；推荐模具Φ${die}mm`
     );
-  } else if (params.perimeter == null && w && h && t && cav <= 1) {
-    const outerPerimeter = 2 * (w + h);
-    const area = w * h;
-    const meterWeight = area * density / 1000;
+  } else if (params.perimeter == null && w && h && t && cav === 0) {
+    // 实心截面（无内腔），只计算外接圆和模具推荐
+    // 复杂实心型材（翅片/台阶等）无法用简单矩形近似，不强行算截面积和米重
     const diagonal = Math.sqrt(w * w + h * h);
-
-    result.perimeter = Math.round(outerPerimeter * 100) / 100;
-    result.cross_section_area = Math.round(area * 100) / 100;
-    result.meter_weight = Math.round(meterWeight * 10000) / 10000;
     result.outer_circle_diameter = Math.round(diagonal * 100) / 100;
-    notes.push(`实心扁排估算：外周长${outerPerimeter.toFixed(1)}mm；截面积${area.toFixed(1)}mm²；米重${meterWeight.toFixed(3)}kg/m；外接圆${diagonal.toFixed(1)}mm`);
+    const recommendedDie = diagonal * 1.1 + 80;
+    const standardDies = [130, 140, 160, 180, 200, 220, 250, 280, 300, 350, 400];
+    const die = standardDies.find((d) => d >= recommendedDie) || standardDies[standardDies.length - 1];
+    result.recommended_die = die;
+    notes.push(`实心截面，仅计算外接圆${diagonal.toFixed(1)}mm和推荐模具Φ${die}mm；复杂实心截面无法用矩形近似，截面积和米重需人工确认`);
   }
 
   if (notes.length > 0) {
@@ -123,7 +122,7 @@ export async function POST(request: NextRequest) {
 8. perimeter: 截面周长mm（图纸标注了则提取，否则null，后端会自动计算）
 9. cross_section_area: 截面面积mm²（图纸标注了则提取，否则null，后端会自动计算）
 10. meter_weight: 米重kg/m（注意单位：g/m需÷1000转kg/m；图纸标注了则提取，否则null，后端会自动计算）
-11. num_cavities: 面域数/公头数，实心=1(平模)，空心有内腔=≥2(分流模)
+11. num_cavities: 独立内腔数量，实心/无内腔=0，有1个独立内腔=1，有2个=2，依次递增。注意：实心截面、翅片/散热片、屏幕膜边框、台阶型材等没有内部空腔的型材，必须填0！
 12. surface_treatment: 氧化本色, 氧化黑色, 阳极氧化-自然色, 粉末喷涂, 电泳, 拉丝, 抛光, 电镀, 喷砂, 无
 13. processes: 加工工艺数组，如["冲压","钻孔"]，没有则[]
 14. quantity: 订单数量（如有标注）
@@ -134,10 +133,10 @@ export async function POST(request: NextRequest) {
 重要规则：
 - 宽高取截面外形最大尺寸，不是内腔尺寸
 - 米重注意g/m和kg/m的换算
-- 面域数：实心=1，有几个独立内腔就填几
+- **num_cavities 只数独立内腔（空洞），实心截面=0，不要混淆！**
 - 实物照片尽力估算并在notes说明
-- confidence为0-1的整体置信度
-- 周长/截面积/米重若图纸未直接标注，留 null 即可，后端会自动根据宽高壁厚腔体数计算`;
+- confidence为0-1的整体置信度，对实心/空心判断不确定时要降低置信度
+- 周长/截面积/米重若图纸未直接标注，留 null 即可，后端会自动计算`;
 
     console.log(`[Recognize] 调用豆包API, model: ${DOUBAO_MODEL}`);
     const doubaoResp = await fetch(`${DOUBAO_BASE_URL}/chat/completions`, {
