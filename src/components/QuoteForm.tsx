@@ -1629,7 +1629,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   <button
                     key={cat.key}
                     type="button"
-                    onClick={() => { setStandardCategory(cat.key); setStandardSpecId(''); setStandardSearch(''); }}
+                    onClick={() => { setStandardCategory(cat.key); setStandardSpecId(''); setStandardSearch(''); setStandardSpecOpen(true); }}
                     className={`px-2.5 py-1.5 rounded-lg border text-xs transition-all duration-200 ${
                       standardCategory === cat.key
                         ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
@@ -1689,6 +1689,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   {standardSpecOpen && filteredStandardSpecs.length === 0 && standardSpecs.length > 0 && (
                     <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-center text-xs text-gray-400">
                       未找到匹配规格
+                    </div>
+                  )}
+                  {standardSpecOpen && standardSpecs.length === 0 && (
+                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-center text-xs text-gray-400">
+                      规格加载中...
                     </div>
                   )}
                 </div>
