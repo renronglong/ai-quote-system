@@ -123,7 +123,8 @@ export async function GET(request: Request) {
       .from('supplier_products')
       .select('*')
       .eq('supplier_id', supplierId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(10000);
 
     if (error) {
       console.error('[Supplier Products GET]', error);

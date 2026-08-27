@@ -49,7 +49,8 @@ export async function POST(req: NextRequest) {
     const { data: allProducts, error } = await supabase
       .from('supplier_products')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(10000);
 
     if (error) {
       console.error('DB query failed:', error);
