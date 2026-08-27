@@ -70,7 +70,7 @@ function autoComputeGeometry(params: Record<string, unknown>): Record<string, un
     notes.push(
       `几何估算（${cols}×${rows}腔矩形管，壁厚${t}mm，密度${density}）：外周长${outerPerimeter.toFixed(1)}+内周长${innerPerimeter.toFixed(1)}=${totalPerimeter.toFixed(1)}mm；截面积${crossSectionArea.toFixed(1)}mm²；米重${meterWeight.toFixed(3)}kg/m；外接圆${diagonal.toFixed(1)}mm；推荐模具Φ${die}mm`
     );
-  } else if (params.perimeter == null && w && h && t && cav === 0) {
+  } else if (params.perimeter == null && w && h && cav === 0) {
     // 实心截面（无内腔），只计算外接圆和模具推荐
     // 复杂实心型材（翅片/台阶等）无法用简单矩形近似，不强行算截面积和米重
     const diagonal = Math.sqrt(w * w + h * h);
