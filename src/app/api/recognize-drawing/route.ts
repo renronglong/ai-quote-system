@@ -115,10 +115,10 @@ export async function POST(request: NextRequest) {
 1. product_type: extrusion(挤压型材), stamping(冲压件), die_casting(压铸件), cnc(CNC加工件), injection(注塑件)
 2. material_grade: 如 6063-T5, 6061-T6, 304不锈钢, SPCC, ADC12, ABS, PP, PC, PA6, PMMA, POM
 3. material_category: 铝合金, 不锈钢, 冷轧板, 压铸铝, 塑胶
-4. width: 截面外形宽度mm（图纸标注的最大外形尺寸）
-5. height: 截面外形高度mm
+4. width: 截面外形宽度mm（必须从截面轮廓视图中读取，不要将型材总长度误当宽度）
+5. height: 截面外形高度mm（从截面轮廓视图中读取）
 6. wall_thickness: 主要壁厚mm（如有标注）
-7. length: 单根/单件长度mm（图纸如有标注，否则null）
+7. length: 单根/单件长度mm（型材整体长度，通常标注在型材全貌视图上，如198.5这类大尺寸一般是长度而非宽度）
 8. perimeter: 截面周长mm（图纸标注了则提取，否则null，后端会自动计算）
 9. cross_section_area: 截面面积mm²（图纸标注了则提取，否则null，后端会自动计算）
 10. meter_weight: 米重kg/m（注意单位：g/m需÷1000转kg/m；图纸标注了则提取，否则null，后端会自动计算）
@@ -131,7 +131,9 @@ export async function POST(request: NextRequest) {
 
 必须只输出一个JSON对象，不要输出任何其他文字或markdown标记。
 重要规则：
-- 宽高取截面外形最大尺寸，不是内腔尺寸
+- 宽高必须从截面轮廓视图（通常是较小较详细的放大视图）中提取截面外形最大尺寸，不是内腔尺寸
+- **严格区分截面尺寸和型材长度：型材总长度（如198.5等大尺寸）通常标注在整体视图上，不是截面宽度。width/height只从截面轮廓视图中读取**
+- 当图纸同时显示截面视图和整体视图时，从截面视图读取width/height，从整体视图读取length
 - 米重注意g/m和kg/m的换算
 - **num_cavities 只数独立内腔（空洞），实心截面=0，不要混淆！**
 - 实物照片尽力估算并在notes说明
