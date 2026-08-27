@@ -826,11 +826,11 @@ function calcExtrusion(
     let base = 0, weightCoeff = 0;
     if (long) {
       switch (treatmentType) {
-        case '氧化本色': base = 0.2; weightCoeff = 2; break;
-        case '氧化上色': base = 0.3; weightCoeff = 5; break;
-        case '喷涂': base = 0.2; weightCoeff = 2; break;
+        case '氧化本色': base = 0; weightCoeff = 2; break;
+        case '氧化上色': base = 0; weightCoeff = 5; break;
+        case '喷涂': base = 0; weightCoeff = 2; break;
         case '喷砂': base = 0; weightCoeff = 1; break;
-        case '拉丝': base = 0.2; weightCoeff = 2; break;
+        case '拉丝': base = 0; weightCoeff = 2; break;
         default: base = 0; weightCoeff = 2;
       }
     } else {
@@ -846,9 +846,10 @@ function calcExtrusion(
     surfaceCost = r2(base + weightKg * weightCoeff);
     const label = long ? '长料' : '小料';
     const extra = long ? '' : '（含小料附加费）';
+    const basePart = base > 0 ? `${base}${extra} + ` : '';
     breakdown['surface'] = {
-      formula: `${base}${extra} + 重量×${weightCoeff}`,
-      detail: `[${label}] ${base}${extra} + ${r2(weightKg)}×${weightCoeff} = ${r2(surfaceCost)}元`,
+      formula: `${basePart}重量×${weightCoeff}`,
+      detail: `[${label}] ${basePart}${r2(weightKg)}×${weightCoeff} = ${r2(surfaceCost)}元`,
     };
     accumulated += surfaceCost;
   };
