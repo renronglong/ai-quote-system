@@ -819,37 +819,48 @@ function calcExtrusion(
   let managementFee = 0;
   let profitFee = 0;
 
+  // 冲压附加费（尺寸附加+体积附加，与是否选冲压工序无关，仅用于表面处理费计算）
+  const dimMax = Math.max(dims.length_mm || 0, dims.width_mm || 0, dims.height_mm || 0);
+  const dimLenSurcharge = dimMax > 100 ? Math.floor((dimMax - 1) / 100) * 0.01 : 0;
+  const dimVolMm3 = (dims.length_mm || 0) * (dims.width_mm || 0) * (dims.height_mm || 0);
+  const dimVolSurcharge = dimVolMm3 * 0.00000003;
+  const stampingSurcharge = dimLenSurcharge + dimVolSurcharge;
+
   const applySurfaceCost = (long: boolean) => {
     if (!req.surface_treatment?.type) return;
     const treatmentType = req.surface_treatment.type;
     const weightKg = mat.weight;
-    let base = 0, weightCoeff = 0;
+    let base = 0, weightCoeff = 0, stampingCoeff = 0;
     if (long) {
       switch (treatmentType) {
-        case '氧化本色': base = 0; weightCoeff = 2; break;
-        case '氧化上色': base = 0; weightCoeff = 5; break;
-        case '喷涂': base = 0; weightCoeff = 2; break;
-        case '喷砂': base = 0; weightCoeff = 1; break;
-        case '拉丝': base = 0; weightCoeff = 2; break;
-        default: base = 0; weightCoeff = 2;
+        case '氧化本色': base = 0; stampingCoeff = 2; weightCoeff = 2; break;
+        case '氧化上色': base = 0; stampingCoeff = 3; weightCoeff = 5; break;
+        case '喷涂': base = 0; stampingCoeff = 2; weightCoeff = 2; break;
+        case '喷砂': base = 0; stampingCoeff = 2; weightCoeff = 1; break;
+        case '拉丝': base = 0; stampingCoeff = 3; weightCoeff = 2; break;
+        default: base = 0; stampingCoeff = 2; weightCoeff = 2;
       }
     } else {
       switch (treatmentType) {
-        case '氧化本色': base = 0.4; weightCoeff = 2; break;
-        case '氧化上色': base = 0.6; weightCoeff = 3; break;
-        case '喷涂': base = 0.4; weightCoeff = 2; break;
-        case '喷砂': base = 0.2; weightCoeff = 1; break;
-        case '拉丝': base = 0.6; weightCoeff = 3; break;
-        default: base = 0.2; weightCoeff = 2;
+        case '氧化本色': base = 0.4; stampingCoeff = 2; weightCoeff = 2; break;
+        case '氧化上色': base = 0.6; stampingCoeff = 3; weightCoeff = 3; break;
+        case '喷涂': base = 0.4; stampingCoeff = 2; weightCoeff = 2; break;
+        case '喷砂': base = 0.2; stampingCoeff = 2; weightCoeff = 1; break;
+        case '拉丝': base = 0.6; stampingCoeff = 3; weightCoeff = 3; break;
+        default: base = 0.2; stampingCoeff = 2; weightCoeff = 2;
       }
     }
-    surfaceCost = r2(base + weightKg * weightCoeff);
+    const stampingPart = r2(stampingSurcharge * stampingCoeff);
+    surfaceCost = r2(base + stampingPart + weightKg * weightCoeff);
     const label = long ? '长料' : '小料';
     const extra = long ? '' : '（含小料附加费）';
-    const basePart = base > 0 ? `${base}${extra} + ` : '';
+    const parts: string[] = [];
+    if (base > 0) parts.push(`${base}${extra}`);
+    if (stampingCoeff > 0) parts.push(`冲压附加费${r2(stampingSurcharge)}×${stampingCoeff}`);
+    parts.push(`重量×${weightCoeff}`);
     breakdown['surface'] = {
-      formula: `${basePart}重量×${weightCoeff}`,
-      detail: `[${label}] ${basePart}${r2(weightKg)}×${weightCoeff} = ${r2(surfaceCost)}元`,
+      formula: parts.join(' + '),
+      detail: `[${label}] ${base}${extra} + ${r2(stampingSurcharge)}×${stampingCoeff} + ${r2(weightKg)}×${weightCoeff} = ${r2(surfaceCost)}元`,
     };
     accumulated += surfaceCost;
   };
