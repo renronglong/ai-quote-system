@@ -27,7 +27,8 @@ export async function GET(request: NextRequest) {
       .from('supplier_products')
       .select('id, product_name, cross_section_mm, weight_per_meter, perimeter, num_dies, remarks')
       .not('product_name', 'is', null)
-      .order('weight_per_meter', { ascending: true });
+      .order('weight_per_meter', { ascending: true })
+      .limit(10000);
 
     const STANDARD_CATEGORIES = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管'];
 
