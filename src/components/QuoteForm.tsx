@@ -563,6 +563,35 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   // ==================== Perimeter: only auto-fill from DB on spec select; no formula fallback ====================
   // 2*(w+h) is wrong for non-rectangular cross-sections, removed.
 
+  // ==================== Auto 锯切：挤出长度<3000mm 默认勾选锯切 ====================
+  const autoSawAppliedRef = useRef(false);
+  const lastLenRef = useRef(0);
+  useEffect(() => {
+    if (productType !== '挤出') { autoSawAppliedRef.current = false; return; }
+    const len = Number(fields.length) || 0;
+    if (len === lastLenRef.current) return;
+    lastLenRef.current = len;
+
+    // 自动同步"小料/长料"标签
+    if (len > 0 && len < 3000 && materialSizeType !== 'short') setMaterialSizeType('short');
+    else if (len >= 3000 && materialSizeType !== 'long') setMaterialSizeType('long');
+
+    const hasSaw = processes.some(p => p.name === '锯切');
+    if (len > 0 && len < 3000) {
+      // 小料：默认锯切
+      if (!hasSaw) {
+        setProcesses(prev => [...prev, { name: '锯切', quantity: 1 }]);
+        autoSawAppliedRef.current = true;
+      }
+    } else if (len >= 3000) {
+      // 长料：移除锯切 + 所有二次加工（冲压/CNC/钻孔等），长料只算材料+表面处理
+      const blocked = ['锯切','冲压','CNC加工','车加工','钻孔','攻牙'];
+      const filtered = processes.filter(p => !blocked.includes(p.name));
+      if (filtered.length !== processes.length) setProcesses(filtered);
+      autoSawAppliedRef.current = false;
+    }
+  }, [productType, fields.length]);
+
   // ==================== Auto-calculate min order quantity ====================
   useEffect(() => {
     if (productType !== '挤出') return;
