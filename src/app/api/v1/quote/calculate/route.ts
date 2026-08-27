@@ -819,12 +819,9 @@ function calcExtrusion(
   let managementFee = 0;
   let profitFee = 0;
 
-  // 冲压附加费（尺寸附加+体积附加，与是否选冲压工序无关，仅用于表面处理费计算）
-  const dimMax = Math.max(dims.length_mm || 0, dims.width_mm || 0, dims.height_mm || 0);
-  const dimLenSurcharge = dimMax > 100 ? Math.floor((dimMax - 1) / 100) * 0.01 : 0;
+  // 冲压附加费（仅体积附加，与是否选冲压工序无关，仅用于表面处理费计算）
   const dimVolMm3 = (dims.length_mm || 0) * (dims.width_mm || 0) * (dims.height_mm || 0);
-  const dimVolSurcharge = dimVolMm3 * 0.00000003;
-  const stampingSurcharge = dimLenSurcharge + dimVolSurcharge;
+  const stampingSurcharge = dimVolMm3 * 0.00000003;
 
   const applySurfaceCost = (long: boolean) => {
     if (!req.surface_treatment?.type) return;
