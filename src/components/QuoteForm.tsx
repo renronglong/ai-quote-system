@@ -116,8 +116,9 @@ const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
       '铝型材': {
         label: '铝型材',
         fields: ['width', 'height', 'length', 'perimeter', 'num_cavities', 'die_type', 'meterWeight', 'quantity', 'netWeight'],
-        materialSurfaceTreatment: ['无', '喷砂氧化', '抛光氧化', '拉丝氧化', '喷涂'],
+        materialSurfaceTreatment: ['无', '氧化', '喷砂氧化', '抛光氧化', '拉丝氧化', '喷涂'],
         materialColorMap: {
+          '氧化': ['本色', '红色', '黑色', '金色', '铁灰色'],
           '喷砂氧化': ['本色', '黑色', '铁灰色', '金色'],
         },
         processes: [
