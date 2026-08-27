@@ -2,18 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
+// 豆包 API 配置
+const DOUBAO_API_KEY = process.env.DOUBAO_API_KEY || process.env.VOLCENGINE_API_KEY || '';
+const DOUBAO_BASE_URL = process.env.DOUBAO_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
+const DOUBAO_MODEL = process.env.DOUBAO_MODEL || 'doubao-seed-2-0-pro-260215';
 
 export async function POST(request: NextRequest) {
   try {
-    const apiToken = process.env.COZE_API_TOKEN;
-    const apiBase = process.env.COZE_API_BASE_URL || 'https://api.coze.cn';
-    // 图纸识别专用Bot（与报价Bot不同，报价Bot的prompt是参数收集器不做识别）
-    const botId = process.env.COZE_RECOG_BOT_ID || '7677190179169796123';
-
-    if (!apiToken || !botId) {
-      return NextResponse.json({ error: '服务器配置缺失' }, { status: 500 });
-    }
-
     const formData = await request.formData();
     const file = formData.get('file') as File;
     if (!file) {
@@ -24,27 +19,13 @@ export async function POST(request: NextRequest) {
     let fileName = file.name || 'drawing.png';
     let fileType = file.type || 'image/png';
 
-    // PDF由前端转为PNG后上传，服务端只处理图片
-
     console.log(`[Recognize] 文件: ${fileName}, type: ${fileType}, size: ${buffer.length}`);
 
-    // 1. 上传文件到 Coze
-    const uploadForm = new FormData();
-    uploadForm.append('file', new Blob([new Uint8Array(buffer)], { type: fileType }), fileName);
-    const uploadResp = await fetch(`${apiBase}/v1/files/upload`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiToken}` },
-      body: uploadForm,
-    });
-    const uploadResult = await uploadResp.json() as { code?: number; data?: { id: string }; msg?: string };
-    if (uploadResult.code !== 0 || !uploadResult.data?.id) {
-      console.error('[Recognize] Coze上传失败:', uploadResult);
-      return NextResponse.json({ error: uploadResult.msg || '文件上传失败' }, { status: 500 });
-    }
-    const fileId = uploadResult.data.id;
-    console.log(`[Recognize] Coze file_id: ${fileId}`);
+    // 转 base64
+    const base64Image = buffer.toString('base64');
+    const dataUrl = `data:${fileType};base64,${base64Image}`;
 
-    // 2. 构建识别 prompt
+    // 构建识别 prompt
     const systemPrompt = `你是铝型材工程图纸识别专家。请仔细分析这张图纸/截面图/零件图片，提取所有报价所需参数。
 
 请逐项识别以下信息，无法确定的字段填 null：
@@ -76,77 +57,50 @@ export async function POST(request: NextRequest) {
 - 实物照片尽力估算并在notes说明
 - confidence为0-1的整体置信度`;
 
-    // 3. 调用 Coze Chat API（非流式 + 轮询）
-    const createResp = await fetch(`${apiBase}/v3/chat`, {
+    // 调用豆包 API（直接支持图片）
+    console.log(`[Recognize] 调用豆包API, model: ${DOUBAO_MODEL}`);
+    const doubaoResp = await fetch(`${DOUBAO_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiToken}`,
+        'Authorization': `Bearer ${DOUBAO_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        bot_id: botId,
-        user_id: 'recognize_drawing',
-        stream: false,
-        auto_save_history: true,
-        additional_messages: [
-          { role: 'user', content: systemPrompt, content_type: 'text', type: 'question' },
-          { role: 'user', content: JSON.stringify([{ type: 'image', file_id: fileId }]), content_type: 'object_string', type: 'question' },
+        model: DOUBAO_MODEL,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: systemPrompt },
+              { type: 'image_url', image_url: { url: dataUrl } },
+            ],
+          },
         ],
+        max_tokens: 4096,
+        temperature: 0.1, // 低温度，更精准的输出
       }),
     });
 
-    const createResult = await createResp.json() as {
-      code?: number;
-      data?: { id: string; conversation_id: string; status: string };
-      msg?: string;
+    if (!doubaoResp.ok) {
+      const errText = await doubaoResp.text();
+      console.error('[Recognize] 豆包API错误:', doubaoResp.status, errText);
+      return NextResponse.json({ error: `AI识别服务错误: ${doubaoResp.status}` }, { status: 500 });
+    }
+
+    const doubaoResult = await doubaoResp.json() as {
+      choices?: Array<{ message?: { content?: string } }>;
+      error?: { message?: string };
     };
 
-    if (createResult.code !== 0 || !createResult.data?.id) {
-      console.error('[Recognize] Chat创建失败:', createResult);
-      return NextResponse.json({ error: createResult.msg || 'AI识别请求失败' }, { status: 500 });
-    }
-
-    const chatId = createResult.data.id;
-    const conversationId = createResult.data.conversation_id;
-    console.log(`[Recognize] chat_id=${chatId}, polling...`);
-
-    // 4. 轮询等待完成
-    let resultContent = '';
-    const maxAttempts = 60;
-    for (let i = 0; i < maxAttempts; i++) {
-      await new Promise(r => setTimeout(r, 1000));
-
-      const statusResp = await fetch(
-        `${apiBase}/v3/chat/retrieve?chat_id=${chatId}&conversation_id=${conversationId}`,
-        { headers: { Authorization: `Bearer ${apiToken}` } }
-      );
-      const statusData = await statusResp.json() as { data?: { status: string } };
-      const status = statusData.data?.status;
-
-      if (status === 'completed') {
-        const msgResp = await fetch(
-          `${apiBase}/v3/chat/message/list?chat_id=${chatId}&conversation_id=${conversationId}`,
-          { headers: { Authorization: `Bearer ${apiToken}` } }
-        );
-        const msgData = await msgResp.json() as {
-          data?: Array<{ role: string; type: string; content: string }>;
-        };
-        const answerMsg = msgData.data?.find(m => m.role === 'assistant' && m.type === 'answer');
-        if (answerMsg?.content) resultContent = answerMsg.content;
-        break;
-      } else if (status === 'failed' || status === 'requires_action') {
-        console.error(`[Recognize] Chat失败: ${status}`);
-        return NextResponse.json({ error: 'AI识别失败，请重试' }, { status: 500 });
-      }
-    }
-
+    const resultContent = doubaoResult.choices?.[0]?.message?.content || '';
     if (!resultContent) {
-      return NextResponse.json({ error: '识别超时，请重试' }, { status: 504 });
+      console.error('[Recognize] 豆包API返回空:', JSON.stringify(doubaoResult).substring(0, 500));
+      return NextResponse.json({ error: 'AI识别返回为空' }, { status: 500 });
     }
 
-    console.log(`[Recognize] AI返回(前300字): ${resultContent.substring(0, 300)}`);
+    console.log(`[Recognize] 豆包返回(前300字): ${resultContent.substring(0, 300)}`);
 
-    // 5. 解析 JSON
+    // 解析 JSON
     let parsed: Record<string, unknown>;
     try {
       let clean = resultContent.trim();
@@ -164,7 +118,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '识别结果解析失败', raw_response: resultContent }, { status: 422 });
     }
 
-    // 6. 后处理
+    // 后处理
     const result: Record<string, unknown> = { ...parsed };
 
     // 米重单位换算：>10 很可能是 g/m
@@ -178,7 +132,7 @@ export async function POST(request: NextRequest) {
       result.die_type = result.num_cavities <= 1 ? 'flat' : 'split';
     }
 
-    // 7. 置信度门槛：低于0.75不自动填参，转人工确认
+    // 置信度门槛：低于0.75不自动填参，转人工确认
     const confidence = typeof result.confidence === 'number' ? result.confidence : 0;
     const hasCriticalDims = typeof result.width === 'number' && typeof result.height === 'number';
     const autoFill = confidence >= 0.75 && hasCriticalDims;
