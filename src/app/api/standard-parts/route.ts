@@ -32,6 +32,8 @@ export async function GET(request: NextRequest) {
 
     const STANDARD_CATEGORIES = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管'];
 
+    const STANDARD_CATEGORIES = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管'];
+
     if (category) {
       if (category === '其他型材') {
         // 其他型材：返回所有非标准大类且只有1个规格的产品
