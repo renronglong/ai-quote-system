@@ -842,11 +842,11 @@ function calcExtrusion(
       }
     } else {
       switch (treatmentType) {
-        case '氧化本色': base = 0.4; stampingCoeff = 2; weightCoeff = 2; break;
-        case '氧化上色': base = 0.6; stampingCoeff = 3; weightCoeff = 3; break;
-        case '喷涂': base = 0.4; stampingCoeff = 2; weightCoeff = 2; break;
+        case '氧化本色': base = 0.2; stampingCoeff = 2; weightCoeff = 2; break;
+        case '氧化上色': base = 0.3; stampingCoeff = 3; weightCoeff = 3; break;
+        case '喷涂': base = 0.2; stampingCoeff = 2; weightCoeff = 2; break;
         case '喷砂': base = 0.2; stampingCoeff = 2; weightCoeff = 1; break;
-        case '拉丝': base = 0.6; stampingCoeff = 3; weightCoeff = 3; break;
+        case '拉丝': base = 0.2; stampingCoeff = 3; weightCoeff = 3; break;
         default: base = 0.2; stampingCoeff = 2; weightCoeff = 2;
       }
     }
