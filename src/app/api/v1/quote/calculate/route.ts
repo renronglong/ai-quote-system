@@ -1210,9 +1210,9 @@ function calcSecondaryOperationsCost(
     details.push(`去毛刺: ${rate}元/件`);
   }
 
-  // CNC/车加工时间费（按分钟计费，0.5元/分钟）
+  // CNC/车加工时间费（按分钟计费，1元/分钟）
   if (process.cnc_time && process.cnc_time.minutes > 0) {
-    const CNC_RATE_PER_MIN = 0.5; // 元/分钟
+    const CNC_RATE_PER_MIN = 1; // 元/分钟
     const cncCost = r2(process.cnc_time.minutes * CNC_RATE_PER_MIN);
     totalCost += cncCost;
     details.push(`CNC/车加工: ${process.cnc_time.minutes}分钟 × ${CNC_RATE_PER_MIN}元/分 = ${cncCost}元`);
