@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
       .not('product_name', 'is', null)
       .order('weight_per_meter', { ascending: true });
 
-    const STANDARD_CATEGORIES = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管', '异型材', '短型材', '电源外壳'];
+    const STANDARD_CATEGORIES = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管'];
 
     if (category) {
       if (category === '其他型材') {
