@@ -848,16 +848,22 @@ function calcExtrusion(
       }
     }
     const stampingPart = r2(stampingSurcharge * stampingCoeff);
-    surfaceCost = r2(base + stampingPart + weightKg * weightCoeff);
+    let oxidationExtra = 0;
+    // 小料氧化：额外加材料费的10%
+    if (!long && treatmentType.startsWith('氧化')) {
+      oxidationExtra = r2(mat.cost * 0.1);
+    }
+    surfaceCost = r2(base + stampingPart + weightKg * weightCoeff + oxidationExtra);
     const label = long ? '长料' : '小料';
     const extra = long ? '' : '（含小料附加费）';
     const parts: string[] = [];
     if (base > 0) parts.push(`${base}${extra}`);
     if (stampingCoeff > 0) parts.push(`冲压附加费${r2(stampingSurcharge)}×${stampingCoeff}`);
     parts.push(`重量×${weightCoeff}`);
+    if (oxidationExtra > 0) parts.push(`材料费×10%(${oxidationExtra})`);
     breakdown['surface'] = {
       formula: parts.join(' + '),
-      detail: `[${label}] ${base}${extra} + ${r2(stampingSurcharge)}×${stampingCoeff} + ${r2(weightKg)}×${weightCoeff} = ${r2(surfaceCost)}元`,
+      detail: `[${label}] ${base}${extra} + ${r2(stampingSurcharge)}×${stampingCoeff} + ${r2(weightKg)}×${weightCoeff}${oxidationExtra > 0 ? ' + 材料费' + mat.cost + '×10%=' + oxidationExtra : ''} = ${r2(surfaceCost)}元`,
     };
     accumulated += surfaceCost;
   };
@@ -937,12 +943,12 @@ function calcExtrusion(
     breakdown['packaging'] = { formula: '重量 × 0.5', detail: `${mat.weight}kg × 0.5 = ${packagingCost}元` };
     breakdown['transport'] = { formula: '重量 × 0.5', detail: `${mat.weight}kg × 0.5 = ${transportCost}元` };
 
-    managementFee = r2(accumulated * 0.03);
     profitFee = r2(accumulated * 0.05);
-    accumulated += managementFee + profitFee;
+    accumulated += profitFee;
+    managementFee = 0;
     breakdown['management_profit'] = {
-      formula: '合计 × 3%(管销) + 合计 × 5%(利润)',
-      detail: `管销费: ${managementFee}元, 利润: ${profitFee}元`,
+      formula: '合计 × 5%(利润)',
+      detail: `利润: ${profitFee}元`,
     };
 
     if (isShortLongOxidation) {
@@ -950,7 +956,14 @@ function calcExtrusion(
     }
   }
 
-  const unitPrice = r2(accumulated);
+  const preTaxPrice = accumulated;
+  const taxRate = isLongMaterial ? 0.09 : 0.13;
+  const taxFee = r2(preTaxPrice * taxRate);
+  const unitPrice = r2(preTaxPrice + taxFee);
+  breakdown['tax'] = {
+    formula: isLongMaterial ? '总价 × 9%(长料税)' : '总价 × 13%(小料税)',
+    detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
+  };
   
   // 使用未舍入的原始重量计算MOQ，避免精度丢失导致MOQ为0
   const rawWeight = mat.rawWeight || mat.weight;
@@ -1328,7 +1341,14 @@ function calcSheetMetal(
     detail: `管销费已包含在工序累计中: ≈${managementFee}元`,
   };
 
-  const unitPrice = r2(accumulated);
+  const preTaxPrice = accumulated;
+  const taxRate = 0.13;
+  const taxFee = r2(preTaxPrice * taxRate);
+  const unitPrice = r2(preTaxPrice + taxFee);
+  breakdown['tax'] = {
+    formula: '总价 × 13%',
+    detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
+  };
 
   return {
     costs: {
@@ -1411,7 +1431,14 @@ function calcDieCasting(
   breakdown['transport'] = { formula: '重量 × 0.5', detail: `${mat.weight}kg × 0.5 = ${transportCost}元` };
 
   const managementFee = r2((mat.cost + proc.cost) * 0.03);
-  const unitPrice = r2(accumulated);
+  const preTaxPrice = accumulated;
+  const taxRate = 0.13;
+  const taxFee = r2(preTaxPrice * taxRate);
+  const unitPrice = r2(preTaxPrice + taxFee);
+  breakdown['tax'] = {
+    formula: '总价 × 13%',
+    detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
+  };
 
   return {
     costs: {
@@ -1495,7 +1522,14 @@ function calcZincAlloy(
   breakdown['transport'] = { formula: '重量 × 0.5', detail: `${mat.weight}kg × 0.5 = ${transportCost}元` };
 
   const managementFee = r2((mat.cost + proc.cost) * 0.03);
-  const unitPrice = r2(accumulated);
+  const preTaxPrice = accumulated;
+  const taxRate = 0.13;
+  const taxFee = r2(preTaxPrice * taxRate);
+  const unitPrice = r2(preTaxPrice + taxFee);
+  breakdown['tax'] = {
+    formula: '总价 × 13%',
+    detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
+  };
 
   return {
     costs: {
@@ -1581,7 +1615,14 @@ function calcInjection(
   breakdown['transport'] = { formula: '重量 × 0.5', detail: `${mat.weight}kg × 0.5 = ${transportCost}元` };
 
   const managementFee = r2((mat.cost + proc.cost) * 0.03);
-  const unitPrice = r2(accumulated);
+  const preTaxPrice = accumulated;
+  const taxRate = 0.13;
+  const taxFee = r2(preTaxPrice * taxRate);
+  const unitPrice = r2(preTaxPrice + taxFee);
+  breakdown['tax'] = {
+    formula: '总价 × 13%',
+    detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
+  };
 
   return {
     costs: {
