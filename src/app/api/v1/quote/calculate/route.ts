@@ -798,56 +798,28 @@ function calcExtrusion(
   }
 
   
-  // 3.1 冲压加工费（每道工序: (前面累计 + 工序费) × 1.03）
-  // 工序费 = 吨位基数(参考价×2) + 长度附加费 + 体积附加费
-  let stampingSurchargePerPass = 0; // 单次冲压附加费（长度+体积），用于表面处理计算
+  // ===== 长料判定：长度≥3000mm 只算材料费+表面处理费 =====
+  const productLengthMm = dims.length_mm || 0;
+  const isLongMaterial = productLengthMm >= 3000 || dims.material_size_type === 'long';
+
+  let stampingSurchargePerPass = 0;
   let totalSecondaryCost = 0;
   const secondaryDetails: string[] = [];
   const secondaryFormulaParts: string[] = [];
-
-  if (req.process?.stamping_tonnage) {
-    const tonnageRates = rules.process_rates?.['冲压吨位费率']?.rates || {};
-    const tonnage = req.process.stamping_tonnage.replace('<=', '≤');
-    const rate = tonnageRates[tonnage] || 0.3;
-    const count = req.process.stamping_count || 1;
-
-    // 计算尺寸相关附加费
-    const lengthMm = dims.length_mm || 0;
-    const widthMm = dims.width_mm || 0;
-    const heightMm = dims.height_mm || 0;
-    const maxDim = Math.max(lengthMm, widthMm, heightMm);
-    const lengthSurcharge = maxDim > 100 ? Math.floor((maxDim - 1) / 100) * 0.01 : 0;
-    const volumeMm3 = lengthMm * widthMm * heightMm;
-    const volumeSurcharge = volumeMm3 * 0.00000003;
-    stampingSurchargePerPass = lengthSurcharge + volumeSurcharge;
-
-    // 每道冲压工序: 工序费 = 基数 + 长度附加费 + 体积附加费
-    const actualRate = rate * 2; // 参考价×2 = 实际单价
-    const stampingFeePerPass = r2(actualRate + lengthSurcharge + volumeSurcharge);
-
-    for (let i = 0; i < count; i++) {
-      accumulated = (accumulated + stampingFeePerPass) * 1.03;
-    }
-    totalSecondaryCost += accumulated - mat.cost; // 含×1.03工序损耗
-
-    const lengthPart = lengthSurcharge > 0 ? ` + 长度附加${lengthSurcharge}` : '';
-    const volumePart = volumeSurcharge > 0 ? ` + 体积附加${r2(volumeSurcharge)}` : '';
-    secondaryDetails.push(`冲压(${req.process.stamping_tonnage}): ${count}次 × (${actualRate}=${rate}×2${lengthPart}${volumePart}) ×1.03损耗 = ${r2(accumulated - mat.cost)}元`);
-    secondaryFormulaParts.push(`冲压×${count}`);
-  }
-
-  // 3.2 表面处理费（铝型材专用：区分长料/小料，小料有固定附加费，不依赖冲压工序）
   let surfaceCost = 0;
-  if (req.surface_treatment?.type) {
-    const isLongMaterial = dims.material_size_type === 'long';
-    const treatmentType = req.surface_treatment.type;
-    const weightKg = mat.weight;
+  let packagingCost = 0;
+  let transportCost = 0;
+  let managementFee = 0;
+  let profitFee = 0;
 
-    let base = 0;
-    let weightCoeff = 0;
+  if (isLongMaterial) {
+    // ===== 长料（≥3m）：仅材料费 + 表面处理费，跳过所有加工费/包装/运输/利润 =====
 
-    if (isLongMaterial) {
-      // 长料（≥3000mm）
+    // 表面处理费（长料费率）
+    if (req.surface_treatment?.type) {
+      const treatmentType = req.surface_treatment.type;
+      const weightKg = mat.weight;
+      let base = 0, weightCoeff = 0;
       switch (treatmentType) {
         case '氧化本色': base = 0.2; weightCoeff = 2; break;
         case '氧化上色': base = 0.3; weightCoeff = 5; break;
@@ -856,8 +828,54 @@ function calcExtrusion(
         case '拉丝': base = 0.2; weightCoeff = 2; break;
         default: base = 0; weightCoeff = 2;
       }
-    } else {
-      // 小料（<3000mm）：基础费已含小料附加费（不依赖冲压工序）
+      surfaceCost = r2(base + weightKg * weightCoeff);
+      breakdown['surface'] = {
+        formula: `${base} + 重量×${weightCoeff}`,
+        detail: `[长料] ${base} + ${r2(weightKg)}×${weightCoeff} = ${r2(surfaceCost)}元`,
+      };
+      accumulated += surfaceCost;
+    }
+
+    breakdown['secondary'] = { formula: '无', detail: '长料(≥3m)不另计加工费' };
+    notes.push('长料(≥3m)：仅材料费+表面处理费，不含加工/包装/运输/管销利润');
+  } else {
+    // ===== 小料（<3m）：材料费 + 表面处理 + 锯切 + 冲压/CNC等 + 包装运输 + 管销利润 =====
+
+    // 3.1 冲压加工费
+    if (req.process?.stamping_tonnage) {
+      const tonnageRates = rules.process_rates?.['冲压吨位费率']?.rates || {};
+      const tonnage = req.process.stamping_tonnage.replace('<=', '≤');
+      const rate = tonnageRates[tonnage] || 0.3;
+      const count = req.process.stamping_count || 1;
+
+      const lengthMm = dims.length_mm || 0;
+      const widthMm = dims.width_mm || 0;
+      const heightMm = dims.height_mm || 0;
+      const maxDim = Math.max(lengthMm, widthMm, heightMm);
+      const lengthSurcharge = maxDim > 100 ? Math.floor((maxDim - 1) / 100) * 0.01 : 0;
+      const volumeMm3 = lengthMm * widthMm * heightMm;
+      const volumeSurcharge = volumeMm3 * 0.00000003;
+      stampingSurchargePerPass = lengthSurcharge + volumeSurcharge;
+
+      const actualRate = rate * 2;
+      const stampingFeePerPass = r2(actualRate + lengthSurcharge + volumeSurcharge);
+
+      for (let i = 0; i < count; i++) {
+        accumulated = (accumulated + stampingFeePerPass) * 1.03;
+      }
+      totalSecondaryCost += accumulated - mat.cost;
+
+      const lengthPart = lengthSurcharge > 0 ? ` + 长度附加${lengthSurcharge}` : '';
+      const volumePart = volumeSurcharge > 0 ? ` + 体积附加${r2(volumeSurcharge)}` : '';
+      secondaryDetails.push(`冲压(${req.process.stamping_tonnage}): ${count}次 × (${actualRate}=${rate}×2${lengthPart}${volumePart}) ×1.03损耗 = ${r2(accumulated - mat.cost)}元`);
+      secondaryFormulaParts.push(`冲压×${count}`);
+    }
+
+    // 3.2 表面处理费（小料费率，含小料附加费）
+    if (req.surface_treatment?.type) {
+      const treatmentType = req.surface_treatment.type;
+      const weightKg = mat.weight;
+      let base = 0, weightCoeff = 0;
       switch (treatmentType) {
         case '氧化本色': base = 0.4; weightCoeff = 2; break;
         case '氧化上色': base = 0.6; weightCoeff = 3; break;
@@ -866,56 +884,64 @@ function calcExtrusion(
         case '拉丝': base = 0.6; weightCoeff = 3; break;
         default: base = 0.2; weightCoeff = 2;
       }
+      surfaceCost = r2(base + weightKg * weightCoeff);
+      breakdown['surface'] = {
+        formula: `${base}（含小料附加费） + 重量×${weightCoeff}`,
+        detail: `[小料] ${base}（含小料附加费） + ${r2(weightKg)}×${weightCoeff} = ${r2(surfaceCost)}元`,
+      };
+      accumulated += surfaceCost;
     }
 
-    const sizeLabel = isLongMaterial ? '长料' : '小料';
-    surfaceCost = r2(base + weightKg * weightCoeff);
-    const surchargeNote = isLongMaterial ? '' : '（含小料附加费）';
-    const formulaStr = `${base}${surchargeNote} + 重量×${weightCoeff}`;
-    const detailStr = `[${sizeLabel}] ${base}${surchargeNote} + ${r2(weightKg)}×${weightCoeff} = ${r2(surfaceCost)}元`;
-
-    accumulated += surfaceCost;
-    breakdown['surface'] = { formula: formulaStr, detail: detailStr };
-  }
-
-  // 3.3 其他二次加工费（钻孔/攻丝/铣槽/去毛刺/CNC，每道工序 ×1.03）
-  if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules);
-    if (sec.cost > 0 && sec.detail && sec.detail !== '无二次加工') {
-      const opsCount = countSecondaryOps(req.process);
-      const perOpCost = r2(sec.cost / opsCount);
-      const prevAccumulated = accumulated;
-      for (let i = 0; i < opsCount; i++) {
-        accumulated = (accumulated + perOpCost) * 1.03;
+    // 3.3 其他二次加工费（钻孔/攻丝/铣槽/去毛刺/CNC）
+    if (req.process) {
+      const sec = calcSecondaryOperationsCost(req.process, rules);
+      if (sec.cost > 0 && sec.detail && sec.detail !== '无二次加工') {
+        const opsCount = countSecondaryOps(req.process);
+        const perOpCost = r2(sec.cost / opsCount);
+        const prevAccumulated = accumulated;
+        for (let i = 0; i < opsCount; i++) {
+          accumulated = (accumulated + perOpCost) * 1.03;
+        }
+        totalSecondaryCost += accumulated - prevAccumulated;
+        secondaryDetails.push(sec.detail);
+        secondaryFormulaParts.push(sec.formula);
       }
-      totalSecondaryCost += accumulated - prevAccumulated; // 含×1.03工序损耗
-      secondaryDetails.push(sec.detail);
-      secondaryFormulaParts.push(sec.formula);
+    }
+
+    // 3.4 锯切下料费：长度<3000mm默认锯切，加工费 = 材料费 × 10%
+    if (productLengthMm > 0) {
+      const sawCost = r2(mat.cost * 0.1);
+      accumulated = (accumulated + sawCost) * 1.03;
+      totalSecondaryCost += sawCost * 1.03;
+      secondaryDetails.push(`锯切(默认,长度<3m): 材料费${mat.cost}元 × 10% ×1.03损耗 = ${r2(sawCost * 1.03)}元`);
+      secondaryFormulaParts.push('锯切(材料×10%)');
+      breakdown['sawing'] = {
+        formula: '材料费 × 10%（长度<3m默认锯切）',
+        detail: `${mat.cost} × 10% = ${sawCost}元（含×1.03损耗后 ${r2(sawCost * 1.03)}元）`,
+      };
     }
 
     breakdown['secondary'] = {
       formula: secondaryFormulaParts.length > 0 ? secondaryFormulaParts.join(' + ') : '无',
       detail: secondaryDetails.length > 0 ? secondaryDetails.join('; ') : '无二次加工',
     };
+
+    // 3.5 包装 + 运输
+    packagingCost = r2(mat.weight * 0.5);
+    transportCost = r2(mat.weight * 0.5);
+    accumulated += packagingCost + transportCost;
+    breakdown['packaging'] = { formula: '重量 × 0.5', detail: `${mat.weight}kg × 0.5 = ${packagingCost}元` };
+    breakdown['transport'] = { formula: '重量 × 0.5', detail: `${mat.weight}kg × 0.5 = ${transportCost}元` };
+
+    // 4. 管销费 + 利润
+    managementFee = r2(accumulated * 0.03);
+    profitFee = r2(accumulated * 0.05);
+    accumulated += managementFee + profitFee;
+    breakdown['management_profit'] = {
+      formula: '合计 × 3%(管销) + 合计 × 5%(利润)',
+      detail: `管销费: ${managementFee}元, 利润: ${profitFee}元`,
+    };
   }
-
-  // 3.4 锯切下料费（已包含在挤压加工费中，不单独计费）
-
-  // 3.5 包装 + 运输
-  const packagingCost = r2(mat.weight * 0.5);
-  const transportCost = r2(mat.weight * 0.5);
-  accumulated += packagingCost + transportCost;
-  breakdown['packaging'] = { formula: '重量 × 0.5', detail: `${mat.weight}kg × 0.5 = ${packagingCost}元` };
-  breakdown['transport'] = { formula: '重量 × 0.5', detail: `${mat.weight}kg × 0.5 = ${transportCost}元` };
-
-  // 4. 管销费 + 利润（工序损耗已在每道工序中通过 ×1.03 体现）
-  const managementFee = r2(accumulated * 0.03);
-  const profitFee = r2(accumulated * 0.05);
-  accumulated += managementFee + profitFee;
-  breakdown['management_profit'] = {
-    formula: '合计 × 3%(管销) + 合计 × 5%(利润)',
-    detail: `管销费: ${managementFee}元, 利润: ${profitFee}元`,
-  };
   
   const unitPrice = r2(accumulated);
   
