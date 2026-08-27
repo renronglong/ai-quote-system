@@ -7,6 +7,91 @@ const DOUBAO_API_KEY = process.env.DOUBAO_API_KEY || process.env.VOLCENGINE_API_
 const DOUBAO_BASE_URL = process.env.DOUBAO_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
 const DOUBAO_MODEL = process.env.DOUBAO_MODEL || 'doubao-seed-2-0-pro-260215';
 
+// ============ 几何自动计算工具 ============
+
+/**
+ * 根据 AI 识别出的尺寸，自动估算周长/截面积/米重/外接圆/推荐模具
+ * 铝合金密度默认 2.70 g/cm³ (6063)
+ */
+function autoComputeGeometry(params: Record<string, unknown>): Record<string, unknown> {
+  const w = typeof params.width === 'number' ? params.width : null;
+  const h = typeof params.height === 'number' ? params.height : null;
+  const t = typeof params.wall_thickness === 'number' ? params.wall_thickness : null;
+  const cav = typeof params.num_cavities === 'number' ? params.num_cavities : 0;
+  const density = 2.70; // 铝合金密度 g/cm³
+
+  const notes: string[] = [];
+  const result: Record<string, unknown> = {};
+
+  // 如果已经有这些数据就直接跳过
+  if (params.perimeter == null && w && h && t && cav > 0) {
+    // 矩形管类挤压型材（最常见）
+    let cols = 1;
+    let rows = 1;
+    if (cav === 2) { cols = 2; rows = 1; }
+    else if (cav === 3) { cols = 3; rows = 1; }
+    else if (cav === 4) { cols = 2; rows = 2; }
+    else if (cav === 6) { cols = 3; rows = 2; }
+    else if (cav === 8) { cols = 4; rows = 2; }
+    else if (cav === 9) { cols = 3; rows = 3; }
+    else if (cav === 12) { cols = 4; rows = 3; }
+    else {
+      cols = Math.ceil(Math.sqrt(cav));
+      rows = Math.ceil(cav / cols);
+    }
+
+    const innerW = w - 2 * t;
+    const innerH = h - 2 * t;
+    const cavityW = (innerW - (cols - 1) * t) / cols;
+    const cavityH = (innerH - (rows - 1) * t) / rows;
+
+    const outerPerimeter = 2 * (w + h);
+    const innerPerimeter = cav * 2 * (cavityW + cavityH);
+    const totalPerimeter = outerPerimeter + innerPerimeter;
+
+    const outerArea = w * h;
+    const cavityArea = cav * cavityW * cavityH;
+    const crossSectionArea = outerArea - cavityArea;
+
+    const meterWeight = crossSectionArea * density / 1000;
+
+    result.perimeter = Math.round(totalPerimeter * 100) / 100;
+    result.cross_section_area = Math.round(crossSectionArea * 100) / 100;
+    result.meter_weight = Math.round(meterWeight * 10000) / 10000;
+
+    const diagonal = Math.sqrt(w * w + h * h);
+    result.outer_circle_diameter = Math.round(diagonal * 100) / 100;
+
+    const recommendedDie = diagonal * 1.1 + 80;
+    const standardDies = [130, 140, 160, 180, 200, 220, 250, 280, 300, 350, 400];
+    const die = standardDies.find((d) => d >= recommendedDie) || standardDies[standardDies.length - 1];
+    result.recommended_die = die;
+
+    notes.push(
+      `几何估算（${cols}×${rows}腔矩形管，壁厚${t}mm，密度${density}）：外周长${outerPerimeter.toFixed(1)}+内周长${innerPerimeter.toFixed(1)}=${totalPerimeter.toFixed(1)}mm；截面积${crossSectionArea.toFixed(1)}mm²；米重${meterWeight.toFixed(3)}kg/m；外接圆${diagonal.toFixed(1)}mm；推荐模具Φ${die}mm`
+    );
+  } else if (params.perimeter == null && w && h && t && cav <= 1) {
+    const outerPerimeter = 2 * (w + h);
+    const area = w * h;
+    const meterWeight = area * density / 1000;
+    const diagonal = Math.sqrt(w * w + h * h);
+
+    result.perimeter = Math.round(outerPerimeter * 100) / 100;
+    result.cross_section_area = Math.round(area * 100) / 100;
+    result.meter_weight = Math.round(meterWeight * 10000) / 10000;
+    result.outer_circle_diameter = Math.round(diagonal * 100) / 100;
+    notes.push(`实心扁排估算：外周长${outerPerimeter.toFixed(1)}mm；截面积${area.toFixed(1)}mm²；米重${meterWeight.toFixed(3)}kg/m；外接圆${diagonal.toFixed(1)}mm`);
+  }
+
+  if (notes.length > 0) {
+    const existing = typeof params.notes === 'string' ? params.notes : '';
+    result.notes = existing ? `${existing}。${notes.join('；')}` : notes.join('；');
+    result.geometry_auto_computed = true;
+  }
+
+  return result;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -21,11 +106,9 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Recognize] 文件: ${fileName}, type: ${fileType}, size: ${buffer.length}`);
 
-    // 转 base64
     const base64Image = buffer.toString('base64');
     const dataUrl = `data:${fileType};base64,${base64Image}`;
 
-    // 构建识别 prompt
     const systemPrompt = `你是铝型材工程图纸识别专家。请仔细分析这张图纸/截面图/零件图片，提取所有报价所需参数。
 
 请逐项识别以下信息，无法确定的字段填 null：
@@ -37,9 +120,9 @@ export async function POST(request: NextRequest) {
 5. height: 截面外形高度mm
 6. wall_thickness: 主要壁厚mm（如有标注）
 7. length: 单根/单件长度mm（图纸如有标注，否则null）
-8. perimeter: 截面周长mm（图纸标注了则提取，否则null）
-9. cross_section_area: 截面面积mm²（图纸标注了则提取，否则null）
-10. meter_weight: 米重kg/m（注意单位：g/m需÷1000转kg/m，如411g/m=0.411）
+8. perimeter: 截面周长mm（图纸标注了则提取，否则null，后端会自动计算）
+9. cross_section_area: 截面面积mm²（图纸标注了则提取，否则null，后端会自动计算）
+10. meter_weight: 米重kg/m（注意单位：g/m需÷1000转kg/m；图纸标注了则提取，否则null，后端会自动计算）
 11. num_cavities: 面域数/公头数，实心=1(平模)，空心有内腔=≥2(分流模)
 12. surface_treatment: 氧化本色, 氧化黑色, 阳极氧化-自然色, 粉末喷涂, 电泳, 拉丝, 抛光, 电镀, 喷砂, 无
 13. processes: 加工工艺数组，如["冲压","钻孔"]，没有则[]
@@ -47,17 +130,15 @@ export async function POST(request: NextRequest) {
 15. product_name: 产品名称（标题栏提取）
 16. product_code: 产品编号/图号
 
-必须只输出一个JSON对象，不要输出任何其他文字或markdown标记：
-{"product_type":"extrusion","material_grade":"6063-T5","material_category":"铝合金","width":89.3,"height":24.3,"wall_thickness":1.2,"length":null,"perimeter":null,"cross_section_area":null,"meter_weight":0.411,"num_cavities":2,"surface_treatment":"无","processes":[],"quantity":null,"product_name":null,"product_code":"YL-396","confidence":0.92,"notes":"识别依据"}
-
+必须只输出一个JSON对象，不要输出任何其他文字或markdown标记。
 重要规则：
 - 宽高取截面外形最大尺寸，不是内腔尺寸
 - 米重注意g/m和kg/m的换算
 - 面域数：实心=1，有几个独立内腔就填几
 - 实物照片尽力估算并在notes说明
-- confidence为0-1的整体置信度`;
+- confidence为0-1的整体置信度
+- 周长/截面积/米重若图纸未直接标注，留 null 即可，后端会自动根据宽高壁厚腔体数计算`;
 
-    // 调用豆包 API（直接支持图片）
     console.log(`[Recognize] 调用豆包API, model: ${DOUBAO_MODEL}`);
     const doubaoResp = await fetch(`${DOUBAO_BASE_URL}/chat/completions`, {
       method: 'POST',
@@ -77,7 +158,7 @@ export async function POST(request: NextRequest) {
           },
         ],
         max_tokens: 4096,
-        temperature: 0.1, // 低温度，更精准的输出
+        temperature: 0.1,
       }),
     });
 
@@ -100,7 +181,6 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Recognize] 豆包返回(前300字): ${resultContent.substring(0, 300)}`);
 
-    // 解析 JSON
     let parsed: Record<string, unknown>;
     try {
       let clean = resultContent.trim();
@@ -118,36 +198,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '识别结果解析失败', raw_response: resultContent }, { status: 422 });
     }
 
-    // 后处理
     const result: Record<string, unknown> = { ...parsed };
 
-    // 米重单位换算：>10 很可能是 g/m
     if (typeof result.meter_weight === 'number' && result.meter_weight > 10) {
       result.meter_weight = Math.round(result.meter_weight / 1000 * 10000) / 10000;
       result.notes = (result.notes || '') + ' [米重已从g/m转换为kg/m]';
     }
 
-    // 面域数 → 模具类型
     if (typeof result.num_cavities === 'number') {
       result.die_type = result.num_cavities <= 1 ? 'flat' : 'split';
     }
 
-    // 置信度门槛：低于0.75不自动填参，转人工确认
+    // === 几何自动计算 ===
+    const geo = autoComputeGeometry(result);
+    Object.assign(result, geo);
+
     const confidence = typeof result.confidence === 'number' ? result.confidence : 0;
     const hasCriticalDims = typeof result.width === 'number' && typeof result.height === 'number';
-    const autoFill = confidence >= 0.75 && hasCriticalDims;
+    const canAutoFill = (geo.perimeter != null && hasCriticalDims) || (confidence >= 0.75 && hasCriticalDims);
 
-    if (!autoFill) {
+    if (!canAutoFill) {
       result.needs_human = true;
       result.handoff_reason = confidence < 0.75
-        ? `识别置信度${(confidence*100).toFixed(0)}%低于阈值75%`
+        ? `识别置信度${(confidence * 100).toFixed(0)}%低于阈值75%`
         : '缺少关键截面尺寸(宽/高)';
     } else {
       result.needs_human = false;
     }
 
-    console.log(`[Recognize] 最终结果(confidence=${confidence}, autoFill=${autoFill}):`, JSON.stringify(result));
-    return NextResponse.json({ success: true, data: result, autoFill });
+    console.log(`[Recognize] 最终结果(confidence=${confidence}, autoFill=${canAutoFill}):`, JSON.stringify(result));
+    return NextResponse.json({ success: true, data: result, autoFill: canAutoFill });
 
   } catch (err) {
     console.error('[Recognize] 异常:', err);
