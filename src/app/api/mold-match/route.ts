@@ -115,11 +115,49 @@ function calcMatchScore(
   }
 
   if (category === '异型材') {
-    // Match by perimeter tolerance
-    if (!input.perimeter || !spec.perimeter) return 0;
-    const diff = Math.abs(input.perimeter - spec.perimeter) / spec.perimeter;
-    if (diff > 0.15) return 0;
-    return Math.round((1 - diff) * 100);
+    const parsed = parseCrossSection(spec.cross_section_mm || '');
+    const specW = parsed.d1 || 0;
+    const specH = parsed.d2 || 0;
+    const specPerim = spec.perimeter || 0;
+    const specMW = spec.weight_per_meter || 0;
+
+    const hasW = input.width > 0 && specW > 0;
+    const hasH = input.height > 0 && specH > 0;
+    const hasP = input.perimeter > 0 && specPerim > 0;
+    const hasMW = input.meter_weight > 0 && specMW > 0;
+
+    if (!hasW && !hasH && !hasP && !hasMW) return 0;
+
+    let totalDiff = 0;
+    let weight = 0;
+
+    if (hasW) {
+      const diff = Math.abs(input.width - specW) / specW;
+      if (diff > 0.15) return 0;
+      totalDiff += diff * 0.35;
+      weight += 0.35;
+    }
+    if (hasH) {
+      const diff = Math.abs(input.height - specH) / specH;
+      if (diff > 0.15) return 0;
+      totalDiff += diff * 0.35;
+      weight += 0.35;
+    }
+    if (hasP) {
+      const diff = Math.abs(input.perimeter - specPerim) / specPerim;
+      if (diff > 0.15) return 0;
+      totalDiff += diff * 0.2;
+      weight += 0.2;
+    }
+    if (hasMW) {
+      const diff = Math.abs(input.meter_weight - specMW) / specMW;
+      if (diff > 0.20) return 0;
+      totalDiff += diff * 0.1;
+      weight += 0.1;
+    }
+
+    if (weight === 0) return 0;
+    return Math.round((1 - totalDiff / weight) * 100);
   }
 
   return 0;
@@ -137,6 +175,8 @@ export async function GET(request: NextRequest) {
     const thickness = parseFloat(searchParams.get('thickness') || '0');
     const hex = parseFloat(searchParams.get('hex') || '0');
     const perimeter = parseFloat(searchParams.get('perimeter') || '0');
+    const meterWeight = parseFloat(searchParams.get('meter_weight') || '0');
+    const dieType = searchParams.get('die_type'); // 'flat' | 'split' | null
 
     if (!category) {
       return NextResponse.json({ error: 'category required' }, { status: 400 });
@@ -162,6 +202,12 @@ export async function GET(request: NextRequest) {
     let products = data || [];
     if (category === '异型材') {
       products = products.filter((p: any) => !STANDARD_CATEGORIES.includes(p.product_name));
+      // Filter by die type: flat=num_dies=0, split=num_dies>0
+      if (dieType === 'flat') {
+        products = products.filter((p: any) => !p.num_dies || p.num_dies === 0);
+      } else if (dieType === 'split') {
+        products = products.filter((p: any) => p.num_dies && p.num_dies > 0);
+      }
     }
 
     const input: Record<string, number> = {};
@@ -173,6 +219,7 @@ export async function GET(request: NextRequest) {
     if (thickness > 0) input.thickness = thickness;
     if (hex > 0) input.hex = hex;
     if (perimeter > 0) input.perimeter = perimeter;
+    if (meterWeight > 0) input.meter_weight = meterWeight;
 
     const matches = products
       .map((spec: any) => {
@@ -222,6 +269,8 @@ export async function POST(request: NextRequest) {
     if (body.thickness) params.set('thickness', String(body.thickness));
     if (body.hex) params.set('hex', String(body.hex));
     if (body.perimeter) params.set('perimeter', String(body.perimeter));
+    if (body.meter_weight) params.set('meter_weight', String(body.meter_weight));
+    if (body.die_type) params.set('die_type', body.die_type);
     const url = new URL(`https://placeholder/match?${params.toString()}`);
     return GET(new NextRequest(url));
   } catch (err: any) {
