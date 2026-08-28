@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   Percent,
   Store,
+  FileText,
 } from 'lucide-react';
 import SavedQuotesPanel, { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
 
@@ -149,6 +150,69 @@ export default function QuotePage() {
     if (saved) {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 1500);
+    }
+  };
+
+
+  // 导出PDF报价单
+  const exportQuotePDF = async () => {
+    if (!pricingResult || !currentParams) return;
+    const params = currentParams;
+    const qty = params.quantity || 1;
+    const dims = params.dimensions || {};
+    const mat = params.material || {};
+    const st = params.surface_treatment || {};
+
+    // 构建规格描述
+    let specParts: string[] = [];
+    if (dims.length_mm) specParts.push(`L=${dims.length_mm}`);
+    if (dims.width_mm) specParts.push(`W=${dims.width_mm}`);
+    if (dims.height_mm) specParts.push(`H=${dims.height_mm}`);
+    if (dims.wall_thickness_mm) specParts.push(`T=${dims.wall_thickness_mm}`);
+    if (dims.diameter_mm) specParts.push(`\u03A6${dims.diameter_mm}`);
+    if (dims.perimeter_mm) specParts.push(`P=${dims.perimeter_mm}mm`);
+
+    const unitPrice = manualUnitPrice ?? finalUnit;
+    const moldFee = manualMoldFee ?? discountedMold;
+    const totalAmount = unitPrice * qty;
+
+    const payload = {
+      customer_name: '',
+      items: [{
+        name: productInfo.productName || params.product_name || params.productType || '铝型材',
+        spec: specParts.join(' \u00d7 ') || params.productSize || '-',
+        material: mat.category || mat.grade || '6063-T5',
+        surface: st.type ? (st.color ? `${st.type}(${st.color})` : st.type) : '素材',
+        qty: qty,
+        weight_kg: pricingResult.weight_per_piece_kg || undefined,
+        unit_price: unitPrice,
+        amount: totalAmount,
+      }],
+      subtotal: totalAmount,
+      mold_fee: moldFee > 0 ? moldFee : undefined,
+      total: totalAmount + (moldFee > 0 ? moldFee : 0),
+      aluminum_price: aluminumPrice?.price || pricingResult.aluminum_index || undefined,
+      notes: pricingResult.notes?.length > 0 ? pricingResult.notes : undefined,
+      payment_terms: '款到发货',
+      delivery_terms: '确认订单后15-20个工作日交货',
+    };
+
+    try {
+      const res = await fetch('/api/quote-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const html = await res.text();
+        const w = window.open('', '_blank');
+        if (w) {
+          w.document.write(html);
+          w.document.close();
+        }
+      }
+    } catch (err) {
+      console.error('导出报价单失败:', err);
     }
   };
 
@@ -289,6 +353,7 @@ export default function QuotePage() {
                 minOrderQty={pricingResult?.min_order_qty || 0}
                 manualMinOrderQty={manualMinOrderQty}
                 onManualMinOrderQtyChange={setManualMinOrderQty}
+                onExportPDF={exportQuotePDF}
               />
               {/* ---- 批量报价汇总表 ---- */}
               {batchResults.length > 0 && (
@@ -409,6 +474,7 @@ export default function QuotePage() {
               minOrderQty={pricingResult?.min_order_qty || 0}
               manualMinOrderQty={manualMinOrderQty}
               onManualMinOrderQtyChange={setManualMinOrderQty}
+              onExportPDF={exportQuotePDF}
             />
           </div>
         )}
@@ -442,6 +508,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
   minOrderQty: number;
   manualMinOrderQty: number | null;
   onManualMinOrderQtyChange: (v: number | null) => void;
+  onExportPDF?: () => void;
 }) {
   const isPlaceholder = !pricingResult;
   const p = pricingResult || {
@@ -669,6 +736,12 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
               <><Save className="w-4 h-4" /> 保存报价</>
             )}
           </button>
+          <button
+            onClick={onExportPDF}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition-all"
+          >
+            <FileText className="w-4 h-4" /> 导出报价单
+          </button>
         </div>
       )}
 
@@ -775,3 +848,4 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
     </div>
   );
 }
+
