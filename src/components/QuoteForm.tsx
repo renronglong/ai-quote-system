@@ -1706,7 +1706,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               </label>
               <div className={`grid ${dimFields.length >= 3 ? 'grid-cols-3' : dimFields.length === 2 ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
                 {dimFields.map(df => {
-                  const fieldMap: Record<string, string> = { diameter: 'width', hex: 'width' };
+                  const fieldMap: Record<string, string> = { diameter: 'width', hex: 'width', outer: 'width', inner: 'height' };
                   const stateKey = fieldMap[df.key] || df.key;
                   return (
                     <div key={df.key}>
