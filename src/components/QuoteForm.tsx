@@ -351,8 +351,13 @@ const CATEGORY_DIM_FIELDS: Record<string, { key: string; label: string; placehol
   '异型材': [
     { key: 'width', label: '宽度(mm)', placeholder: '如 30' },
     { key: 'height', label: '高度(mm)', placeholder: '如 15' },
+    { key: 'meterWeight', label: '米重(kg/m)', placeholder: '如 0.5' },
+    { key: 'perimeter', label: '周长(mm)', placeholder: '如 100' },
   ],
+  // 异型材需要额外选择模具类型
 };
+
+const CATEGORY_NEEDS_DIE_SELECTION = ['异型材'];
 
 
 // ==================== Process Sub-Parameters ====================
@@ -547,7 +552,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const k = sigFieldMap[df.key] || df.key;
       parts.push(`${k}=${fieldsRef.current[k] ?? ''}`);
     }
-    if (standardCategory === '异型材') parts.push(`perimeter=${fieldsRef.current.perimeter ?? ''}`);
+    if (standardCategory === '异型材') {
+      parts.push(`perimeter=${fieldsRef.current.perimeter ?? ''}`);
+      parts.push(`meterWeight=${fieldsRef.current.meterWeight ?? ''}`);
+      parts.push(`die_type=${fieldsRef.current.die_type ?? ''}`);
+    }
     return parts.join('|');
   })();
 
@@ -571,9 +580,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           hasInput = true;
         }
       }
-      if (standardCategory === '异型材' && cur.perimeter) {
+      if (standardCategory === '异型材') {
+        if (cur.width) { params.set('width', String(cur.width)); hasInput = true; }
+        if (cur.height) { params.set('height', String(cur.height)); hasInput = true; }
+        if (cur.meterWeight) { params.set('meter_weight', String(cur.meterWeight)); hasInput = true; }
+        if (cur.perimeter) { params.set('perimeter', String(cur.perimeter)); hasInput = true; }
+        if (cur.die_type) params.set('die_type', cur.die_type as string);
+      } else if (cur.perimeter) {
         params.set('perimeter', String(cur.perimeter));
-        hasInput = true;
       }
       if (!hasInput) { setMoldMatches([]); setSelectedMoldId(null); setUseExistingMold(null); return; }
 
@@ -1832,7 +1846,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 </div>
               )}
 
-              {!moldMatchLoading && moldMatches.length === 0 && standardCategory && (fields.width || fields.height || fields.perimeter) && (
+              {!moldMatchLoading && moldMatches.length === 0 && standardCategory && (fields.width || fields.height || fields.perimeter || fields.meterWeight) && (
                 <div className="mt-2 flex items-center justify-between bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
                   <span className="text-[11px] text-orange-600">未找到相近现有模具</span>
                   <button
