@@ -425,6 +425,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [selectedMoldId, setSelectedMoldId] = useState<string | null>(null);
   const [useExistingMold, setUseExistingMold] = useState<boolean | null>(null); // null=未选择, true=现有, false=新开
   const moldMatchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressMoldMatch = useRef(false);
 
   // File upload state
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -524,6 +525,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     const dimFields = CATEGORY_DIM_FIELDS[standardCategory];
     if (!dimFields) return;
 
+    if (suppressMoldMatch.current) { suppressMoldMatch.current = false; return; }
     if (moldMatchTimer.current) clearTimeout(moldMatchTimer.current);
     moldMatchTimer.current = setTimeout(async () => {
       const params = new URLSearchParams({ category: standardCategory });
@@ -551,6 +553,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           // Auto-select if exact match (score >= 98)
           const exact = (data.matches || []).find((m: any) => m.match_score >= 98);
           if (exact) {
+            suppressMoldMatch.current = true;
             setSelectedMoldId(exact.id);
             setUseExistingMold(true);
             setFields(prev => ({
@@ -1718,12 +1721,16 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                         key={m.id}
                         type="button"
                         onClick={() => {
+                          suppressMoldMatch.current = true;
+                          if (moldMatchTimer.current) clearTimeout(moldMatchTimer.current);
                           setSelectedMoldId(m.id);
                           setUseExistingMold(true);
-                          // Fill in the spec data
-                          if (m.perimeter) setFields(prev => ({ ...prev, perimeter: m.perimeter }));
-                          if (m.weight_per_meter) setFields(prev => ({ ...prev, meterWeight: m.weight_per_meter }));
-                          setFields(prev => ({ ...prev, die_type: m.mold_type === '分流模' ? 'split' : 'flat' }));
+                          setFields(prev => ({
+                            ...prev,
+                            die_type: m.mold_type === '分流模' ? 'split' : 'flat',
+                            perimeter: m.perimeter || prev.perimeter,
+                            meterWeight: m.weight_per_meter || prev.meterWeight,
+                          }));
                           setPerimeterManual(true);
                           setMeterWeightManual(true);
                         }}
@@ -1763,7 +1770,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setUseExistingMold(false); setSelectedMoldId(null); }}
+                      onClick={() => { suppressMoldMatch.current = true; if (moldMatchTimer.current) clearTimeout(moldMatchTimer.current); setUseExistingMold(false); setSelectedMoldId(null); }}
                       className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${
                         useExistingMold === false
                           ? 'bg-orange-50 border-orange-300 text-orange-700'
