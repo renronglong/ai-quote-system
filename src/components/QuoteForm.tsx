@@ -426,6 +426,21 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [useExistingMold, setUseExistingMold] = useState<boolean | null>(null); // null=未选择, true=现有, false=新开
   const moldMatchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressMoldMatch = useRef(false);
+
+  // Parse cross_section_mm into dimension field values based on category
+  const parseMoldDimensions = (category: string, cs: string): Record<string, number> => {
+    if (!cs) return {};
+    const s = cs.trim();
+    const phi = s.match(/[ΦφØ∅]\s*([\d.]+)/);
+    if (phi) return { width: parseFloat(phi[1]) }; // 圆棒 diameter→width, 六角棒 hex→width
+    const parts = s.split(/[×xX*]/).map(p => parseFloat(p.trim())).filter(n => !isNaN(n) && n > 0);
+    if (category === '铝圆管' && parts.length >= 2) return { outer: parts[0], inner: parts[1] };
+    if (category === '铝六角管' && parts.length >= 2) return { width: parts[0], inner: parts[1] };
+    if (category === '角铝' && parts.length >= 3) return { width: parts[0], height: parts[1], thickness: parts[2] };
+    if (parts.length >= 2) return { width: parts[0], height: parts[1] };
+    if (parts.length === 1) return { width: parts[0] };
+    return {};
+  };
   const fieldsRef = useRef(fields);
   fieldsRef.current = fields;
 
@@ -573,8 +588,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             suppressMoldMatch.current = true;
             setSelectedMoldId(exact.id);
             setUseExistingMold(true);
+            const dims = parseMoldDimensions(standardCategory, exact.cross_section_mm);
             setFields(prev => ({
               ...prev,
+              ...dims,
               die_type: exact.mold_type === '分流模' ? 'split' : 'flat',
               perimeter: exact.perimeter || prev.perimeter,
               meterWeight: exact.weight_per_meter || prev.meterWeight,
@@ -1738,8 +1755,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                           if (moldMatchTimer.current) clearTimeout(moldMatchTimer.current);
                           setSelectedMoldId(m.id);
                           setUseExistingMold(true);
+                          const dims = parseMoldDimensions(standardCategory, m.cross_section_mm);
                           setFields(prev => ({
                             ...prev,
+                            ...dims,
                             die_type: m.mold_type === '分流模' ? 'split' : 'flat',
                             perimeter: m.perimeter || prev.perimeter,
                             meterWeight: m.weight_per_meter || prev.meterWeight,
@@ -1768,7 +1787,23 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     ))}
                   </div>
 
+                  {/* 已选模具提示 */}
+                  {selectedMoldId && useExistingMold && (() => {
+                    const sel = moldMatches.find((mm: any) => mm.id === selectedMoldId);
+                    return (
+                      <div className="mt-2 flex items-center justify-between px-2.5 py-1.5 bg-green-50 rounded-lg border border-green-200">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-green-600 text-xs">✓</span>
+                          <span className="text-xs font-medium text-green-700 truncate">{sel?.cross_section_mm || '已选模具'}</span>
+                          <span className="text-[10px] text-gray-400">{sel?.weight_per_meter}kg/m</span>
+                        </div>
+                        <button type="button" onClick={() => { setSelectedMoldId(null); setUseExistingMold(null); }} className="text-[10px] text-blue-500 hover:text-blue-700 shrink-0 ml-2">更换</button>
+                      </div>
+                    );
+                  })()}
+
                   {/* 选择：使用现有模具 or 开新模 */}
+                  {!(selectedMoldId && useExistingMold) && (
                   <div className="flex gap-2 pt-1.5 border-t border-gray-100">
                     <button
                       type="button"
@@ -1793,6 +1828,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                       ✦ 开新模具
                     </button>
                   </div>
+                  )}
                 </div>
               )}
 
