@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
       }
     }
     if (specialCount > 0) {
-      categoryMap['异型材'] = { label: '异型材', count: specialCount, mold_type: '平模' };
+      categoryMap['异型材'] = { label: '异型材', count: specialCount, mold_type: '' };
     }
 
     return NextResponse.json({
