@@ -432,11 +432,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (!cs) return {};
     const s = cs.trim();
     const phi = s.match(/[ΦφØ∅]\s*([\d.]+)/);
-    if (phi) return { width: parseFloat(phi[1]) }; // 圆棒 diameter→width, 六角棒 hex→width
+    if (phi) return { width: parseFloat(phi[1]) }; // 圆棒/六角棒单值→width
     const parts = s.split(/[×xX*]/).map(p => parseFloat(p.trim())).filter(n => !isNaN(n) && n > 0);
-    if (category === '铝圆管' && parts.length >= 2) return { outer: parts[0], inner: parts[1] };
-    if (category === '铝六角管' && parts.length >= 2) return { width: parts[0], inner: parts[1] };
     if (category === '角铝' && parts.length >= 3) return { width: parts[0], height: parts[1], thickness: parts[2] };
+    // 圆管/六角管/方扁棒 都是两值，统一映射到 width/height
     if (parts.length >= 2) return { width: parts[0], height: parts[1] };
     if (parts.length === 1) return { width: parts[0] };
     return {};
@@ -543,8 +542,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     const dimFields = CATEGORY_DIM_FIELDS[standardCategory];
     if (!dimFields) return '';
     const parts: string[] = [standardCategory];
+    const sigFieldMap: Record<string, string> = { diameter: 'width', hex: 'width', outer: 'width', inner: 'height' };
     for (const df of dimFields) {
-      const k = df.key === 'diameter' || df.key === 'hex' ? 'width' : df.key;
+      const k = sigFieldMap[df.key] || df.key;
       parts.push(`${k}=${fieldsRef.current[k] ?? ''}`);
     }
     if (standardCategory === '异型材') parts.push(`perimeter=${fieldsRef.current.perimeter ?? ''}`);
@@ -560,14 +560,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (moldMatchTimer.current) clearTimeout(moldMatchTimer.current);
     moldMatchTimer.current = setTimeout(async () => {
       const cur = fieldsRef.current;
+      const dimFieldMap: Record<string, string> = { diameter: 'width', hex: 'width', outer: 'width', inner: 'height' };
       const params = new URLSearchParams({ category: standardCategory });
       let hasInput = false;
       for (const df of dimFields) {
-        const k = df.key === 'diameter' || df.key === 'hex' ? 'width' : df.key;
-        const val = cur[k] as number;
+        const stateKey = dimFieldMap[df.key] || df.key;
+        const val = cur[stateKey] as number;
         if (val && val > 0) {
-          const apiKey = df.key === 'diameter' ? 'diameter' : df.key === 'hex' ? 'hex' : df.key;
-          params.set(apiKey, String(val));
+          params.set(df.key, String(val));
           hasInput = true;
         }
       }
