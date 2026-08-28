@@ -16,6 +16,7 @@ function computeMoldType(product_name: string | null, num_dies: number | null): 
  * GET /api/standard-parts
  * - 无参数: 返回所有标准件类别及数量
  * - ?category=铝圆管: 返回该类别所有规格
+ * - ?category=异型材: 返回所有非标准大类（异型材/短型材/电源外壳等）的规格
  */
 export async function GET(request: NextRequest) {
   try {
@@ -32,15 +33,12 @@ export async function GET(request: NextRequest) {
 
     const STANDARD_CATEGORIES = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管'];
 
-    const STANDARD_CATEGORIES = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管'];
-
+    // 异型材：包含所有非标名称（异型材/短型材/电源外壳等count<=1的，以及产品名称本身就是"异型材"的）
     if (category) {
-      if (category === '其他型材') {
-        // 其他型材：返回所有非标准大类且只有1个规格的产品
-        // 先获取所有数据，在内存中过滤
-      } else {
+      if (category !== '异型材') {
         query = query.eq('product_name', category);
       }
+      // 异型材不预先过滤，在内存中处理
     }
 
     const { data, error } = await query;
@@ -54,15 +52,9 @@ export async function GET(request: NextRequest) {
       mold_type: computeMoldType(p.product_name, p.num_dies),
     }));
 
-    // 如果指定了"其他型材"类别，过滤出非标准大类且count=1的产品
-    if (category === '其他型材') {
-      const nameCount: Record<string, number> = {};
-      for (const p of products) {
-        nameCount[p.product_name] = (nameCount[p.product_name] || 0) + 1;
-      }
-      products = products.filter((p: any) =>
-        !STANDARD_CATEGORIES.includes(p.product_name) && nameCount[p.product_name] === 1
-      );
+    // 如果指定了"异型材"类别，返回所有非标准大类的产品
+    if (category === '异型材') {
+      products = products.filter((p: any) => !STANDARD_CATEGORIES.includes(p.product_name));
     }
 
     // 如果指定了category，直接返回该类别规格列表
@@ -77,9 +69,8 @@ export async function GET(request: NextRequest) {
 
     // 否则返回类别汇总
     // 标准大类（保留独立显示）
-    // 非标准大类（count<=1且不在标准列表中的）归入"其他型材"
+    // 所有非标准大类（不在STANDARD_CATEGORIES中的）统一归入"异型材"
     const tempMap: Record<string, { label: string; count: number; mold_type: string }> = {};
-    const otherProducts: any[] = [];
     for (const p of products) {
       const name = p.product_name;
       if (!name) continue;
@@ -90,16 +81,16 @@ export async function GET(request: NextRequest) {
     }
 
     const categoryMap: Record<string, { label: string; count: number; mold_type: string }> = {};
-    let otherCount = 0;
+    let specialCount = 0;
     for (const [name, val] of Object.entries(tempMap)) {
-      if (STANDARD_CATEGORIES.includes(name) || val.count > 1) {
+      if (STANDARD_CATEGORIES.includes(name)) {
         categoryMap[name] = val;
       } else {
-        otherCount += val.count;
+        specialCount += val.count;
       }
     }
-    if (otherCount > 0) {
-      categoryMap['其他型材'] = { label: '其他型材', count: otherCount, mold_type: '平模' };
+    if (specialCount > 0) {
+      categoryMap['异型材'] = { label: '异型材', count: specialCount, mold_type: '平模' };
     }
 
     return NextResponse.json({
