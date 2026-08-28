@@ -95,6 +95,10 @@ interface QuoteResponse {
   transport_cost?: number;
   management_fee?: number;
   unit_price?: number;
+  unit_price_ex_tax?: number;
+  unit_price_in_tax?: number;
+  total_ex_tax?: number;
+  total_in_tax?: number;
   total_price?: number;
   weight_per_piece_kg?: number;
   breakdown?: Record<string, { formula: string; detail: string }>;
@@ -986,8 +990,8 @@ function calcExtrusion(
       unit_price: unitPrice,
       unit_price_ex_tax: r2(preTaxPrice),
       unit_price_in_tax: unitPrice,
-      total_ex_tax: r2(preTaxPrice * (body.quantity || 1)),
-      total_in_tax: r2(unitPrice * (body.quantity || 1)),
+      total_ex_tax: r2(preTaxPrice),
+      total_in_tax: unitPrice,
       weight_per_piece_kg: mat.weight,
       min_order_qty: minOrderQty,
       mold_cost: moldCost,
@@ -1366,8 +1370,8 @@ function calcSheetMetal(
       unit_price: unitPrice,
       unit_price_ex_tax: r2(preTaxPrice),
       unit_price_in_tax: unitPrice,
-      total_ex_tax: r2(preTaxPrice * (body.quantity || 1)),
-      total_in_tax: r2(unitPrice * (body.quantity || 1)),
+      total_ex_tax: r2(preTaxPrice),
+      total_in_tax: unitPrice,
       weight_per_piece_kg: mat.weight,
     },
     breakdown,
@@ -1460,8 +1464,8 @@ function calcDieCasting(
       unit_price: unitPrice,
       unit_price_ex_tax: r2(preTaxPrice),
       unit_price_in_tax: unitPrice,
-      total_ex_tax: r2(preTaxPrice * (body.quantity || 1)),
-      total_in_tax: r2(unitPrice * (body.quantity || 1)),
+      total_ex_tax: r2(preTaxPrice),
+      total_in_tax: unitPrice,
       weight_per_piece_kg: mat.weight,
       mold_cost: moldTotal,
     },
@@ -1555,8 +1559,8 @@ function calcZincAlloy(
       unit_price: unitPrice,
       unit_price_ex_tax: r2(preTaxPrice),
       unit_price_in_tax: unitPrice,
-      total_ex_tax: r2(preTaxPrice * (body.quantity || 1)),
-      total_in_tax: r2(unitPrice * (body.quantity || 1)),
+      total_ex_tax: r2(preTaxPrice),
+      total_in_tax: unitPrice,
       weight_per_piece_kg: mat.weight,
       mold_cost: moldTotal,
     },
@@ -1652,8 +1656,8 @@ function calcInjection(
       unit_price: unitPrice,
       unit_price_ex_tax: r2(preTaxPrice),
       unit_price_in_tax: unitPrice,
-      total_ex_tax: r2(preTaxPrice * (body.quantity || 1)),
-      total_in_tax: r2(unitPrice * (body.quantity || 1)),
+      total_ex_tax: r2(preTaxPrice),
+      total_in_tax: unitPrice,
       weight_per_piece_kg: mat.weight,
       mold_cost: moldTotal,
     },
@@ -1772,6 +1776,12 @@ export async function POST(request: NextRequest) {
     // 4. 计算总价
     const unitPrice = result.costs.unit_price || 0;
     const totalPrice = r2(unitPrice * body.quantity);
+    const exTaxUnit = result.costs.unit_price_ex_tax || unitPrice;
+    const inTaxUnit = result.costs.unit_price_in_tax || unitPrice;
+    result.costs.unit_price_ex_tax = exTaxUnit;
+    result.costs.unit_price_in_tax = inTaxUnit;
+    result.costs.total_ex_tax = r2(exTaxUnit * body.quantity);
+    result.costs.total_in_tax = r2(inTaxUnit * body.quantity);
 
     // 5. 最低订单量检查（最低 300kg）
     const totalWeight = result.weight * body.quantity;
@@ -1876,6 +1886,12 @@ export async function GET(request: NextRequest) {
     // 4. 计算总价
     const unitPrice = result.costs.unit_price || 0;
     const totalPrice = r2(unitPrice * body.quantity);
+    const exTaxUnit = result.costs.unit_price_ex_tax || unitPrice;
+    const inTaxUnit = result.costs.unit_price_in_tax || unitPrice;
+    result.costs.unit_price_ex_tax = exTaxUnit;
+    result.costs.unit_price_in_tax = inTaxUnit;
+    result.costs.total_ex_tax = r2(exTaxUnit * body.quantity);
+    result.costs.total_in_tax = r2(inTaxUnit * body.quantity);
 
     // 5. 最低订单量检查（最低 300kg）
     const totalWeight = result.weight * body.quantity;
