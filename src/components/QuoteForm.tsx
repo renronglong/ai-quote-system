@@ -1739,7 +1739,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 </div>
               )}
 
-              {!moldMatchLoading && moldMatches.length > 0 && (
+              {!moldMatchLoading && moldMatches.length > 0 && !(selectedMoldId && useExistingMold) && (
                 <div className="mt-2 space-y-1.5">
                   <div className="text-[11px] font-medium text-gray-600 flex items-center gap-1">
                     <CheckCircle2 className="w-3 h-3 text-green-500" />
