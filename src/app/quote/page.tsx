@@ -514,7 +514,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
   const p = pricingResult || {
     material_cost: 0, processing_cost: 0, surface_treatment_cost: 0,
     secondary_operations_cost: 0, packaging_cost: 0, transport_cost: 0,
-    management_fee: 0, unit_price: 0, total_price: 0, weight_per_piece_kg: 0,
+    management_fee: 0, unit_price: 0, unit_price_ex_tax: 0, unit_price_in_tax: 0, total_price: 0, weight_per_piece_kg: 0,
     material_utilization_rate: undefined as number | undefined,
     breakdown: {} as Record<string, { formula: string; detail: string }>,
     aluminum_index: 0, notes: [] as string[], mold_cost: 0,
@@ -561,7 +561,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-1.5">
             <Package className="w-3.5 h-3.5 text-emerald-600" />
-            <span className="text-[11px] font-medium text-emerald-600 uppercase tracking-wide">单价</span>
+            <span className="text-[11px] font-medium text-emerald-600 uppercase tracking-wide">未税单价</span>
           </div>
           {!isPlaceholder && (
             <div className="flex items-center gap-1">
@@ -595,6 +595,19 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         {!hasProductDiscount && manualUnitPrice !== null && !isPlaceholder && (
           <div className="text-[11px] text-amber-600 mt-0.5">
             手动调整：计算值 ¥{baseUnitPrice.toFixed(2)} → ¥{manualUnitPrice.toFixed(2)}
+          </div>
+        )}
+        {/* 含税单价 */}
+        {!isPlaceholder && p.unit_price_in_tax && p.unit_price_in_tax > 0 && (
+          <div className="mt-1 flex items-baseline gap-1.5">
+            <span className="text-[10px] text-gray-400">含税单价</span>
+            <span className="text-sm font-semibold text-gray-600">
+              ¥{(manualUnitPrice
+                ? manualUnitPrice * (p.unit_price_in_tax / (p.unit_price_ex_tax || p.unit_price || 1))
+                : p.unit_price_in_tax
+              ).toFixed(2)}/件
+            </span>
+            <span className="text-[10px] text-gray-300">（含13%增值税）</span>
           </div>
         )}
         <div className="mt-1.5 flex items-baseline gap-1">
