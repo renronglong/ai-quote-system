@@ -415,14 +415,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [savedVariants, setSavedVariants] = useState<{id: string, length: number, weight: number, quantity: number}[]>([]);
 
   // Standard parts state (异型材/标准件 toggle)
-  const [isCustomProfile, setIsCustomProfile] = useState(true);
+  // 统一流程：不再区分异型材/标准件，所有挤出型材走品类选择+模具匹配
   const [standardCategory, setStandardCategory] = useState('');
-  const [standardSpecId, setStandardSpecId] = useState('');
   const [standardCategories, setStandardCategories] = useState<{key:string;label:string;count:number;mold_type:string}[]>([]);
-  const [standardSpecs, setStandardSpecs] = useState<any[]>([]);
-  const [standardSearch, setStandardSearch] = useState('');
-  const [standardSpecOpen, setStandardSpecOpen] = useState(false);
-  const standardSpecRef = useRef<HTMLDivElement>(null);
 
   // Mold matching state (尺寸匹配现有模具)
   const [moldMatches, setMoldMatches] = useState<any[]>([]);
@@ -505,32 +500,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   }, []);
 
   // ==================== Fetch specs when category changes ====================
-  useEffect(() => {
-    if (!isCustomProfile && standardCategory && productType === '挤出') {
-      fetch(`/api/standard-parts?category=${encodeURIComponent(standardCategory)}`)
-        .then(r => r.json())
-        .then(d => { if (d.success) setStandardSpecs(d.specs || []); })
-        .catch(e => console.error('Failed to load specs:', e));
-    }
-  }, [standardCategory, isCustomProfile, productType]);
 
-  // Close standard spec dropdown on outside click
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (standardSpecRef.current && !standardSpecRef.current.contains(e.target as Node)) {
-        setStandardSpecOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
 
-  const resetStandardState = () => {
-    setStandardCategory('');
-    setStandardSpecId('');
-    setStandardSpecs([]);
-    setStandardSearch('');
-    setStandardSpecOpen(false);
+  // 重置型材品类相关状态（切换型材类别时调用）
+  const resetProfileState = () => {
     setMoldMatches([]);
     setSelectedMoldId(null);
     setUseExistingMold(null);
@@ -547,7 +520,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
   // Debounced mold matching when dimensions change in standard mode
   const triggerMoldMatch = useCallback(() => {
-    if (productType !== '挤出' || isCustomProfile || !standardCategory) return;
+    if (productType !== '挤出' || !standardCategory) return;
     const dimFields = CATEGORY_DIM_FIELDS[standardCategory];
     if (!dimFields) return;
 
@@ -591,60 +564,21 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         setMoldMatchLoading(false);
       }
     }, 400);
-  }, [productType, isCustomProfile, standardCategory, fields]);
+  }, [productType, standardCategory, fields]);
 
   // Trigger mold match when relevant fields change
   useEffect(() => {
     triggerMoldMatch();
   }, [triggerMoldMatch]);
 
-  const handleStandardSpecSelect = (spec: any) => {
-    setStandardSpecId(spec.id);
-    setStandardSpecOpen(false);
-    setStandardSearch(spec.cross_section_mm || '');
-    setSelectedMoldId(spec.id);
-    setUseExistingMold(true);
-
-    const dims = (spec.cross_section_mm || '').split(/[×xX*]/).map((s: string) => parseFloat(s.trim())).filter((n: number) => !isNaN(n) && n > 0);
-    const updates: Record<string, number | string> = {};
-
-    // Always fill width/height from cross_section_mm dims
-    if (dims.length >= 1) updates.width = dims[0];
-    if (dims.length >= 2) updates.height = dims[1];
-
-    // Perimeter: use DB value only; no fallback formula (2*(w+h) is wrong for non-rectangular)
-    if (spec.perimeter) {
-      updates.perimeter = spec.perimeter;
-    }
-
-    updates.meterWeight = spec.weight_per_meter || '';
-
-    // Set die_type based on num_dies from DB
-    if (spec.num_dies && spec.num_dies > 0) {
-      updates.die_type = 'split';
-      updates.num_cavities = spec.num_dies;
-    } else {
-      updates.die_type = 'flat';
-      updates.num_cavities = 1;
-    }
-
-    setFields(prev => ({ ...prev, ...updates }));
-    // Lock auto-calculated values from DB (don't let auto-calc override)
-    setPerimeterManual(true);
-    setMeterWeightManual(true);
-  };
-
-  const filteredStandardSpecs = standardSpecs.filter((s: any) =>
-    !standardSearch || (s.cross_section_mm || '').includes(standardSearch)
-  );
 
   // Reset manual flags when switching to standard mode
   useEffect(() => {
-    if (productType === '挤出' && !isCustomProfile) {
+    if (productType === '挤出') {
       setPerimeterManual(false);
       setMeterWeightManual(false);
     }
-  }, [isCustomProfile, productType]);
+  }, [productType]);
 
   // ==================== Auto-calculate meter weight from cross-section ====================
   // DISABLED: 米重/重量由用户手动输入，不再根据宽高自动计算
@@ -997,7 +931,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     const cat = categoryConfig;
     const hasBatchVariants = productType === '挤出' && savedVariants.length > 0;
     if (cat) {
-      const isStdMode = productType === '挤出' && !isCustomProfile;
+      const isStdMode = productType === '挤出';
       const requiredDims = isStdMode
         ? ['length']
         : cat.fields.filter(f => ['width', 'height', 'length', 'thickness', 'productSize'].includes(f));
@@ -1424,7 +1358,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     let visibleFields = fieldOrder.filter(f => categoryConfig.fields.includes(f));
     // In standard mode, hide num_cavities, die_type, width, height, perimeter
     // (these are handled by structured dimension inputs + mold matching)
-    if (productType === '挤出' && !isCustomProfile) {
+    if (productType === '挤出') {
       visibleFields = visibleFields.filter(f =>
         f !== 'num_cavities' && f !== 'die_type' &&
         f !== 'width' && f !== 'height' && f !== 'perimeter'
@@ -1691,47 +1625,17 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           </div>
         </div>
 
-        {/* ---- 异型材 / 标准件 切换 (仅挤出) ---- */}
+        {/* ---- 型材类别选择 (仅挤出) ---- */}
         {productType === '挤出' && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-            <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">型材类型</label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => { if (!isCustomProfile) { setIsCustomProfile(true); resetStandardState(); } }}
-                className={`flex-1 px-3 py-2 rounded-lg border text-xs font-medium transition-all duration-200 ${
-                  isCustomProfile ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                ⊕ 异型材
-                <span className="block text-[10px] font-normal mt-0.5 opacity-70">自定义截面尺寸</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => { if (isCustomProfile) { setIsCustomProfile(false); } }}
-                className={`flex-1 px-3 py-2 rounded-lg border text-xs font-medium transition-all duration-200 ${
-                  !isCustomProfile ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                ▦ 标准件
-                <span className="block text-[10px] font-normal mt-0.5 opacity-70">从已有规格库选择</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ---- 标准件选择器 (仅挤出 + 标准件模式) ---- */}
-        {productType === '挤出' && !isCustomProfile && (
           <>
-            {/* 小类选择 */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-              <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">标准件类别</label>
+              <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">型材类别</label>
               <div className="flex flex-wrap gap-1.5">
                 {standardCategories.map(cat => (
                   <button
                     key={cat.key}
                     type="button"
-                    onClick={() => { setStandardCategory(cat.key); setStandardSpecId(''); setStandardSearch(''); setStandardSpecOpen(true); }}
+                    onClick={() => { setStandardCategory(cat.key); resetProfileState(); }}
                     className={`px-2.5 py-1.5 rounded-lg border text-xs transition-all duration-200 ${
                       standardCategory === cat.key
                         ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
@@ -1747,80 +1651,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 ))}
               </div>
             </div>
-
-            {/* 规格选择 */}
-            {standardCategory && (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-                <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">选择规格</label>
-                <div ref={standardSpecRef} className="relative">
-                  <input
-                    type="text"
-                    placeholder="搜索规格，如 20、Φ10..."
-                    value={standardSearch}
-                    onChange={e => { setStandardSearch(e.target.value); setStandardSpecOpen(true); setStandardSpecId(''); }}
-                    onFocus={() => setStandardSpecOpen(true)}
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
-                  />
-                  {standardSpecOpen && filteredStandardSpecs.length > 0 && (
-                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
-                      {filteredStandardSpecs.slice(0, 50).map(spec => (
-                        <button
-                          key={spec.id}
-                          type="button"
-                          onClick={() => handleStandardSpecSelect(spec)}
-                          className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 transition-colors flex items-center justify-between ${
-                            standardSpecId === spec.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
-                          }`}
-                        >
-                          <span>{spec.cross_section_mm}</span>
-                          <span className="text-[10px] text-gray-400">
-                            {spec.weight_per_meter}kg/m · {(() => {
-                              const dims = (spec.cross_section_mm || '').split(/[×xX*]/).map((s: string) => parseFloat(s.trim())).filter((n: number) => !isNaN(n) && n > 0);
-                              return spec.perimeter ? spec.perimeter + 'mm' : '周长 mm';
-                            })()}
-                          </span>
-                        </button>
-                      ))}
-                      {filteredStandardSpecs.length > 50 && (
-                        <div className="px-3 py-1.5 text-[10px] text-gray-400 text-center border-t">
-                          共{filteredStandardSpecs.length}条，输入更多关键词缩小范围
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {standardSpecOpen && filteredStandardSpecs.length === 0 && standardSpecs.length > 0 && (
-                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-center text-xs text-gray-400">
-                      未找到匹配规格
-                    </div>
-                  )}
-                  {standardSpecOpen && standardSpecs.length === 0 && (
-                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-center text-xs text-gray-400">
-                      规格加载中...
-                    </div>
-                  )}
-                </div>
-                {standardSpecId && (() => {
-                  const sel = standardSpecs.find(s => s.id === standardSpecId);
-                  if (!sel) return null;
-                  return (
-                    <div className="mt-2 flex items-center gap-2 text-[11px] text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-                      <span className="font-medium text-gray-700">{sel.cross_section_mm}</span>
-                      <span>·</span>
-                      <span>米重 {sel.weight_per_meter} kg/m</span>
-                      <span>·</span>
-                      <span>周长 {sel.perimeter} mm</span>
-                      <span>·</span>
-                      <span className={sel.mold_type === '分流模' ? 'text-red-500' : 'text-gray-500'}>{sel.mold_type}</span>
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
           </>
         )}
 
-        {/* ---- 标准件尺寸输入 + 模具匹配 ---- */}
-        {productType === '挤出' && !isCustomProfile && standardCategory && (() => {
+        {/* ---- 尺寸输入 + 模具匹配 ---- */}
+        {productType === '挤出' && standardCategory && (() => {
           const dimFields = CATEGORY_DIM_FIELDS[standardCategory];
           if (!dimFields) return null;
           return (
@@ -1844,10 +1679,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                         onChange={e => {
                           const val = parseFloat(e.target.value) || 0;
                           setFields(prev => ({ ...prev, [stateKey]: val }));
-                          setStandardSpecId('');
                           setSelectedMoldId(null);
                           setUseExistingMold(null);
-                          setStandardSearch('');
                           setPerimeterManual(false);
                           setMeterWeightManual(false);
                         }}
@@ -1879,8 +1712,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                         onClick={() => {
                           setSelectedMoldId(m.id);
                           setUseExistingMold(true);
-                          setStandardSpecId(m.id);
-                          setStandardSearch(m.cross_section_mm || '');
                           // Fill in the spec data
                           if (m.perimeter) setFields(prev => ({ ...prev, perimeter: m.perimeter }));
                           if (m.weight_per_meter) setFields(prev => ({ ...prev, meterWeight: m.weight_per_meter }));
@@ -2367,3 +2198,4 @@ function CustomSelect({ value, options, onChange }: { value: string; options: st
     </div>
   );
 }
+
