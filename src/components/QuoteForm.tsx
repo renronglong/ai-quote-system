@@ -38,6 +38,8 @@ export interface PricingResult {
   transport_cost: number;
   management_fee: number;
   unit_price: number;
+  unit_price_ex_tax?: number;
+  unit_price_in_tax?: number;
   total_price: number;
   weight_per_piece_kg: number;
   material_utilization_rate?: number;
@@ -325,6 +327,33 @@ const FIELD_LABELS: Record<string, string> = {
   netWeight: '产品净重(g·选填·算利用率)',
 };
 
+// 标准件类别 → 尺寸输入配置
+const CATEGORY_DIM_FIELDS: Record<string, { key: string; label: string; placeholder: string }[]> = {
+  '铝圆棒': [{ key: 'diameter', label: '直径 Ø(mm)', placeholder: '如 10' }],
+  '铝方/扁棒': [
+    { key: 'width', label: '宽度(mm)', placeholder: '如 20' },
+    { key: 'height', label: '高度(mm)', placeholder: '如 10' },
+  ],
+  '铝六角棒': [{ key: 'hex', label: '对边距 H(mm)', placeholder: '如 10' }],
+  '角铝': [
+    { key: 'width', label: '边宽(mm)', placeholder: '如 20' },
+    { key: 'height', label: '边高(mm)', placeholder: '如 20' },
+    { key: 'thickness', label: '壁厚(mm)', placeholder: '如 2' },
+  ],
+  '铝圆管': [
+    { key: 'outer', label: '外径(mm)', placeholder: '如 25' },
+    { key: 'inner', label: '内径(mm)', placeholder: '如 23' },
+  ],
+  '铝六角管': [
+    { key: 'hex', label: '对边距(mm)', placeholder: '如 10' },
+    { key: 'inner', label: '内径(mm)', placeholder: '如 5' },
+  ],
+  '异型材': [
+    { key: 'width', label: '宽度(mm)', placeholder: '如 30' },
+    { key: 'height', label: '高度(mm)', placeholder: '如 15' },
+  ],
+};
+
 
 // ==================== Process Sub-Parameters ====================
 const PROCESS_SUB_PARAMS: Record<string, { name: string; type: string; label: string; options?: string[] }[]> = {
@@ -394,6 +423,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [standardSearch, setStandardSearch] = useState('');
   const [standardSpecOpen, setStandardSpecOpen] = useState(false);
   const standardSpecRef = useRef<HTMLDivElement>(null);
+
+  // Mold matching state (尺寸匹配现有模具)
+  const [moldMatches, setMoldMatches] = useState<any[]>([]);
+  const [moldMatchLoading, setMoldMatchLoading] = useState(false);
+  const [selectedMoldId, setSelectedMoldId] = useState<string | null>(null);
+  const [useExistingMold, setUseExistingMold] = useState<boolean | null>(null); // null=未选择, true=现有, false=新开
+  const moldMatchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // File upload state
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -495,6 +531,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     setStandardSpecs([]);
     setStandardSearch('');
     setStandardSpecOpen(false);
+    setMoldMatches([]);
+    setSelectedMoldId(null);
+    setUseExistingMold(null);
     setFields(prev => ({
       ...prev,
       perimeter: '',
@@ -506,10 +545,65 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     }));
   };
 
+  // Debounced mold matching when dimensions change in standard mode
+  const triggerMoldMatch = useCallback(() => {
+    if (productType !== '挤出' || isCustomProfile || !standardCategory) return;
+    const dimFields = CATEGORY_DIM_FIELDS[standardCategory];
+    if (!dimFields) return;
+
+    if (moldMatchTimer.current) clearTimeout(moldMatchTimer.current);
+    moldMatchTimer.current = setTimeout(async () => {
+      const params = new URLSearchParams({ category: standardCategory });
+      let hasInput = false;
+      for (const df of dimFields) {
+        const val = fields[df.key === 'diameter' ? 'width' : df.key === 'hex' ? 'width' : df.key] as number;
+        if (val && val > 0) {
+          const apiKey = df.key === 'diameter' ? 'diameter' : df.key === 'hex' ? 'hex' : df.key;
+          params.set(apiKey, String(val));
+          hasInput = true;
+        }
+      }
+      if (standardCategory === '异型材' && fields.perimeter) {
+        params.set('perimeter', String(fields.perimeter));
+        hasInput = true;
+      }
+      if (!hasInput) { setMoldMatches([]); setSelectedMoldId(null); setUseExistingMold(null); return; }
+
+      setMoldMatchLoading(true);
+      try {
+        const res = await fetch(`/api/mold-match?${params.toString()}`);
+        const data = await res.json();
+        if (data.success) {
+          setMoldMatches(data.matches || []);
+          // Auto-select if exact match (score >= 98)
+          const exact = (data.matches || []).find((m: any) => m.match_score >= 98);
+          if (exact) {
+            setSelectedMoldId(exact.id);
+            setUseExistingMold(true);
+          } else {
+            setSelectedMoldId(null);
+            setUseExistingMold(null);
+          }
+        }
+      } catch (e) {
+        console.error('Mold match failed:', e);
+      } finally {
+        setMoldMatchLoading(false);
+      }
+    }, 400);
+  }, [productType, isCustomProfile, standardCategory, fields]);
+
+  // Trigger mold match when relevant fields change
+  useEffect(() => {
+    triggerMoldMatch();
+  }, [triggerMoldMatch]);
+
   const handleStandardSpecSelect = (spec: any) => {
     setStandardSpecId(spec.id);
     setStandardSpecOpen(false);
     setStandardSearch(spec.cross_section_mm || '');
+    setSelectedMoldId(spec.id);
+    setUseExistingMold(true);
 
     const dims = (spec.cross_section_mm || '').split(/[×xX*]/).map((s: string) => parseFloat(s.trim())).filter((n: number) => !isNaN(n) && n > 0);
     const updates: Record<string, number | string> = {};
@@ -976,7 +1070,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           }
           // Mold cost only on first variant
           if (vi > 0) {
-            payload.skip_mold_cost = true;
+            payload.skip_mold_cost = useExistingMold === true;
           }
 
           const res = await fetch('/api/v1/quote/calculate', {
@@ -996,7 +1090,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 packaging_cost: data.packaging_cost || 0,
                 transport_cost: data.transport_cost || 0,
                 management_fee: data.management_fee || 0,
-                unit_price: data.unit_price || 0,
+                unit_price: data.unit_price_ex_tax || data.unit_price || 0,
+                unit_price_ex_tax: data.unit_price_ex_tax || data.unit_price || 0,
+                unit_price_in_tax: data.unit_price_in_tax || 0,
                 total_price: data.total_price || 0,
                 weight_per_piece_kg: data.weight_per_piece_kg || 0,
                 material_utilization_rate: data.material_utilization_rate,
@@ -1079,7 +1175,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             packaging_cost: data.packaging_cost || 0,
             transport_cost: data.transport_cost || 0,
             management_fee: data.management_fee || 0,
-            unit_price: data.unit_price || 0,
+            unit_price: data.unit_price_ex_tax || data.unit_price || 0,
+            unit_price_ex_tax: data.unit_price_ex_tax || data.unit_price || 0,
+            unit_price_in_tax: data.unit_price_in_tax || 0,
             total_price: data.total_price || 0,
             weight_per_piece_kg: data.weight_per_piece_kg || 0,
             material_utilization_rate: data.material_utilization_rate,
@@ -1324,9 +1422,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (!categoryConfig) return null;
     const fieldOrder = ['width', 'height', 'length', 'perimeter', 'num_cavities', 'die_type', 'meterWeight', 'thickness', 'productSize', 'quantity', 'netWeight'];
     let visibleFields = fieldOrder.filter(f => categoryConfig.fields.includes(f));
-    // In standard mode, hide num_cavities and die_type (auto-determined)
+    // In standard mode, hide num_cavities, die_type, width, height, perimeter
+    // (these are handled by structured dimension inputs + mold matching)
     if (productType === '挤出' && !isCustomProfile) {
-      visibleFields = visibleFields.filter(f => f !== 'num_cavities' && f !== 'die_type');
+      visibleFields = visibleFields.filter(f =>
+        f !== 'num_cavities' && f !== 'die_type' &&
+        f !== 'width' && f !== 'height' && f !== 'perimeter'
+      );
     }
 
 
@@ -1716,6 +1818,143 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             )}
           </>
         )}
+
+        {/* ---- 标准件尺寸输入 + 模具匹配 ---- */}
+        {productType === '挤出' && !isCustomProfile && standardCategory && (() => {
+          const dimFields = CATEGORY_DIM_FIELDS[standardCategory];
+          if (!dimFields) return null;
+          return (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+              <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+                输入尺寸 · 自动匹配现有模具
+              </label>
+              <div className={`grid ${dimFields.length >= 3 ? 'grid-cols-3' : dimFields.length === 2 ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
+                {dimFields.map(df => {
+                  const fieldMap: Record<string, string> = { diameter: 'width', hex: 'width' };
+                  const stateKey = fieldMap[df.key] || df.key;
+                  return (
+                    <div key={df.key}>
+                      <label className="block text-[10px] text-gray-400 mb-0.5">{df.label}</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.1"
+                        placeholder={df.placeholder}
+                        value={(fields[stateKey] as number) ?? ''}
+                        onChange={e => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setFields(prev => ({ ...prev, [stateKey]: val }));
+                          setStandardSpecId('');
+                          setSelectedMoldId(null);
+                          setUseExistingMold(null);
+                          setStandardSearch('');
+                          setPerimeterManual(false);
+                          setMeterWeightManual(false);
+                        }}
+                        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 模具匹配结果 */}
+              {moldMatchLoading && (
+                <div className="mt-2 text-center text-[11px] text-gray-400 py-2">
+                  <span className="inline-block animate-spin mr-1">⟳</span> 正在匹配现有模具...
+                </div>
+              )}
+
+              {!moldMatchLoading && moldMatches.length > 0 && (
+                <div className="mt-2 space-y-1.5">
+                  <div className="text-[11px] font-medium text-gray-600 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-green-500" />
+                    找到 {moldMatches.length} 个相近模具（公差≤15%）
+                  </div>
+                  <div className="max-h-40 overflow-y-auto space-y-1">
+                    {moldMatches.slice(0, 5).map(m => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedMoldId(m.id);
+                          setUseExistingMold(true);
+                          setStandardSpecId(m.id);
+                          setStandardSearch(m.cross_section_mm || '');
+                          // Fill in the spec data
+                          if (m.perimeter) setFields(prev => ({ ...prev, perimeter: m.perimeter }));
+                          if (m.weight_per_meter) setFields(prev => ({ ...prev, meterWeight: m.weight_per_meter }));
+                          setPerimeterManual(true);
+                          setMeterWeightManual(true);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg border text-xs transition-all flex items-center justify-between ${
+                          selectedMoldId === m.id
+                            ? 'bg-green-50 border-green-300 text-green-700'
+                            : 'bg-white border-gray-200 text-gray-700 hover:bg-green-50/50 hover:border-green-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-medium shrink-0">{m.cross_section_mm}</span>
+                          <span className="text-gray-400 shrink-0">·</span>
+                          <span className="text-gray-500 truncate">{m.weight_per_meter}kg/m</span>
+                          <span className={`shrink-0 px-1 py-0.5 rounded text-[9px] ${
+                            m.mold_type === '分流模' ? 'bg-red-50 text-red-500' : 'bg-gray-100 text-gray-500'
+                          }`}>{m.mold_type}</span>
+                        </div>
+                        <span className={`shrink-0 ml-1.5 font-bold ${
+                          m.match_score >= 95 ? 'text-green-600' : m.match_score >= 80 ? 'text-amber-600' : 'text-gray-400'
+                        }`}>{m.match_score}%</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* 选择：使用现有模具 or 开新模 */}
+                  <div className="flex gap-2 pt-1.5 border-t border-gray-100">
+                    <button
+                      type="button"
+                      onClick={() => setUseExistingMold(true)}
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${
+                        useExistingMold === true
+                          ? 'bg-green-50 border-green-300 text-green-700'
+                          : 'bg-white border-gray-200 text-gray-500 hover:border-green-200'
+                      }`}
+                    >
+                      ✓ 用现有模具（免模具费）
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setUseExistingMold(false); setSelectedMoldId(null); }}
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${
+                        useExistingMold === false
+                          ? 'bg-orange-50 border-orange-300 text-orange-700'
+                          : 'bg-white border-gray-200 text-gray-500 hover:border-orange-200'
+                      }`}
+                    >
+                      ✦ 开新模具
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {!moldMatchLoading && moldMatches.length === 0 && standardCategory && (fields.width || fields.height || fields.perimeter) && (
+                <div className="mt-2 flex items-center justify-between bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                  <span className="text-[11px] text-orange-600">未找到相近现有模具</span>
+                  <button
+                    type="button"
+                    onClick={() => setUseExistingMold(false)}
+                    className={`px-2 py-1 rounded text-[11px] font-medium border transition-all ${
+                      useExistingMold === false
+                        ? 'bg-orange-500 border-orange-500 text-white'
+                        : 'bg-white border-orange-300 text-orange-600 hover:bg-orange-100'
+                    }`}
+                  >
+                    开新模具
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ---- 基本参数 ---- */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
