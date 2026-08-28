@@ -553,6 +553,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           if (exact) {
             setSelectedMoldId(exact.id);
             setUseExistingMold(true);
+            setFields(prev => ({
+              ...prev,
+              die_type: exact.mold_type === '分流模' ? 'split' : 'flat',
+              perimeter: exact.perimeter || prev.perimeter,
+              meterWeight: exact.weight_per_meter || prev.meterWeight,
+            }));
+            if (exact.perimeter) setPerimeterManual(true);
+            if (exact.weight_per_meter) setMeterWeightManual(true);
           } else {
             setSelectedMoldId(null);
             setUseExistingMold(null);
@@ -1635,7 +1643,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   <button
                     key={cat.key}
                     type="button"
-                    onClick={() => { setStandardCategory(cat.key); resetProfileState(); }}
+                    onClick={() => { setStandardCategory(cat.key); resetProfileState(); setFields(prev => ({ ...prev, die_type: cat.mold_type === '分流模' ? 'split' : 'flat' })); }}
                     className={`px-2.5 py-1.5 rounded-lg border text-xs transition-all duration-200 ${
                       standardCategory === cat.key
                         ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
@@ -1715,6 +1723,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                           // Fill in the spec data
                           if (m.perimeter) setFields(prev => ({ ...prev, perimeter: m.perimeter }));
                           if (m.weight_per_meter) setFields(prev => ({ ...prev, meterWeight: m.weight_per_meter }));
+                          setFields(prev => ({ ...prev, die_type: m.mold_type === '分流模' ? 'split' : 'flat' }));
                           setPerimeterManual(true);
                           setMeterWeightManual(true);
                         }}
