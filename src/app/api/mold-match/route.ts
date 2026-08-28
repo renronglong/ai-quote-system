@@ -206,3 +206,25 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+
+// Also support POST (same logic, params from body)
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const params = new URLSearchParams();
+    if (body.category) params.set('category', body.category);
+    if (body.diameter) params.set('diameter', String(body.diameter));
+    if (body.outer) params.set('outer', String(body.outer));
+    if (body.inner) params.set('inner', String(body.inner));
+    if (body.width) params.set('width', String(body.width));
+    if (body.height) params.set('height', String(body.height));
+    if (body.thickness) params.set('thickness', String(body.thickness));
+    if (body.hex) params.set('hex', String(body.hex));
+    if (body.perimeter) params.set('perimeter', String(body.perimeter));
+    const url = new URL(`https://placeholder/match?${params.toString()}`);
+    return GET(new NextRequest(url));
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 400 });
+  }
+}
