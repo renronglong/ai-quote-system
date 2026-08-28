@@ -569,6 +569,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (moldMatchTimer.current) clearTimeout(moldMatchTimer.current);
     moldMatchTimer.current = setTimeout(async () => {
       const cur = fieldsRef.current;
+      // 异型材必须先选模具类型再搜索
+      if (standardCategory === '异型材' && !cur.die_type) {
+        setMoldMatches([]);
+        setSelectedMoldId(null);
+        setUseExistingMold(null);
+        return;
+      }
       const dimFieldMap: Record<string, string> = { diameter: 'width', hex: 'width', outer: 'width', inner: 'height' };
       const params = new URLSearchParams({ category: standardCategory });
       let hasInput = false;
@@ -1690,7 +1697,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   <button
                     key={cat.key}
                     type="button"
-                    onClick={() => { setStandardCategory(cat.key); resetProfileState(); setFields(prev => ({ ...prev, die_type: cat.mold_type === '分流模' ? 'split' : 'flat' })); }}
+                    onClick={() => { setStandardCategory(cat.key); resetProfileState(); setFields(prev => ({ ...prev, die_type: CATEGORY_NEEDS_DIE_SELECTION.includes(cat.key) ? '' : (cat.mold_type === '分流模' ? 'split' : 'flat') })); }}
                     className={`px-2.5 py-1.5 rounded-lg border text-xs transition-all duration-200 ${
                       standardCategory === cat.key
                         ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
@@ -1699,9 +1706,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   >
                     {cat.label}
                     <span className="ml-1 text-[10px] opacity-60">({cat.count})</span>
-                    <span className={`ml-1 text-[10px] ${cat.mold_type === '分流模' ? 'text-red-400' : 'text-gray-400'}`}>
-                      {cat.mold_type}
-                    </span>
+                    {!CATEGORY_NEEDS_DIE_SELECTION.includes(cat.key) && (
+                      <span className={`ml-1 text-[10px] ${cat.mold_type === '分流模' ? 'text-red-400' : 'text-gray-400'}`}>
+                        {cat.mold_type}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -1718,6 +1727,32 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
                 输入尺寸 · 自动匹配现有模具
               </label>
+              {CATEGORY_NEEDS_DIE_SELECTION.includes(standardCategory) && (
+                <div className="mb-2">
+                  <label className="block text-[10px] text-gray-400 mb-1">模具类型（先选再搜）</label>
+                  <div className="flex gap-2">
+                    {([{ v: 'flat', label: '平模（实心）' }, { v: 'split', label: '分流模（中空）' }] as const).map(opt => (
+                      <button
+                        key={opt.v}
+                        type="button"
+                        onClick={() => { setFields(prev => ({ ...prev, die_type: opt.v })); setSelectedMoldId(null); setUseExistingMold(null); }}
+                        className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                          fields.die_type === opt.v
+                            ? opt.v === 'split'
+                              ? 'bg-red-50 border-red-300 text-red-600'
+                              : 'bg-blue-50 border-blue-300 text-blue-700'
+                            : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {CATEGORY_NEEDS_DIE_SELECTION.includes(standardCategory) && !fields.die_type && (
+                <div className="mb-2 text-[11px] text-amber-500">请先选择模具类型，再输入尺寸匹配</div>
+              )}
               <div className={`grid ${dimFields.length >= 3 ? 'grid-cols-3' : dimFields.length === 2 ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
                 {dimFields.map(df => {
                   const fieldMap: Record<string, string> = { diameter: 'width', hex: 'width', outer: 'width', inner: 'height' };
