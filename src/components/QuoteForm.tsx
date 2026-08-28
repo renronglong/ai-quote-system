@@ -426,6 +426,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [useExistingMold, setUseExistingMold] = useState<boolean | null>(null); // null=未选择, true=现有, false=新开
   const moldMatchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressMoldMatch = useRef(false);
+  const fieldsRef = useRef(fields);
+  fieldsRef.current = fields;
 
   // File upload state
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -520,26 +522,42 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   };
 
   // Debounced mold matching when dimensions change in standard mode
-  const triggerMoldMatch = useCallback(() => {
+  // Build a signature of only the dimension fields that drive mold search
+  const moldSearchSig = (() => {
+    if (productType !== '挤出' || !standardCategory) return '';
+    const dimFields = CATEGORY_DIM_FIELDS[standardCategory];
+    if (!dimFields) return '';
+    const parts: string[] = [standardCategory];
+    for (const df of dimFields) {
+      const k = df.key === 'diameter' || df.key === 'hex' ? 'width' : df.key;
+      parts.push(`${k}=${fieldsRef.current[k] ?? ''}`);
+    }
+    if (standardCategory === '异型材') parts.push(`perimeter=${fieldsRef.current.perimeter ?? ''}`);
+    return parts.join('|');
+  })();
+
+  useEffect(() => {
     if (productType !== '挤出' || !standardCategory) return;
+    if (suppressMoldMatch.current) { suppressMoldMatch.current = false; return; }
     const dimFields = CATEGORY_DIM_FIELDS[standardCategory];
     if (!dimFields) return;
 
-    if (suppressMoldMatch.current) { suppressMoldMatch.current = false; return; }
     if (moldMatchTimer.current) clearTimeout(moldMatchTimer.current);
     moldMatchTimer.current = setTimeout(async () => {
+      const cur = fieldsRef.current;
       const params = new URLSearchParams({ category: standardCategory });
       let hasInput = false;
       for (const df of dimFields) {
-        const val = fields[df.key === 'diameter' ? 'width' : df.key === 'hex' ? 'width' : df.key] as number;
+        const k = df.key === 'diameter' || df.key === 'hex' ? 'width' : df.key;
+        const val = cur[k] as number;
         if (val && val > 0) {
           const apiKey = df.key === 'diameter' ? 'diameter' : df.key === 'hex' ? 'hex' : df.key;
           params.set(apiKey, String(val));
           hasInput = true;
         }
       }
-      if (standardCategory === '异型材' && fields.perimeter) {
-        params.set('perimeter', String(fields.perimeter));
+      if (standardCategory === '异型材' && cur.perimeter) {
+        params.set('perimeter', String(cur.perimeter));
         hasInput = true;
       }
       if (!hasInput) { setMoldMatches([]); setSelectedMoldId(null); setUseExistingMold(null); return; }
@@ -550,7 +568,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         const data = await res.json();
         if (data.success) {
           setMoldMatches(data.matches || []);
-          // Auto-select if exact match (score >= 98)
           const exact = (data.matches || []).find((m: any) => m.match_score >= 98);
           if (exact) {
             suppressMoldMatch.current = true;
@@ -575,12 +592,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         setMoldMatchLoading(false);
       }
     }, 400);
-  }, [productType, standardCategory, fields]);
-
-  // Trigger mold match when relevant fields change
-  useEffect(() => {
-    triggerMoldMatch();
-  }, [triggerMoldMatch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productType, standardCategory, moldSearchSig]);
 
 
   // Reset manual flags when switching to standard mode
