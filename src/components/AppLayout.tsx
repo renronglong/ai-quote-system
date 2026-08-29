@@ -42,11 +42,22 @@ interface NavGroup {
   items: NavItem[];
 }
 
+// 桌面端顶栏平铺入口（游客可见的高频功能）
+const topNav: { label: string; href: string }[] = [
+  { label: '首页', href: '/' },
+  { label: 'AI报价', href: '/quote' },
+  { label: '供应商库', href: '/suppliers' },
+  { label: '铝价行情', href: '/market' },
+  { label: '联系我们', href: '/contact' },
+];
+
+// 移动端汉堡菜单 / 头像下拉 使用
 const navGroups: NavGroup[] = [
   {
-    label: '主功能',
+    label: '功能',
     items: [
       { label: '首页', href: '/', icon: <Home className="w-5 h-5" /> },
+      { label: 'AI报价', href: '/quote', icon: <FileText className="w-5 h-5" /> },
       { label: '产品管理', href: '/products', icon: <Package className="w-5 h-5" /> },
       { label: '库存管理', href: '/inventory', icon: <Box className="w-5 h-5" /> },
       { label: '询价管理', href: '/inquiries', icon: <MessageSquare className="w-5 h-5" /> },
@@ -99,36 +110,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </Link>
           </div>
 
-          {/* 桌面端导航 */}
+          {/* 桌面端导航：平铺高频入口 */}
           <nav className="hidden md:flex items-center gap-1">
-            {navGroups.filter(g => !(g.items[0]?.adminOnly) || user).map((group) => (
-              <div key={group.label} className="relative group">
-                <Button
-                  variant="ghost"
-                  className="text-gray-600 hover:text-gray-900"
-                >
-                  {group.label}
-                  <ChevronDown className="w-4 h-4 ml-1" />
-                </Button>
-                <div className="absolute top-full left-0 pt-1 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
-                  <div className="bg-white rounded-lg shadow-lg border py-1 min-w-[160px]">
-                    {group.items.map((item) => (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        className={`flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50 ${
-                          pathname === item.href
-                            ? 'text-blue-600 bg-blue-50'
-                            : 'text-gray-600'
-                        }`}
-                      >
-                        {item.icon}
-                        {item.label}
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              </div>
+            {topNav.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  pathname === item.href
+                    ? 'text-blue-600 bg-blue-50'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+              >
+                {item.label}
+              </Link>
             ))}
           </nav>
 
@@ -144,19 +139,42 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
             )}
 
-            {/* 桌面端：未登录显示 登录/注册 按钮；已登录显示头像 */}
+            {/* 桌面端：未登录显示 登录/注册 按钮；已登录显示头像+下拉菜单 */}
             {!user ? (
               <div className="hidden md:flex items-center gap-2">
                 <Link href="/login"><Button variant="outline" size="sm">登录</Button></Link>
                 <Link href="/register"><Button size="sm" className="bg-blue-600 hover:bg-blue-700">注册</Button></Link>
               </div>
             ) : (
-              <Avatar className="w-8 h-8 cursor-pointer hidden md:flex">
-                <AvatarImage src="" />
-                <AvatarFallback className="bg-blue-100 text-blue-600">
-                  {(user.phone || 'U').slice(-1)}
-                </AvatarFallback>
-              </Avatar>
+              <div className="relative group hidden md:block">
+                <Avatar className="w-8 h-8 cursor-pointer">
+                  <AvatarImage src="" />
+                  <AvatarFallback className="bg-blue-100 text-blue-600">
+                    {(user.phone || 'U').slice(-1)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="absolute top-full right-0 pt-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                  <div className="bg-white rounded-lg shadow-lg border py-1 min-w-[180px]">
+                    <div className="px-4 py-2 border-b">
+                      <p className="text-sm font-medium text-gray-900">{user.company_name || '已登录用户'}</p>
+                      <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                        <Coins className="w-3.5 h-3.5 text-amber-600" />{credits.toFixed(0)} 积分
+                      </p>
+                    </div>
+                    <Link href="/history" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><History className="w-4 h-4" />报价历史</Link>
+                    <Link href="/products" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><Package className="w-4 h-4" />产品管理</Link>
+                    <Link href="/inquiries" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><MessageSquare className="w-4 h-4" />询价管理</Link>
+                    <Link href="/supplier" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><Handshake className="w-4 h-4" />供应商工作台</Link>
+                    <div className="h-px bg-gray-100 my-1" />
+                    <Link href="/admin/tasks" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><FileText className="w-4 h-4" />任务管理</Link>
+                    <Link href="/admin/users" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><Users className="w-4 h-4" />用户管理</Link>
+                    <div className="h-px bg-gray-100 my-1" />
+                    <button onClick={() => signOut()} className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50">
+                      <LogOut className="w-4 h-4" />退出登录
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* 移动端菜单 */}
