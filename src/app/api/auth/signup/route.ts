@@ -118,12 +118,14 @@ export async function POST(request: Request) {
     }
 
     // 注册赠送积分
-    await changeCredits(supabase, data.id, SIGNUP_BONUS_CREDITS, 'recharge', '注册赠送积分');
-
-    // 邀请奖励：新用户+邀请人各加积分
-    if (insertData.invited_by) {
-      await changeCredits(supabase, data.id, REFERRAL_BONUS_CREDITS, 'recharge', '受邀注册奖励积分');
-      await changeCredits(supabase, insertData.invited_by as string, REFERRAL_BONUS_CREDITS, 'recharge', '邀请好友注册奖励积分');
+    try {
+      await changeCredits(supabase, data.id, SIGNUP_BONUS_CREDITS, 'recharge', '注册赠送积分');
+      if (insertData.invited_by) {
+        await changeCredits(supabase, data.id, REFERRAL_BONUS_CREDITS, 'recharge', '受邀注册奖励积分');
+        await changeCredits(supabase, insertData.invited_by as string, REFERRAL_BONUS_CREDITS, 'recharge', '邀请好友注册奖励积分');
+      }
+    } catch (creditErr) {
+      console.error('[Signup] 积分发放失败:', creditErr);
     }
 
     return NextResponse.json({ success: true, user: { id: data.id, phone: data.phone, email: data.email || '' } });
