@@ -429,8 +429,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [moldMatchLoading, setMoldMatchLoading] = useState(false);
   const [selectedMoldId, setSelectedMoldId] = useState<string | null>(null);
   const [useExistingMold, setUseExistingMold] = useState<boolean | null>(null); // null=未选择, true=现有, false=新开
-  const moldMatchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const suppressMoldMatch = useRef(false);
 
   // Parse cross_section_mm into dimension field values based on category
   const parseMoldDimensions = (category: string, cs: string): Record<string, number> => {
@@ -540,98 +538,51 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     }));
   };
 
-  // Debounced mold matching when dimensions change in standard mode
-  // Build a signature of only the dimension fields that drive mold search
-  const moldSearchSig = (() => {
-    if (productType !== '挤出' || !standardCategory) return '';
-    const dimFields = CATEGORY_DIM_FIELDS[standardCategory];
-    if (!dimFields) return '';
-    const parts: string[] = [standardCategory];
-    const sigFieldMap: Record<string, string> = { diameter: 'width', hex: 'width', outer: 'width', inner: 'height' };
-    for (const df of dimFields) {
-      const k = sigFieldMap[df.key] || df.key;
-      parts.push(`${k}=${fieldsRef.current[k] ?? ''}`);
-    }
-    if (standardCategory === '异型材') {
-      parts.push(`perimeter=${fieldsRef.current.perimeter ?? ''}`);
-      parts.push(`meterWeight=${fieldsRef.current.meterWeight ?? ''}`);
-      parts.push(`die_type=${fieldsRef.current.die_type ?? ''}`);
-    }
-    return parts.join('|');
-  })();
-
-  useEffect(() => {
+  // 手动触发模具匹配（用户点击搜索按钮才搜索，不自动触发）
+  const runMoldSearch = async () => {
     if (productType !== '挤出' || !standardCategory) return;
-    if (suppressMoldMatch.current) { suppressMoldMatch.current = false; return; }
     const dimFields = CATEGORY_DIM_FIELDS[standardCategory];
     if (!dimFields) return;
+    const cur = fieldsRef.current;
+    // 异型材必须先选模具类型再搜索
+    if (standardCategory === '异型材' && !cur.die_type) return;
+    const dimFieldMap: Record<string, string> = { diameter: 'width', hex: 'width', outer: 'width', inner: 'height' };
+    const params = new URLSearchParams({ category: standardCategory });
+    let hasInput = false;
+    for (const df of dimFields) {
+      const stateKey = dimFieldMap[df.key] || df.key;
+      const val = cur[stateKey] as number;
+      if (val && val > 0) {
+        params.set(df.key, String(val));
+        hasInput = true;
+      }
+    }
+    if (standardCategory === '异型材') {
+      if (cur.width) { params.set('width', String(cur.width)); hasInput = true; }
+      if (cur.height) { params.set('height', String(cur.height)); hasInput = true; }
+      if (cur.meterWeight) { params.set('meter_weight', String(cur.meterWeight)); hasInput = true; }
+      if (cur.perimeter) { params.set('perimeter', String(cur.perimeter)); hasInput = true; }
+      if (cur.die_type) params.set('die_type', cur.die_type as string);
+    } else if (cur.perimeter) {
+      params.set('perimeter', String(cur.perimeter));
+    }
+    if (!hasInput) { setMoldMatches([]); setSelectedMoldId(null); setUseExistingMold(null); return; }
 
-    if (moldMatchTimer.current) clearTimeout(moldMatchTimer.current);
-    moldMatchTimer.current = setTimeout(async () => {
-      const cur = fieldsRef.current;
-      // 异型材必须先选模具类型再搜索
-      if (standardCategory === '异型材' && !cur.die_type) {
-        setMoldMatches([]);
-        setSelectedMoldId(null);
-        setUseExistingMold(null);
-        return;
+    setMoldMatchLoading(true);
+    setSelectedMoldId(null);
+    setUseExistingMold(null);
+    try {
+      const res = await fetch(`/api/mold-match?${params.toString()}`);
+      const data = await res.json();
+      if (data.success) {
+        setMoldMatches(data.matches || []);
       }
-      const dimFieldMap: Record<string, string> = { diameter: 'width', hex: 'width', outer: 'width', inner: 'height' };
-      const params = new URLSearchParams({ category: standardCategory });
-      let hasInput = false;
-      for (const df of dimFields) {
-        const stateKey = dimFieldMap[df.key] || df.key;
-        const val = cur[stateKey] as number;
-        if (val && val > 0) {
-          params.set(df.key, String(val));
-          hasInput = true;
-        }
-      }
-      if (standardCategory === '异型材') {
-        if (cur.width) { params.set('width', String(cur.width)); hasInput = true; }
-        if (cur.height) { params.set('height', String(cur.height)); hasInput = true; }
-        if (cur.meterWeight) { params.set('meter_weight', String(cur.meterWeight)); hasInput = true; }
-        if (cur.perimeter) { params.set('perimeter', String(cur.perimeter)); hasInput = true; }
-        if (cur.die_type) params.set('die_type', cur.die_type as string);
-      } else if (cur.perimeter) {
-        params.set('perimeter', String(cur.perimeter));
-      }
-      if (!hasInput) { setMoldMatches([]); setSelectedMoldId(null); setUseExistingMold(null); return; }
-
-      setMoldMatchLoading(true);
-      try {
-        const res = await fetch(`/api/mold-match?${params.toString()}`);
-        const data = await res.json();
-        if (data.success) {
-          setMoldMatches(data.matches || []);
-          const exact = (data.matches || []).find((m: any) => m.match_score >= 98);
-          if (exact) {
-            suppressMoldMatch.current = true;
-            setSelectedMoldId(exact.id);
-            setUseExistingMold(true);
-            const dims = parseMoldDimensions(standardCategory, exact.cross_section_mm);
-            setFields(prev => ({
-              ...prev,
-              ...dims,
-              die_type: exact.mold_type === '分流模' ? 'split' : 'flat',
-              perimeter: exact.perimeter || prev.perimeter,
-              meterWeight: exact.weight_per_meter || prev.meterWeight,
-            }));
-            if (exact.perimeter) setPerimeterManual(true);
-            if (exact.weight_per_meter) setMeterWeightManual(true);
-          } else {
-            setSelectedMoldId(null);
-            setUseExistingMold(null);
-          }
-        }
-      } catch (e) {
-        console.error('Mold match failed:', e);
-      } finally {
-        setMoldMatchLoading(false);
-      }
-    }, 400);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productType, standardCategory, moldSearchSig]);
+    } catch (e) {
+      console.error('Mold match failed:', e);
+    } finally {
+      setMoldMatchLoading(false);
+    }
+  };
 
 
   // Reset manual flags when switching to standard mode
@@ -1725,7 +1676,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           return (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
               <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
-                输入尺寸 · 自动匹配现有模具
+                输入尺寸 · 填完点按钮匹配模具
               </label>
               {CATEGORY_NEEDS_DIE_SELECTION.includes(standardCategory) && (
                 <div className="mb-2">
@@ -1751,7 +1702,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 </div>
               )}
               {CATEGORY_NEEDS_DIE_SELECTION.includes(standardCategory) && !fields.die_type && (
-                <div className="mb-2 text-[11px] text-amber-500">请先选择模具类型，再输入尺寸匹配</div>
+                <div className="mb-2 text-[11px] text-amber-500">请先选择模具类型，再点搜索按钮</div>
               )}
               <div className={`grid ${dimFields.length >= 3 ? 'grid-cols-3' : dimFields.length === 2 ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
                 {dimFields.map(df => {
@@ -1771,6 +1722,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                           setFields(prev => ({ ...prev, [stateKey]: val }));
                           setSelectedMoldId(null);
                           setUseExistingMold(null);
+                          setMoldMatches([]);
                           setPerimeterManual(false);
                           setMeterWeightManual(false);
                         }}
@@ -1782,11 +1734,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               </div>
 
               {/* 模具匹配结果 */}
-              {moldMatchLoading && (
-                <div className="mt-2 text-center text-[11px] text-gray-400 py-2">
-                  <span className="inline-block animate-spin mr-1">⟳</span> 正在匹配现有模具...
-                </div>
-              )}
+              <button
+                type="button"
+                onClick={runMoldSearch}
+                disabled={moldMatchLoading || (CATEGORY_NEEDS_DIE_SELECTION.includes(standardCategory) && !fields.die_type)}
+                className="mt-2 w-full px-3 py-2 rounded-lg text-xs font-medium bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5"
+              >
+                {moldMatchLoading ? (<><span className="inline-block animate-spin">⟳</span> 正在匹配现有模具...</>) : (<>🔍 搜索现有模具</>)}
+              </button>
 
               {!moldMatchLoading && moldMatches.length > 0 && !(selectedMoldId && useExistingMold) && (
                 <div className="mt-2 space-y-1.5">
@@ -1800,8 +1755,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                         key={m.id}
                         type="button"
                         onClick={() => {
-                          suppressMoldMatch.current = true;
-                          if (moldMatchTimer.current) clearTimeout(moldMatchTimer.current);
                           setSelectedMoldId(m.id);
                           setUseExistingMold(true);
                           const dims = parseMoldDimensions(standardCategory, m.cross_section_mm);
@@ -1867,7 +1820,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     </button>
                     <button
                       type="button"
-                      onClick={() => { suppressMoldMatch.current = true; if (moldMatchTimer.current) clearTimeout(moldMatchTimer.current); setUseExistingMold(false); setSelectedMoldId(null); }}
+                      onClick={() => { setUseExistingMold(false); setSelectedMoldId(null); }}
                       className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${
                         useExistingMold === false
                           ? 'bg-orange-50 border-orange-300 text-orange-700'
