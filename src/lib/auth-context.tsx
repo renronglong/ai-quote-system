@@ -30,6 +30,7 @@ interface AuthContextType {
   checkQuota: () => Promise<void>;
   referralCode: string | null;
   referralLink: string;
+  ensureReferralLink: () => Promise<string>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -180,8 +181,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ? `${typeof window !== 'undefined' ? window.location.origin : 'https://www.gyparts.cn'}/register?ref=${referralCode}`
     : '';
 
+  // 兜底：老用户没有推荐码时调用接口生成，并同步更新当前会话
+  const ensureReferralLink = async (): Promise<string> => {
+    if (referralCode) return referralLink;
+    if (!user) return '';
+    try {
+      const resp = await fetch('/api/auth/referral-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user.id }),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.referral_code) {
+        setReferralCode(data.referral_code);
+        // 同步进 localStorage 会话，刷新后不丢失
+        try {
+          const saved = localStorage.getItem('custom_session');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed.user) {
+              parsed.user.referral_code = data.referral_code;
+              localStorage.setItem('custom_session', JSON.stringify(parsed));
+            }
+          }
+        } catch { /* ignore */ }
+        return data.referral_link || '';
+      }
+    } catch { /* ignore */ }
+    return '';
+  };
+
   return (
-    <AuthContext.Provider value={{ user, session, loading, signIn, signUp, signOut, resetPassword, quota, checkQuota, referralCode, referralLink }}>
+    <AuthContext.Provider value={{ user, session, loading, signIn, signUp, signOut, resetPassword, quota, checkQuota, referralCode, referralLink, ensureReferralLink }}>
       {children}
     </AuthContext.Provider>
   );
