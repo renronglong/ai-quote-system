@@ -115,7 +115,7 @@ export default function HomePage() {
           {/* 底部说明 */}
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 py-2 text-xs text-gray-400">
             <span className="flex items-center gap-1"><Zap className="w-3.5 h-3.5" />报价无需注册</span>
-            <span className="flex items-center gap-1"><Sparkles className="w-3.5 h-3.5" />注册送 100 积分，图纸AI识别自动填尺寸</span>
+            <Link href="/register" className="flex items-center gap-1 hover:text-blue-600 transition-colors"><Sparkles className="w-3.5 h-3.5" />注册送 100 积分，图纸AI识别自动填尺寸</Link>
             <span className="flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5" />数据仅用于报价计算</span>
           </div>
         </div>
