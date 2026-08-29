@@ -185,7 +185,7 @@ export default function RegisterPage() {
             <CardDescription className="text-center">
               {inviterCode && (
                 <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 text-sm mb-4">
-                  🎉 您通过好友邀请注册，将获得额外识别额度！
+                  🎉 您通过好友邀请注册，双方各得 100 积分奖励！
                 </div>
               )}
               {step === 'form' ? '输入手机号和密码创建账号' : '输入收到的验证码完成注册'}
