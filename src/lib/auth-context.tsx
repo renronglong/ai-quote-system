@@ -6,10 +6,9 @@ import { supabase } from './supabase-browser';
 
 // Extended user info including custom fields from the users table
 export interface RecognitionQuota {
-  used: number;
-  bonus: number;
+  balance: number;
   remaining: number;
-  daily_limit: number;
+  cost_per_recognition: number;
 }
 
 export interface ExtendedUser extends User {
@@ -48,7 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const resp = await fetch(`/api/recognize-quota?userId=${user.id}`);
       if (resp.ok) {
         const data = await resp.json();
-        setQuota({ used: data.used, bonus: data.bonus, remaining: data.remaining, daily_limit: data.daily_limit });
+        setQuota({ balance: data.balance ?? 0, remaining: data.remaining ?? 0, cost_per_recognition: data.cost_per_recognition ?? 10 });
       }
     } catch { /* ignore */ }
   }, [user]);
