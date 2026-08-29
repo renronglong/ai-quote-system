@@ -23,6 +23,14 @@ export default function RegisterPage() {
   const [countdown, setCountdown] = useState(0);
   const [sending, setSending] = useState(false);
   const [step, setStep] = useState<'form' | 'verify'>('form');
+  // 邀请码
+  const [inviterCode, setInviterCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    if (ref) setInviterCode(ref);
+  }, []);
   // TODO: 上线前删除测试账号相关逻辑
   const [devCode, setDevCode] = useState<string | null>(null);
 
@@ -123,7 +131,7 @@ export default function RegisterPage() {
       const response = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, password, verifyCode, email }),
+        body: JSON.stringify({ phone, password, verifyCode, email, referralCode: inviterCode }),
       });
 
       const data = await response.json();
@@ -175,6 +183,11 @@ export default function RegisterPage() {
           <CardHeader className="space-y-1 pb-4">
             <CardTitle className="text-xl text-center text-slate-800">用户注册</CardTitle>
             <CardDescription className="text-center">
+              {inviterCode && (
+                <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 text-sm mb-4">
+                  🎉 您通过好友邀请注册，将获得额外识别额度！
+                </div>
+              )}
               {step === 'form' ? '输入手机号和密码创建账号' : '输入收到的验证码完成注册'}
             </CardDescription>
           </CardHeader>

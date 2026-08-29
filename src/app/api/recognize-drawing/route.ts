@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
@@ -96,6 +97,38 @@ function autoComputeGeometry(params: Record<string, unknown>): Record<string, un
 
 export async function POST(request: NextRequest) {
   try {
+    // ===== 登录 + 额度校验 =====
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get("userId");
+    if (!userId) {
+      return NextResponse.json({ error: "请先登录后再使用图纸识别" }, { status: 401 });
+    }
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://jotgxnhueagbsvfeepic.supabase.co";
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const DAILY_LIMIT = 10;
+    const today = new Date().toISOString().split("T")[0];
+
+    const { data: usage } = await supabase
+      .from("recognition_usage")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("date", today)
+      .maybeSingle();
+
+    const used = usage?.used_count || 0;
+    const bonus = usage?.bonus_count || 0;
+    const remaining = Math.max(0, DAILY_LIMIT + bonus - used);
+
+    if (remaining <= 0) {
+      return NextResponse.json({ error: "今日识别次数已用完", quotaExceeded: true }, { status: 429 });
+    }
+    // ===== 登录+额度校验结束 =====
+
     const formData = await request.formData();
     const file = formData.get('file') as File;
     if (!file) {
@@ -241,6 +274,22 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`[Recognize] 最终结果(confidence=${confidence}, autoFill=${canAutoFill}):`, JSON.stringify(result));
+    // ===== 扣减额度 + 记录识别日志 =====
+    await supabase
+      .from("recognition_usage")
+      .upsert(
+        { user_id: userId, date: today, used_count: used + 1, updated_at: new Date().toISOString() },
+        { onConflict: "user_id,date" }
+      );
+
+    await supabase
+      .from("recognition_logs")
+      .insert({
+        user_id: userId,
+        file_name: fileName,
+        ai_result: result,
+      });
+
     return NextResponse.json({ success: true, data: result, autoFill: canAutoFill });
 
   } catch (err) {

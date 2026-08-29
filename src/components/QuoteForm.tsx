@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Upload, FileText, X, Sparkles, Loader2, AlertTriangle, Plus, User, CheckCircle2 } from 'lucide-react';
+import { Upload, FileText, X, Sparkles, Loader2, AlertTriangle, Plus, User, CheckCircle2, Share2 } from 'lucide-react';
+import { useAuth } from '@/lib/auth-context';
 
 // ==================== Types ====================
 
@@ -387,6 +388,12 @@ const ALLOWED_EXTENSIONS = ['.dxf', '.dwg', '.step', '.stp', '.igs', '.pdf', '.j
 // ==================== Component ====================
 
 export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, onBatchResult, aiData }: QuoteFormProps) {
+  // ===== 登录 + 识图额度 =====
+  const { user, quota, checkQuota, referralLink } = useAuth();
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showQuotaModal, setShowQuotaModal] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+
   const [aiSynced, setAiSynced] = useState(false);
   const prevAiDataRef = useRef<AiFormUpdate | null | undefined>(null);
   const [loading, setLoading] = useState(false);
@@ -453,6 +460,33 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [dragOver, setDragOver] = useState(false);
   const [recognizing, setRecognizing] = useState(false);
   const [recogResult, setRecogResult] = useState<Record<string, any> | null>(null);
+  const [recognitionId, setRecognitionId] = useState<string | null>(null);
+
+  // 上报识别反馈：AI识别值 vs 用户最终确认值
+  const reportRecognitionFeedback = useCallback(() => {
+    if (!recognitionId || !recogResult) return;
+    const confirmedValues: Record<string, any> = {};
+    if (fields.width) confirmedValues.width = fields.width;
+    if (fields.height) confirmedValues.height = fields.height;
+    if (fields.length) confirmedValues.length = fields.length;
+    if (fields.thickness) confirmedValues.wall_thickness = fields.thickness;
+    if (fields.quantity) confirmedValues.quantity = fields.quantity;
+    if (fields.meterWeight) confirmedValues.meter_weight = fields.meterWeight;
+    if (fields.perimeter) confirmedValues.perimeter = fields.perimeter;
+    confirmedValues.product_type = productType;
+    confirmedValues.material_category = materialCategory;
+    confirmedValues.surface_treatment = productSurfaceTreatment;
+    fetch("/api/recognize-feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recognition_id: recognitionId,
+        ai_values: recogResult,
+        user_confirmed_values: confirmedValues,
+        user_id: user?.id || null,
+      }),
+    }).catch(() => {});
+  }, [recognitionId, recogResult, fields, productType, materialCategory, productSurfaceTreatment, user]);
   const [recogError, setRecogError] = useState<string | null>(null);
   const [deepQuoteLoading, setDeepQuoteLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1063,6 +1097,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
         if (firstResult) {
           onResult?.(firstResult);
+          reportRecognitionFeedback();
           onBatchResult?.(batchResults);
           if (onCalculate) {
             onCalculate({
@@ -1134,6 +1169,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             min_order_qty: data.min_order_qty || 0,
           };
           onResult?.(result);
+          reportRecognitionFeedback();
           onBatchResult?.([]);
           if (onCalculate) {
             onCalculate({
@@ -1283,6 +1319,18 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
   const recognizeFile = async (file: File) => {
     const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+    // ===== 登录检查 =====
+    if (!user) {
+      setPendingFile(file);
+      setShowLoginModal(true);
+      return;
+    }
+    // ===== 额度检查 =====
+    if (quota && quota.remaining <= 0) {
+      setPendingFile(file);
+      setShowQuotaModal(true);
+      return;
+    }
     if (!AI_RECOG_EXTS.includes(ext)) return; // 3D CAD走原有解析流程
     setRecognizing(true);
     setRecogError(null);
@@ -1296,7 +1344,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       }
       const fd = new FormData();
       fd.append('file', fileToSend);
-      const resp = await fetch('/api/recognize-drawing', { method: 'POST', body: fd });
+      const resp = await fetch('/api/recognize-drawing?userId=' + user!.id, { method: 'POST', body: fd });
       const json = await resp.json();
       if (!resp.ok || !json.success) {
         setRecogError(json.error || '识别失败');
@@ -1304,6 +1352,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       }
       const d = json.data || {};
       setRecogResult(d);
+      checkQuota(); // 刷新额度
+      // 生成识别ID用于后续反馈追踪
+      const rid = "rec_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+      setRecognitionId(rid);
       if (json.autoFill && d.confidence >= 0.75) {
         applyRecogToForm(d);
       }
@@ -2222,6 +2274,62 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             </div>
           )}
         </div>
+
+        {/* ===== 登录提示弹窗 ===== */}
+        {showLoginModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4">
+              <div className="text-center">
+                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <User className="w-6 h-6 text-blue-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">登录后使用图纸识别</h3>
+                <p className="text-sm text-gray-500 mt-2">每日免费识别 10 次，识别结果自动填入报价表</p>
+              </div>
+              <div className="flex gap-3">
+                <a href="/login" className="flex-1 text-center py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition">去登录</a>
+                <a href="/register" className="flex-1 text-center py-2.5 border border-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition">注册</a>
+              </div>
+              <button onClick={() => setShowLoginModal(false)} className="w-full text-center text-sm text-gray-400 hover:text-gray-600">取消</button>
+            </div>
+          </div>
+        )}
+
+        {/* ===== 额度超限弹窗 ===== */}
+        {showQuotaModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4">
+              <div className="text-center">
+                <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <AlertTriangle className="w-6 h-6 text-amber-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">今日识别次数已用完</h3>
+                <p className="text-sm text-gray-500 mt-2">邀请好友注册，每次 +10 次识别额度</p>
+              </div>
+              <div className="space-y-3">
+                <button
+                  onClick={() => {
+                    if (referralLink) {
+                      navigator.clipboard.writeText(referralLink);
+                    }
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition"
+                >
+                  <Share2 className="w-4 h-4" />
+                  复制邀请链接
+                </button>
+                <a
+                  href="/quote"
+                  onClick={() => setShowQuotaModal(false)}
+                  className="w-full text-center py-2.5 border border-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition block"
+                >
+                  申请深度报价
+                </a>
+              </div>
+              <button onClick={() => setShowQuotaModal(false)} className="w-full text-center text-sm text-gray-400 hover:text-gray-600">关闭</button>
+            </div>
+          </div>
+        )}
 
         {/* Loading indicator */}
         {loading && (

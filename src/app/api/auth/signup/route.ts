@@ -23,7 +23,7 @@ function validatePhone(phone: string): boolean {
 
 export async function POST(request: Request) {
   try {
-    const { phone, password, verifyCode, companyName, address, email } = await request.json();
+    const { phone, password, verifyCode, companyName, address, email, referralCode } = await request.json();
 
     // 1. 基础参数校验
     if (!validatePhone(phone)) {
@@ -87,6 +87,24 @@ export async function POST(request: Request) {
     if (companyName && companyName.trim()) insertData.company_name = companyName.trim();
     if (address && address.trim()) insertData.address = address.trim();
 
+    // 生成 8 位推荐码
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 8; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+    insertData.referral_code = code;
+
+    // 处理邀请关系
+    if (referralCode) {
+      const { data: inviter } = await supabase
+        .from('users')
+        .select('id')
+        .eq('referral_code', referralCode)
+        .maybeSingle();
+      if (inviter) {
+        insertData.invited_by = inviter.id;
+      }
+    }
+
     const { data, error } = await supabase
       .from('users')
       .insert(insertData)
@@ -96,6 +114,24 @@ export async function POST(request: Request) {
     if (error) {
       console.error('[Signup] 创建用户失败:', error);
       return NextResponse.json({ error: '注册失败，请稍后重试' }, { status: 500 });
+    }
+
+    // 给邀请人增加识别额度
+    if (referralCode) {
+      const { data: inviter } = await supabase
+        .from("users")
+        .select("id")
+        .eq("referral_code", referralCode)
+        .maybeSingle();
+      if (inviter) {
+        const today = new Date().toISOString().split("T")[0];
+        await supabase
+          .from("recognition_usage")
+          .upsert(
+            { user_id: inviter.id, date: today, bonus_count: 10, updated_at: new Date().toISOString() },
+            { onConflict: "user_id,date" }
+          );
+      }
     }
 
     return NextResponse.json({ success: true, user: { id: data.id, phone: data.phone, email: data.email || '' } });

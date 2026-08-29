@@ -38,6 +38,7 @@ export async function POST(request: Request) {
         phone: userData.phone,
         email: userData.email || '',
         company_name: userData.company_name,
+        referral_code: userData.referral_code,
         address: userData.address,
       },
     });

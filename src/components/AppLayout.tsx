@@ -9,6 +9,7 @@ import {
   SheetContent, 
   SheetTrigger 
 } from '@/components/ui/sheet';
+import { useAuth } from '@/lib/auth-context';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Home,
@@ -70,6 +71,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [credits, setCredits] = useState<number>(0);
+  const { user, signOut } = useAuth();
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -90,7 +92,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
           {/* 桌面端导航 */}
           <nav className="hidden md:flex items-center gap-1">
-            {navGroups.map((group) => (
+            {navGroups.filter(g => !(g.items[0]?.adminOnly) || user).map((group) => (
               <div key={group.label} className="relative group">
                 <Button
                   variant="ghost"
@@ -156,14 +158,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                       </AvatarFallback>
                     </Avatar>
                     <div>
-                      <p className="font-medium text-sm">用户</p>
-                      <p className="text-xs text-gray-500">user@example.com</p>
+                      <p className="font-medium text-sm">{user ? (user.phone || '已登录') : '未登录'}</p>
+                      {user && <p className="text-xs text-gray-500">{user.company_name || user.phone}</p>}
                     </div>
                   </div>
 
                   <div className="h-px bg-gray-200" />
 
-                  {navGroups.map((group) => (
+                  {navGroups.filter(g => !(g.items[0]?.adminOnly) || user).map((group) => (
                     <div key={group.label}>
                       <p className="px-2 text-xs font-medium text-gray-500 uppercase mb-2">
                         {group.label}
@@ -190,10 +192,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
                   <div className="h-px bg-gray-200 mt-auto" />
 
-                  <Button variant="ghost" className="justify-start text-red-600">
-                    <LogOut className="w-4 h-4 mr-2" />
-                    退出登录
-                  </Button>
+                  {user ? (
+                    <Button variant="ghost" className="justify-start text-red-600" onClick={() => signOut()}>
+                      <LogOut className="w-4 h-4 mr-2" />
+                      退出登录
+                    </Button>
+                  ) : (
+                    <div className="flex gap-2 px-3">
+                      <Link href="/login"><Button variant="outline" size="sm">登录</Button></Link>
+                      <Link href="/register"><Button size="sm" className="bg-blue-600 hover:bg-blue-700">注册</Button></Link>
+                    </div>
+                  )}
                 </div>
               </SheetContent>
             </Sheet>
