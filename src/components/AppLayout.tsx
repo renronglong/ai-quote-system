@@ -144,13 +144,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
             )}
 
-            {/* 用户头像 */}
-            <Avatar className="w-8 h-8 cursor-pointer">
-              <AvatarImage src="" />
-              <AvatarFallback className="bg-blue-100 text-blue-600">
-                U
-              </AvatarFallback>
-            </Avatar>
+            {/* 桌面端：未登录显示 登录/注册 按钮；已登录显示头像 */}
+            {!user ? (
+              <div className="hidden md:flex items-center gap-2">
+                <Link href="/login"><Button variant="outline" size="sm">登录</Button></Link>
+                <Link href="/register"><Button size="sm" className="bg-blue-600 hover:bg-blue-700">注册</Button></Link>
+              </div>
+            ) : (
+              <Avatar className="w-8 h-8 cursor-pointer hidden md:flex">
+                <AvatarImage src="" />
+                <AvatarFallback className="bg-blue-100 text-blue-600">
+                  {(user.phone || 'U').slice(-1)}
+                </AvatarFallback>
+              </Avatar>
+            )}
 
             {/* 移动端菜单 */}
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
