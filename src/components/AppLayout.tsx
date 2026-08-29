@@ -10,6 +10,7 @@ import {
   SheetTrigger 
 } from '@/components/ui/sheet';
 import { useAuth } from '@/lib/auth-context';
+import TopNavLinks from '@/components/TopNav';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Home,
@@ -42,14 +43,7 @@ interface NavGroup {
   items: NavItem[];
 }
 
-// 桌面端顶栏平铺入口（游客可见的高频功能）
-const topNav: { label: string; href: string }[] = [
-  { label: '首页', href: '/' },
-  { label: 'AI报价', href: '/quote' },
-  { label: '供应商库', href: '/suppliers' },
-  { label: '铝价行情', href: '/market' },
-  { label: '联系我们', href: '/contact' },
-];
+
 
 // 移动端汉堡菜单 / 头像下拉 使用
 const navGroups: NavGroup[] = [
@@ -111,22 +105,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </Link>
           </div>
 
-          {/* 桌面端导航：平铺高频入口 */}
-          <nav className="hidden md:flex items-center gap-1">
-            {topNav.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  pathname === item.href
-                    ? 'text-blue-600 bg-blue-50'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+          {/* 桌面端导航：全站统一平铺入口 */}
+          <div className="hidden lg:block">
+            <TopNavLinks />
+          </div>
 
           {/* 右侧操作区 */}
           <div className="flex items-center gap-3">
