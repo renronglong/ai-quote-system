@@ -1362,9 +1362,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const d = json.data || {};
       setRecogResult(d);
       checkQuota(); // 刷新额度
-      // 生成识别ID用于后续反馈追踪
-      const rid = "rec_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
-      setRecognitionId(rid);
+      // 识别ID用于后续反馈追踪（优先用服务端日志ID）
+      setRecognitionId(json.recognition_id || ("rec_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8)));
       if (json.autoFill && d.confidence >= 0.75) {
         applyRecogToForm(d);
       }
@@ -2293,7 +2292,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   <User className="w-6 h-6 text-blue-600" />
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900">登录后使用图纸识别</h3>
-                <p className="text-sm text-gray-500 mt-2">每日免费识别 10 次，识别结果自动填入报价表</p>
+                <p className="text-sm text-gray-500 mt-2">注册即送 100 积分，图纸识别自动填入报价表</p>
               </div>
               <div className="flex gap-3">
                 <a href="/login" className="flex-1 text-center py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition">去登录</a>
@@ -2312,8 +2311,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
                   <AlertTriangle className="w-6 h-6 text-amber-600" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900">今日识别次数已用完</h3>
-                <p className="text-sm text-gray-500 mt-2">邀请好友注册，每次 +10 次识别额度</p>
+                <h3 className="text-lg font-semibold text-gray-900">积分不足</h3>
+                <p className="text-sm text-gray-500 mt-2">图纸识别每次消耗 10 积分。邀请好友注册，双方各得 100 积分</p>
               </div>
               <div className="space-y-3">
                 <button
