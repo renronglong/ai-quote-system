@@ -118,17 +118,20 @@ export async function POST(request: Request) {
     }
 
     // 注册赠送积分
+    let creditDebug: unknown = null;
     try {
-      await changeCredits(supabase, data.id, SIGNUP_BONUS_CREDITS, 'recharge', '注册赠送积分');
+      const r1 = await changeCredits(supabase, data.id, SIGNUP_BONUS_CREDITS, 'recharge', '注册赠送积分');
+      creditDebug = { signup_bonus: r1 };
       if (insertData.invited_by) {
-        await changeCredits(supabase, data.id, REFERRAL_BONUS_CREDITS, 'recharge', '受邀注册奖励积分');
-        await changeCredits(supabase, insertData.invited_by as string, REFERRAL_BONUS_CREDITS, 'recharge', '邀请好友注册奖励积分');
+        const r2 = await changeCredits(supabase, data.id, REFERRAL_BONUS_CREDITS, 'recharge', '受邀注册奖励积分');
+        const r3 = await changeCredits(supabase, insertData.invited_by as string, REFERRAL_BONUS_CREDITS, 'recharge', '邀请好友注册奖励积分');
+        creditDebug = { signup_bonus: r1, invitee_bonus: r2, inviter_bonus: r3 };
       }
     } catch (creditErr) {
-      console.error('[Signup] 积分发放失败:', creditErr);
+      creditDebug = { error: creditErr instanceof Error ? creditErr.message : String(creditErr) };
     }
 
-    return NextResponse.json({ success: true, user: { id: data.id, phone: data.phone, email: data.email || '' } });
+    return NextResponse.json({ success: true, user: { id: data.id, phone: data.phone, email: data.email || '' }, creditDebug });
   } catch (err) {
     console.error('[Signup] 注册异常:', err);
     return NextResponse.json({ error: '服务器错误' }, { status: 500 });
