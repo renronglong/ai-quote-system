@@ -317,7 +317,7 @@ const FIELD_LABELS: Record<string, string> = {
   width: '截面宽度(mm)',
   height: '截面高度(mm)',
   length: '长度(mm)',
-  perimeter: '产品周长(mm)',
+  perimeter: '外周长(mm)',
   num_cavities: '面域数',
   die_type: '模具类型',
   thickness: '厚度(mm)',
@@ -352,7 +352,7 @@ const CATEGORY_DIM_FIELDS: Record<string, { key: string; label: string; placehol
     { key: 'width', label: '宽度(mm)', placeholder: '如 30' },
     { key: 'height', label: '高度(mm)', placeholder: '如 15' },
     { key: 'meterWeight', label: '米重(kg/m)', placeholder: '如 0.5' },
-    { key: 'perimeter', label: '周长(mm)', placeholder: '如 100' },
+    { key: 'perimeter', label: '外周长(mm)', placeholder: '如 100（只算外轮廓）' },
   ],
   // 异型材需要额外选择模具类型
 };
@@ -921,6 +921,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         width_mm: width || 0,
         height_mm: height || undefined,
         perimeter_mm: (fields.perimeter as number) || undefined,
+        inner_perimeter_mm: (fields.innerPerimeter as number) || undefined,
         num_cavities: parseInt(fields.num_cavities as string) || 1,
         die_type: (fields.die_type as 'flat' | 'split') || 'flat',
         meter_weight_kg_per_m: (fields.meterWeight as number) || undefined,
@@ -945,15 +946,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     const hasBatchVariants = productType === '挤出' && savedVariants.length > 0;
     if (cat) {
       const isStdMode = productType === '挤出';
-      const requiredDims = isStdMode
-        ? ['length']
-        : cat.fields.filter(f => ['width', 'height', 'length', 'thickness', 'productSize'].includes(f));
-      // In batch mode with saved variants, length in current form is optional
-      const dimsToCheck = hasBatchVariants ? requiredDims.filter(f => f !== 'length') : requiredDims;
-      const allFilled = dimsToCheck.every(f => {
-        const val = fields[f];
-        return val !== '' && val !== undefined && val !== null && Number(val) > 0;
-      });
+      // 挤出模式：长度非必填（模具费只看截面，无长度也能算）；只要有截面参数（宽/高/米重/外周长任一）即可计算
+      const allFilled = isStdMode
+        ? !!(fields.width || fields.height || fields.meterWeight || fields.perimeter)
+        : cat.fields.filter(f => ['width', 'height', 'length', 'thickness', 'productSize'].includes(f)).every(f => {
+            const val = fields[f];
+            return val !== '' && val !== undefined && val !== null && Number(val) > 0;
+          });
       if (!allFilled) {
         onResult?.(null);
         return;
@@ -1199,8 +1198,16 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       if (typeof d.height === 'number') next.height = d.height;
       if (typeof d.length === 'number') next.length = d.length;
       if (typeof d.perimeter === 'number') next.perimeter = d.perimeter;
+      if (typeof d.inner_perimeter === 'number') next.innerPerimeter = d.inner_perimeter;
       if (typeof d.num_cavities === 'number') next.num_cavities = d.num_cavities;
-      if (d.die_type === 'flat' || d.die_type === 'split') next.die_type = d.die_type;
+      // 模具类型兼容英文/中文/中空描述
+      const dt = String(d.die_type || '').toLowerCase();
+      if (d.die_type === 'flat' || dt === 'flat' || d.die_type === '平模') next.die_type = 'flat';
+      else if (d.die_type === 'split' || dt === 'split' || d.die_type === '分流模' || d.die_type === '中空') next.die_type = 'split';
+      // 按内腔数兜底：有内腔=分流模，实心=平模
+      if (typeof d.num_cavities === 'number' && !next.die_type) {
+        next.die_type = d.num_cavities >= 1 ? 'split' : 'flat';
+      }
       if (typeof d.meter_weight === 'number') next.meterWeight = d.meter_weight;
       if (typeof d.quantity === 'number') next.quantity = d.quantity;
       if (typeof d.wall_thickness === 'number') next.thickness = d.wall_thickness;
@@ -1219,6 +1226,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         return { name: p.trim() };
       }).filter((p: ProcessSelection) => p.name);
       if (procs.length > 0) setProcesses(procs);
+    }
+    // AI识别出型材细分类别时自动跳转（铝圆管/铝六角管/异型材等）
+    if (d.profile_category) {
+      const VALID_CATS = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管', '异型材'];
+      if (VALID_CATS.includes(d.profile_category)) {
+        setStandardCategory(d.profile_category);
+        resetProfileState();
+      }
     }
     // 备注/说明
     if (d.notes) setFileRemark(prev => prev ? prev + '; ' + d.notes : d.notes);
@@ -1648,7 +1663,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   <button
                     key={cat.key}
                     type="button"
-                    onClick={() => { setStandardCategory(cat.key); resetProfileState(); setFields(prev => ({ ...prev, die_type: CATEGORY_NEEDS_DIE_SELECTION.includes(cat.key) ? '' : (cat.mold_type === '分流模' ? 'split' : 'flat') })); }}
+                    onClick={() => { setStandardCategory(cat.key); resetProfileState(); setFields(prev => ({ ...prev, die_type: CATEGORY_NEEDS_DIE_SELECTION.includes(cat.key) ? (prev.die_type || '') : (cat.mold_type === '分流模' ? 'split' : 'flat') })); }}
                     className={`px-2.5 py-1.5 rounded-lg border text-xs transition-all duration-200 ${
                       standardCategory === cat.key
                         ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
@@ -2171,7 +2186,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 {recogResult.height != null && <div>高: <b>{recogResult.height}mm</b></div>}
                 {recogResult.wall_thickness != null && <div>壁厚: <b>{recogResult.wall_thickness}mm</b></div>}
                 {recogResult.length != null && <div>长: <b>{recogResult.length}mm</b></div>}
-                {recogResult.perimeter != null && <div>周长: <b>{recogResult.perimeter}mm</b></div>}
+                {recogResult.perimeter != null && <div>外周长: <b>{recogResult.perimeter}mm</b></div>}
+                {recogResult.inner_perimeter != null && <div>内周长: <b>{recogResult.inner_perimeter}mm</b></div>}
                 {recogResult.meter_weight != null && <div>米重: <b>{recogResult.meter_weight}kg/m</b></div>}
                 {recogResult.num_cavities != null && <div>面域: <b>{recogResult.num_cavities}</b></div>}
                 {recogResult.material_grade && <div className="col-span-2">材质: <b>{recogResult.material_grade}</b></div>}
