@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getCreditsBalance, changeCredits, RECOGNIZE_COST_CREDITS } from '@/lib/credits';
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
@@ -110,24 +111,12 @@ export async function POST(request: NextRequest) {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const DAILY_LIMIT = 10;
-    const today = new Date().toISOString().split("T")[0];
-
-    const { data: usage } = await supabase
-      .from("recognition_usage")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("date", today)
-      .maybeSingle();
-
-    const used = usage?.used_count || 0;
-    const bonus = usage?.bonus_count || 0;
-    const remaining = Math.max(0, DAILY_LIMIT + bonus - used);
-
-    if (remaining <= 0) {
-      return NextResponse.json({ error: "今日识别次数已用完", quotaExceeded: true }, { status: 429 });
+    // ===== 积分校验（图纸识别消耗积分）=====
+    const balanceBefore = await getCreditsBalance(supabase, userId);
+    if (balanceBefore < RECOGNIZE_COST_CREDITS) {
+      return NextResponse.json({ error: "积分余额不足", quotaExceeded: true }, { status: 429 });
     }
-    // ===== 登录+额度校验结束 =====
+    // ===== 登录+积分校验结束 =====
 
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -274,23 +263,20 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`[Recognize] 最终结果(confidence=${confidence}, autoFill=${canAutoFill}):`, JSON.stringify(result));
-    // ===== 扣减额度 + 记录识别日志 =====
-    await supabase
-      .from("recognition_usage")
-      .upsert(
-        { user_id: userId, date: today, used_count: used + 1, updated_at: new Date().toISOString() },
-        { onConflict: "user_id,date" }
-      );
+    // ===== 扣减积分 + 记录识别日志 =====
+    await changeCredits(supabase, userId, RECOGNIZE_COST_CREDITS, 'consume', '图纸AI识别消耗积分');
 
-    await supabase
+    const { data: logData } = await supabase
       .from("recognition_logs")
       .insert({
         user_id: userId,
         file_name: fileName,
         ai_result: result,
-      });
+      })
+      .select('id')
+      .single();
 
-    return NextResponse.json({ success: true, data: result, autoFill: canAutoFill });
+    return NextResponse.json({ success: true, data: result, autoFill: canAutoFill, recognition_id: logData?.id || null, new_balance: balanceBefore - RECOGNIZE_COST_CREDITS });
 
   } catch (err) {
     console.error('[Recognize] 异常:', err);
