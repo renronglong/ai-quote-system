@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import QuoteForm, { PricingResult, BatchVariantResult } from '@/components/QuoteForm';
 import {
   TrendingUp,
@@ -24,6 +25,7 @@ import {
   LogOut,
 } from 'lucide-react';
 import SavedQuotesPanel, { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
+import TopNavLinks from '@/components/TopNav';
 
 interface AiFormUpdate {
   productType?: string;
@@ -266,8 +268,8 @@ export default function QuotePage() {
       {/* 顶部栏 */}
       <header className="shrink-0 bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-[1600px] mx-auto px-4 lg:px-6">
-          <div className="flex items-center justify-between h-12">
-            <div className="flex items-center gap-2.5">
+          <div className="relative flex items-center justify-between h-12">
+            <Link href="/" className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
                 <Factory className="w-4 h-4 text-white" />
               </div>
@@ -275,6 +277,11 @@ export default function QuotePage() {
                 <span className="text-base font-bold text-gray-800">报价计算器</span>
                 <span className="hidden sm:inline text-[10px] text-gray-400">gyparts.cn</span>
               </div>
+            </Link>
+
+            {/* 中间：全站统一导航（桌面端，任意页面可互跳） */}
+            <div className="hidden md:block absolute left-1/2 -translate-x-1/2">
+              <TopNavLinks />
             </div>
 
             <div className="flex items-center gap-2">
