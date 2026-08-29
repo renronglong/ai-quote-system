@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getCreditsBalance, RECOGNIZE_COST_CREDITS } from '@/lib/credits';
 
 export const runtime = 'nodejs';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jotgxnhueagbsvfeepic.supabase.co';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const DAILY_LIMIT = 10; // 每日免费识别次数
+const supabaseServiceKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,28 +20,16 @@ export async function GET(request: NextRequest) {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const today = new Date().toISOString().split('T')[0];
-
-    const { data: usage } = await supabase
-      .from('recognition_usage')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('date', today)
-      .maybeSingle();
-
-    const used = usage?.used_count || 0;
-    const bonus = usage?.bonus_count || 0;
-    const remaining = Math.max(0, DAILY_LIMIT + bonus - used);
+    const balance = await getCreditsBalance(supabase, userId);
 
     return NextResponse.json({
       success: true,
-      used,
-      bonus,
-      remaining,
-      daily_limit: DAILY_LIMIT,
+      balance,
+      remaining: Math.floor(balance / RECOGNIZE_COST_CREDITS),
+      cost_per_recognition: RECOGNIZE_COST_CREDITS,
     });
   } catch (err) {
     console.error('[Quota] 异常:', err);
-    return NextResponse.json({ error: '查询额度失败' }, { status: 500 });
+    return NextResponse.json({ error: '查询积分失败' }, { status: 500 });
   }
 }
