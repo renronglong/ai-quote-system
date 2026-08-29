@@ -626,8 +626,8 @@ function calcExtrusion(
     // 安全米重上限表：key="Φ×H" → 上限值(kg/m)
     const SAFE_METER_WEIGHT_LIMITS: Record<string, number> = {
       '139x55': 1.03, '139x65': 1.20, '139x90': 1.71, '139x110': 1.71,
-      '158x60': 1.33, '158x65': 1.55, '158x120': 2.21, '158x130': 2.21,
-      '178x60': 1.75, '178x130': 2.92,
+      '158x120': 2.21, '158x130': 2.21,
+      '178x130': 2.92,
       '198x130': 3.46, '198x160': 3.46,
       '218x160': 4.24,
       '248x160': 5.37, '248x190': 5.37,
@@ -783,6 +783,10 @@ function calcExtrusion(
     }
     const mgmtRate = getManagementRate(dieThickness);
     moldCost = roundByMagnitude((materialFee + processingFee) * (1 + mgmtRate));
+    // Φ139小模具统一加价10%（市场实际开模价高于公式计算值）
+    if (dieDiameter === 139) {
+      moldCost = roundByMagnitude(moldCost * 1.1);
+    }
 
     const dieTypeMap: Record<string, string> = { flat: '平模', split: '分流模' };
     const dieType = dieTypeMap[dieTypeKey] || '分流模';
@@ -793,6 +797,7 @@ function calcExtrusion(
     } else {
       notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + (${Math.round(baseProcessingFee)}基础 + ${Math.round(perimeterFee)}周长×2×厚度加工(含内外)) × ${(mgmtRate*100).toFixed(0)}%管理费)`);
     }
+    if (dieDiameter === 139) notes.push(`Φ139小模具加价10%: ${Math.round(moldCost / 1.1)}→${moldCost}元`);
     notes.push(`模具费一次性，不计入单件价格`);
 
     breakdown['mold'] = {
