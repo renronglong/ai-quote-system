@@ -116,22 +116,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '注册失败，请稍后重试' }, { status: 500 });
     }
 
-    // 给邀请人增加识别额度
-    if (referralCode) {
-      const { data: inviter } = await supabase
-        .from("users")
-        .select("id")
-        .eq("referral_code", referralCode)
+    // 给邀请人增加识别额度（+10次/人，累加不覆盖）
+    if (insertData.invited_by) {
+      const today = new Date().toISOString().split("T")[0];
+      const { data: inviterUsage } = await supabase
+        .from("recognition_usage")
+        .select("bonus_count")
+        .eq("user_id", insertData.invited_by)
+        .eq("date", today)
         .maybeSingle();
-      if (inviter) {
-        const today = new Date().toISOString().split("T")[0];
-        await supabase
-          .from("recognition_usage")
-          .upsert(
-            { user_id: inviter.id, date: today, bonus_count: 10, updated_at: new Date().toISOString() },
-            { onConflict: "user_id,date" }
-          );
-      }
+      const newBonus = (inviterUsage?.bonus_count || 0) + 10;
+      await supabase
+        .from("recognition_usage")
+        .upsert(
+          { user_id: insertData.invited_by, date: today, bonus_count: newBonus, updated_at: new Date().toISOString() },
+          { onConflict: "user_id,date" }
+        );
     }
 
     return NextResponse.json({ success: true, user: { id: data.id, phone: data.phone, email: data.email || '' } });
