@@ -389,7 +389,7 @@ const ALLOWED_EXTENSIONS = ['.dxf', '.dwg', '.step', '.stp', '.igs', '.pdf', '.j
 
 export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, onBatchResult, aiData }: QuoteFormProps) {
   // ===== 登录 + 识图额度 =====
-  const { user, quota, checkQuota, referralLink } = useAuth();
+  const { user, quota, checkQuota, referralLink, ensureReferralLink } = useAuth();
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showQuotaModal, setShowQuotaModal] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -489,6 +489,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   }, [recognitionId, recogResult, fields, productType, materialCategory, productSurfaceTreatment, user]);
   const [recogError, setRecogError] = useState<string | null>(null);
   const [deepQuoteLoading, setDeepQuoteLoading] = useState(false);
+  const [copiedInvite, setCopiedInvite] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Get current config
@@ -2316,23 +2317,43 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               </div>
               <div className="space-y-3">
                 <button
-                  onClick={() => {
-                    if (referralLink) {
-                      navigator.clipboard.writeText(referralLink);
+                  onClick={async () => {
+                    const link = await ensureReferralLink();
+                    if (!link) return;
+                    try {
+                      await navigator.clipboard.writeText(link);
+                    } catch {
+                      // 非 HTTPS 或旧浏览器兜底
+                      const ta = document.createElement('textarea');
+                      ta.value = link;
+                      ta.style.position = 'fixed';
+                      ta.style.opacity = '0';
+                      document.body.appendChild(ta);
+                      ta.select();
+                      try { document.execCommand('copy'); } catch { /* ignore */ }
+                      document.body.removeChild(ta);
                     }
+                    setCopiedInvite(true);
+                    setTimeout(() => setCopiedInvite(false), 2000);
                   }}
                   className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition"
                 >
                   <Share2 className="w-4 h-4" />
-                  复制邀请链接
+                  {copiedInvite ? '已复制，去发给好友吧' : '复制邀请链接'}
                 </button>
-                <a
-                  href="/quote"
-                  onClick={() => setShowQuotaModal(false)}
-                  className="w-full text-center py-2.5 border border-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition block"
+                <button
+                  onClick={() => {
+                    setShowQuotaModal(false);
+                    if (!uploadedFile) {
+                      setRecogError('请先上传图纸文件，再申请深度报价（工程师人工报价）');
+                      return;
+                    }
+                    requestDeepQuote();
+                  }}
+                  className="w-full text-center py-2.5 border border-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition"
                 >
                   申请深度报价
-                </a>
+                </button>
               </div>
               <button onClick={() => setShowQuotaModal(false)} className="w-full text-center text-sm text-gray-400 hover:text-gray-600">关闭</button>
             </div>
