@@ -11,11 +11,7 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!loading) {
-      if (user) {
-        router.replace('/quote');
-      } else {
-        router.replace('/login');
-      }
+      router.replace('/quote');
     }
   }, [user, loading, router]);
 
