@@ -13,6 +13,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { verifySmsCodeForSignup } from '@/lib/sms-middleware';
+import { changeCredits, SIGNUP_BONUS_CREDITS, REFERRAL_BONUS_CREDITS } from '@/lib/credits';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jotgxnhueagbsvfeepic.supabase.co';
 const supabaseServiceKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -116,22 +117,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '注册失败，请稍后重试' }, { status: 500 });
     }
 
-    // 给邀请人增加识别额度（+10次/人，累加不覆盖）
+    // 注册赠送积分
+    await changeCredits(supabase, data.id, SIGNUP_BONUS_CREDITS, 'recharge', '注册赠送积分');
+
+    // 邀请奖励：新用户+邀请人各加积分
     if (insertData.invited_by) {
-      const today = new Date().toISOString().split("T")[0];
-      const { data: inviterUsage } = await supabase
-        .from("recognition_usage")
-        .select("bonus_count")
-        .eq("user_id", insertData.invited_by)
-        .eq("date", today)
-        .maybeSingle();
-      const newBonus = (inviterUsage?.bonus_count || 0) + 10;
-      await supabase
-        .from("recognition_usage")
-        .upsert(
-          { user_id: insertData.invited_by, date: today, bonus_count: newBonus, updated_at: new Date().toISOString() },
-          { onConflict: "user_id,date" }
-        );
+      await changeCredits(supabase, data.id, REFERRAL_BONUS_CREDITS, 'recharge', '受邀注册奖励积分');
+      await changeCredits(supabase, insertData.invited_by as string, REFERRAL_BONUS_CREDITS, 'recharge', '邀请好友注册奖励积分');
     }
 
     return NextResponse.json({ success: true, user: { id: data.id, phone: data.phone, email: data.email || '' } });
