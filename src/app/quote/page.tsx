@@ -20,6 +20,7 @@ import {
   Percent,
   Store,
   FileText,
+  User,
 } from 'lucide-react';
 import SavedQuotesPanel, { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
 
@@ -51,6 +52,7 @@ export default function QuotePage() {
   const [productInfo, setProductInfo] = useState<{ productName: string; productCode: string }>({ productName: '', productCode: '' });
   const [resultExpanded, setResultExpanded] = useState(true);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [showExportLogin, setShowExportLogin] = useState(false); // 游客导出报价单时弹登录墙
   const [currentParams, setCurrentParams] = useState<Record<string, any> | null>(null);
   const [productDiscount, setProductDiscount] = useState<number>(100); // 产品折扣，100=无折扣
   const [moldDiscount, setMoldDiscount] = useState<number>(100); // 模具费折扣，100=无折扣
@@ -158,8 +160,12 @@ export default function QuotePage() {
   };
 
 
-  // 导出PDF报价单
+  // 导出PDF报价单（游客先弹登录墙，登录后才能出正式报价单）
   const exportQuotePDF = async () => {
+    if (!user) {
+      setShowExportLogin(true);
+      return;
+    }
     if (!pricingResult || !currentParams) return;
     const params = currentParams;
     const qty = params.quantity || 1;
@@ -310,6 +316,27 @@ export default function QuotePage() {
           </div>
         </div>
       </header>
+
+      {/* ===== 游客导出报价单 登录提示弹窗 ===== */}
+      {showExportLogin && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-xl">
+            <div className="text-center">
+              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <User className="w-6 h-6 text-blue-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">登录后生成报价单</h3>
+              <p className="text-sm text-gray-500 mt-2 leading-relaxed">正式报价单需包含您的公司名称与联系方式，登录后可自动生成 PDF 并保存报价记录</p>
+              <p className="text-xs text-blue-600 mt-2">注册即送 100 积分，还能用图纸 AI 识别自动填尺寸</p>
+            </div>
+            <div className="flex gap-3">
+              <a href="/login?redirect=/quote" className="flex-1 text-center py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition">去登录</a>
+              <a href="/register?redirect=/quote" className="flex-1 text-center py-2.5 border border-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition">注册</a>
+            </div>
+            <button onClick={() => setShowExportLogin(false)} className="w-full text-center text-sm text-gray-400 hover:text-gray-600">取消</button>
+          </div>
+        </div>
+      )}
 
       {/* 主内容区 */}
       <main className="flex-1 flex min-h-0 overflow-hidden">
