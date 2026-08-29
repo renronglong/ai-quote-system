@@ -2,17 +2,20 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   TrendingUp,
   TrendingDown,
   Minus,
   Factory,
   RefreshCw,
-  ArrowLeft,
   Loader2,
   Clock,
   AlertCircle,
+  LogOut,
 } from 'lucide-react';
+import { useAuth } from '@/lib/auth-context';
+import TopNavLinks from '@/components/TopNav';
 
 interface PriceItem {
   name: string;
@@ -154,6 +157,9 @@ function SectionBlock({ title, subtitle, items, accent }: {
 }
 
 export default function MarketPage() {
+  const router = useRouter();
+  const { user, loading: authLoading, signOut } = useAuth();
+
   const [data, setData] = useState<MarketData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -227,27 +233,35 @@ export default function MarketPage() {
       {/* 顶部导航 */}
       <header className="bg-white border-b sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Link href="/" className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center">
-                  <Factory className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <span className="text-lg font-bold text-slate-800">工品报价</span>
-                  <span className="hidden sm:inline text-xs ml-1 text-slate-400">gyparts.cn</span>
-                </div>
-              </Link>
+          <div className="relative flex items-center justify-between h-16">
+            <Link href="/" className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center">
+                <Factory className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <span className="text-lg font-bold text-slate-800">工品报价</span>
+                <span className="hidden sm:inline text-xs ml-1 text-slate-400">gyparts.cn</span>
+              </div>
+            </Link>
+            <div className="hidden md:block absolute left-1/2 -translate-x-1/2">
+              <TopNavLinks />
             </div>
-            <nav className="flex items-center gap-4">
-              <Link
-                href="/"
-                className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition-colors"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                返回首页
-              </Link>
-            </nav>
+            <div className="flex items-center gap-3">
+              {authLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+              ) : user ? (
+                <div className="flex items-center gap-2">
+                  <span className="hidden sm:inline text-xs text-gray-500 max-w-[120px] truncate">{user.company_name || user.email || '已登录'}</span>
+                  <button onClick={() => signOut()} className="flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-gray-200 text-gray-500 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-colors">
+                    <LogOut className="w-3 h-3" />退出
+                  </button>
+                </div>
+              ) : (
+                <button onClick={() => router.push('/login?redirect=/market')} className="px-3 py-1.5 text-xs rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors">
+                  登录
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </header>
