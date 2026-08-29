@@ -39,8 +39,19 @@ function parseCrossSection(cs: string): Record<string, number> {
 }
 
 /**
- * Calculate match score between input dimensions and a DB spec.
- * Returns 0-100 where 100 is exact match. Returns 0 if no match possible.
+ * 单维度容差判定：返回差异率(0-1)，超容差返回 null
+ */
+function dimDiff(inputVal: number, specVal: number, tol = 0.15): number | null {
+  if (!inputVal || !specVal) return null; // 任一缺失则该维度不参与判定
+  const diff = Math.abs(inputVal - specVal) / specVal;
+  return diff <= tol ? diff : null;
+}
+
+/**
+ * 渐进式匹配：只按用户填写的参数判定，参数越少结果越多，参数越多越准。
+ * 每个已填参数独立做容差判定（默认±15%），任一超差即淘汰；
+ * 宽/高维度支持互换（宽*高 = 高*宽，型材可旋转90°使用）。
+ * 得分 = 100 - 各维度差异率加权平均×100。
  */
 function calcMatchScore(
   category: string,
@@ -49,115 +60,143 @@ function calcMatchScore(
 ): number {
   const parsed = parseCrossSection(spec.cross_section_mm || '');
 
+  // 圆棒：直径单参数
   if (category === '铝圆棒') {
-    if (!input.diameter || !parsed.diameter) return 0;
-    const diff = Math.abs(input.diameter - parsed.diameter) / parsed.diameter;
-    if (diff > 0.15) return 0;
-    return Math.round((1 - diff) * 100);
+    const d = dimDiff(input.diameter, parsed.diameter);
+    return d === null ? 0 : Math.round((1 - d) * 100);
   }
 
+  // 六角棒：对边距单参数
   if (category === '铝六角棒') {
-    if (!input.hex || !parsed.hex) return 0;
-    const diff = Math.abs(input.hex - parsed.hex) / parsed.hex;
-    if (diff > 0.15) return 0;
-    return Math.round((1 - diff) * 100);
+    const d = dimDiff(input.hex, parsed.hex);
+    return d === null ? 0 : Math.round((1 - d) * 100);
   }
 
+  // 方/扁棒：宽高，支持互换，只填一个也能匹配
   if (category === '铝方/扁棒') {
-    if (!input.width || !input.height || !parsed.d1 || !parsed.d2) return 0;
-    // Allow swap (w×h vs h×w)
-    const d1 = Math.abs(input.width - parsed.d1) / parsed.d1;
-    const d2 = Math.abs(input.height - parsed.d2) / parsed.d2;
-    const d1s = Math.abs(input.width - parsed.d2) / parsed.d2;
-    const d2s = Math.abs(input.height - parsed.d1) / parsed.d1;
-    const normal = (d1 + d2) / 2;
-    const swapped = (d1s + d2s) / 2;
-    const best = Math.min(normal, swapped);
-    if (best > 0.15) return 0;
-    return Math.round((1 - best) * 100);
-  }
-
-  if (category === '角铝') {
-    if (!input.width || !input.height || !parsed.d1 || !parsed.d2) return 0;
-    const thickness = input.thickness || parsed.d3;
-    const d1 = Math.abs(input.width - parsed.d1) / parsed.d1;
-    const d2 = Math.abs(input.height - parsed.d2) / parsed.d2;
-    const d1s = Math.abs(input.width - parsed.d2) / parsed.d2;
-    const d2s = Math.abs(input.height - parsed.d1) / parsed.d1;
-    const normal = (d1 + d2) / 2;
-    const swapped = (d1s + d2s) / 2;
-    let best = Math.min(normal, swapped);
-    // Add thickness penalty if both have it
-    if (input.thickness && parsed.d3) {
-      const tdiff = Math.abs(input.thickness - parsed.d3) / parsed.d3;
-      best = best * 0.7 + tdiff * 0.3;
+    const diffs: number[] = [];
+    const w = input.width, h = input.height;
+    const s1 = parsed.d1, s2 = parsed.d2;
+    if (!s1 && !s2) return 0;
+    if (w && h && s1 && s2) {
+      // 宽高都填：正向/互换取优
+      const normal = (Math.abs(w - s1) / s1 + Math.abs(h - s2) / s2) / 2;
+      const swapped = (Math.abs(w - s2) / s2 + Math.abs(h - s1) / s1) / 2;
+      const best = Math.min(normal, swapped);
+      if (best > 0.15) return 0;
+      diffs.push(best);
+    } else {
+      // 只填一个：匹配规格任一维度即可
+      const v = w || h;
+      const candidates = [s1, s2].filter(Boolean).map((sv: number) => Math.abs(v - sv) / sv);
+      const best = Math.min(...candidates);
+      if (best > 0.15) return 0;
+      diffs.push(best);
     }
-    if (best > 0.15) return 0;
-    return Math.round((1 - best) * 100);
+    return Math.round((1 - diffs[0]) * 100);
   }
 
+  // 角铝：边宽/边高支持互换，壁厚独立判定
+  if (category === '角铝') {
+    const diffs: number[] = [];
+    const w = input.width, h = input.height;
+    const s1 = parsed.d1, s2 = parsed.d2;
+    if (w && h && s1 && s2) {
+      const normal = (Math.abs(w - s1) / s1 + Math.abs(h - s2) / s2) / 2;
+      const swapped = (Math.abs(w - s2) / s2 + Math.abs(h - s1) / s1) / 2;
+      const best = Math.min(normal, swapped);
+      if (best > 0.15) return 0;
+      diffs.push(best);
+    } else if ((w || h) && (s1 || s2)) {
+      const v = w || h;
+      const candidates = [s1, s2].filter(Boolean).map((sv: number) => Math.abs(v - sv) / sv);
+      const best = Math.min(...candidates);
+      if (best > 0.15) return 0;
+      diffs.push(best);
+    }
+    // 壁厚（双方都有时才判定，权重30%）
+    const td = dimDiff(input.thickness, parsed.d3);
+    if (td !== null) {
+      const base = diffs.length ? diffs[0] * 0.7 : 0;
+      const total = diffs.length ? base + td * 0.3 : td;
+      return Math.round((1 - total) * 100);
+    }
+    if (!diffs.length) return 0;
+    return Math.round((1 - diffs[0]) * 100);
+  }
+
+  // 圆管：外径/内径，只填外径也能匹配（参数越少结果越多）
   if (category === '铝圆管') {
-    if (!input.outer || !input.inner || !parsed.d1 || !parsed.d2) return 0;
-    const dOuter = Math.abs(input.outer - parsed.d1) / parsed.d1;
-    const dInner = Math.abs(input.inner - parsed.d2) / parsed.d2;
-    const avg = (dOuter + dInner) / 2;
-    if (avg > 0.15) return 0;
+    const dOuter = dimDiff(input.outer, parsed.d1);
+    const dInner = dimDiff(input.inner, parsed.d2);
+    if (dOuter === null && dInner === null) return 0;
+    const parts: number[] = [];
+    if (dOuter !== null) parts.push(dOuter);
+    if (dInner !== null) parts.push(dInner);
+    const avg = parts.reduce((a, b) => a + b, 0) / parts.length;
     return Math.round((1 - avg) * 100);
   }
 
+  // 六角管：对边距/内径，任一填写即可匹配
   if (category === '铝六角管') {
-    if (!input.hex || !input.inner || !parsed.d1 || !parsed.d2) return 0;
-    const dHex = Math.abs(input.hex - parsed.d1) / parsed.d1;
-    const dInner = Math.abs(input.inner - parsed.d2) / parsed.d2;
-    const avg = (dHex + dInner) / 2;
-    if (avg > 0.15) return 0;
+    const dHex = dimDiff(input.hex, parsed.d1);
+    const dInner = dimDiff(input.inner, parsed.d2);
+    if (dHex === null && dInner === null) return 0;
+    const parts: number[] = [];
+    if (dHex !== null) parts.push(dHex);
+    if (dInner !== null) parts.push(dInner);
+    const avg = parts.reduce((a, b) => a + b, 0) / parts.length;
     return Math.round((1 - avg) * 100);
   }
 
+  // 异型材：宽/高（支持互换）、外周长、米重 四维渐进匹配
   if (category === '异型材') {
-    const parsed = parseCrossSection(spec.cross_section_mm || '');
     const specW = parsed.d1 || 0;
     const specH = parsed.d2 || 0;
     const specPerim = spec.perimeter || 0;
     const specMW = spec.weight_per_meter || 0;
 
-    const hasW = input.width > 0 && specW > 0;
-    const hasH = input.height > 0 && specH > 0;
-    const hasP = input.perimeter > 0 && specPerim > 0;
-    const hasMW = input.meter_weight > 0 && specMW > 0;
+    const parts: { diff: number; weight: number }[] = [];
 
-    if (!hasW && !hasH && !hasP && !hasMW) return 0;
-
-    let totalDiff = 0;
-    let weight = 0;
-
-    if (hasW) {
-      const diff = Math.abs(input.width - specW) / specW;
-      if (diff > 0.15) return 0;
-      totalDiff += diff * 0.35;
-      weight += 0.35;
-    }
-    if (hasH) {
-      const diff = Math.abs(input.height - specH) / specH;
-      if (diff > 0.15) return 0;
-      totalDiff += diff * 0.35;
-      weight += 0.35;
-    }
-    if (hasP) {
-      const diff = Math.abs(input.perimeter - specPerim) / specPerim;
-      if (diff > 0.15) return 0;
-      totalDiff += diff * 0.2;
-      weight += 0.2;
-    }
-    if (hasMW) {
-      const diff = Math.abs(input.meter_weight - specMW) / specMW;
-      if (diff > 0.20) return 0;
-      totalDiff += diff * 0.1;
-      weight += 0.1;
+    // 宽高：支持互换（宽*高=高*宽）
+    const hasW = input.width > 0, hasH = input.height > 0;
+    if ((hasW || hasH) && (specW > 0 || specH > 0)) {
+      let whDiff: number | null = null;
+      if (hasW && hasH && specW > 0 && specH > 0) {
+        const normal = (Math.abs(input.width - specW) / specW + Math.abs(input.height - specH) / specH) / 2;
+        const swapped = (Math.abs(input.width - specH) / specH + Math.abs(input.height - specW) / specW) / 2;
+        const best = Math.min(normal, swapped);
+        whDiff = best <= 0.15 ? best : null;
+      } else {
+        // 只填宽或只填高：匹配规格宽/高任一
+        const v = hasW ? input.width : input.height;
+        const candidates = [specW, specH].filter(x => x > 0).map(sv => Math.abs(v - sv) / sv);
+        if (candidates.length) {
+          const best = Math.min(...candidates);
+          whDiff = best <= 0.15 ? best : null;
+        }
+      }
+      if (whDiff === null) return 0;
+      // 宽高合计权重0.7（两个都填时各0.35，单填时0.7）
+      parts.push({ diff: whDiff, weight: hasW && hasH ? 0.7 : 0.7 });
     }
 
-    if (weight === 0) return 0;
-    return Math.round((1 - totalDiff / weight) * 100);
+    // 外周长
+    const pDiff = dimDiff(input.perimeter, specPerim);
+    if (pDiff !== null) parts.push({ diff: pDiff, weight: 0.2 });
+    else if (input.perimeter > 0 && specPerim > 0) return 0; // 填了但超差→淘汰
+
+    // 米重（容差20%）
+    if (input.meter_weight > 0 && specMW > 0) {
+      const md = Math.abs(input.meter_weight - specMW) / specMW;
+      if (md > 0.20) return 0;
+      parts.push({ diff: md, weight: 0.1 });
+    }
+
+    if (!parts.length) return 0;
+    const totalW = parts.reduce((a, p) => a + p.weight, 0);
+    const avgDiff = parts.reduce((a, p) => a + p.diff * p.weight, 0) / totalW;
+    return Math.round((1 - avgDiff) * 100);
   }
 
   return 0;
