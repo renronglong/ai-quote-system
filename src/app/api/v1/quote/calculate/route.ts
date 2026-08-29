@@ -51,7 +51,8 @@ interface QuoteRequest {
     wall_thickness_mm?: number;
     cross_section_area_mm2?: number; // 截面积 mm²（挤压铝型材）
     material_size_type?: 'long' | 'short'; // 长料(≥3000mm) / 小料(<3000mm)
-    perimeter_mm?: number;    // 产品周长(mm)
+    perimeter_mm?: number;    // 产品外周长(mm)
+    inner_perimeter_mm?: number; // 内孔周长之和(mm)，中空分流模用于模具费精算
     num_dies?: number;    // 公头数（0=平模，≥1=分流模）
     die_type?: 'flat' | 'split'; // 模具类型：平模/分流模
     meter_weight_kg_per_m?: number; // 用户手动输入的米重(kg/m)
@@ -771,14 +772,16 @@ function calcExtrusion(
     const baseProcessingFee = 0.028 * dieDiameter * dieThickness;
     let perimeterFee: number;
     let processingFee: number;
+    // 分流模加工总周长 = 外周长 + 内孔周长（AI识别提供inner_perimeter_mm时用实际值，未提供则按外周长×2近似）
+    const innerPerimeterForFee = isFlatDie ? 0 : (dims.inner_perimeter_mm && dims.inner_perimeter_mm > 0 ? dims.inner_perimeter_mm : finalPerimeter);
     if (isFlatDie) {
-      // 平模：加工费 = 基础加工 + 周长×厚度×系数
+      // 平模：加工费 = 基础加工 + 外周长×厚度×系数
       const processingArea = finalPerimeter * dieThickness;
       perimeterFee = 0.0035 * processingArea;
       processingFee = baseProcessingFee + perimeterFee;
     } else {
-      // 分流模：加工费 = 基础加工 + 周长×2×厚度×系数（内外周长）
-      perimeterFee = 0.0035 * finalPerimeter * 2 * dieThickness;
+      // 分流模：加工费 = 基础加工 + (外周长+内孔周长)×厚度×系数
+      perimeterFee = 0.0035 * (finalPerimeter + innerPerimeterForFee) * dieThickness;
       processingFee = baseProcessingFee + perimeterFee;
     }
     const mgmtRate = getManagementRate(dieThickness);
@@ -795,7 +798,7 @@ function calcExtrusion(
     if (isFlatDie) {
       notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + (${Math.round(baseProcessingFee)}基础 + ${Math.round(perimeterFee)}周长×厚度加工) × ${(mgmtRate*100).toFixed(0)}%管理费)`);
     } else {
-      notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + (${Math.round(baseProcessingFee)}基础 + ${Math.round(perimeterFee)}周长×2×厚度加工(含内外)) × ${(mgmtRate*100).toFixed(0)}%管理费)`);
+      notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + (${Math.round(baseProcessingFee)}基础 + ${Math.round(perimeterFee)}(外周长${Math.round(finalPerimeter)}+内周长${Math.round(innerPerimeterForFee)})×厚度加工) × ${(mgmtRate*100).toFixed(0)}%管理费)`);
     }
     if (dieDiameter === 139) notes.push(`Φ139小模具加价10%: ${Math.round(moldCost / 1.1)}→${moldCost}元`);
     notes.push(`模具费一次性，不计入单件价格`);
@@ -981,7 +984,12 @@ function calcExtrusion(
   const minOrderWeightKg = 300;
   const minOrderQtyRaw = rawWeight > 0 ? Math.ceil(minOrderWeightKg / rawWeight) : 0;
   const minOrderQty = ceilByMagnitude(minOrderQtyRaw);
-  notes.push(`最小起订量: ${minOrderQty}件（按${minOrderWeightKg}kg换算，向上取整）`);
+  if (minOrderQty > 0) {
+    notes.push(`最小起订量: ${minOrderQty}件（按${minOrderWeightKg}kg换算，向上取整）`);
+  }
+  if (productLengthMm === 0 && moldCost > 0) {
+    notes.push('未输入型材长度：模具费可独立核算；材料费/加工费/单件价请填入长度后自动计算');
+  }
   
   return {
     costs: {
