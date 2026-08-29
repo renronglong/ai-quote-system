@@ -842,8 +842,8 @@ export default function HelpPage() {
                 <div className="text-center p-4 bg-gray-50 rounded-lg">
                   <MapPin className="w-6 h-6 text-orange-500 mx-auto mb-2" />
                   <p className="text-xs text-gray-500 mb-1">公司地址</p>
-                  <p className="text-xs font-medium text-gray-800">江西省萍乡市上栗县</p>
-                  <p className="text-xs text-gray-400 mt-1">长平乡佛溪村</p>
+                  <p className="text-xs font-medium text-gray-800">佛山市南海区</p>
+                  <p className="text-xs text-gray-400 mt-1">松岗镇厦边村</p>
                 </div>
               </div>
               <div className="mt-4 text-center">
