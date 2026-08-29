@@ -1346,6 +1346,15 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       fd.append('file', fileToSend);
       const resp = await fetch('/api/recognize-drawing?userId=' + user!.id, { method: 'POST', body: fd });
       const json = await resp.json();
+      if (resp.status === 429 || json.quotaExceeded) {
+        checkQuota();
+        setShowQuotaModal(true);
+        return;
+      }
+      if (resp.status === 401) {
+        setShowLoginModal(true);
+        return;
+      }
       if (!resp.ok || !json.success) {
         setRecogError(json.error || '识别失败');
         return;
