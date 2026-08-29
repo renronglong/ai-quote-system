@@ -121,9 +121,13 @@ export default function QuotePage() {
     URL.revokeObjectURL(url);
   };
 
-  // 保存报价 → 调用 API 存入数据库
+  // 保存报价 → 调用 API 存入数据库（游客先跳登录）
   const handleSaveQuote = async () => {
-    if (!pricingResult || !user) return;
+    if (!user) {
+      router.push('/login?redirect=/quote');
+      return;
+    }
+    if (!pricingResult) return;
     const params = currentParams || {};
     const productType = params.product_type || productInfo.productName || '产品';
     const result = {
@@ -216,12 +220,7 @@ export default function QuotePage() {
     }
   };
 
-  // Login check
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/login?redirect=/quote');
-    }
-  }, [authLoading, user, router]);
+  // 游客可直接使用计算器；图纸识别/保存报价/深度报价时在组件内弹登录墙
 
   // Fetch aluminum price
   useEffect(() => {
@@ -736,12 +735,11 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         <div className="flex gap-2">
           <button
             onClick={onSave}
-            disabled={!user}
             className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
               saveSuccess
                 ? 'bg-emerald-500 text-white'
                 : 'bg-white border border-gray-200 text-gray-700 hover:border-blue-300 hover:text-blue-600'
-            } ${!user ? 'opacity-50 cursor-not-allowed' : ''}`}
+            }`}
           >
             {saveSuccess ? (
               <><CheckCircle2 className="w-4 h-4" /> 已保存</>
