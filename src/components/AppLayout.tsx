@@ -81,6 +81,7 @@ const navGroups: NavGroup[] = [
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [credits, setCredits] = useState<number>(0);
   const { user, signOut } = useAuth();
 
@@ -146,34 +147,46 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <Link href="/register"><Button size="sm" className="bg-blue-600 hover:bg-blue-700">注册</Button></Link>
               </div>
             ) : (
-              <div className="relative group hidden md:block">
-                <Avatar className="w-8 h-8 cursor-pointer">
-                  <AvatarImage src="" />
-                  <AvatarFallback className="bg-blue-100 text-blue-600">
-                    {(user.phone || 'U').slice(-1)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="absolute top-full right-0 pt-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-                  <div className="bg-white rounded-lg shadow-lg border py-1 min-w-[180px]">
-                    <div className="px-4 py-2 border-b">
-                      <p className="text-sm font-medium text-gray-900">{user.company_name || '已登录用户'}</p>
-                      <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
-                        <Coins className="w-3.5 h-3.5 text-amber-600" />{credits.toFixed(0)} 积分
-                      </p>
+              <div className="relative hidden md:block">
+                <button
+                  onClick={() => setUserMenuOpen(v => !v)}
+                  className="flex items-center gap-1.5 rounded-full hover:bg-gray-100 py-1 pl-1 pr-2 transition-colors"
+                >
+                  <Avatar className="w-8 h-8">
+                    <AvatarImage src="" />
+                    <AvatarFallback className="bg-blue-100 text-blue-600">
+                      {(user.phone || 'U').slice(-1)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {userMenuOpen && (
+                  <>
+                    {/* 点击外部关闭 */}
+                    <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
+                    <div className="absolute top-full right-0 pt-2 z-50 w-56">
+                      <div className="bg-white rounded-lg shadow-lg border py-1">
+                        <div className="px-4 py-2 border-b">
+                          <p className="text-sm font-medium text-gray-900 truncate">{user.company_name || '已登录用户'}</p>
+                          <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                            <Coins className="w-3.5 h-3.5 text-amber-600" />{credits.toFixed(0)} 积分
+                          </p>
+                        </div>
+                        <Link href="/history" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><History className="w-4 h-4" />报价历史</Link>
+                        <Link href="/products" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><Package className="w-4 h-4" />产品管理</Link>
+                        <Link href="/inquiries" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><MessageSquare className="w-4 h-4" />询价管理</Link>
+                        <Link href="/supplier" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><Handshake className="w-4 h-4" />供应商工作台</Link>
+                        <div className="h-px bg-gray-100 my-1" />
+                        <Link href="/admin/tasks" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><FileText className="w-4 h-4" />任务管理</Link>
+                        <Link href="/admin/users" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><Users className="w-4 h-4" />用户管理</Link>
+                        <div className="h-px bg-gray-100 my-1" />
+                        <button onClick={() => { setUserMenuOpen(false); signOut(); }} className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50">
+                          <LogOut className="w-4 h-4" />退出登录
+                        </button>
+                      </div>
                     </div>
-                    <Link href="/history" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><History className="w-4 h-4" />报价历史</Link>
-                    <Link href="/products" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><Package className="w-4 h-4" />产品管理</Link>
-                    <Link href="/inquiries" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><MessageSquare className="w-4 h-4" />询价管理</Link>
-                    <Link href="/supplier" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><Handshake className="w-4 h-4" />供应商工作台</Link>
-                    <div className="h-px bg-gray-100 my-1" />
-                    <Link href="/admin/tasks" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><FileText className="w-4 h-4" />任务管理</Link>
-                    <Link href="/admin/users" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><Users className="w-4 h-4" />用户管理</Link>
-                    <div className="h-px bg-gray-100 my-1" />
-                    <button onClick={() => signOut()} className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50">
-                      <LogOut className="w-4 h-4" />退出登录
-                    </button>
-                  </div>
-                </div>
+                  </>
+                )}
               </div>
             )}
 
