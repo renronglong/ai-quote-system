@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -73,6 +73,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [credits, setCredits] = useState<number>(0);
   const { user, signOut } = useAuth();
 
+  // 拉取积分余额（仅登录用户）
+  useEffect(() => {
+    if (!user) { setCredits(0); return; }
+    fetch(`/api/credits/balance?user_id=${user.id}`)
+      .then(r => r.json())
+      .then(json => setCredits(parseFloat(json?.data?.balance || '0')))
+      .catch(() => {});
+  }, [user, pathname]);
+
   return (
     <div className="min-h-screen bg-gray-100">
       {/* 顶部导航栏 */}
@@ -125,13 +134,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
           {/* 右侧操作区 */}
           <div className="flex items-center gap-3">
-            {/* 积分显示 */}
+            {/* 积分显示（登录用户） */}
+            {user && (
             <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 rounded-full border border-amber-200">
               <Coins className="w-4 h-4 text-amber-600" />
               <span className="text-sm font-medium text-amber-700">
-                {credits.toFixed(2)} 积分
+                {credits.toFixed(0)} 积分
               </span>
             </div>
+            )}
 
             {/* 用户头像 */}
             <Avatar className="w-8 h-8 cursor-pointer">
