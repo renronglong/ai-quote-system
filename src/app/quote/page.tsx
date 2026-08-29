@@ -21,6 +21,7 @@ import {
   Store,
   FileText,
   User,
+  LogOut,
 } from 'lucide-react';
 import SavedQuotesPanel, { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
 
@@ -305,13 +306,17 @@ export default function QuotePage() {
               {authLoading ? (
                 <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
               ) : user ? (
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-gray-500">{user.email || '用户'}</span>
-                  <button onClick={() => signOut()} className="text-[10px] text-gray-400 hover:text-gray-600 transition-colors">
-                    退出
+                <div className="flex items-center gap-2">
+                  <span className="hidden sm:inline text-xs text-gray-500 max-w-[120px] truncate">{user.company_name || user.email || '已登录'}</span>
+                  <button onClick={() => signOut()} className="flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-gray-200 text-gray-500 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-colors">
+                    <LogOut className="w-3 h-3" />退出
                   </button>
                 </div>
-              ) : null}
+              ) : (
+                <button onClick={() => router.push('/login?redirect=/quote')} className="px-2.5 py-1 text-xs rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors">
+                  登录
+                </button>
+              )}
             </div>
           </div>
         </div>
