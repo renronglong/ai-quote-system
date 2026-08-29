@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -19,7 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import AppLayout from '@/components/AppLayout';
-import { Loader2, Building2, ChevronDown, ChevronUp, Search } from 'lucide-react';
+import { Loader2, Building2, ChevronDown, ChevronUp, Search, Handshake, ArrowRight } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jotgxnhueagbsvfeepic.supabase.co';
@@ -244,6 +246,25 @@ export default function SuppliersPage() {
             ))}
           </div>
         )}
+
+        {/* 供应商入驻引导 */}
+        <div className="mt-6 rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/60 p-5 sm:p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3 text-center sm:text-left">
+            <div className="w-11 h-11 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+              <Handshake className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="font-semibold text-gray-900">您也是供应商？</p>
+              <p className="text-sm text-gray-500">免费入驻平台，发布产品与产能，接收采购方精准询价</p>
+            </div>
+          </div>
+          <Link href="/supplier" className="shrink-0">
+            <Button size="lg" className="bg-emerald-600 hover:bg-emerald-700 font-semibold">
+              立即入驻
+              <ArrowRight className="w-4 h-4 ml-1" />
+            </Button>
+          </Link>
+        </div>
       </div>
     </AppLayout>
   );
