@@ -842,6 +842,13 @@ function calcExtrusion(
       } else {
         finalPerimeter = 2 * (W + H_dim); // 未提供时使用矩形周长
       }
+      // 周长合理性钳制：实心件外周长不应超过外接矩形周长的5倍（异型翅片上限），
+      // 防止误填/识图异常值（如把mm当0.1mm、把面积当周长）导致模具费离谱
+      const flatMaxPerimeter = 2 * (W + H_dim) * 5;
+      if (finalPerimeter > flatMaxPerimeter) {
+        notes.push(`周长${Math.round(finalPerimeter)}mm明显超出${W}×${H_dim}截面合理范围（上限约${Math.round(flatMaxPerimeter)}mm），已按矩形轮廓${Math.round(2*(W+H_dim))}mm计算模具费，请核对图纸标注`);
+        finalPerimeter = 2 * (W + H_dim);
+      }
     } else {
       // 分流模/假整体模：判断异型复杂度
       const straightPerimeter = 2 * (W + H_dim);
@@ -929,8 +936,23 @@ function calcExtrusion(
     const baseProcessingFee = 0.028 * dieDiameter * dieThickness;
     let perimeterFee: number;
     let processingFee: number;
-    // 分流模加工总周长 = 外周长 + 内孔周长（AI识别提供inner_perimeter_mm时用实际值，未提供则按外周长×2近似）
-    const innerPerimeterForFee = isFlatDie ? 0 : (dims.inner_perimeter_mm && dims.inner_perimeter_mm > 0 ? dims.inner_perimeter_mm : (stdPerimeters?.inner || finalPerimeter));
+    // 分流模加工总周长 = 外周长 + 内孔周长（AI识别提供inner_perimeter_mm时用实际值；
+    // 标准件用几何内周长；异型材未提供时按矩形管壁厚2mm估算内轮廓，不再用外周长×2高估）
+    let innerPerimeterForFee = 0;
+    if (!isFlatDie) {
+      if (dims.inner_perimeter_mm && dims.inner_perimeter_mm > 0) {
+        innerPerimeterForFee = dims.inner_perimeter_mm;
+      } else if (stdPerimeters?.inner) {
+        innerPerimeterForFee = stdPerimeters.inner;
+      } else {
+        // 异型材：按外接矩形内缩2mm壁厚估算内孔周长
+        const estInnerW = Math.max(W - 4, W * 0.8);
+        const estInnerH = Math.max(H_dim - 4, H_dim * 0.8);
+        innerPerimeterForFee = 2 * (estInnerW + estInnerH);
+      }
+      // 内周长合理性钳制：不得大于外周长
+      if (innerPerimeterForFee > finalPerimeter) innerPerimeterForFee = finalPerimeter;
+    }
     if (isFlatDie) {
       // 平模：加工费 = 基础加工 + 外周长×厚度×系数
       const processingArea = finalPerimeter * dieThickness;
