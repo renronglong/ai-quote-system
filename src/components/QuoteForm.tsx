@@ -412,6 +412,28 @@ const CATEGORY_DIM_FIELDS: Record<string, { key: string; label: string; placehol
 
 const CATEGORY_NEEDS_DIE_SELECTION = ['异型材'];
 
+// 标准件理论米重（与后端 /api/v1/quote/calculate 公式一致，6063铝密度2.7g/cm³）
+// 前端字段映射：diameter/hex/outer 都存入 width，inner 存入 height
+function calcStdMeterWeight(cat: string, width?: number|string, height?: number|string, thickness?: number|string): number | null {
+  const w = Number(width) || 0;
+  const h = Number(height) || 0;
+  const t = Number(thickness) || 0;
+  let area = 0;
+  switch (cat) {
+    case '铝圆棒': if (!(w > 0)) return null; area = Math.PI * w * w / 4; break;
+    case '铝方/扁棒': if (!(w > 0 && h > 0)) return null; area = w * h; break;
+    case '铝六角棒': if (!(w > 0)) return null; area = 2.598 * w * w; break;
+    case '角铝': if (!(w > 0 && h > 0 && t > 0)) return null; area = t * (w + h - t); break;
+    case '铝圆管': if (!(w > 0)) return null; area = h > 0 ? Math.PI * (w * w - h * h) / 4 : Math.PI * w * w / 4; break;
+    case '铝六角管': if (!(w > 0)) return null; area = 2.598 * w * w - (h > 0 ? Math.PI * h * h / 4 : 0); break;
+    case '铝方管': if (!(w > 0 && h > 0 && t > 0 && w > 2 * t && h > 2 * t)) return null; area = w * h - (w - 2 * t) * (h - 2 * t); break;
+    default: return null;
+  }
+  if (!(area > 0)) return null;
+  return Math.round((area * 2.7 / 1000) * 1000) / 1000;
+}
+
+
 
 // ==================== Process Sub-Parameters ====================
 const PROCESS_SUB_PARAMS: Record<string, { name: string; type: string; label: string; options?: string[] }[]> = {
@@ -1053,10 +1075,16 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const width = fields.width as number;
       const height = fields.height as number;
       const length = fields.length as number;
-      if (width || height || length) return {
+      if (width || height || length || fields.thickness) return {
         length_mm: length || 0,
         width_mm: width || 0,
         height_mm: height || undefined,
+        standard_category: standardCategory || undefined,
+        wall_thickness_mm: (fields.thickness as number) || undefined,
+        diameter_mm: standardCategory === '铝圆棒' ? (width || undefined) : undefined,
+        hex_flat_mm: (standardCategory === '铝六角棒' || standardCategory === '铝六角管') ? (width || undefined) : undefined,
+        outer_diameter_mm: standardCategory === '铝圆管' ? (width || undefined) : undefined,
+        inner_diameter_mm: (standardCategory === '铝圆管' || standardCategory === '铝六角管') ? (height || undefined) : undefined,
         perimeter_mm: (fields.perimeter as number) || undefined,
         inner_perimeter_mm: (fields.innerPerimeter as number) || undefined,
         num_cavities: parseInt(fields.num_cavities as string) || 1,
@@ -1082,13 +1110,30 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     const cat = categoryConfig;
     if (cat) {
       const isStdMode = productType === '挤出';
-      // 挤出模式：长度非必填（模具费只看截面，无长度也能算）；只要有截面参数（宽/高/米重/外周长任一）即可计算
-      const allFilled = isStdMode
-        ? !!(fields.width || fields.height || fields.meterWeight || fields.perimeter)
-        : cat.fields.filter(f => ['width', 'height', 'length', 'thickness', 'productSize'].includes(f)).every(f => {
-            const val = fields[f];
-            return val !== '' && val !== undefined && val !== null && Number(val) > 0;
+      let allFilled: boolean;
+      if (isStdMode) {
+        // 挤出模式：长度非必填（模具费只看截面，无长度也能算）
+        if (standardCategory === '异型材') {
+          // 异型材：宽/高/米重/外周长任一即可
+          allFilled = !!(fields.width || fields.height || fields.meterWeight || fields.perimeter);
+        } else if (standardCategory) {
+          // 标准件：该类别尺寸字段全部填齐（才能算理论米重）
+          const dimDefs = CATEGORY_DIM_FIELDS[standardCategory] || [];
+          const fieldMap: Record<string, string> = { diameter: 'width', hex: 'width', outer: 'width', inner: 'height' };
+          allFilled = dimDefs.every(df => {
+            const sk = fieldMap[df.key] || df.key;
+            const v = fields[sk];
+            return v !== '' && v !== undefined && v !== null && Number(v) > 0;
           });
+        } else {
+          allFilled = false; // 还没选异型材/标准件类别
+        }
+      } else {
+        allFilled = cat.fields.filter(f => ['width', 'height', 'length', 'thickness', 'productSize'].includes(f)).every(f => {
+          const val = fields[f];
+          return val !== '' && val !== undefined && val !== null && Number(val) > 0;
+        });
+      }
       if (!allFilled) {
         onResult?.(null);
         return;
@@ -1256,6 +1301,17 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       if (typeof d.meter_weight === 'number') next.meterWeight = d.meter_weight;
       if (typeof d.quantity === 'number') next.quantity = d.quantity;
       if (typeof d.wall_thickness === 'number') next.thickness = d.wall_thickness;
+      // 标准件专属尺寸（前端 width/height 复用槽位：圆棒直径、六角对边、圆管外径→width；内径→height）
+      const dAny = d as Record<string, unknown>;
+      const num = (v: unknown) => (typeof v === 'number' && v > 0 ? v : null);
+      const diam = num(dAny.diameter) ?? num(dAny.diameter_mm);
+      const hexFlat = num(dAny.hex_flat) ?? num(dAny.hex_flat_mm) ?? num(dAny.hex) ?? num(dAny.hex_flat_distance);
+      const outerD = num(dAny.outer_diameter) ?? num(dAny.outer_diameter_mm) ?? num(dAny.outer) ?? num(dAny.outer_dia);
+      const innerD = num(dAny.inner_diameter) ?? num(dAny.inner_diameter_mm) ?? num(dAny.inner) ?? num(dAny.inner_dia);
+      if (resolvedCat === '铝圆棒' && diam) next.width = diam;
+      if ((resolvedCat === '铝六角棒' || resolvedCat === '铝六角管') && hexFlat) next.width = hexFlat;
+      if (resolvedCat === '铝圆管' && outerD) next.width = outerD;
+      if ((resolvedCat === '铝圆管' || resolvedCat === '铝六角管') && innerD) next.height = innerD;
       return next;
     });
     if (d.material_grade) setMaterialGrade(d.material_grade);
@@ -1852,6 +1908,18 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   );
                 })}
               </div>
+
+              {/* 标准件理论米重（规则截面自动计算，无需库存） */}
+              {!CATEGORY_NEEDS_DIE_SELECTION.includes(standardCategory) && (() => {
+                const mw = calcStdMeterWeight(standardCategory, fields.width as number, fields.height as number, fields.thickness as number);
+                return mw !== null ? (
+                  <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-100 px-2.5 py-1.5 text-[11px] text-blue-700">
+                    <span className="font-semibold">理论米重</span>
+                    <span className="font-mono font-semibold text-blue-800">{mw} kg/m</span>
+                    <span className="text-blue-400">（按6063铝密度2.7g/cm³自动计算，直接用于报价）</span>
+                  </div>
+                ) : null;
+              })()}
 
               {/* 模具匹配结果 */}
               <button
