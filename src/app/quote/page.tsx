@@ -115,8 +115,8 @@ export default function QuotePage() {
       breakdown: pricingResult.breakdown,
       aluminum_index: pricingResult.aluminum_index,
       notes: pricingResult.notes,
-      // 同组非首条存池时不带模具费：出单时模具费按组只算一次
-      mold_cost: 0,
+      // 模具费保留原值（每条单算都有）；出单时同组只取第一条，实现同副模具只收一次
+      mold_cost: manualMoldFee ?? pricingResult.mold_cost ?? 0,
       min_order_qty: manualMinOrderQty ?? pricingResult.min_order_qty ?? 0,
     };
     const label = len ? `${productInfo.productName || productType} ${len}mm` : (productInfo.productName || productType);
