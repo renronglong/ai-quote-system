@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 列宽（对照模板）
-    const widths = [6.5, 15, 16, 13, 5.5, 10, 8, 12, 11, 9, 12, 10];
+    const widths = [6.5, 15, 19, 13, 5.5, 10, 8, 12, 11, 9, 12, 10];
     widths.forEach((w, i) => (ws.getColumn(i + 1).width = w));
 
     const today = new Date();
@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
     ws.getRow(3).height = 18;
     setCell('A3', '报价日期:', { font: { name: FONT, size: 11, bold: true } });
     ws.mergeCells('C3:E3');
-    setCell('C3', dateStr, { alignment: { horizontal: 'center' } });
+    setCell('C3', dateStr, { alignment: { horizontal: 'left' } });
 
     ws.getRow(4).height = 20;
     setCell('A4', '客户：', { font: { name: FONT, size: 11, bold: true } });
@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
           c.alignment = { horizontal: 'center', vertical: 'middle' };
         } else if (ci === 7 || ci === 8 || ci === 10) {
           c.alignment = { horizontal: 'right', vertical: 'middle' };
-          c.numFmt = '0.000';
+          c.numFmt = '0.00';
         } else {
           c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
         }
@@ -205,12 +205,12 @@ export async function POST(request: NextRequest) {
     }
     const exCell = ws.getCell(totalRow, 8);
     exCell.value = Number(exSum.toFixed(4));
-    exCell.numFmt = '0.000';
+    exCell.numFmt = '0.00';
     exCell.alignment = { horizontal: 'right' };
     exCell.font = { name: FONT, size: 11, bold: true };
     const incCell = ws.getCell(totalRow, 9);
     incCell.value = Number(incSum.toFixed(4));
-    incCell.numFmt = '0.000';
+    incCell.numFmt = '0.00';
     incCell.alignment = { horizontal: 'right' };
     incCell.font = { name: FONT, size: 11, bold: true };
     const moldCell = ws.getCell(totalRow, 11);
