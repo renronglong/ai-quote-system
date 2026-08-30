@@ -157,7 +157,7 @@ const DEFAULT_PRICING_RULES: PricingRules = {
       price_formula: '热卷期货价 × 1.05',
     },
     '不锈钢': {
-      density: 7.85,
+      density: 7.93,
       grades: {
         '304': { ratio: 1.0 },
         '201': { ratio: 0.5 },
@@ -417,13 +417,13 @@ function calcSheetMaterialCost(
     pricePerTon = aluminumPrice * (1 + premium / 1000);
     formulaStr = '铝锭价 × (1 + 牌号加价/1000) × 密度 × 体积';
     detailStr = `${aluminumPrice} × (1 + ${premium}/1000) = ${r2(pricePerTon)} 元/吨`;
-  } else if (category === '冷板SPCC' || category === '冷板' || category === '冷轧板') {
+  } else if (category === '冷板SPCC' || category === '冷板' || category === '冷轧板' || category === '镀锌板') {
     density = matRule['冷板SPCC']?.density || 7.85;
     pricePerTon = DEFAULT_HOT_ROLL_PRICE * 1.05;
     formulaStr = '热卷期货价 × 1.05 × 密度 × 体积';
     detailStr = `${DEFAULT_HOT_ROLL_PRICE} × 1.05 = ${r2(pricePerTon)} 元/吨`;
   } else if (category === '不锈钢') {
-    density = matRule['不锈钢']?.density || 7.85;
+    density = matRule['不锈钢']?.density || 7.93; // 不锈钢7.93 g/cm³（304约7.93）
     const grades = matRule['不锈钢']?.grades || {};
     let ratio = 1.0;
     for (const [key, val] of Object.entries(grades)) {
@@ -447,7 +447,7 @@ function calcSheetMaterialCost(
   const sheetArea = sheetSize.length_mm * sheetSize.width_mm;
   const nestingQty = Math.max(1, Math.floor(sheetArea / partArea));
 
-  detailStr += ` | 单件重量: ${r2(weightKg)}kg, 排版: ${nestingQty}件/张`;
+  detailStr += ` | 体积: ${length_mm}×${width_mm}×${t}mm = ${r2(volumeCm3)}cm³ × ${density}g/cm³ = 单件${r2(weightKg)}kg, 排版: ${nestingQty}件/张`;
 
   return {
     cost: r2(materialCost),
