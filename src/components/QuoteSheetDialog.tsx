@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { X, FileSpreadsheet, Check, Loader2, Building2, User, Phone, MapPin, Hash } from 'lucide-react';
+import { X, FileSpreadsheet, FileText, Check, Loader2, Building2, User, Phone, MapPin, Hash, Download, History } from 'lucide-react';
 import { loadSavedQuotes, saveQuoteToAPI, type SavedQuote } from './SavedQuotesPanel';
 import { useAuth } from '@/lib/auth-context';
 
@@ -28,6 +28,18 @@ interface CustomerInfo {
   phone: string;
   address: string;
   qq: string;
+}
+
+interface SheetRecord {
+  quote_no: string;
+  customer_name: string;
+  ex_sum: number;
+  inc_sum: number;
+  mold_sum: number;
+  item_count: number;
+  created_at: string | null;
+  xlsx_url: string;
+  pdf_url: string;
 }
 
 const CUST_KEY = 'gyparts_customer_profiles';
@@ -94,6 +106,18 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
   const [customers, setCustomers] = useState<CustomerInfo[]>([]);
   const [cust, setCust] = useState<CustomerInfo>({ name: '', contact: '', phone: '', address: '', qq: '' });
   const [editable, setEditable] = useState<Record<string, any>>({}); // 行内微调（未税价/模具费）
+  const [history, setHistory] = useState<SheetRecord[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [generated, setGenerated] = useState<{ quoteNo: string; xlsxB64: string; pdfB64: string } | null>(null);
+
+  const loadHistory = async () => {
+    if (!userId) return;
+    try {
+      const resp = await fetch(`/api/quote-sheets?user_id=${encodeURIComponent(userId)}`);
+      const data = await resp.json();
+      if (data.success) setHistory(data.records || []);
+    } catch { /* ignore */ }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -121,6 +145,7 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
         }
       }
       setQuotes(list);
+      loadHistory();
       // 默认勾选最新一条
       if (list.length > 0) setSelected(new Set([list[0].id]));
       setLoading(false);
@@ -155,20 +180,34 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
     else setCust({ ...cust, name });
   };
 
+  const downloadB64 = (b64: string, filename: string, mime: string) => {
+    const bin = atob(b64);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    const blob = new Blob([arr], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const handleExport = async () => {
     const chosen = items.filter((it) => selected.has(it.id));
     if (chosen.length === 0) { alert('请先勾选至少一条报价'); return; }
     if (!cust.name.trim()) { alert('请填写客户名称'); return; }
     setExporting(true);
     try {
-      // 应用行内微调；同模具组内模具费只算一次（该组第一条带费，其余置空）
       const seenGroup = new Set<string>();
       const payloadItems = chosen.map((it) => {
         const ed = editable[it.id] || {};
         const ex = ed.price_ex_tax != null ? Number(ed.price_ex_tax) : it.price_ex_tax;
         let moldFee: number | null = ed.mold_fee != null ? Number(ed.mold_fee) : it.mold_fee;
         const g = it.moldGroup || `__single_${it.id}`;
-        if (seenGroup.has(g)) moldFee = null; // 同组后续行：模具费已在第一行收取
+        if (seenGroup.has(g)) moldFee = null;
         else seenGroup.add(g);
         return {
           ...it,
@@ -185,6 +224,7 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           quote_no: quoteNo,
+          user_id: userId || undefined,
           supplier_company: user?.company_name || '',
           supplier_contact: '龙任荣',
           supplier_phone: user?.phone || '18929979760',
@@ -198,22 +238,17 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
           items: payloadItems,
         }),
       });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        alert(err.error || '生成失败，请重试');
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.success) {
+        alert(data.error || '生成失败，请重试');
         return;
       }
       saveCustomer(cust);
-      const blob = await resp.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `报价单-${quoteNo}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      onClose();
+      setGenerated({ quoteNo: data.quote_no || quoteNo, xlsxB64: data.xlsx_base64, pdfB64: data.pdf_base64 });
+      // 默认自动下载 Excel
+      downloadB64(data.xlsx_base64, `报价单-${data.quote_no || quoteNo}.xlsx`,
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      loadHistory();
     } catch (e) {
       alert('网络错误，请重试');
     } finally {
@@ -232,7 +267,7 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
         <div className="sticky top-0 bg-white border-b px-5 py-3.5 flex items-center justify-between rounded-t-2xl">
           <div className="flex items-center gap-2">
             <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
-            <h3 className="text-base font-semibold text-gray-900">生成报价单（Excel）</h3>
+            <h3 className="text-base font-semibold text-gray-900">生成报价单（Excel / PDF）</h3>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
         </div>
@@ -337,6 +372,63 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
               </div>
             )}
           </div>
+
+          {/* 已生成文件 */}
+          {generated && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 space-y-2">
+              <div className="text-sm text-emerald-800 font-medium flex items-center gap-1.5">
+                <Check className="w-4 h-4" /> 报价单 {generated.quoteNo} 已生成并保存到云端
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => downloadB64(generated.xlsxB64, `报价单-${generated.quoteNo}.xlsx`,
+                  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')}
+                  className="flex-1 px-3 py-2 text-sm bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 flex items-center justify-center gap-1.5">
+                  <FileSpreadsheet className="w-4 h-4" /> 下载 Excel
+                </button>
+                <button onClick={() => downloadB64(generated.pdfB64, `报价单-${generated.quoteNo}.pdf`, 'application/pdf')}
+                  className="flex-1 px-3 py-2 text-sm bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 flex items-center justify-center gap-1.5">
+                  <FileText className="w-4 h-4" /> 下载 PDF
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 历史报价单 */}
+          <div className="border-t pt-3">
+            <button onClick={() => { setHistoryOpen(!historyOpen); if (!historyOpen) loadHistory(); }}
+              className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900">
+              <History className="w-4 h-4" /> 历史报价单（{history.length}）
+              <span className="text-xs text-gray-400">{historyOpen ? '收起' : '展开'}</span>
+            </button>
+            {historyOpen && (
+              <div className="mt-2 border border-gray-200 rounded-lg divide-y max-h-56 overflow-y-auto">
+                {history.length === 0 ? (
+                  <div className="text-sm text-gray-400 py-5 text-center">暂无历史报价单</div>
+                ) : history.map((h) => (
+                  <div key={h.quote_no} className="px-3 py-2 flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-gray-800 truncate">
+                        <span className="font-mono text-blue-600">{h.quote_no}</span>
+                        {h.customer_name && <span className="ml-2">{h.customer_name}</span>}
+                      </div>
+                      <div className="text-[11px] text-gray-400">
+                        {h.created_at ? new Date(h.created_at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
+                        {' · '}{h.item_count}项 · 未税¥{Number(h.ex_sum).toFixed(0)} · 含税¥{Number(h.inc_sum).toFixed(0)}
+                      </div>
+                    </div>
+                    <a href={h.xlsx_url} target="_blank" rel="noreferrer"
+                      className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded shrink-0" title="下载Excel">
+                      <FileSpreadsheet className="w-4 h-4" />
+                    </a>
+                    <a href={h.pdf_url} target="_blank" rel="noreferrer"
+                      className="p-1.5 text-red-600 hover:bg-red-50 rounded shrink-0" title="下载PDF">
+                      <FileText className="w-4 h-4" />
+                    </a>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* 底部 */}
@@ -346,8 +438,8 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
             <button onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">取消</button>
             <button onClick={handleExport} disabled={exporting || selected.size === 0}
               className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1.5">
-              {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
-              下载Excel报价单
+              {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              {exporting ? '正在生成...' : generated ? '重新生成报价单' : '生成报价单（Excel+PDF）'}
             </button>
           </div>
         </div>
