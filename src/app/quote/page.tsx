@@ -25,6 +25,7 @@ import {
   LogOut,
 } from 'lucide-react';
 import SavedQuotesPanel, { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
+import QuoteSheetDialog from '@/components/QuoteSheetDialog';
 import TopNavLinks from '@/components/TopNav';
 
 interface AiFormUpdate {
@@ -56,6 +57,7 @@ export default function QuotePage() {
   const [resultExpanded, setResultExpanded] = useState(true);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showExportLogin, setShowExportLogin] = useState(false); // 游客导出报价单时弹登录墙
+  const [showSheetDialog, setShowSheetDialog] = useState(false); // Excel报价单出单弹窗
   const [currentParams, setCurrentParams] = useState<Record<string, any> | null>(null);
   const [productDiscount, setProductDiscount] = useState<number>(100); // 产品折扣，100=无折扣
   const [moldDiscount, setMoldDiscount] = useState<number>(100); // 模具费折扣，100=无折扣
@@ -163,70 +165,13 @@ export default function QuotePage() {
   };
 
 
-  // 导出PDF报价单（游客先弹登录墙，登录后才能出正式报价单）
-  const exportQuotePDF = async () => {
+  // 导出正式报价单（游客先弹登录墙；登录后打开 Excel 出单弹窗）
+  const exportQuotePDF = () => {
     if (!user) {
       setShowExportLogin(true);
       return;
     }
-    if (!pricingResult || !currentParams) return;
-    const params = currentParams;
-    const qty = params.quantity || 1;
-    const dims = params.dimensions || {};
-    const mat = params.material || {};
-    const st = params.surface_treatment || {};
-
-    // 构建规格描述
-    let specParts: string[] = [];
-    if (dims.length_mm) specParts.push(`L=${dims.length_mm}`);
-    if (dims.width_mm) specParts.push(`W=${dims.width_mm}`);
-    if (dims.height_mm) specParts.push(`H=${dims.height_mm}`);
-    if (dims.wall_thickness_mm) specParts.push(`T=${dims.wall_thickness_mm}`);
-    if (dims.diameter_mm) specParts.push(`\u03A6${dims.diameter_mm}`);
-    if (dims.perimeter_mm) specParts.push(`P=${dims.perimeter_mm}mm`);
-
-    const unitPrice = manualUnitPrice ?? finalUnit;
-    const moldFee = manualMoldFee ?? discountedMold;
-    const totalAmount = unitPrice * qty;
-
-    const payload = {
-      customer_name: '',
-      items: [{
-        name: productInfo.productName || params.product_name || params.productType || '铝型材',
-        spec: specParts.join(' \u00d7 ') || params.productSize || '-',
-        material: mat.category || mat.grade || '6063-T5',
-        surface: st.type ? (st.color ? `${st.type}(${st.color})` : st.type) : '素材',
-        qty: qty,
-        weight_kg: pricingResult.weight_per_piece_kg || undefined,
-        unit_price: unitPrice,
-        amount: totalAmount,
-      }],
-      subtotal: totalAmount,
-      mold_fee: moldFee > 0 ? moldFee : undefined,
-      total: totalAmount + (moldFee > 0 ? moldFee : 0),
-      aluminum_price: aluminumPrice?.price || pricingResult.aluminum_index || undefined,
-      notes: pricingResult.notes?.length > 0 ? pricingResult.notes : undefined,
-      payment_terms: '款到发货',
-      delivery_terms: '确认订单后15-20个工作日交货',
-    };
-
-    try {
-      const res = await fetch('/api/quote-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        const html = await res.text();
-        const w = window.open('', '_blank');
-        if (w) {
-          w.document.write(html);
-          w.document.close();
-        }
-      }
-    } catch (err) {
-      console.error('导出报价单失败:', err);
-    }
+    setShowSheetDialog(true);
   };
 
   // 游客可直接使用计算器；图纸识别/保存报价/深度报价时在组件内弹登录墙
@@ -328,6 +273,23 @@ export default function QuotePage() {
           </div>
         </div>
       </header>
+
+      {/* ===== Excel 正式报价单出单弹窗 ===== */}
+      {showSheetDialog && user && (
+        <QuoteSheetDialog
+          open={showSheetDialog}
+          onClose={() => setShowSheetDialog(false)}
+          userId={user.id}
+          aluminumPrice={aluminumPrice?.price}
+          currentQuote={pricingResult && currentParams ? {
+            params: currentParams,
+            result: pricingResult,
+            productType: productInfo.productName || currentParams.product_type || '产品',
+            productDiscount,
+            moldDiscount,
+          } : null}
+        />
+      )}
 
       {/* ===== 游客导出报价单 登录提示弹窗 ===== */}
       {showExportLogin && (
