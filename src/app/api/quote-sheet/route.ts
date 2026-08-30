@@ -14,7 +14,7 @@ interface SheetItem {
   price_ex_tax?: number;   // 单价未税
   price_inc_tax?: number;  // 含税价
   moq?: number | string;   // 最小起订量
-  mold_fee?: number;       // 模具费
+  mold_fee?: number | null; // 模具费（同模具组非首行传null，显示空白）
   remark?: string;         // 备注
 }
 
