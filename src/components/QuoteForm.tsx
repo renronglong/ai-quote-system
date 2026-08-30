@@ -223,7 +223,7 @@ const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
     materialCategories: {
       '铝板': {
         label: '铝板',
-        fields: ['thickness', 'productSize', 'quantity', 'netWeight'],
+        fields: ['thickness', 'productSize', 'quantity'],
         processes: [
           { name: '无' },
           { name: '冲压', unit: '次' },
@@ -245,7 +245,7 @@ const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
       },
       '冷轧板': {
         label: '冷轧板',
-        fields: ['thickness', 'productSize', 'quantity', 'netWeight'],
+        fields: ['thickness', 'productSize', 'quantity'],
         processes: [
           { name: '无' },
           { name: '冲压', unit: '次' },
@@ -264,7 +264,7 @@ const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
       },
       '不锈钢': {
         label: '不锈钢',
-        fields: ['thickness', 'productSize', 'quantity', 'netWeight'],
+        fields: ['thickness', 'productSize', 'quantity'],
         processes: [
           { name: '无' },
           { name: '冲压', unit: '次' },
@@ -283,7 +283,7 @@ const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
       },
       '镀锌板': {
         label: '镀锌板',
-        fields: ['thickness', 'productSize', 'quantity', 'netWeight'],
+        fields: ['thickness', 'productSize', 'quantity'],
         processes: [
           { name: '无' },
           { name: '冲压', unit: '次' },
@@ -431,6 +431,14 @@ function calcStdMeterWeight(cat: string, width?: number|string, height?: number|
   }
   if (!(area > 0)) return null;
   return Math.round((area * 2.7 / 1000) * 1000) / 1000;
+}
+
+// 板材单件理论重量(g)：长×宽×厚(mm) × 密度(g/cm³) / 1000
+// 密度：铝板2.7，冷轧板/镀锌板7.85，不锈钢7.93
+function calcSheetWeightG(materialCategory: string, l: number, w: number, t: number): number | null {
+  if (!(l > 0 && w > 0 && t > 0)) return null;
+  const density = materialCategory === '铝板' ? 2.7 : materialCategory === '不锈钢' ? 7.93 : 7.85;
+  return Math.round((l * w * t * density / 1000) * 100) / 100; // g
 }
 
 
@@ -1696,6 +1704,21 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             })}
           </div>
         ))}
+        {/* 板材：长×宽×厚自动算单件理论重量 */}
+        {productType === '板材' && (() => {
+          const parsed = parseProductSize(fields.productSize as string);
+          const t = Number(fields.thickness) || 0;
+          const wg = parsed ? calcSheetWeightG(materialCategory, parsed.l, parsed.w, t) : null;
+          if (wg === null) return null;
+          const densityTxt = materialCategory === '铝板' ? '2.7' : materialCategory === '不锈钢' ? '7.93' : '7.85';
+          return (
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-100 px-2.5 py-1.5 text-[11px] text-blue-700">
+              <span className="font-semibold">单件理论重量</span>
+              <span className="font-mono font-semibold text-blue-800">{wg} g</span>
+              <span className="text-blue-400">（{parsed!.l}×{parsed!.w}×{t}mm × {densityTxt}g/cm³ 自动计算，直接用于报价）</span>
+            </div>
+          );
+        })()}
       </div>
     );
   };
