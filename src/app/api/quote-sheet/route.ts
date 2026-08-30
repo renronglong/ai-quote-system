@@ -400,6 +400,7 @@ async function buildPdf(body: SheetBody, fontBuf: Buffer): Promise<Buffer> {
     doc.text(fmtMoney(incSum), cellX(8) + 2, y + 7, { width: COLS[8] - 4, align: 'right', lineBreak: false });
     doc.text(fmtMoney(moldSum), cellX(10) + 2, y + 7, { width: COLS[10] - 4, align: 'right', lineBreak: false });
     doc.y = y + 24;
+    doc.x = doc.page.margins.left;
   }
 
   doc.moveDown(0.8);
@@ -410,16 +411,19 @@ async function buildPdf(body: SheetBody, fontBuf: Buffer): Promise<Buffer> {
     '3：付款方式：现金',
     '4：此报价单有效期为15天',
     '5：开模时间15个工作日，出样5个工作日',
-  ].forEach((t) => { doc.text(t); doc.moveDown(0.25); });
+  ].forEach((t) => {
+    doc.text(t, TABLE_X, doc.y, { width: TABLE_W });
+  });
 
   if (body.aluminum_price) {
-    doc.moveDown(0.3);
-    doc.fontSize(8.5).fillColor('#888888')
-      .text(`报价基准：当日铝锭价 ¥${body.aluminum_price.toLocaleString()}/吨`)
+    doc.moveDown(0.5);
+    doc.fontSize(9).fillColor('#666666')
+      .text(`报价基准：当日铝锭价 ${body.aluminum_price} 元/吨（南海现货均价）`, TABLE_X, doc.y, { width: TABLE_W })
       .fillColor('#000000');
   }
 
   doc.moveDown(2);
+  doc.x = doc.page.margins.left;
   const sy = doc.y;
   doc.fontSize(11).fillColor('#000000');
   doc.text('需方（签章）', TABLE_X, sy, { width: TABLE_W / 2, lineBreak: false });
