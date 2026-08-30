@@ -34,10 +34,21 @@ async function generateExcel(quotes: ExportQuote[], sections: Set<string>) {
   workbook.creator = 'AI智能报价系统';
   workbook.created = new Date();
 
+  const usedSheetNames = new Set<string>();
   for (const quote of quotes) {
     const { params, result, name, date, product_discount, mold_discount } = quote;
-    const sheetName = name.length > 31 ? name.slice(0, 31) : name;
-    const ws = workbook.addWorksheet(sheetName);
+    // Excel sheet 名：≤31字符，且同一 workbook 内不能重名
+    let sheetName = (name || '报价').replace(/[\\\/\?\*\[\]:]/g, '_');
+    if (sheetName.length > 28) sheetName = sheetName.slice(0, 28);
+    let unique = sheetName;
+    let seq = 2;
+    while (usedSheetNames.has(unique)) {
+      const suffix = `-${seq}`;
+      unique = sheetName.slice(0, 31 - suffix.length) + suffix;
+      seq++;
+    }
+    usedSheetNames.add(unique);
+    const ws = workbook.addWorksheet(unique);
 
     const headerFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF10B981' } };
     const headerFont: Partial<ExcelJS.Font> = { bold: true, color: { argb: 'FFFFFFFF' }, size: 14 };
@@ -95,10 +106,10 @@ async function generateExcel(quotes: ExportQuote[], sections: Set<string>) {
       ws.getCell(r, 1).value = '费用明细';
       ws.getCell(r, 1).font = secFont; ws.getCell(r, 1).fill = secFill;
       r++;
-      for (const [c, v] of [['项目',1],['金额',2],['计算公式',3]] as [string,number][]) {
-        ws.getCell(r, c).value = v;
-        ws.getCell(r, c).font = { bold: true, size: 11 };
-        ws.getCell(r, c).fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF9FAFB'} };
+      for (const [label, col] of [['项目',1],['金额',2],['计算公式',3]] as [string,number][]) {
+        ws.getCell(r, col).value = label;
+        ws.getCell(r, col).font = { bold: true, size: 11 };
+        ws.getCell(r, col).fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF9FAFB'} };
       }
       r++;
 
