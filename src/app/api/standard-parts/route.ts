@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       .order('weight_per_meter', { ascending: true })
       .limit(10000);
 
-    const STANDARD_CATEGORIES = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管'];
+    const STANDARD_CATEGORIES = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管', '铝方管'];
 
     // 异型材：包含所有非标名称（异型材/短型材/电源外壳等count<=1的，以及产品名称本身就是"异型材"的）
     if (category) {
@@ -81,21 +81,29 @@ export async function GET(request: NextRequest) {
     }
 
     const categoryMap: Record<string, { label: string; count: number; mold_type: string }> = {};
+    // 固定展示7个标准件类别（无数据也显示，count=0）
+    for (const stdName of STANDARD_CATEGORIES) {
+      categoryMap[stdName] = tempMap[stdName] || { label: stdName, count: 0, mold_type: '平模' };
+    }
     let specialCount = 0;
     for (const [name, val] of Object.entries(tempMap)) {
-      if (STANDARD_CATEGORIES.includes(name)) {
-        categoryMap[name] = val;
-      } else {
+      if (!STANDARD_CATEGORIES.includes(name)) {
         specialCount += val.count;
       }
     }
-    if (specialCount > 0) {
-      categoryMap['异型材'] = { label: '异型材', count: specialCount, mold_type: '' };
-    }
+    // 异型材排在最前面
+    const orderedMap: Record<string, { label: string; count: number; mold_type: string }> = {};
+    orderedMap['异型材'] = { label: '异型材', count: specialCount, mold_type: '' };
+    for (const stdName of STANDARD_CATEGORIES) orderedMap[stdName] = categoryMap[stdName];
+    Object.assign(categoryMap, orderedMap);
+    // 重建顺序
+    const finalMap: Record<string, { label: string; count: number; mold_type: string }> = {};
+    finalMap['异型材'] = orderedMap['异型材'];
+    for (const stdName of STANDARD_CATEGORIES) finalMap[stdName] = orderedMap[stdName];
 
     return NextResponse.json({
       success: true,
-      categories: Object.entries(categoryMap).map(([key, val]) => ({
+      categories: Object.entries(finalMap).map(([key, val]) => ({
         key,
         ...val,
       })),
