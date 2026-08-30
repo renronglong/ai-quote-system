@@ -55,10 +55,12 @@ export interface AiFormUpdate {
   productType?: string;
   materialCategory?: string;
   materialGrade?: string;
+  standardCategory?: string;
   quantity?: number;
   length?: number;
   width?: number;
   height?: number;
+  wallThickness?: number;
   surfaceTreatment?: string;
   packaging?: string;
   secondaryProcessing?: string[];
@@ -106,12 +108,64 @@ const ALL_COLORS_OXIDATION = ['本色', '红色', '黑色', '金色', '铁灰色
 
 const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
   '挤出': {
-    label: '挤出',
+    label: '挤出铝型材',
     icon: '⊞',
     materialCategories: {
-      '铝型材': {
-        label: '铝型材',
+      '异型材': {
+        label: '异型材',
         fields: ['width', 'height', 'length', 'perimeter', 'num_cavities', 'die_type', 'meterWeight', 'quantity', 'netWeight'],
+        materialSurfaceTreatment: ['无', '氧化', '喷砂氧化', '抛光氧化', '拉丝氧化', '喷涂'],
+        materialColorMap: {
+          '氧化': ['本色', '红色', '黑色', '金色', '铁灰色'],
+          '喷砂氧化': ['本色', '黑色', '铁灰色', '金色'],
+        },
+        processes: [
+          { name: '无' },
+          { name: '锯切' },
+          { name: '冲压', unit: '次' },
+          { name: 'CNC加工', unit: '分钟' },
+          { name: '车加工', unit: '分钟' },
+          { name: '钻孔', unit: '次' },
+          { name: '攻牙', unit: '次' },
+        ],
+        productSurfaceTreatmentMap: {
+          '无': [
+            { name: '无' },
+            { name: '除油' },
+            { name: '氧化', colors: ALL_COLORS_OXIDATION },
+            { name: '喷砂氧化' },
+            { name: '抛光氧化' },
+            { name: '拉丝氧化' },
+            { name: '喷涂' },
+          ],
+          '喷砂氧化': [
+            { name: '除油' },
+            { name: '氧化', colors: ALL_COLORS_OXIDATION },
+            { name: '喷砂氧化' },
+            { name: '抛光氧化' },
+            { name: '拉丝氧化' },
+            { name: '喷涂' },
+          ],
+          '抛光氧化': [
+            { name: '氧化', colors: ALL_COLORS_OXIDATION },
+            { name: '喷砂氧化' },
+            { name: '抛光氧化' },
+            { name: '拉丝氧化' },
+            { name: '喷涂' },
+          ],
+          '拉丝氧化': [
+            { name: '抛光氧化' },
+            { name: '拉丝氧化' },
+            { name: '喷涂' },
+          ],
+          '喷涂': [
+            { name: '喷涂' },
+          ],
+        },
+      },
+      '标准件': {
+        label: '标准件',
+        fields: ['width', 'height', 'length', 'perimeter', 'meterWeight', 'quantity', 'netWeight'],
         materialSurfaceTreatment: ['无', '氧化', '喷砂氧化', '抛光氧化', '拉丝氧化', '喷涂'],
         materialColorMap: {
           '氧化': ['本色', '红色', '黑色', '金色', '铁灰色'],
@@ -294,7 +348,7 @@ const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
   },
   '注塑': {
     label: '注塑',
-    icon: '◉',
+    icon: '🧪',
     materialCategories: {
       'ABS': { label: 'ABS', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }] },
       'PP': { label: 'PP', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }] },
@@ -341,6 +395,11 @@ const CATEGORY_DIM_FIELDS: Record<string, { key: string; label: string; placehol
   '铝六角管': [
     { key: 'hex', label: '对边距(mm)', placeholder: '如 10' },
     { key: 'inner', label: '内径(mm)', placeholder: '如 5' },
+  ],
+  '铝方管': [
+    { key: 'width', label: '宽(mm)', placeholder: '如 30' },
+    { key: 'height', label: '高(mm)', placeholder: '如 20' },
+    { key: 'thickness', label: '壁厚(mm)', placeholder: '如 1.5' },
   ],
   '异型材': [
     { key: 'width', label: '宽度(mm)', placeholder: '如 30' },
@@ -398,7 +457,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
   // Core form state
   const [productType, setProductType] = useState('挤出');
-  const [materialCategory, setMaterialCategory] = useState('铝型材');
+  const [materialCategory, setMaterialCategory] = useState('异型材');
   const [fields, setFields] = useState<Record<string, number | string>>({
     width: '', height: '', length: '', quantity: '',
   });
@@ -755,6 +814,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const handleMaterialCategoryChange = (mc: string) => {
     setMaterialCategory(mc);
     resetCategoryState(mc);
+    // 切换异型材/标准件时清空型材小类与模具匹配结果
+    setStandardCategory('');
+    setMoldMatches([]);
+    setSelectedMoldId(null);
+    setUseExistingMold(null);
   };
 
   const toggleProcess = (procName: string) => {
@@ -791,28 +855,73 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     setProductColor('');
   };
 
-  // Sync AI data
+  // Sync AI data（图纸识别参数回填）
   useEffect(() => {
     if (!aiData || aiData === prevAiDataRef.current) return;
     prevAiDataRef.current = aiData;
+
+    // 产品类型：英文key / 中文别名 → 表单tab key
     if (aiData.productType) {
       const ptMap: Record<string, string> = {
-        '挤压铝型材': '挤出', '挤出': '挤出', '铝型材': '挤出',
-        '铝板/铝平板': '板材', '板材': '板材', '铝板': '板材',
-        '压铸铝件': '压铸', '压铸': '压铸',
-        '注塑': '注塑', '注塑件': '注塑',
+        'extrusion': '挤出', '挤压铝型材': '挤出', '挤出铝型材': '挤出', '挤出': '挤出', '挤压': '挤出', '铝型材': '挤出',
+        'sheet_metal': '板材', '铝板/铝平板': '板材', '板材': '板材', '铝板': '板材', '钣金': '板材',
+        'die_casting': '压铸', '压铸铝件': '压铸', '压铸': '压铸', '压铸铝': '压铸',
+        'zinc_alloy': '压铸',
+        'injection': '注塑', '注塑': '注塑', '注塑件': '注塑',
+        'cnc': '挤出', 'stamping': '板材',
       };
       const mapped = ptMap[aiData.productType] || aiData.productType;
       if (PRODUCT_TYPES[mapped]) setProductType(mapped);
     }
-    if (aiData.materialCategory) setMaterialCategory(aiData.materialCategory);
+
+    // 挤出类材料大类：异型材 / 标准件
+    if (productType === '挤出' || aiData.productType) {
+      if (aiData.materialCategory === '异型材' || aiData.materialCategory === '标准件') {
+        setMaterialCategory(aiData.materialCategory);
+      } else if (aiData.materialCategory) {
+        // 兼容旧值：'铝合金'/'铝型材' 等统一归到异型材
+        setMaterialCategory('异型材');
+      }
+    } else if (aiData.materialCategory) {
+      setMaterialCategory(aiData.materialCategory);
+    }
+
+    // 标准件小类：铝圆棒/铝方管/角铝...
+    if (aiData.standardCategory) {
+      const STD_KEYS = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管', '铝方管', '异型材'];
+      const stdMap: Record<string, string> = {
+        '铝方': '铝方/扁棒', '扁棒': '铝方/扁棒', '铝棒': '铝圆棒', '圆棒': '铝圆棒',
+        '方管': '铝方管', '圆管': '铝圆管', '六角棒': '铝六角棒', '六角管': '铝六角管', '角铝': '角铝',
+      };
+      const key = STD_KEYS.includes(aiData.standardCategory)
+        ? aiData.standardCategory
+        : (stdMap[aiData.standardCategory] || '');
+      if (key) {
+        setMaterialCategory('标准件');
+        setStandardCategory(key);
+      }
+    }
+
+    if (aiData.materialGrade) setMaterialGrade(aiData.materialGrade);
     if (aiData.quantity) setFields(prev => ({ ...prev, quantity: aiData.quantity! }));
     if (aiData.width) setFields(prev => ({ ...prev, width: aiData.width! }));
     if (aiData.height) setFields(prev => ({ ...prev, height: aiData.height! }));
     if (aiData.length) setFields(prev => ({ ...prev, length: aiData.length! }));
-    if (aiData.surfaceTreatment) setMaterialSurfaceTreatment(aiData.surfaceTreatment);
+    if (aiData.wallThickness) setFields(prev => ({ ...prev, thickness: aiData.wallThickness! }));
+    if (aiData.surfaceTreatment && aiData.surfaceTreatment !== '无') {
+      const st = String(aiData.surfaceTreatment);
+      const stMap: Record<string,string> = {
+        '阳极氧化': '氧化', '氧化本色': '氧化', '本色氧化': '氧化', '阳极氧化-自然色': '氧化', '阳极氧化-黑色': '喷砂氧化',
+        '喷砂': '喷砂氧化', '喷砂阳极氧化': '喷砂氧化',
+        '抛光': '抛光氧化', '抛光阳极氧化': '抛光氧化',
+        '拉丝': '拉丝氧化', '拉丝阳极氧化': '拉丝氧化',
+        '喷粉': '喷涂', '粉末喷涂': '喷涂', '喷漆': '喷涂',
+      };
+      const mapped = stMap[st] || (['氧化','喷砂氧化','抛光氧化','拉丝氧化','喷涂'].includes(st) ? st : '');
+      if (mapped) setMaterialSurfaceTreatment(mapped);
+    }
     setAiSynced(true);
-    const timer = setTimeout(() => setAiSynced(false), 2000);
+    const timer = setTimeout(() => setAiSynced(false), 3000);
     return () => clearTimeout(timer);
   }, [aiData]);
 
@@ -1081,23 +1190,53 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     // 产品类型映射
     if (d.product_type) {
       const ptMap: Record<string,string> = {
-        extrusion: '挤出', stamping: '板材', die_casting: '压铸',
-        cnc: '板材', injection: '注塑',
+        extrusion: '挤出', stamping: '板材', sheet_metal: '板材', die_casting: '压铸',
+        zinc_alloy: '压铸', cnc: '挤出', injection: '注塑',
       };
-      const mapped = ptMap[d.product_type];
+      const mapped = ptMap[String(d.product_type).toLowerCase()] || ptMap[d.product_type];
       if (mapped && PRODUCT_TYPES[mapped]) setProductType(mapped);
     }
-    if (d.material_category) {
-      // 归一化：识别返回的类别名映射到表单配置key
-      const catMap: Record<string,string> = {
-        '铝合金': '铝型材', '铝型材': '铝型材', '铝': '铝型材',
-        '不锈钢': '不锈钢', '冷轧板': '冷轧板', '冷板': '冷轧板',
-        '压铸铝': '压铸铝', '塑胶': '塑胶',
-      };
-      setMaterialCategory(catMap[d.material_category] || d.material_category);
+
+    // 型材细分类别（必须在填字段之前处理：resetProfileState 会清空截面字段）
+    const VALID_CATS = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管', '铝方管', '异型材'];
+    const stdAlias: Record<string,string> = {
+      '铝方': '铝方/扁棒', '扁棒': '铝方/扁棒', '铝棒': '铝圆棒', '圆棒': '铝圆棒',
+      '方管': '铝方管', '圆管': '铝圆管', '六角棒': '铝六角棒', '六角管': '铝六角管',
+    };
+    let resolvedCat = '';
+    if (d.profile_category) {
+      resolvedCat = VALID_CATS.includes(d.profile_category)
+        ? d.profile_category
+        : (stdAlias[d.profile_category] || '');
     }
+    if (resolvedCat) {
+      // 先清空旧类别状态（含截面字段），稍后再统一填值
+      setMoldMatches([]);
+      setSelectedMoldId(null);
+      setUseExistingMold(null);
+      setMaterialCategory(resolvedCat === '异型材' ? '异型材' : '标准件');
+      setStandardCategory(resolvedCat);
+    } else if (d.material_category) {
+      // 归一化：挤出铝型材类 → 异型材；板材/压铸等保持各自key
+      const mc = String(d.material_category);
+      if (/铝合金|铝型材|^铝$|挤压|挤出/.test(mc)) {
+        setMaterialCategory('异型材');
+        setStandardCategory('异型材');
+      } else {
+        const catMap: Record<string,string> = {
+          '不锈钢': '不锈钢', '冷轧板': '冷轧板', '冷板': '冷轧板', '镀锌板': '镀锌板',
+          '压铸铝': '压铸铝', '锌合金': '锌合金', '塑胶': '塑胶',
+          'ABS': 'ABS', 'PP': 'PP', 'PC': 'PC',
+        };
+        const mapped = catMap[mc] || mc;
+        setMaterialCategory(mapped);
+      }
+    }
+
     if (d.product_code) setProductCode(d.product_code);
     if (d.product_name) setProductName(d.product_name);
+
+    // 字段统一最后填，避免被类别切换的 reset 清掉
     setFields(prev => {
       const next = { ...prev };
       if (typeof d.width === 'number') next.width = d.width;
@@ -1108,8 +1247,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       if (typeof d.num_cavities === 'number') next.num_cavities = d.num_cavities;
       // 模具类型兼容英文/中文/中空描述
       const dt = String(d.die_type || '').toLowerCase();
-      if (d.die_type === 'flat' || dt === 'flat' || d.die_type === '平模') next.die_type = 'flat';
-      else if (d.die_type === 'split' || dt === 'split' || d.die_type === '分流模' || d.die_type === '中空') next.die_type = 'split';
+      if (d.die_type === 'flat' || dt === 'flat' || d.die_type === '平模' || d.die_type === '实心') next.die_type = 'flat';
+      else if (d.die_type === 'split' || dt === 'split' || d.die_type === '分流模' || d.die_type === '中空' || d.die_type === '空心') next.die_type = 'split';
       // 按内腔数兜底：有内腔=分流模，实心=平模
       if (typeof d.num_cavities === 'number' && !next.die_type) {
         next.die_type = d.num_cavities >= 1 ? 'split' : 'flat';
@@ -1121,25 +1260,29 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     });
     if (d.material_grade) setMaterialGrade(d.material_grade);
     if (d.surface_treatment && d.surface_treatment !== '无') {
-      setMaterialSurfaceTreatment(d.surface_treatment);
-      setProductSurfaceTreatment(d.surface_treatment);
+      // 归一化到表单表面处理选项
+      const st = String(d.surface_treatment);
+      const stMap: Record<string,string> = {
+        '阳极氧化': '氧化', '氧化本色': '氧化', '本色氧化': '氧化', '硬质氧化': '氧化',
+        '喷砂': '喷砂氧化', '喷砂阳极氧化': '喷砂氧化',
+        '抛光': '抛光氧化', '抛光阳极氧化': '抛光氧化',
+        '拉丝': '拉丝氧化', '拉丝阳极氧化': '拉丝氧化',
+        '喷粉': '喷涂', '粉末喷涂': '喷涂', '喷漆': '喷涂',
+      };
+      const mappedSt = stMap[st] || (['氧化','喷砂氧化','抛光氧化','拉丝氧化','喷涂'].includes(st) ? st : '');
+      if (mappedSt) {
+        setMaterialSurfaceTreatment(mappedSt);
+        setProductSurfaceTreatment(mappedSt);
+      }
     }
     // 工序：Bot返回格式如 "锯切,冲压(3次),CNC加工(10分钟)"
     if (d.processes && typeof d.processes === 'string' && d.processes !== '无') {
       const procs: ProcessSelection[] = d.processes.split(/[,，、]/).map((p: string) => {
         const m = p.trim().match(/^(.+?)(?:\((\d+)(分钟|次|mm|个)?\))?$/);
-        if (m) return { name: m[1], count: m[2] ? parseInt(m[2]) : undefined, unit: m[3] || undefined };
+        if (m) return { name: m[1], quantity: m[2] ? parseInt(m[2]) : undefined };
         return { name: p.trim() };
       }).filter((p: ProcessSelection) => p.name);
       if (procs.length > 0) setProcesses(procs);
-    }
-    // AI识别出型材细分类别时自动跳转（铝圆管/铝六角管/异型材等）
-    if (d.profile_category) {
-      const VALID_CATS = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管', '异型材'];
-      if (VALID_CATS.includes(d.profile_category)) {
-        setStandardCategory(d.profile_category);
-        resetProfileState();
-      }
     }
     // 备注/说明
     if (d.notes) setFileRemark(prev => prev ? prev + '; ' + d.notes : d.notes);
@@ -1573,6 +1716,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 <span className="flex items-center gap-1.5">
                   <span className="text-base">{cfg.icon}</span>
                   {cfg.label}
+                  {key === '注塑' && (
+                    <span className="ml-0.5 px-1 py-0.5 rounded bg-amber-100 text-amber-600 text-[9px] font-normal leading-none">待开发</span>
+                  )}
                 </span>
                 {productType === key && (
                   <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-t-full" />
@@ -1604,12 +1750,20 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         </div>
 
         {/* ---- 型材类别选择 (仅挤出) ---- */}
-        {productType === '挤出' && (
-          <>
+        {productType === '挤出' && (() => {
+          // 任务5：选异型材 → 跳出模具类型选择；选标准件 → 显示7个标准件种类
+          const STD_PARTS = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管', '铝方管'];
+          const visibleCats = materialCategory === '标准件'
+            ? standardCategories.filter(c => STD_PARTS.includes(c.key))
+            : standardCategories.filter(c => c.key === '异型材');
+          if (visibleCats.length === 0) return null;
+          return (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-              <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">型材类别</label>
+              <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+                {materialCategory === '标准件' ? '标准件种类' : '异型材 · 先选模具类型'}
+              </label>
               <div className="flex flex-wrap gap-1.5">
-                {standardCategories.map(cat => (
+                {visibleCats.map(cat => (
                   <button
                     key={cat.key}
                     type="button"
@@ -1631,8 +1785,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 ))}
               </div>
             </div>
-          </>
-        )}
+          );
+        })()}
 
         {/* ---- 尺寸输入 + 模具匹配 ---- */}
         {productType === '挤出' && standardCategory && (() => {
@@ -1741,6 +1895,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                         }`}
                       >
                         <div className="flex items-center gap-2 min-w-0">
+                          {/* 任务1：异型材显示模具编号，标准件无编号不显示 */}
+                          {standardCategory === '异型材' && m.mold_number && (
+                            <span className="shrink-0 px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-mono text-[10px] font-medium">{m.mold_number}</span>
+                          )}
                           <span className="font-medium shrink-0">{m.cross_section_mm}</span>
                           <span className="text-gray-400 shrink-0">·</span>
                           <span className="text-gray-500 truncate">{m.weight_per_meter}kg/m</span>
