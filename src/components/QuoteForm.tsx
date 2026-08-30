@@ -584,6 +584,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (config) {
       const firstCat = Object.keys(config.materialCategories)[0];
       setMaterialCategory(firstCat);
+      setStandardCategory(firstCat === '异型材' ? '异型材' : '');
       resetCategoryState(firstCat);
     }
   }, [productType]);
@@ -844,8 +845,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const handleMaterialCategoryChange = (mc: string) => {
     setMaterialCategory(mc);
     resetCategoryState(mc);
-    // 切换异型材/标准件时清空型材小类与模具匹配结果
-    setStandardCategory('');
+    // 异型材是唯一细分类，直接选中，免去多余的二次点击；标准件则需再选具体种类
+    setStandardCategory(mc === '异型材' ? '异型材' : '');
     setMoldMatches([]);
     setSelectedMoldId(null);
     setUseExistingMold(null);
@@ -906,11 +907,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
     // 挤出类材料大类：异型材 / 标准件
     if (productType === '挤出' || aiData.productType) {
-      if (aiData.materialCategory === '异型材' || aiData.materialCategory === '标准件') {
-        setMaterialCategory(aiData.materialCategory);
+      if (aiData.materialCategory === '标准件') {
+        setMaterialCategory('标准件');
+        // 标准件细分类由下方 aiData.standardCategory 分支设置
       } else if (aiData.materialCategory) {
-        // 兼容旧值：'铝合金'/'铝型材' 等统一归到异型材
+        // 异型材（含 '铝合金'/'铝型材' 等旧值兼容）：唯一细分类直接选中
         setMaterialCategory('异型材');
+        setStandardCategory('异型材');
       }
     } else if (aiData.materialCategory) {
       setMaterialCategory(aiData.materialCategory);
@@ -1828,25 +1831,22 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           </div>
         </div>
 
-        {/* ---- 型材类别选择 (仅挤出) ---- */}
-        {productType === '挤出' && (() => {
-          // 任务5：选异型材 → 跳出模具类型选择；选标准件 → 显示7个标准件种类
+        {/* ---- 标准件种类选择 (仅挤出·标准件；异型材唯一分类无需再点) ---- */}
+        {productType === '挤出' && materialCategory === '标准件' && (() => {
           const STD_PARTS = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管', '铝方管'];
-          const visibleCats = materialCategory === '标准件'
-            ? standardCategories.filter(c => STD_PARTS.includes(c.key))
-            : standardCategories.filter(c => c.key === '异型材');
+          const visibleCats = standardCategories.filter(c => STD_PARTS.includes(c.key));
           if (visibleCats.length === 0) return null;
           return (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
               <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
-                {materialCategory === '标准件' ? '标准件种类' : '异型材 · 先选模具类型'}
+                标准件种类
               </label>
               <div className="flex flex-wrap gap-1.5">
                 {visibleCats.map(cat => (
                   <button
                     key={cat.key}
                     type="button"
-                    onClick={() => { setStandardCategory(cat.key); resetProfileState(); setFields(prev => ({ ...prev, die_type: CATEGORY_NEEDS_DIE_SELECTION.includes(cat.key) ? (prev.die_type || '') : (cat.mold_type === '分流模' ? 'split' : 'flat') })); }}
+                    onClick={() => { setStandardCategory(cat.key); resetProfileState(); setFields(prev => ({ ...prev, die_type: cat.mold_type === '分流模' ? 'split' : 'flat' })); }}
                     className={`px-2.5 py-1.5 rounded-lg border text-xs transition-all duration-200 ${
                       standardCategory === cat.key
                         ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
@@ -1855,17 +1855,45 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   >
                     {cat.label}
                     <span className="ml-1 text-[10px] opacity-60">({cat.count})</span>
-                    {!CATEGORY_NEEDS_DIE_SELECTION.includes(cat.key) && (
-                      <span className={`ml-1 text-[10px] ${cat.mold_type === '分流模' ? 'text-red-400' : 'text-gray-400'}`}>
-                        {cat.mold_type}
-                      </span>
-                    )}
+                    <span className={`ml-1 text-[10px] ${cat.mold_type === '分流模' ? 'text-red-400' : 'text-gray-400'}`}>
+                      {cat.mold_type}
+                    </span>
                   </button>
                 ))}
               </div>
             </div>
           );
         })()}
+
+        {/* ---- 异型材模具类型选择 (仅挤出·异型材，上移直接选) ---- */}
+        {productType === '挤出' && materialCategory === '异型材' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+            <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+              模具类型（先选再填尺寸）
+            </label>
+            <div className="flex gap-2">
+              {([{ v: 'flat', label: '平模（实心）' }, { v: 'split', label: '分流模（中空）' }] as const).map(opt => (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() => { setFields(prev => ({ ...prev, die_type: opt.v })); setSelectedMoldId(null); setUseExistingMold(null); setMoldMatches([]); }}
+                  className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                    fields.die_type === opt.v
+                      ? opt.v === 'split'
+                        ? 'bg-red-50 border-red-300 text-red-600'
+                        : 'bg-blue-50 border-blue-300 text-blue-700'
+                      : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {!fields.die_type && (
+              <div className="mt-1.5 text-[11px] text-amber-500">请先选择模具类型，再填尺寸点搜索</div>
+            )}
+          </div>
+        )}
 
         {/* ---- 尺寸输入 + 模具匹配 ---- */}
         {productType === '挤出' && standardCategory && (() => {
@@ -1876,32 +1904,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
                 输入尺寸 · 填完点按钮匹配模具
               </label>
-              {CATEGORY_NEEDS_DIE_SELECTION.includes(standardCategory) && (
-                <div className="mb-2">
-                  <label className="block text-[10px] text-gray-400 mb-1">模具类型（先选再搜）</label>
-                  <div className="flex gap-2">
-                    {([{ v: 'flat', label: '平模（实心）' }, { v: 'split', label: '分流模（中空）' }] as const).map(opt => (
-                      <button
-                        key={opt.v}
-                        type="button"
-                        onClick={() => { setFields(prev => ({ ...prev, die_type: opt.v })); setSelectedMoldId(null); setUseExistingMold(null); }}
-                        className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                          fields.die_type === opt.v
-                            ? opt.v === 'split'
-                              ? 'bg-red-50 border-red-300 text-red-600'
-                              : 'bg-blue-50 border-blue-300 text-blue-700'
-                            : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {CATEGORY_NEEDS_DIE_SELECTION.includes(standardCategory) && !fields.die_type && (
-                <div className="mb-2 text-[11px] text-amber-500">请先选择模具类型，再点搜索按钮</div>
-              )}
               <div className={`grid ${dimFields.length >= 3 ? 'grid-cols-3' : dimFields.length === 2 ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
                 {dimFields.map(df => {
                   const fieldMap: Record<string, string> = { diameter: 'width', hex: 'width', outer: 'width', inner: 'height' };
