@@ -49,6 +49,11 @@ interface QuoteRequest {
     width_mm: number;
     height_mm?: number;
     wall_thickness_mm?: number;
+    standard_category?: string;  // 挤出标准件小类：铝圆棒/铝方/扁棒/铝六角棒/角铝/铝圆管/铝六角管/铝方管
+    diameter_mm?: number;        // 铝圆棒直径
+    hex_flat_mm?: number;        // 铝六角棒/铝六角管对边距
+    outer_diameter_mm?: number;  // 铝圆管外径
+    inner_diameter_mm?: number;  // 铝圆管/铝六角管内径
     cross_section_area_mm2?: number; // 截面积 mm²（挤压铝型材）
     material_size_type?: 'long' | 'short'; // 长料(≥3000mm) / 小料(<3000mm)
     perimeter_mm?: number;    // 产品外周长(mm)
@@ -263,6 +268,10 @@ const DEFAULT_PRICING_RULES: PricingRules = {
 /** 安全地四舍五入到两位小数 */
 function r2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+/** 安全地四舍五入到三位小数（米重等小数值） */
+function r3(n: number): number {
+  return Math.round(n * 1000) / 1000;
 }
 
 /** 生成报价单号: Q-YYYYMMDD-XXX */
@@ -496,6 +505,90 @@ function calcVolumetricMaterialCost(
 // 铝型材材料费计算
 // ============================================================
 
+// ============================================================
+// 标准件理论米重（规则截面，按6063铝密度2.7g/cm³计算）
+// ============================================================
+const AL_DENSITY_G_CM3 = 2.7;
+
+/**
+ * 按标准件类别与截面尺寸计算理论米重(kg/m)。
+ * 截面积单位mm²，米重 = 截面积mm² × 2.7 / 1000
+ * 返回 { weight, formula }；尺寸不足返回 null
+ */
+function calcStandardMeterWeight(
+  dims: NonNullable<QuoteRequest['dimensions']>,
+): { weight: number; formula: string; area: number } | null {
+  const cat = dims.standard_category;
+  const w = dims.width_mm || 0;
+  const h = dims.height_mm || 0;
+  const t = dims.wall_thickness_mm || 0;
+  const d = dims.diameter_mm || 0;
+  const s = dims.hex_flat_mm || 0;   // 六角对边距
+  const od = dims.outer_diameter_mm || 0;
+  const id = dims.inner_diameter_mm || 0;
+
+  let area = 0;   // 截面积 mm²
+  let formula = '';
+
+  switch (cat) {
+    case '铝圆棒': {
+      if (!(d > 0)) return null;
+      area = Math.PI * d * d / 4;
+      formula = `圆棒 Ø${d}mm：π×${d}²/4 = ${area.toFixed(2)}mm²`;
+      break;
+    }
+    case '铝方/扁棒': {
+      if (!(w > 0 && h > 0)) return null;
+      area = w * h;
+      formula = `方/扁棒 ${w}×${h}mm：${w}×${h} = ${area.toFixed(2)}mm²`;
+      break;
+    }
+    case '铝六角棒': {
+      if (!(s > 0)) return null;
+      area = 2.598 * s * s;  // 正六边形面积 = 3√3/2 × S² ≈ 2.598×S²
+      formula = `六角棒 对边距${s}mm：2.598×${s}² = ${area.toFixed(2)}mm²`;
+      break;
+    }
+    case '角铝': {
+      if (!(w > 0 && h > 0 && t > 0)) return null;
+      area = t * (w + h - t);
+      formula = `角铝 ${w}×${h}×${t}mm：${t}×(${w}+${h}-${t}) = ${area.toFixed(2)}mm²`;
+      break;
+    }
+    case '铝圆管': {
+      if (!(od > 0 && id >= 0 && od > id)) {
+        // 只有外径没内径时按实心圆棒算
+        if (od > 0 && !(id > 0)) { area = Math.PI * od * od / 4; formula = `圆棒 Ø${od}mm（未填内径按实心）：${area.toFixed(2)}mm²`; break; }
+        return null;
+      }
+      area = Math.PI * (od * od - id * id) / 4;
+      formula = `圆管 Ø${od}/Ø${id}mm：π×(${od}²-${id}²)/4 = ${area.toFixed(2)}mm²`;
+      break;
+    }
+    case '铝六角管': {
+      if (!(s > 0 && id >= 0)) return null;
+      const outer = 2.598 * s * s;
+      const inner = id > 0 ? Math.PI * id * id / 4 : 0;
+      area = outer - inner;
+      formula = `六角管 对边距${s}/内Ø${id || 0}mm：2.598×${s}²${id > 0 ? `-π×${id}²/4` : ''} = ${area.toFixed(2)}mm²`;
+      break;
+    }
+    case '铝方管': {
+      if (!(w > 0 && h > 0 && t > 0)) return null;
+      if (!(w > 2 * t && h > 2 * t)) return null;
+      area = w * h - (w - 2 * t) * (h - 2 * t);
+      formula = `方管 ${w}×${h}×${t}mm：${w}×${h}-${(w - 2 * t).toFixed(1)}×${(h - 2 * t).toFixed(1)} = ${area.toFixed(2)}mm²`;
+      break;
+    }
+    default:
+      return null;
+  }
+
+  if (!(area > 0)) return null;
+  const weight = area * AL_DENSITY_G_CM3 / 1000;
+  return { weight, formula, area };
+}
+
 /**
  * 计算铝型材材料费
  * 公式：材料单价 = 铝锭价 + 挤压加工费
@@ -520,13 +613,23 @@ function calcExtrusionMaterialCost(
   let detailStr: string;
   
   // 材料费 = 产品米重(kg/m) × (长度mm + 5mm) / 1000 → 得到kg
-  const meterWeight = dimensions.meter_weight_kg_per_m || 0;
+  let meterWeight = dimensions.meter_weight_kg_per_m || 0;
   const lengthMm = dimensions.length_mm || 0;  // 未填长度不再默认1000
-  
+
+  // 标准件（棒/管/角铝/方管等规则截面）：无米重时按几何尺寸自动算理论米重
+  let stdWeightInfo: { weight: number; formula: string } | null = null;
+  if (!(meterWeight > 0)) {
+    stdWeightInfo = calcStandardMeterWeight(dimensions);
+    if (stdWeightInfo) meterWeight = stdWeightInfo.weight;
+  }
+
   if (meterWeight > 0 && lengthMm > 0) {
     weightKg = meterWeight * (lengthMm + 5) / 1000;
     formulaStr = '米重(kg/m) × (长度+5) / 1000';
-    detailStr = `${meterWeight}kg/m × (${lengthMm}mm + 5mm) ÷ 1000 = ${r2(weightKg)}kg`;
+    detailStr = `${r3(meterWeight)}kg/m × (${lengthMm}mm + 5mm) ÷ 1000 = ${r2(weightKg)}kg`;
+    if (stdWeightInfo) {
+      detailStr += ` | 理论米重: ${stdWeightInfo.formula} × 2.7g/cm³ ÷ 1000 = ${r3(meterWeight)}kg/m`;
+    }
   } else if (weightOverride && weightOverride > 0) {
     weightKg = weightOverride;
     formulaStr = '用户提供重量';
@@ -730,11 +833,14 @@ function calcExtrusion(
     }
     // 步骤3：米重负载校验
     // 优先使用用户手动输入的米重(kg/m)，否则用公式计算
+    const stdMw = calcStandardMeterWeight(dims);
     const meterWeightKgPerM = dims.meter_weight_kg_per_m
       ? dims.meter_weight_kg_per_m
-      : (dims.cross_section_area_mm2
-        ? dims.cross_section_area_mm2 * 2.7 / 1000
-        : (W * H_dim * 2.7 / 1000));
+      : (stdMw
+        ? stdMw.weight
+        : (dims.cross_section_area_mm2
+          ? dims.cross_section_area_mm2 * 2.7 / 1000
+          : (W * H_dim * 2.7 / 1000)));
 
     const limitKey = `${dieDiameter}x${dieThickness}`;
     let safeLimit = SAFE_METER_WEIGHT_LIMITS[limitKey];
