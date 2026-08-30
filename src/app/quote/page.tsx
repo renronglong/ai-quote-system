@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import QuoteForm, { PricingResult, BatchVariantResult } from '@/components/QuoteForm';
+import QuoteForm, { PricingResult } from '@/components/QuoteForm';
 import {
   TrendingUp,
   Loader2,
@@ -12,10 +12,8 @@ import {
   ChevronUp,
   AlertTriangle,
   Package,
-  BarChart3,
   Save,
   History,
-  Download,
   Edit2,
   CheckCircle2,
   Percent,
@@ -64,7 +62,8 @@ export default function QuotePage() {
   const [manualUnitPrice, setManualUnitPrice] = useState<number | null>(null); // 手动覆盖单价
   const [manualMoldFee, setManualMoldFee] = useState<number | null>(null); // 手动覆盖模具费
   const [manualMinOrderQty, setManualMinOrderQty] = useState<number | null>(null); // 手动覆盖最小起订量
-  const [batchResults, setBatchResults] = useState<BatchVariantResult[]>([]);
+  const [moldGroupId, setMoldGroupId] = useState<string>(() => 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)); // 当前模具组ID：同组报价共用一副模具
+  const [formNonce, setFormNonce] = useState(0); // 新建报价时重挂载 QuoteForm 清空表单
   const aiDataCounter = useRef(0);
 
   const handleFormUpdate = useCallback((data: AiFormUpdate) => {
@@ -87,46 +86,55 @@ export default function QuotePage() {
     setProductInfo(info);
   }, []);
 
-  const handleBatchResult = useCallback((results: BatchVariantResult[]) => {
-    setBatchResults(results);
-  }, []);
+  // 长度＋：把当前长度/参数的报价存进报价池（归属当前模具组）
+  const handleSaveVariant = useCallback(async (): Promise<boolean> => {
+    if (!user) {
+      router.push('/login?redirect=/quote');
+      return false;
+    }
+    if (!pricingResult) {
+      alert('请先填好截面和长度参数，出现报价结果后再点＋保存');
+      return false;
+    }
+    const params = { ...(currentParams || {}) };
+    const productType = params.product_type || productInfo.productName || '铝型材';
+    if (productInfo.productName) params.productName = productInfo.productName;
+    if (productInfo.productCode) params.productCode = productInfo.productCode;
+    const len = params.length;
+    const result = {
+      material_cost: pricingResult.material_cost,
+      processing_cost: pricingResult.secondary_operations_cost || 0,
+      surface_treatment_cost: pricingResult.surface_treatment_cost,
+      packaging_cost: pricingResult.packaging_cost,
+      transport_cost: pricingResult.transport_cost,
+      management_fee: pricingResult.management_fee,
+      unit_price: manualUnitPrice ?? pricingResult.unit_price,
+      total_price: pricingResult.total_price,
+      weight_per_piece_kg: pricingResult.weight_per_piece_kg,
+      material_utilization_rate: pricingResult.material_utilization_rate,
+      breakdown: pricingResult.breakdown,
+      aluminum_index: pricingResult.aluminum_index,
+      notes: pricingResult.notes,
+      // 同组非首条存池时不带模具费：出单时模具费按组只算一次
+      mold_cost: 0,
+      min_order_qty: manualMinOrderQty ?? pricingResult.min_order_qty ?? 0,
+    };
+    const label = len ? `${productInfo.productName || productType} ${len}mm` : (productInfo.productName || productType);
+    const saved = await saveQuoteToAPI(user.id, params, result, productType, productDiscount, moldDiscount, moldGroupId, label);
+    return !!saved;
+  }, [user, pricingResult, currentParams, productInfo, manualUnitPrice, manualMinOrderQty, productDiscount, moldDiscount, moldGroupId, router]);
 
-  const exportBatchCSV = () => {
-    if (batchResults.length === 0) return;
-    const headers = ['产品型号', '长度(mm)', '重量(g)', '重量(kg)', '数量', '材料费', '加工费', '表面处理费', '单价', '总价', '模具费'];
-    const rows = batchResults.map((br, idx) => [
-      br.name || `变体${idx + 1}`,
-      br.length,
-      br.weight,
-      (br.weight / 1000).toFixed(3),
-      br.quantity || 1,
-      br.result.material_cost.toFixed(2),
-      (br.result.secondary_operations_cost || 0).toFixed(2),
-      br.result.surface_treatment_cost.toFixed(2),
-      br.result.unit_price.toFixed(2),
-      br.result.total_price.toFixed(2),
-      idx === 0 ? (br.result.mold_cost || 0).toFixed(2) : '-',
-    ]);
-    const totalUnit = batchResults.reduce((s, br) => s + br.result.unit_price * (br.quantity || 1), 0);
-    const moldCost = batchResults[0]?.result.mold_cost || 0;
-    rows.push([
-      '合计', '', '', '', '',
-      batchResults.reduce((s, br) => s + br.result.material_cost, 0).toFixed(2),
-      batchResults.reduce((s, br) => s + (br.result.secondary_operations_cost || 0), 0).toFixed(2),
-      batchResults.reduce((s, br) => s + br.result.surface_treatment_cost, 0).toFixed(2),
-      totalUnit.toFixed(2),
-      batchResults.reduce((s, br) => s + br.result.total_price, 0).toFixed(2),
-      moldCost > 0 ? moldCost.toFixed(2) : '-',
-    ]);
-    const csv = '\uFEFF' + [headers, ...rows].map(r => r.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `批量报价_${productInfo.productName || '产品'}_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  // 新建报价：开一副新模具（新模具组 + 清空表单）
+  const handleNewQuote = useCallback(() => {
+    setMoldGroupId('m' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+    setPricingResult(null);
+    setManualUnitPrice(null);
+    setManualMoldFee(null);
+    setManualMinOrderQty(null);
+    setCurrentParams(null);
+    setProductInfo({ productName: '', productCode: '' });
+    setFormNonce(n => n + 1);
+  }, []);
 
   // 保存报价 → 调用 API 存入数据库（游客先跳登录）
   const handleSaveQuote = async () => {
@@ -135,8 +143,10 @@ export default function QuotePage() {
       return;
     }
     if (!pricingResult) return;
-    const params = currentParams || {};
+    const params = { ...(currentParams || {}) };
     const productType = params.product_type || productInfo.productName || '产品';
+    if (productInfo.productName) params.productName = productInfo.productName;
+    if (productInfo.productCode) params.productCode = productInfo.productCode;
     const result = {
       material_cost: pricingResult.material_cost,
       processing_cost: pricingResult.secondary_operations_cost || 0,
@@ -157,7 +167,7 @@ export default function QuotePage() {
       min_order_qty: manualMinOrderQty ?? pricingResult.min_order_qty ?? 0,
       manual_min_order_qty: manualMinOrderQty,
     };
-    const saved = await saveQuoteToAPI(user.id, params, result, productType);
+    const saved = await saveQuoteToAPI(user.id, params, result, productType, productDiscount, moldDiscount, moldGroupId);
     if (saved) {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 1500);
@@ -281,8 +291,9 @@ export default function QuotePage() {
           onClose={() => setShowSheetDialog(false)}
           userId={user.id}
           aluminumPrice={aluminumPrice?.price}
+          moldGroupId={moldGroupId}
           currentQuote={pricingResult && currentParams ? {
-            params: currentParams,
+            params: { ...currentParams, ...(productInfo.productName ? { productName: productInfo.productName } : {}), ...(productInfo.productCode ? { productCode: productInfo.productCode } : {}) },
             result: pricingResult,
             productType: productInfo.productName || currentParams.product_type || '产品',
             productDiscount,
@@ -318,10 +329,12 @@ export default function QuotePage() {
         <div className="w-full lg:w-[58%] xl:w-[55%] overflow-y-auto bg-gray-50">
           <div className="max-w-2xl mx-auto">
             <QuoteForm
+              key={formNonce}
               aiData={aiFormData}
               onResult={handleResult}
               onProductInfoChange={handleProductInfoChange}
-              onBatchResult={handleBatchResult}
+              onSaveVariant={handleSaveVariant}
+              onNewQuote={handleNewQuote}
               onCalculate={handleParamsUpdate}
             />
           </div>
@@ -355,83 +368,6 @@ export default function QuotePage() {
                 onManualMinOrderQtyChange={setManualMinOrderQty}
                 onExportPDF={exportQuotePDF}
               />
-              {/* ---- 批量报价汇总表 ---- */}
-              {batchResults.length > 0 && (
-                <div className="rounded-xl bg-white border border-gray-200 shadow-sm overflow-hidden">
-                  <div className="px-3 py-2 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <BarChart3 className="w-3.5 h-3.5 text-blue-600" />
-                      <span className="text-[11px] font-semibold text-blue-700 uppercase tracking-wide">批量报价汇总</span>
-                    </div>
-                    <button
-                      onClick={exportBatchCSV}
-                      className="flex items-center gap-1 px-2 py-1 text-[10px] rounded-md bg-white border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors"
-                    >
-                      <Download className="w-3 h-3" />
-                      导出CSV
-                    </button>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-gray-50 border-b border-gray-100">
-                          <th className="px-2 py-1.5 text-left text-[10px] font-medium text-gray-500">产品</th>
-                          <th className="px-2 py-1.5 text-right text-[10px] font-medium text-gray-500">长度(mm)</th>
-                          <th className="px-2 py-1.5 text-right text-[10px] font-medium text-gray-500">重量(g)</th>
-                          <th className="px-2 py-1.5 text-right text-[10px] font-medium text-gray-500">数量</th>
-                          <th className="px-2 py-1.5 text-right text-[10px] font-medium text-gray-500">材料费</th>
-                          <th className="px-2 py-1.5 text-right text-[10px] font-medium text-gray-500">加工费</th>
-                          <th className="px-2 py-1.5 text-right text-[10px] font-medium text-gray-500">表处费</th>
-                          <th className="px-2 py-1.5 text-right text-[10px] font-medium text-gray-500">单价</th>
-                          <th className="px-2 py-1.5 text-right text-[10px] font-medium text-gray-500">模具费</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {batchResults.map((br, idx) => (
-                          <tr key={idx} className={idx % 2 === 1 ? 'bg-gray-50/50' : ''}>
-                            <td className="px-2 py-1.5 text-gray-700 whitespace-nowrap">{br.name}{br.surfaceTreatment && br.surfaceTreatment !== '无' && br.surfaceTreatment !== '' ? <span className="text-[9px] text-blue-500 ml-1">({br.surfaceTreatment})</span> : null}</td>
-                            <td className="px-2 py-1.5 text-right text-gray-800 font-medium">{br.length}</td>
-                            <td className="px-2 py-1.5 text-right text-gray-800">{br.weight}</td>
-                            <td className="px-2 py-1.5 text-right text-gray-800">{br.quantity || 1}</td>
-                            <td className="px-2 py-1.5 text-right text-gray-600">¥{br.result.material_cost.toFixed(2)}</td>
-                            <td className="px-2 py-1.5 text-right text-gray-600">¥{(br.result.secondary_operations_cost || 0).toFixed(2)}</td>
-                            <td className="px-2 py-1.5 text-right text-gray-600">¥{br.result.surface_treatment_cost.toFixed(2)}</td>
-                            <td className="px-2 py-1.5 text-right text-emerald-600 font-semibold">¥{br.result.unit_price.toFixed(2)}</td>
-                            <td className="px-2 py-1.5 text-right text-blue-600 font-medium">
-                              {idx === 0 && br.result.mold_cost ? `¥${br.result.mold_cost.toFixed(2)}` : '-'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="bg-emerald-50/50 border-t-2 border-dashed border-gray-200">
-                          <td className="px-2 py-2 text-[11px] font-semibold text-gray-700">合计</td>
-                          <td className="px-2 py-2"></td>
-                          <td className="px-2 py-2"></td>
-                          <td className="px-2 py-2 text-right text-[11px] font-semibold text-gray-700">
-                            {batchResults.reduce((s, br) => s + (br.quantity || 1), 0)}
-                          </td>
-                          <td className="px-2 py-2 text-right text-[11px] font-semibold text-gray-700">
-                            ¥{batchResults.reduce((s, br) => s + br.result.material_cost, 0).toFixed(2)}
-                          </td>
-                          <td className="px-2 py-2 text-right text-[11px] font-semibold text-gray-700">
-                            ¥{batchResults.reduce((s, br) => s + (br.result.secondary_operations_cost || 0), 0).toFixed(2)}
-                          </td>
-                          <td className="px-2 py-2 text-right text-[11px] font-semibold text-gray-700">
-                            ¥{batchResults.reduce((s, br) => s + br.result.surface_treatment_cost, 0).toFixed(2)}
-                          </td>
-                          <td className="px-2 py-2 text-right text-sm font-bold text-emerald-600">
-                            ¥{batchResults.reduce((s, br) => s + br.result.unit_price * (br.quantity || 1), 0).toFixed(2)}
-                          </td>
-                          <td className="px-2 py-2 text-right text-[11px] font-semibold text-blue-600">
-                            {batchResults[0]?.result.mold_cost ? `¥${batchResults[0].result.mold_cost.toFixed(2)}` : '-'}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                </div>
-              )}
 
             </div>
           </div>
