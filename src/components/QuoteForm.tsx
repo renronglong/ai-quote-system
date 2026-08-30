@@ -818,18 +818,22 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   }, [fields.meterWeight, fields.length, productType]);
 
   // ==================== Auto-calculate with debounce ====================
+  // triggerCalculate 定义在 doCalculate 之后（见文件下方），用 ref 持有最新实现，
+  // 避免闭包捕获旧 state（历史bug：选「分流模」后自动报价仍按旧 die_type='flat' 计算）
+  const doCalculateRef = useRef<() => void>(() => {});
+
   const triggerCalculate = useCallback(() => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
-      doCalculate();
+      doCalculateRef.current();
     }, 500);
-  }, [productType, materialCategory, fields, materialSurfaceTreatment, materialColor, processes, productSurfaceTreatment, productColor, surfaceTreatment, surfaceColor, materialSizeType, dieSteelPrice, materialGrade]);
+  }, []);
 
   // Trigger on any field change
   useEffect(() => {
     triggerCalculate();
     return () => { if (debounceTimer.current) clearTimeout(debounceTimer.current); };
-  }, [productType, materialCategory, fields, materialSurfaceTreatment, materialColor, processes, productSurfaceTreatment, productColor, surfaceTreatment, surfaceColor, materialSizeType, dieSteelPrice, materialGrade]);
+  }, [productType, materialCategory, fields, materialSurfaceTreatment, materialColor, processes, productSurfaceTreatment, productColor, surfaceTreatment, surfaceColor, materialSizeType, dieSteelPrice, materialGrade, triggerCalculate]);
 
   // Get available product surface treatments
   const getProductSurfaceOptions = (): ProductSurfaceOption[] => {
@@ -1153,7 +1157,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         perimeter_mm: (fields.perimeter as number) || undefined,
         inner_perimeter_mm: (fields.innerPerimeter as number) || undefined,
         num_cavities: parseInt(fields.num_cavities as string) || 1,
-        die_type: (fields.die_type as 'flat' | 'split') || 'flat',
+        die_type: (fields.die_type === 'flat' || fields.die_type === 'split') ? fields.die_type as 'flat' | 'split' : undefined,
         meter_weight_kg_per_m: (fields.meterWeight as number) || undefined,
         net_weight_g: (fields.netWeight as number) || undefined,
         die_steel_price: dieSteelPrice ? parseFloat(dieSteelPrice) : undefined,
@@ -1284,6 +1288,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       setLoading(false);
     }
   };
+  // 每次渲染同步最新的 doCalculate 到 ref，供防抖定时器调用
+  doCalculateRef.current = doCalculate;
 
   // ==================== File Upload ====================
   // 图片扩展名 — 触发AI识别
