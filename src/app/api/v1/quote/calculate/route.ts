@@ -594,6 +594,27 @@ function calcStandardMeterWeight(
  * 中空管材(圆管/六角管/方管)=分流模，外周长+内孔周长均参与加工费。
  * 字段槽位与 calcStandardMeterWeight 一致：diameter/hex/outer→width，inner→height
  */
+// 请求参数归一化：前端 input 可能以字符串提交数字字段，统一转为数值（空串/非法→undefined）
+function num(v: unknown): number | undefined {
+  if (v === null || v === undefined || v === '') return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+function normalizeDims<T extends Record<string, unknown>>(raw: T): T {
+  const numericKeys = ['length_mm','width_mm','height_mm','wall_thickness_mm','diameter_mm','hex_flat_mm',
+    'outer_diameter_mm','inner_diameter_mm','cross_section_area_mm2','perimeter_mm','inner_perimeter_mm',
+    'num_dies','meter_weight_kg_per_m','net_weight_g','die_steel_price'];
+  const out: Record<string, unknown> = { ...raw };
+  for (const k of numericKeys) {
+    if (k in out) {
+      const nv = num(out[k]);
+      if (nv === undefined) delete out[k];
+      else out[k] = nv;
+    }
+  }
+  return out as T;
+}
+
 function calcStandardPerimeters(
   dims: NonNullable<QuoteRequest['dimensions']>,
 ): { outer: number; inner: number } | null {
@@ -723,7 +744,7 @@ function calcExtrusion(
   aluminumPrice: number,
   rules: PricingRules,
 ): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number } {
-  const dims = req.dimensions || { length_mm: 1000, width_mm: 50, height_mm: 25 };
+  const dims = normalizeDims(req.dimensions || { length_mm: 1000, width_mm: 50, height_mm: 25 });
   const notes: string[] = [];
   const breakdown: Record<string, { formula: string; detail: string }> = {};
   
@@ -823,7 +844,9 @@ function calcExtrusion(
     }
     // 标准件：模具类型是截面几何固有属性（中空管材=分流模），以类别为准强制修正，
     // 不依赖库存 num_dies 是否录入（铝方管等0库存类别曾被误判为平模）
-    if (dims.standard_category) {
+    // 注意：异型材是用户自选模具类型（平模/分流模按钮），绝不能被类别覆盖
+    const STD_GEOMETRY_CATS = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管', '铝方管'];
+    if (dims.standard_category && STD_GEOMETRY_CATS.includes(dims.standard_category)) {
       const hollowCats = ['铝圆管', '铝六角管', '铝方管'];
       dieTypeKey = hollowCats.includes(dims.standard_category) ? 'split' : 'flat';
     }
@@ -1489,7 +1512,7 @@ function calcSheetMetal(
   aluminumPrice: number,
   rules: PricingRules,
 ): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number } {
-  const dims = req.dimensions!;
+  const dims = normalizeDims(req.dimensions!);
   // 板材体积：优先使用请求中的值，否则用 长×宽×壁厚 估算（注意是壁厚不是高度）
   const volumeCm3 = req.volume_cm3 || (dims.length_mm * dims.width_mm * (dims.wall_thickness_mm || dims.height_mm || 2)) / 1000;
   const notes: string[] = [];
