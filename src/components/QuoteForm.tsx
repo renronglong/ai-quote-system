@@ -25,7 +25,7 @@ interface QuoteFormData {
 
 interface ProcessSelection {
   name: string;
-  quantity?: number;
+  quantity?: number | string;
   subParams?: Record<string, any>;
 }
 
@@ -775,8 +775,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     });
   };
 
-  const updateProcessQuantity = (procName: string, qty: number) => {
-    setProcesses(prev => prev.map(p => p.name === procName ? { ...p, quantity: qty } : p));
+  const updateProcessQuantity = (procName: string, qty: number | string) => {
+    setProcesses(prev => prev.map(p => p.name === procName ? { ...p, quantity: qty as any } : p));
   };
 
 
@@ -887,28 +887,28 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
     for (const proc of processes) {
       if (proc.name === '锯切') {
-        cutCount = proc.quantity || 1;
+        cutCount = Number(proc.quantity) || 1;
       } else if (proc.name === '冲压') {
         secondaryOps.push('冲压');
         if (proc.subParams?.tonnage) stampingTonnage = proc.subParams.tonnage;
-        stampingCount = proc.quantity || 1;
+        stampingCount = Number(proc.quantity) || 1;
       } else if (proc.name === '钻孔') {
         secondaryOps.push('钻孔');
-        const hc = proc.subParams?.hole_count || proc.quantity || 0;
+        const hc = Number(proc.subParams?.hole_count ?? proc.quantity) || 0;
         const dr = proc.subParams?.diameter_range || 'ø6~10';
         if (hc > 0) holes = { count: hc, diameter_range: dr };
       } else if (proc.name === '攻牙') {
         secondaryOps.push('攻丝');
-        const hc = proc.subParams?.hole_count || proc.quantity || 0;
+        const hc = Number(proc.subParams?.hole_count ?? proc.quantity) || 0;
         const sz = proc.subParams?.size || 'M5~M6';
         if (hc > 0) tappedHoles = { count: hc, size: sz };
       } else if (proc.name === 'CNC加工') {
         secondaryOps.push('CNC加工');
-        const mins = proc.subParams?.minutes || proc.quantity || 0;
+        const mins = Number(proc.subParams?.minutes ?? proc.quantity) || 0;
         if (mins > 0) cncTime = { minutes: mins };
       } else if (proc.name === '车加工') {
         secondaryOps.push('车加工');
-        const mins = proc.subParams?.minutes || proc.quantity || 0;
+        const mins = Number(proc.subParams?.minutes ?? proc.quantity) || 0;
         if (mins > 0) cncTime = { minutes: (cncTime?.minutes || 0) + mins };
       } else if (processMap[proc.name]) {
         secondaryOps.push(processMap[proc.name]);
@@ -1429,7 +1429,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                       <input
                         type="number"
                         min={0}
-                        value={(fields[fieldKey] as number) ?? ''}
+                        value={(fields[fieldKey] as number | string) ?? ''}
                         onChange={e => {
                             const val = parseFloat(e.target.value) || 0;
                             setFields(prev => ({ ...prev, [fieldKey]: val }));
@@ -1469,10 +1469,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   <input
                     type="number"
                     min={0}
-                    value={(fields[fieldKey] as number) ?? ''}
+                    value={(fields[fieldKey] as number | string) ?? ''}
                     onChange={e => {
-                        const val = parseFloat(e.target.value) || 0;
-                        setFields(prev => ({ ...prev, [fieldKey]: val }));
+                        const raw = e.target.value;
+                        const val = parseFloat(raw) || 0;
+                        setFields(prev => ({ ...prev, [fieldKey]: raw }));
                         if (fieldKey === 'meterWeight') {
                           setMeterWeightManual(val > 0);
                           if (val > 0) setQuantityManual(false);
@@ -1680,10 +1681,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                         min={0}
                         step="0.1"
                         placeholder={df.placeholder}
-                        value={(fields[stateKey] as number) ?? ''}
+                        value={(fields[stateKey] as number | string) ?? ''}
                         onChange={e => {
-                          const val = parseFloat(e.target.value) || 0;
-                          setFields(prev => ({ ...prev, [stateKey]: val }));
+                          const raw = e.target.value;
+                          const val = parseFloat(raw) || 0;
+                          setFields(prev => ({ ...prev, [stateKey]: raw }));
                           setSelectedMoldId(null);
                           setUseExistingMold(null);
                           setMoldMatches([]);
@@ -1856,7 +1858,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                           min={0}
                           placeholder="数量"
                           value={selectedProc?.quantity ?? ''}
-                          onChange={e => updateProcessQuantity(proc.name, parseFloat(e.target.value) || 0)}
+                          onChange={e => updateProcessQuantity(proc.name, e.target.value)}
                           className="w-16 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
                         />
                         <span className="text-[10px] text-gray-400">{proc.unit}</span>
@@ -1882,7 +1884,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                           min={0}
                           placeholder="次数"
                           value={proc.quantity ?? ''}
-                          onChange={e => updateProcessQuantity(proc.name, parseFloat(e.target.value) || 0)}
+                          onChange={e => updateProcessQuantity(proc.name, e.target.value)}
                           className="w-16 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
                         />
                         <span className="text-[10px] text-gray-400">次</span>
