@@ -656,6 +656,26 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     }));
   };
 
+  // 标准件：理论米重自动填入米重框（用户手填或匹配到库存模具后不覆盖；改尺寸/切种类恢复自动）
+  useEffect(() => {
+    if (productType !== '挤出' || materialCategory !== '标准件' || meterWeightManual) return;
+    const mw = calcStdMeterWeight(standardCategory, fields.width as number, fields.height as number, fields.thickness as number);
+    if (mw !== null) {
+      setFields(prev => (String(prev.meterWeight ?? '') === String(mw) ? prev : { ...prev, meterWeight: mw }));
+    }
+  }, [productType, materialCategory, standardCategory, fields.width, fields.height, fields.thickness, meterWeightManual]);
+
+  // 标准件：单件净重(g) = 米重(kg/m) × 长度(mm)，自动填入（规则截面棒/管按长度切割，净重≈消耗重量）
+  useEffect(() => {
+    if (productType !== '挤出' || materialCategory !== '标准件') return;
+    const mw = parseFloat(String(fields.meterWeight)) || 0;
+    const len = parseFloat(String(fields.length)) || 0;
+    if (mw > 0 && len > 0) {
+      const g = Math.round(mw * len);
+      setFields(prev => (parseFloat(String(prev.netWeight)) === g ? prev : { ...prev, netWeight: g }));
+    }
+  }, [productType, materialCategory, fields.meterWeight, fields.length]);
+
   // 手动触发模具匹配（用户点击搜索按钮才搜索，不自动触发）
   const runMoldSearch = async () => {
     if (productType !== '挤出' || !standardCategory) return;
@@ -1846,7 +1866,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   <button
                     key={cat.key}
                     type="button"
-                    onClick={() => { setStandardCategory(cat.key); resetProfileState(); setFields(prev => ({ ...prev, die_type: cat.mold_type === '分流模' ? 'split' : 'flat' })); }}
+                    onClick={() => { setStandardCategory(cat.key); resetProfileState(); setMeterWeightManual(false); setPerimeterManual(false); setFields(prev => ({ ...prev, die_type: cat.mold_type === '分流模' ? 'split' : 'flat' })); }}
                     className={`px-2.5 py-1.5 rounded-lg border text-xs transition-all duration-200 ${
                       standardCategory === cat.key
                         ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
