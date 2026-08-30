@@ -96,10 +96,18 @@ export async function GET(request: NextRequest) {
     orderedMap['异型材'] = { label: '异型材', count: specialCount, mold_type: '' };
     for (const stdName of STANDARD_CATEGORIES) orderedMap[stdName] = categoryMap[stdName];
     Object.assign(categoryMap, orderedMap);
-    // 重建顺序
+    // 重建顺序（无数据的类别也要展示，count=0）
+    const MOLD_TYPE_BY_CAT: Record<string, string> = {
+      '铝圆棒': '平模', '铝方/扁棒': '平模', '铝六角棒': '平模', '角铝': '平模',
+      '铝圆管': '分流模', '铝六角管': '分流模', '铝方管': '分流模',
+    };
     const finalMap: Record<string, { label: string; count: number; mold_type: string }> = {};
-    finalMap['异型材'] = orderedMap['异型材'];
-    for (const stdName of STANDARD_CATEGORIES) finalMap[stdName] = orderedMap[stdName];
+    finalMap['异型材'] = orderedMap['异型材'] || { label: '异型材', count: 0, mold_type: '' };
+    for (const stdName of STANDARD_CATEGORIES) {
+      finalMap[stdName] = orderedMap[stdName]
+        || categoryMap[stdName]
+        || { label: stdName, count: 0, mold_type: MOLD_TYPE_BY_CAT[stdName] || '平模' };
+    }
 
     return NextResponse.json({
       success: true,
