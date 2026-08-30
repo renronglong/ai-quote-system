@@ -64,20 +64,13 @@ export interface AiFormUpdate {
   secondaryProcessing?: string[];
 }
 
-export interface BatchVariantResult {
-  name: string;
-  length: number;
-  weight: number;
-  quantity: number;
-  surfaceTreatment?: string;
-  result: PricingResult;
-}
 
 interface QuoteFormProps {
   onCalculate?: (data: QuoteFormData) => void;
   onResult?: (result: PricingResult | null) => void;
   onProductInfoChange?: (info: { productName: string; productCode: string }) => void;
-  onBatchResult?: (results: BatchVariantResult[]) => void;
+  onSaveVariant?: () => Promise<boolean>;
+  onNewQuote?: () => void;
   aiData?: AiFormUpdate | null;
 }
 
@@ -387,7 +380,7 @@ const ALLOWED_EXTENSIONS = ['.dxf', '.dwg', '.step', '.stp', '.igs', '.pdf', '.j
 
 // ==================== Component ====================
 
-export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, onBatchResult, aiData }: QuoteFormProps) {
+export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, onSaveVariant, onNewQuote, aiData }: QuoteFormProps) {
   // ===== 登录 + 识图额度 =====
   const { user, quota, checkQuota, referralLink, ensureReferralLink } = useAuth();
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -424,7 +417,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [dieSteelPrice, setDieSteelPrice] = useState<string>('');
 
   // Saved variants (multi-length quoting for extrusion)
-  const [savedVariants, setSavedVariants] = useState<{id: string, length: number, weight: number, quantity: number}[]>([]);
+  const [variantSavedTick, setVariantSavedTick] = useState(false);
 
   // Standard parts state (异型材/标准件 toggle)
   // 统一流程：不再区分异型材/标准件，所有挤出型材走品类选择+模具匹配
@@ -978,7 +971,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const doCalculate = async () => {
     // Check if all required dimension fields are filled
     const cat = categoryConfig;
-    const hasBatchVariants = productType === '挤出' && savedVariants.length > 0;
     if (cat) {
       const isStdMode = productType === '挤出';
       // 挤出模式：长度非必填（模具费只看截面，无长度也能算）；只要有截面参数（宽/高/米重/外周长任一）即可计算
@@ -992,134 +984,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         onResult?.(null);
         return;
       }
-      if (hasBatchVariants) {
-        // Need at least some saved variants with valid data
-        const hasValid = savedVariants.some(v => v.length > 0 && v.weight > 0);
-        if (!hasValid) {
-          onResult?.(null);
-          return;
-        }
-      }
     }
 
     setLoading(true);
     try {
       const surfaceTreatment = mapSurfaceTreatment();
       const processInfo = mapProcesses();
-
-      // ---- Batch mode: saved variants + current form value ----
-      if (hasBatchVariants) {
-        const baseDimensions = buildDimensions();
-        const batchResults: BatchVariantResult[] = [];
-        let firstResult: PricingResult | null = null;
-
-        // Build all variants: saved variants + current form (if current length > 0)
-        const allVariants: { length: number; weight: number; quantity: number }[] = [...savedVariants];
-        const curLen = parseFloat(fields.length as string) || 0;
-        const curMw = parseFloat(fields.meterWeight as string) || 0;
-        const curWeight = curLen > 0 && curMw > 0 ? Math.round(curMw * curLen / 1000 * 1000) / 1000 : 0;
-        const curQty = parseFloat(fields.quantity as string) || 1;
-        if (curLen > 0 && curWeight > 0) {
-          allVariants.push({ length: curLen, weight: curWeight, quantity: curQty });
-        }
-
-        for (let vi = 0; vi < allVariants.length; vi++) {
-          const variant = allVariants[vi];
-          const vLength = variant.length;
-          const vWeight = variant.weight;
-          const vQuantity = variant.quantity;
-          if (!(vLength > 0) || !(vWeight > 0)) continue;
-
-          const dimensions = baseDimensions ? { ...baseDimensions } : {};
-          (dimensions as any).length_mm = vLength;
-          if (productType === '挤出') (dimensions as any).material_size_type = materialSizeType;
-
-          const vWeightKg = vWeight / 1000;
-
-          const payload: Record<string, any> = {
-            product_type: mapProductType(),
-            material: { category: mapMaterialCategory(), grade: materialGrade || undefined },
-            quantity: vQuantity,
-          };
-          if (productName) payload.product_name = productName;
-          if (productCode) payload.product_code = productCode;
-          payload.dimensions = dimensions;
-          payload.weight_per_piece_kg = vWeightKg;
-          if (surfaceTreatment) payload.surface_treatment = surfaceTreatment;
-          if (processInfo.secondary_operations.length > 0 || processInfo.cut_count !== undefined) {
-            payload.process = processInfo;
-          }
-          // Mold cost only on first variant
-          if (vi > 0) {
-            payload.skip_mold_cost = useExistingMold === true;
-          }
-
-          const res = await fetch('/api/v1/quote/calculate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.success) {
-              const result: PricingResult = {
-                quotation_id: data.quotation_id || '',
-                material_cost: data.material_cost || 0,
-                processing_cost: data.processing_cost || 0,
-                surface_treatment_cost: data.surface_treatment_cost || 0,
-                secondary_operations_cost: data.secondary_operations_cost || 0,
-                packaging_cost: data.packaging_cost || 0,
-                transport_cost: data.transport_cost || 0,
-                management_fee: data.management_fee || 0,
-                unit_price: data.unit_price_ex_tax || data.unit_price || 0,
-                unit_price_ex_tax: data.unit_price_ex_tax || data.unit_price || 0,
-                unit_price_in_tax: data.unit_price_in_tax || 0,
-                total_price: data.total_price || 0,
-                weight_per_piece_kg: data.weight_per_piece_kg || 0,
-                material_utilization_rate: data.material_utilization_rate,
-                breakdown: data.breakdown || {},
-                aluminum_index: data.aluminum_index || 0,
-                notes: data.notes || [],
-                mold_cost: data.mold_cost || 0,
-                min_order_qty: data.min_order_qty || 0,
-              };
-              batchResults.push({
-                name: productName || '产品',
-                length: vLength,
-                weight: vWeight,
-                quantity: vQuantity,
-                surfaceTreatment: surfaceTreatment?.type || '',
-                result,
-              });
-              if (!firstResult) firstResult = result;
-            }
-          }
-        }
-
-        if (firstResult) {
-          onResult?.(firstResult);
-          reportRecognitionFeedback();
-          onBatchResult?.(batchResults);
-          if (onCalculate) {
-            onCalculate({
-              productType, materialCategory,
-              quantity: (fields.quantity as number) || 1,
-              width: fields.width as number, height: fields.height as number,
-              length: allVariants[0]?.length || 0,
-              thickness: fields.thickness as number,
-              productSize: fields.productSize as string,
-              meterWeight: fields.meterWeight as number, netWeight: fields.netWeight as number,
-              materialSurfaceTreatment, materialColor, processes,
-              productSurfaceTreatment, productColor,
-            });
-          }
-        } else {
-          onResult?.(null);
-          onBatchResult?.([]);
-        }
-        setLoading(false);
-        return;
-      }
 
       // ---- Normal (single) mode ----
       const weightKg = calcWeightKg();
@@ -1171,7 +1041,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           };
           onResult?.(result);
           reportRecognitionFeedback();
-          onBatchResult?.([]);
           if (onCalculate) {
             onCalculate({
               productType, materialCategory,
@@ -1544,7 +1413,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   </div>
                 );
               }
-              // Length field with "+" button for extrusion multi-length
+              // Length field with "+" button: save this length as one quote-pool entry (same mold group)
               if (fieldKey === 'length' && productType === '挤出') {
                 const lengthVal = parseFloat(fields.length as string) || 0;
                 const mwVal = parseFloat(fields.meterWeight as string) || 0;
@@ -1552,7 +1421,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 const canAdd = lengthVal > 0 && calcWeight > 0;
                 return (
                   <div key={fieldKey}>
-                    <label className="block text-[11px] text-gray-500 mb-1">{FIELD_LABELS[fieldKey]}</label>
+                    <label className="block text-[11px] text-gray-500 mb-1">
+                      {FIELD_LABELS[fieldKey]}
+                      <span className="ml-1 text-[10px] text-blue-400">点＋把当前长度存入报价池（同副模具只算一次模具费）</span>
+                    </label>
                     <div className="flex gap-1">
                       <input
                         type="number"
@@ -1566,25 +1438,26 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                       />
                       <button
                         type="button"
-                        disabled={!canAdd}
-                        onClick={() => {
-                          const len = parseFloat(fields.length as string) || 0;
-                          const mw = parseFloat(fields.meterWeight as string) || 0;
-                          const w = Math.round(mw * len / 1000 * 1000) / 1000;
-                          const qty = parseFloat(fields.quantity as string) || 1;
-                          if (len > 0 && w > 0) {
-                            setSavedVariants(prev => [...prev, { id: 'v' + Date.now(), length: len, weight: w, quantity: qty }]);
+                        disabled={!canAdd || !onSaveVariant}
+                        onClick={async () => {
+                          if (!onSaveVariant) return;
+                          const ok = await onSaveVariant();
+                          if (ok) {
                             setFields(prev => ({ ...prev, length: 0 }));
+                            setVariantSavedTick(true);
+                            setTimeout(() => setVariantSavedTick(false), 2000);
                           }
                         }}
-                        className={`shrink-0 rounded-lg px-2 text-sm font-bold transition-all min-h-[36px] ${
-                          canAdd
+                        className={`shrink-0 rounded-lg px-3 text-sm font-bold transition-all min-h-[36px] ${
+                          variantSavedTick
+                            ? 'bg-emerald-500 text-white shadow-sm'
+                            : canAdd && onSaveVariant
                             ? 'bg-blue-500 text-white hover:bg-blue-600 shadow-sm'
                             : 'bg-gray-100 text-gray-300 cursor-not-allowed'
                         }`}
-                        title="保存当前长度到批量列表"
+                        title="把当前长度保存进报价池"
                       >
-                        +
+                        {variantSavedTick ? '✓已存' : '+'}
                       </button>
                     </div>
                   </div>
@@ -1632,6 +1505,21 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   return (
     <div className="h-full flex flex-col">
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+
+        {/* ---- 模具组工具条：点「新建报价」=开一副新模具 ---- */}
+        <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-blue-50/70 border border-blue-100">
+          <div className="text-[11px] text-blue-700 leading-snug">
+            当前为<b>同一副模具</b>：改长度后点长度框旁的<b>＋</b>存入报价池，出单时模具费只算一次。
+          </div>
+          <button
+            type="button"
+            onClick={onNewQuote}
+            className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-blue-300 text-blue-700 text-xs font-semibold hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm"
+            title="清空表单，开始一副新模具的报价"
+          >
+            <span className="text-sm leading-none">＋</span> 新建报价
+          </button>
+        </div>
 
         {/* AI synced indicator */}
         {aiSynced && (
@@ -2098,40 +1986,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               />
             </div>
 
-            {/* 已保存的批量变体标签 */}
-            {savedVariants.length > 0 && (
-              <div className="mt-2">
-                <label className="block text-[11px] text-gray-500 mb-1">
-                  已保存长度
-                  <span className="ml-1 text-[10px] text-gray-400">(截面参数共用，模具费只算一次)</span>
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {savedVariants.map((v, idx) => (
-                    <span
-                      key={v.id}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-[11px] font-medium"
-                    >
-                      #{idx + 1} {v.length}mm · {Math.round(v.weight)}g
-                      {v.quantity > 1 ? ` ×${v.quantity}` : ''}
-                      <button
-                        type="button"
-                        onClick={() => setSavedVariants(prev => prev.filter(sv => sv.id !== v.id))}
-                        className="ml-0.5 text-blue-400 hover:text-red-500 transition-colors"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSavedVariants([])}
-                  className="mt-1.5 text-[11px] text-gray-400 hover:text-red-500 transition-colors"
-                >
-                  清空全部
-                </button>
-              </div>
-            )}
           </div>
         )}
 
