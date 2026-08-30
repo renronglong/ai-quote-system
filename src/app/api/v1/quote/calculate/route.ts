@@ -590,6 +590,48 @@ function calcStandardMeterWeight(
 }
 
 /**
+ * 按标准件类别与截面尺寸计算外周长/内孔周长(mm)，用于模具费兜底。
+ * 中空管材(圆管/六角管/方管)=分流模，外周长+内孔周长均参与加工费。
+ * 字段槽位与 calcStandardMeterWeight 一致：diameter/hex/outer→width，inner→height
+ */
+function calcStandardPerimeters(
+  dims: NonNullable<QuoteRequest['dimensions']>,
+): { outer: number; inner: number } | null {
+  const cat = dims.standard_category;
+  if (!cat) return null;
+  const w = dims.width_mm || 0;
+  const h = dims.height_mm || 0;
+  const t = dims.wall_thickness_mm || 0;
+  const d = dims.diameter_mm || 0;
+  const sHex = dims.hex_flat_mm || 0;
+  const od = dims.outer_diameter_mm || 0;
+  const id = dims.inner_diameter_mm || 0;
+
+  switch (cat) {
+    case '铝圆棒': return d > 0 ? { outer: Math.PI * d, inner: 0 } : null;
+    case '铝方/扁棒': return (w > 0 && h > 0) ? { outer: 2 * (w + h), inner: 0 } : null;
+    case '铝六角棒': return sHex > 0 ? { outer: 6 * sHex / Math.sqrt(3), inner: 0 } : null; // 正六边形边长=S/√3
+    case '角铝': return (w > 0 && h > 0) ? { outer: 2 * (w + h), inner: 0 } : null;
+    case '铝圆管': {
+      const o = od || d;
+      if (!(o > 0)) return null;
+      return { outer: Math.PI * o, inner: id > 0 ? Math.PI * id : 0 };
+    }
+    case '铝六角管': {
+      if (!(sHex > 0)) return null;
+      return { outer: 6 * sHex / Math.sqrt(3), inner: id > 0 ? Math.PI * id : 0 };
+    }
+    case '铝方管': {
+      if (!(w > 0 && h > 0 && t > 0)) return null;
+      const innerW = w - 2 * t;
+      const innerH = h - 2 * t;
+      return { outer: 2 * (w + h), inner: (innerW > 0 && innerH > 0) ? 2 * (innerW + innerH) : 0 };
+    }
+    default: return null;
+  }
+}
+
+/**
  * 计算铝型材材料费
  * 公式：材料单价 = 铝锭价 + 挤压加工费
  * 重量 = 截面积 × 长度 × 密度 / 1000000 (如果有截面数据)
@@ -779,7 +821,14 @@ function calcExtrusion(
     } else {
       dieTypeKey = numCavities <= 1 ? 'flat' : 'split';
     }
+    // 标准件：模具类型是截面几何固有属性（中空管材=分流模），以类别为准强制修正，
+    // 不依赖库存 num_dies 是否录入（铝方管等0库存类别曾被误判为平模）
+    if (dims.standard_category) {
+      const hollowCats = ['铝圆管', '铝六角管', '铝方管'];
+      dieTypeKey = hollowCats.includes(dims.standard_category) ? 'split' : 'flat';
+    }
     const isFlatDie = dieTypeKey === 'flat';
+    const stdPerimeters = dims.standard_category ? calcStandardPerimeters(dims) : null;
     let dieThickness: number;
     let finalPerimeter = 0; // 用于加工费计算
 
@@ -788,13 +837,15 @@ function calcExtrusion(
       // 平模优先使用用户输入的周长
       if (dims.perimeter_mm && dims.perimeter_mm > 0) {
         finalPerimeter = dims.perimeter_mm;
+      } else if (stdPerimeters?.outer) {
+        finalPerimeter = stdPerimeters.outer; // 标准件几何周长兜底
       } else {
         finalPerimeter = 2 * (W + H_dim); // 未提供时使用矩形周长
       }
     } else {
       // 分流模/假整体模：判断异型复杂度
       const straightPerimeter = 2 * (W + H_dim);
-      const actualPerimeter = dims.perimeter_mm || straightPerimeter;
+      const actualPerimeter = dims.perimeter_mm || stdPerimeters?.outer || straightPerimeter;
       finalPerimeter = actualPerimeter; // 保存周长用于加工费计算
       const complexityRatio = actualPerimeter / straightPerimeter;
 
@@ -879,7 +930,7 @@ function calcExtrusion(
     let perimeterFee: number;
     let processingFee: number;
     // 分流模加工总周长 = 外周长 + 内孔周长（AI识别提供inner_perimeter_mm时用实际值，未提供则按外周长×2近似）
-    const innerPerimeterForFee = isFlatDie ? 0 : (dims.inner_perimeter_mm && dims.inner_perimeter_mm > 0 ? dims.inner_perimeter_mm : finalPerimeter);
+    const innerPerimeterForFee = isFlatDie ? 0 : (dims.inner_perimeter_mm && dims.inner_perimeter_mm > 0 ? dims.inner_perimeter_mm : (stdPerimeters?.inner || finalPerimeter));
     if (isFlatDie) {
       // 平模：加工费 = 基础加工 + 外周长×厚度×系数
       const processingArea = finalPerimeter * dieThickness;
