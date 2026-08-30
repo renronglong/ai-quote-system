@@ -216,7 +216,12 @@ export default function LoginPage() {
             </div>
           </CardContent>
         </Card>
-        <p className="text-center text-xs text-slate-400 mt-6">登录即表示同意我们的服务条款和隐私政策</p>
+        <p className="text-center text-xs text-slate-400 mt-6">
+          登录即表示同意
+          <Link href="/terms" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 hover:underline">《用户服务协议》</Link>
+          和
+          <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 hover:underline">《隐私政策》</Link>
+        </p>
       </div>
     </div>
   );
