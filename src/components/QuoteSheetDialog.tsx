@@ -18,6 +18,8 @@ interface Props {
     moldDiscount?: number;
   } | null;
   aluminumPrice?: number;
+  // 当前模具组ID（页面上正在报价的这副模具）
+  moldGroupId?: string;
 }
 
 interface CustomerInfo {
@@ -66,6 +68,7 @@ function toSheetItem(q: SavedQuote) {
   const moldFee = (r.mold_cost || 0) * md;
   return {
     id: q.id,
+    moldGroup: p._mold_group_id || '',
     model: '',
     spec: specParts.length ? specParts.join('*') : (p.productSize || ''),
     name: p.productName || p.product_type_name || q.product_type || '铝型材',
@@ -81,7 +84,7 @@ function toSheetItem(q: SavedQuote) {
   };
 }
 
-export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, aluminumPrice }: Props) {
+export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, aluminumPrice, moldGroupId }: Props) {
   const { user } = useAuth();
   const [quotes, setQuotes] = useState<SavedQuote[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -110,6 +113,7 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
             currentQuote.productType,
             currentQuote.productDiscount,
             currentQuote.moldDiscount,
+            moldGroupId,
           );
           if (saved) {
             list = [saved, ...list];
@@ -146,15 +150,20 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
     if (!cust.name.trim()) { alert('请填写客户名称'); return; }
     setExporting(true);
     try {
-      // 应用行内微调
+      // 应用行内微调；同模具组内模具费只算一次（该组第一条带费，其余置空）
+      const seenGroup = new Set<string>();
       const payloadItems = chosen.map((it) => {
         const ed = editable[it.id] || {};
         const ex = ed.price_ex_tax != null ? Number(ed.price_ex_tax) : it.price_ex_tax;
+        let moldFee: number | null = ed.mold_fee != null ? Number(ed.mold_fee) : it.mold_fee;
+        const g = it.moldGroup || `__single_${it.id}`;
+        if (seenGroup.has(g)) moldFee = null; // 同组后续行：模具费已在第一行收取
+        else seenGroup.add(g);
         return {
           ...it,
           price_ex_tax: ex,
           price_inc_tax: ed.price_inc_tax != null ? Number(ed.price_inc_tax) : Number((ex * 1.13).toFixed(4)),
-          mold_fee: ed.mold_fee != null ? Number(ed.mold_fee) : it.mold_fee,
+          mold_fee: moldFee,
           moq: ed.moq != null ? ed.moq : it.moq,
           remark: ed.remark || it.remark,
           model: ed.model || it.model,
@@ -258,7 +267,15 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
 
           {/* 报价勾选 */}
           <div className="space-y-2">
-            <div className="text-sm font-medium text-gray-700">勾选本次报价（{selected.size} 项）</div>
+            <div className="text-sm font-medium text-gray-700">勾选本次报价（{selected.size} 项）
+              <span className="ml-2 text-[11px] font-normal text-blue-600">
+                含同模具 {(() => {
+                  const sel = items.filter(it => selected.has(it.id) && it.moldGroup);
+                  const groups = new Set(sel.map(it => it.moldGroup));
+                  return groups.size;
+                })()} 副 · 同副模具模具费只收一次
+              </span>
+            </div>
             {loading ? (
               <div className="flex items-center gap-2 text-sm text-gray-400 py-6 justify-center">
                 <Loader2 className="w-4 h-4 animate-spin" /> 加载报价池...
@@ -280,7 +297,12 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
                           {checked && <Check className="w-3 h-3 text-white" />}
                         </button>
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm text-gray-800 truncate">{it._label}</div>
+                          <div className="flex items-center gap-1.5">
+                            {it.moldGroup && (
+                              <span className="shrink-0 px-1.5 py-0 rounded bg-orange-50 border border-orange-200 text-orange-600 text-[10px] font-medium">同一副模</span>
+                            )}
+                            <div className="text-sm text-gray-800 truncate">{it._label}</div>
+                          </div>
                           <div className="text-xs text-gray-400 mt-0.5">
                             {it.material} · {it.surface} · 起订{String(it.moq)} · 模具费¥{it.mold_fee.toFixed(0)} · 含税¥{it.price_inc_tax.toFixed(2)}
                           </div>
