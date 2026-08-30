@@ -46,16 +46,19 @@ export async function saveQuoteToAPI(
   productType: string,
   productDiscount?: number,
   moldDiscount?: number,
+  moldGroupId?: string,
+  customName?: string,
 ): Promise<SavedQuote | null> {
   try {
-    const name = `报价-${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}-${productType}`;
+    const name = customName || `报价-${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}-${productType}`;
+    const finalParams = moldGroupId ? { ...params, _mold_group_id: moldGroupId } : params;
     const res = await fetch('/api/saved-quotes', {
       method: 'POST',
       headers: getHeaders(userId),
       body: JSON.stringify({
         name,
         product_type: productType,
-        params,
+        params: finalParams,
         result,
         product_discount: productDiscount,
         mold_discount: moldDiscount,
