@@ -433,6 +433,28 @@ function calcStdMeterWeight(cat: string, width?: number|string, height?: number|
   return Math.round((area * 2.7 / 1000) * 1000) / 1000;
 }
 
+// 标准件几何周长(mm)：外周长（周长框自动填）+ 内孔周长（分流模模具费，随请求传后端）
+function calcStdPerimeters(cat: string, width?: number|string, height?: number|string, thickness?: number|string): { outer: number; inner: number } | null {
+  const w = Number(width) || 0;
+  const h = Number(height) || 0;
+  const t = Number(thickness) || 0;
+  const r1 = (v: number) => Math.round(v * 10) / 10;
+  switch (cat) {
+    case '铝圆棒': if (!(w > 0)) return null; return { outer: r1(Math.PI * w), inner: 0 };
+    case '铝方/扁棒': if (!(w > 0 && h > 0)) return null; return { outer: 2 * (w + h), inner: 0 };
+    case '铝六角棒': if (!(w > 0)) return null; return { outer: r1(6 * w / Math.sqrt(3)), inner: 0 };
+    case '角铝': if (!(w > 0 && h > 0)) return null; return { outer: 2 * (w + h), inner: 0 };
+    case '铝圆管': if (!(w > 0)) return null; return { outer: r1(Math.PI * w), inner: h > 0 ? r1(Math.PI * h) : 0 };
+    case '铝六角管': if (!(w > 0)) return null; return { outer: r1(6 * w / Math.sqrt(3)), inner: h > 0 ? r1(Math.PI * h) : 0 };
+    case '铝方管': {
+      if (!(w > 0 && h > 0 && t > 0 && w > 2 * t && h > 2 * t)) return null;
+      const iw = w - 2 * t, ih = h - 2 * t;
+      return { outer: 2 * (w + h), inner: iw > 0 && ih > 0 ? 2 * (iw + ih) : 0 };
+    }
+    default: return null;
+  }
+}
+
 // 板材单件理论重量(g)：长×宽×厚(mm) × 密度(g/cm³) / 1000
 // 密度：铝板2.7，冷轧板/镀锌板7.85，不锈钢7.93
 function calcSheetWeightG(materialCategory: string, l: number, w: number, t: number): number | null {
@@ -675,6 +697,18 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       setFields(prev => (parseFloat(String(prev.netWeight)) === g ? prev : { ...prev, netWeight: g }));
     }
   }, [productType, materialCategory, fields.meterWeight, fields.length]);
+
+  // 标准件：外周长自动填入周长框、内孔周长写入隐藏字段（分流模模具费外+内周长；手填周长后不覆盖）
+  useEffect(() => {
+    if (productType !== '挤出' || materialCategory !== '标准件' || perimeterManual) return;
+    const per = calcStdPerimeters(standardCategory, fields.width as number, fields.height as number, fields.thickness as number);
+    if (per) {
+      setFields(prev => {
+        const changed = parseFloat(String(prev.perimeter)) !== per.outer || parseFloat(String(prev.innerPerimeter ?? '')) !== per.inner;
+        return changed ? { ...prev, perimeter: per.outer, innerPerimeter: per.inner } : prev;
+      });
+    }
+  }, [productType, materialCategory, standardCategory, fields.width, fields.height, fields.thickness, perimeterManual]);
 
   // 手动触发模具匹配（用户点击搜索按钮才搜索，不自动触发）
   const runMoldSearch = async () => {
@@ -1866,7 +1900,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   <button
                     key={cat.key}
                     type="button"
-                    onClick={() => { setStandardCategory(cat.key); resetProfileState(); setMeterWeightManual(false); setPerimeterManual(false); setFields(prev => ({ ...prev, die_type: cat.mold_type === '分流模' ? 'split' : 'flat' })); }}
+                    onClick={() => { setStandardCategory(cat.key); resetProfileState(); setMeterWeightManual(false); setPerimeterManual(false); setFields(prev => ({ ...prev, die_type: ['铝圆管','铝六角管','铝方管'].includes(cat.key) ? 'split' : 'flat' })); }}
                     className={`px-2.5 py-1.5 rounded-lg border text-xs transition-all duration-200 ${
                       standardCategory === cat.key
                         ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
