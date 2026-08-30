@@ -521,7 +521,7 @@ function calcExtrusionMaterialCost(
   
   // 材料费 = 产品米重(kg/m) × (长度mm + 5mm) / 1000 → 得到kg
   const meterWeight = dimensions.meter_weight_kg_per_m || 0;
-  const lengthMm = dimensions.length_mm || 1000;
+  const lengthMm = dimensions.length_mm || 0;  // 未填长度不再默认1000
   
   if (meterWeight > 0 && lengthMm > 0) {
     weightKg = meterWeight * (lengthMm + 5) / 1000;
@@ -542,7 +542,7 @@ function calcExtrusionMaterialCost(
     } else {
       weightKg = 0;
       formulaStr = '缺少参数';
-      detailStr = '需提供米重或截面积';
+      detailStr = meterWeight > 0 ? '需填入长度才能计算材料费' : '需提供米重或截面积';
     }
   }
   
@@ -918,7 +918,7 @@ function calcExtrusion(
     applySurfaceCost(useLongRate);
 
     if (req.process) {
-      const sec = calcSecondaryOperationsCost(req.process, rules);
+      const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost);
       if (sec.cost > 0 && sec.detail && sec.detail !== '无二次加工') {
         const opsCount = countSecondaryOps(req.process);
         const perOpCost = r2(sec.cost / opsCount);
@@ -1217,9 +1217,11 @@ function countSecondaryOps(
 function calcSecondaryOperationsCost(
   process: NonNullable<QuoteRequest['process']>,
   rules: PricingRules,
+  materialCost = 0,
 ): { cost: number; formula: string; detail: string } {
   let totalCost = 0;
   const details: string[] = [];
+  const formulaParts: string[] = [];
   const cncRates = rules.cnc_rates || {};
 
   // 钻孔费
@@ -1277,12 +1279,15 @@ function calcSecondaryOperationsCost(
     details.push(`去毛刺: ${rate}元/件`);
   }
 
-  // CNC/车加工时间费（按分钟计费，1元/分钟）
+  // CNC/车加工：时间费 1元/分钟 + 材料费的10%（2026-08-30 龙哥规则）
   if (process.cnc_time && process.cnc_time.minutes > 0) {
     const CNC_RATE_PER_MIN = 1; // 元/分钟
-    const cncCost = r2(process.cnc_time.minutes * CNC_RATE_PER_MIN);
-    totalCost += cncCost;
-    details.push(`CNC/车加工: ${process.cnc_time.minutes}分钟 × ${CNC_RATE_PER_MIN}元/分 = ${cncCost}元`);
+    const timeCost = r2(process.cnc_time.minutes * CNC_RATE_PER_MIN);
+    const cncSurcharge = materialCost > 0 ? r2(materialCost * 0.1) : 0;
+    const cncTotal = r2(timeCost + cncSurcharge);
+    totalCost += cncTotal;
+    details.push(`CNC/车加工: ${process.cnc_time.minutes}分钟×1元/分=${timeCost}元${cncSurcharge > 0 ? ` + 材料费×10%=${cncSurcharge}元` : ''} = ${cncTotal}元`);
+    formulaParts.push(cncSurcharge > 0 ? 'CNC/车加工(工时+材料×10%)' : 'CNC/车加工(工时)');
   }
 
   if (details.length === 0) {
@@ -1291,7 +1296,7 @@ function calcSecondaryOperationsCost(
 
   return {
     cost: r2(totalCost),
-    formula: '各项二次加工费之和',
+    formula: formulaParts.length > 0 ? formulaParts.join(' + ') : '各项二次加工费之和',
     detail: details.join('; '),
   };
 }
@@ -1339,7 +1344,7 @@ function calcSheetMetal(
   // 5. 二次加工费
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules);
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost);
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
@@ -1439,7 +1444,7 @@ function calcDieCasting(
   // 5. 二次加工费
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules);
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost);
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
@@ -1534,7 +1539,7 @@ function calcZincAlloy(
   // 5. 二次加工费
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules);
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost);
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
@@ -1631,7 +1636,7 @@ function calcInjection(
   // 5. 二次加工费
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules);
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost);
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
