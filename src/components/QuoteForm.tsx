@@ -1443,7 +1443,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                           if (!onSaveVariant) return;
                           const ok = await onSaveVariant();
                           if (ok) {
-                            setFields(prev => ({ ...prev, length: 0 }));
+                            setFields(prev => ({ ...prev, length: '' }));
                             setVariantSavedTick(true);
                             setTimeout(() => setVariantSavedTick(false), 2000);
                           }
