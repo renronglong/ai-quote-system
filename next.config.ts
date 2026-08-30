@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: { bodySizeLimit: '50mb' },
   },
-  serverExternalPackages: [],
+  serverExternalPackages: ["pdfkit", "fontkit", "fontkit/src/TTFFont", "@swc/helpers"],
 };
 
 export default nextConfig;
