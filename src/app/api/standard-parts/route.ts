@@ -12,6 +12,16 @@ function computeMoldType(product_name: string | null, num_dies: number | null): 
   return '分流模';
 }
 
+// 模具类型是截面几何的固有属性：中空管材=分流模，实心棒/角铝=平模。
+// 库存 num_dies 可能未录入（尤其 count=0 的类别），类别汇总一律以此几何映射为权威。
+const MOLD_TYPE_BY_CAT: Record<string, string> = {
+  '铝圆棒': '平模', '铝方/扁棒': '平模', '铝六角棒': '平模', '角铝': '平模',
+  '铝圆管': '分流模', '铝六角管': '分流模', '铝方管': '分流模',
+};
+function moldTypeByCategory(product_name: string | null): string {
+  return MOLD_TYPE_BY_CAT[product_name || ''] || '平模';
+}
+
 /**
  * GET /api/standard-parts
  * - 无参数: 返回所有标准件类别及数量
@@ -47,9 +57,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    const STANDARD_CATEGORIES_FOR_TYPE = Object.keys(MOLD_TYPE_BY_CAT);
     let products = (data || []).map((p: any) => ({
       ...p,
-      mold_type: computeMoldType(p.product_name, p.num_dies),
+      mold_type: STANDARD_CATEGORIES_FOR_TYPE.includes(p.product_name)
+        ? moldTypeByCategory(p.product_name)
+        : computeMoldType(p.product_name, p.num_dies),
     }));
 
     // 如果指定了"异型材"类别，返回所有非标准大类的产品
@@ -75,7 +88,7 @@ export async function GET(request: NextRequest) {
       const name = p.product_name;
       if (!name) continue;
       if (!tempMap[name]) {
-        tempMap[name] = { label: name, count: 0, mold_type: p.mold_type };
+        tempMap[name] = { label: name, count: 0, mold_type: MOLD_TYPE_BY_CAT[name] || p.mold_type };
       }
       tempMap[name].count++;
     }
@@ -83,7 +96,7 @@ export async function GET(request: NextRequest) {
     const categoryMap: Record<string, { label: string; count: number; mold_type: string }> = {};
     // 固定展示7个标准件类别（无数据也显示，count=0）
     for (const stdName of STANDARD_CATEGORIES) {
-      categoryMap[stdName] = tempMap[stdName] || { label: stdName, count: 0, mold_type: '平模' };
+      categoryMap[stdName] = tempMap[stdName] || { label: stdName, count: 0, mold_type: MOLD_TYPE_BY_CAT[stdName] || '平模' };
     }
     let specialCount = 0;
     for (const [name, val] of Object.entries(tempMap)) {
@@ -96,11 +109,7 @@ export async function GET(request: NextRequest) {
     orderedMap['异型材'] = { label: '异型材', count: specialCount, mold_type: '' };
     for (const stdName of STANDARD_CATEGORIES) orderedMap[stdName] = categoryMap[stdName];
     Object.assign(categoryMap, orderedMap);
-    // 重建顺序（无数据的类别也要展示，count=0）
-    const MOLD_TYPE_BY_CAT: Record<string, string> = {
-      '铝圆棒': '平模', '铝方/扁棒': '平模', '铝六角棒': '平模', '角铝': '平模',
-      '铝圆管': '分流模', '铝六角管': '分流模', '铝方管': '分流模',
-    };
+    // 重建顺序（无数据的类别也要展示，count=0；模具类型用顶部几何映射）
     const finalMap: Record<string, { label: string; count: number; mold_type: string }> = {};
     finalMap['异型材'] = orderedMap['异型材'] || { label: '异型材', count: 0, mold_type: '' };
     for (const stdName of STANDARD_CATEGORIES) {
