@@ -6,7 +6,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpvdGd4bmh1ZWFnYnN2ZmVlcGljIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MzUwMjEyMywiZXhwIjoyMDk5MDc4MTIzfQ.dSfa-90iQd4jVhpuvNAgqKPqBdzfXPqgYqpxpHl71Fo'
 );
 
-const STANDARD_CATEGORIES = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管'];
+const STANDARD_CATEGORIES = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管', '铝方管'];
 
 /**
  * Parse cross_section_mm string into structured numbers.
@@ -224,7 +224,7 @@ export async function GET(request: NextRequest) {
     // Fetch all products in category
     let query = supabase
       .from('supplier_products')
-      .select('id, product_name, cross_section_mm, weight_per_meter, perimeter, num_dies, remarks')
+      .select('id, product_name, mold_number, cross_section_mm, weight_per_meter, perimeter, num_dies, remarks')
       .not('product_name', 'is', null)
       .limit(10000);
 
@@ -272,6 +272,7 @@ export async function GET(request: NextRequest) {
           perimeter: spec.perimeter,
           num_dies: numDies,
           mold_type: numDies > 0 ? '分流模' : '平模',
+          mold_number: spec.mold_number,
           match_score: score,
           product_name: spec.product_name,
           remarks: spec.remarks,
