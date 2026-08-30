@@ -127,7 +127,18 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
     })();
   }, [open, userId]);
 
-  const items = useMemo(() => quotes.map(toSheetItem), [quotes]);
+  const items = useMemo(() => {
+    const list = quotes.map(toSheetItem);
+    // 同模具组：仅列表中第一条保留模具费（出单时后端行空白由导出逻辑置null）
+    const seen = new Set<string>();
+    for (const it of list) {
+      if (it.moldGroup) {
+        if (seen.has(it.moldGroup)) it.mold_fee = 0;
+        else seen.add(it.moldGroup);
+      }
+    }
+    return list;
+  }, [quotes]);
 
   const toggle = (id: string) => {
     setSelected((prev) => {
