@@ -69,7 +69,7 @@ const navGroups: NavGroup[] = [
     items: [
       { label: '用户管理', href: '/admin/users', icon: <Users className="w-5 h-5" />, adminOnly: true },
       { label: '任务管理', href: '/admin/tasks', icon: <FileText className="w-5 h-5" />, adminOnly: true },
-      { label: '系统设置', href: '/admin/settings', icon: <Settings className="w-5 h-5" />, adminOnly: true },
+      { label: '询价工单', href: '/admin/inquiries', icon: <MessageSquare className="w-5 h-5" />, adminOnly: true },
     ],
   },
 ];
@@ -79,7 +79,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [credits, setCredits] = useState<number>(0);
-  const { user, signOut } = useAuth();
+  const { user, signOut, isAdmin } = useAuth();
 
   // 拉取积分余额（仅登录用户）
   useEffect(() => {
@@ -161,9 +161,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                         <Link href="/inquiries" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><MessageSquare className="w-4 h-4" />询价管理</Link>
                         <Link href="/supplier" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><Handshake className="w-4 h-4" />供应商工作台</Link>
                         <Link href="/profile" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><UserCircle className="w-4 h-4" />公司资料</Link>
+                        {isAdmin && (<>
                         <div className="h-px bg-gray-100 my-1" />
                         <Link href="/admin/tasks" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><FileText className="w-4 h-4" />任务管理</Link>
                         <Link href="/admin/users" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><Users className="w-4 h-4" />用户管理</Link>
+                        </>)}
                         <div className="h-px bg-gray-100 my-1" />
                         <button onClick={() => { setUserMenuOpen(false); signOut(); }} className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50">
                           <LogOut className="w-4 h-4" />退出登录
@@ -199,7 +201,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
                   <div className="h-px bg-gray-200" />
 
-                  {navGroups.filter(g => !(g.items[0]?.adminOnly) || user).map((group) => (
+                  {navGroups.filter(g => !(g.items[0]?.adminOnly) || isAdmin).map((group) => (
                     <div key={group.label}>
                       <p className="px-2 text-xs font-medium text-gray-500 uppercase mb-2">
                         {group.label}
