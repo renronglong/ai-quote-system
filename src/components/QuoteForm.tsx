@@ -1183,8 +1183,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       if (isStdMode) {
         // 挤出模式：长度非必填（模具费只看截面，无长度也能算）
         if (standardCategory === '异型材') {
-          // 异型材：宽/高/米重/外周长任一即可
-          allFilled = !!(fields.width || fields.height || fields.meterWeight || fields.perimeter);
+          // 异型材：宽度+高度必填，且米重或周长至少填一个
+          allFilled = !!(fields.width && fields.height && (fields.meterWeight || fields.perimeter));
         } else if (standardCategory) {
           // 标准件：该类别尺寸字段全部填齐（才能算理论米重）
           const dimDefs = CATEGORY_DIM_FIELDS[standardCategory] || [];
