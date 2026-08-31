@@ -290,6 +290,7 @@ export default function SavedQuotesPanel({ userId, trigger, onOpenChange }: Save
     setExportSections(new Set(EXPORT_SECTIONS.filter(s => s.default).map(s => s.key)));
     setExportFormat('excel');
     setExportSuccess(false);
+    setCustomerInfo({ name: '', contact: '', phone: '', address: '' });
     setExportDialogOpen(true);
   };
 
