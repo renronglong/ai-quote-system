@@ -29,7 +29,7 @@ import {
   Phone,
   TrendingUp,
   Handshake,
-} from   UserCircle,
+  UserCircle,
 } from 'lucide-react';
 
 interface NavItem {
