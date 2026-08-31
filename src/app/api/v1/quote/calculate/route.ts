@@ -2025,6 +2025,16 @@ export async function POST(request: NextRequest) {
       notes: result.notes,
       product_name: body.product_name,
       product_code: body.product_code,
+      // TEMP DEBUG (2026-09-01): 回显收到的原始尺寸参数，排查米重/起订量异常
+      _debug: {
+        raw_meter_weight: body.dimensions?.meter_weight_kg_per_m,
+        raw_length: body.dimensions?.length_mm,
+        raw_width: body.dimensions?.width_mm,
+        raw_height: body.dimensions?.height_mm,
+        raw_weight_override: body.weight_per_piece_kg,
+        raw_dims_keys: body.dimensions ? Object.keys(body.dimensions) : null,
+        computed_weight: result.weight,
+      },
     };
 
     // 返回 {"Response": data} 格式，与插件输出参数 "Response"(Object) 名称匹配
