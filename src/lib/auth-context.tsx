@@ -16,6 +16,12 @@ export interface ExtendedUser extends User {
   company_name?: string;
   address?: string;
   referral_code?: string;
+  is_admin?: boolean;
+}
+
+/** 管理员token存sessionStorage（关闭标签页失效，安全） */
+export function getAdminToken(): string | null {
+  try { return sessionStorage.getItem('admin_token'); } catch { return null; }
 }
 
 interface AuthContextType {
@@ -30,6 +36,7 @@ interface AuthContextType {
   checkQuota: () => Promise<void>;
   referralCode: string | null;
   referralLink: string;
+  isAdmin: boolean;
   ensureReferralLink: () => Promise<string>;
 }
 
@@ -41,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [quota, setQuota] = useState<RecognitionQuota | null>(null);
   const [referralCode, setReferralCode] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const checkQuota = useCallback(async () => {
     if (!user) { setQuota(null); return; }
@@ -64,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // 提取 referral code
           const rc = (parsed.user as any)?.referral_code;
           if (rc) setReferralCode(rc);
+          setIsAdmin(!!(parsed.user as any)?.is_admin);
         } else {
           localStorage.removeItem('custom_session');
         }
@@ -104,6 +113,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!response.ok) {
         return { error: data.error || '登录失败' };
       }
+      if (data.admin_token) {
+        try { sessionStorage.setItem('admin_token', data.admin_token); } catch { /* ignore */ }
+      } else {
+        try { sessionStorage.removeItem('admin_token'); } catch { /* ignore */ }
+      }
+      setIsAdmin(!!data.user?.is_admin);
       const mockSession = {
         access_token: 'custom_token',
         refresh_token: 'custom_refresh',
@@ -121,6 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           company_name: data.user.company_name || '',
           address: data.user.address || '',
           referral_code: data.user.referral_code || '',
+          is_admin: !!data.user.is_admin,
         },
       } as unknown as Session;
       localStorage.setItem('custom_session', JSON.stringify(mockSession));
@@ -156,6 +172,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setQuota(null);
     setReferralCode(null);
+    setIsAdmin(false);
+    try { sessionStorage.removeItem('admin_token'); } catch { /* ignore */ }
     await supabase.auth.signOut();
   };
 
@@ -212,7 +230,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signIn, signUp, signOut, resetPassword, quota, checkQuota, referralCode, referralLink, ensureReferralLink }}>
+    <AuthContext.Provider value={{ user, session, loading, signIn, signUp, signOut, resetPassword, quota, checkQuota, referralCode, referralLink, isAdmin, ensureReferralLink }}>
       {children}
     </AuthContext.Provider>
   );
