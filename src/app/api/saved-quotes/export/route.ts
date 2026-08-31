@@ -10,7 +10,8 @@ import ExcelJS from 'exceljs';
 export interface ExportQuote {
   id: string | number;
   name: string;
-  date: string;
+  date?: string;
+  created_at?: string;
   product_type: string;
   params: Record<string, any>;
   result: Record<string, any>;
@@ -67,7 +68,8 @@ async function generateExcel(quotes: ExportQuote[], sections: Set<string>) {
     tc.alignment = { horizontal: 'left', vertical: 'middle' };
     ws.getRow(r).height = 32;
     r++;
-    ws.getCell(r, 1).value = `生成时间：${new Date(date).toLocaleString('zh-CN')}`;
+    const quoteDate = (quote as any).created_at || date;
+    ws.getCell(r, 1).value = `生成时间：${new Date(quoteDate).toLocaleString('zh-CN')}`;
     ws.getCell(r, 1).font = { size: 9, color: { argb: 'FF9CA3AF' } };
     ws.mergeCells(r, 1, r, 3);
     r += 2;
@@ -81,8 +83,8 @@ async function generateExcel(quotes: ExportQuote[], sections: Set<string>) {
       const dims = params.dimensions || {};
       const mat = params.material || {};
       const rows: [string, string][] = [
-        ['产品类型', params.product_type || '-'],
-        ['材质', mat.category || '-'],
+        ['产品类型', params.product_type || params.productType || '-'],
+        ['材质', mat.category || params.materialCategory || '-'],
         ['数量', `${params.quantity || 0} 件`],
       ];
       if (dims.length_mm) rows.push(['长度', `${dims.length_mm} mm`]);
@@ -270,14 +272,14 @@ function generateHTML(quotes: ExportQuote[], sections: Set<string>): string {
   <div style="border-bottom:2px solid #10b981;padding-bottom:12px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:baseline;">
     <div>
       <h2 style="margin:0;color:#065f46;font-size:20px;">${name}</h2>
-      <div style="font-size:12px;color:#6b7280;margin-top:4px;">${new Date(date).toLocaleString('zh-CN')}</div>
+      <div style="font-size:12px;color:#6b7280;margin-top:4px;">${new Date((quote as any).created_at || date).toLocaleString('zh-CN')}</div>
     </div>
     <div style="text-align:right;font-size:12px;color:#9ca3af;">AI智能报价系统</div>
   </div>`;
 
     if (sections.has('product_params')) {
       const prs: [string,string][] = [
-        ['产品类型',params.product_type||'-'],['材质',mat.category||'-'],['数量',`${params.quantity||0} 件`],
+        ['产品类型',params.product_type||params.productType||'-'],['材质',mat.category||params.materialCategory||'-'],['数量',`${params.quantity||0} 件`],
       ];
       if (dims.length_mm) prs.push(['长度',`${dims.length_mm} mm`]);
       if (dims.width_mm) prs.push(['宽度',`${dims.width_mm} mm`]);
