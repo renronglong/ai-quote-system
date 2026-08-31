@@ -109,6 +109,7 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
   const [history, setHistory] = useState<SheetRecord[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [generated, setGenerated] = useState<{ quoteNo: string; xlsxB64: string; pdfB64: string } | null>(null);
+  const [supplierInfo, setSupplierInfo] = useState<{ contact_name?: string; contact_phone?: string; contact_email?: string }>({});
 
   const loadHistory = async () => {
     if (!userId) return;
@@ -146,6 +147,11 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
       }
       setQuotes(list);
       loadHistory();
+      // 加载供方（当前用户）公司资料，用于报价单抬头
+      fetch(`/api/auth/profile?user_id=${encodeURIComponent(userId)}`)
+        .then(r => r.json())
+        .then(d => { if (d.success?.data?.profile) setSupplierInfo(d.data.profile); })
+        .catch(() => {});
       // 默认勾选最新一条
       if (list.length > 0) setSelected(new Set([list[0].id]));
       setLoading(false);
@@ -198,7 +204,7 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
   const handleExport = async () => {
     const chosen = items.filter((it) => selected.has(it.id));
     if (chosen.length === 0) { alert('请先勾选至少一条报价'); return; }
-    if (!cust.name.trim()) { alert('请填写客户名称'); return; }
+    // 客户信息改为非必填，不填也能生成报价单
     setExporting(true);
     try {
       const seenGroup = new Set<string>();
@@ -226,8 +232,8 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
           quote_no: quoteNo,
           user_id: userId || undefined,
           supplier_company: user?.company_name || '',
-          supplier_contact: '龙任荣',
-          supplier_phone: user?.phone || '18929979760',
+          supplier_contact: supplierInfo.contact_name || supplierInfo.description?.replace('联系人：', '') || user?.company_name?.slice(0, 6) || '龙任荣',
+          supplier_phone: supplierInfo.contact_phone || user?.phone || '18929979760',
           supplier_address: user?.address || '佛山市南海区里水镇',
           customer_name: cust.name,
           customer_contact: cust.contact,
