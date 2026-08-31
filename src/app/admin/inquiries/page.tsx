@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '@/lib/auth-context';
+import { useAuth, getAdminToken } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -117,15 +117,17 @@ function parseRecognitionResult(raw: string | null): RecognitionResult | null {
 }
 
 export default function AdminInquiriesPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, isAdmin } = useAuth();
   const router = useRouter();
 
   // 登录检查
   useEffect(() => {
     if (!authLoading && !user) {
-      router.push('/login');
+      router.push('/login?redirect=/admin/inquiries');
+    } else if (!authLoading && user && !isAdmin) {
+      router.replace('/');
     }
-  }, [authLoading, user, router]);
+  }, [authLoading, user, isAdmin, router]);
 
   const [requests, setRequests] = useState<CadRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,7 +152,9 @@ export default function AdminInquiriesPage() {
       }
       params.append('pageSize', '100');
 
-      const response = await fetch(`/api/admin/cad-requests?${params.toString()}`);
+      const response = await fetch(`/api/admin/cad-requests?${params.toString()}`, {
+        headers: { 'x-admin-token': getAdminToken() || '' },
+      });
       const data = await response.json();
       if (data.success) {
         setRequests(data.data || []);
@@ -218,7 +222,9 @@ export default function AdminInquiriesPage() {
   const handleDownload = async (req: CadRequest) => {
     setDownloadingId(req.id);
     try {
-      const response = await fetch(`/api/admin/cad-requests/${req.id}/download`);
+      const response = await fetch(`/api/admin/cad-requests/${req.id}/download`, {
+        headers: { 'x-admin-token': getAdminToken() || '' },
+      });
       const data = await response.json();
       if (data.success && data.download_url) {
         // Open download in new tab
