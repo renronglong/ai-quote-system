@@ -811,9 +811,16 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     const mw = fields.meterWeight as number;
     const len = fields.length as number;
     if (mw && len && mw > 0 && len > 0) {
-      const singleWeightKg = mw * len / 1000;
+      // 与API口径一致：单件重量含+5mm锯切余量，再按数量级向上取整到十位
+      const singleWeightKg = mw * (Number(len) + 5) / 1000;
       if (singleWeightKg > 0) {
-        const minQty = Math.ceil(300 / singleWeightKg);
+        const raw = Math.ceil(300 / singleWeightKg);
+        let minQty = raw;
+        if (raw > 10) {
+          const digits = Math.floor(Math.log10(raw));
+          const unit = Math.pow(10, digits - 2);
+          minQty = Math.ceil(raw / unit) * unit;
+        }
         setFields(prev => ({ ...prev, quantity: minQty }));
       }
     }
