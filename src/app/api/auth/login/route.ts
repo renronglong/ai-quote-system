@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { isAdminPhone, signAdminToken } from '@/lib/admin';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jotgxnhueagbsvfeepic.supabase.co';
 const supabaseServiceKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -31,6 +32,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '密码错误' }, { status: 401 });
     }
 
+    const admin = isAdminPhone(userData.phone);
     return NextResponse.json({
       success: true,
       user: {
@@ -40,7 +42,9 @@ export async function POST(request: Request) {
         company_name: userData.company_name,
         referral_code: userData.referral_code,
         address: userData.address,
+        is_admin: admin,
       },
+      admin_token: admin ? signAdminToken(userData.phone) : undefined,
     });
   } catch (err) {
     console.error('[Login] 登录异常:', err);
