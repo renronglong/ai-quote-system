@@ -726,7 +726,6 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
       )}
 
       {/* 费用明细（仅内部账号可见） */}
-      {internal && (
       <div className="rounded-xl bg-white border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
           <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">费用明细</span>
@@ -774,10 +773,8 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
           </span>
         </div>
       </div>
-      )}
 
       {/* 辅助信息（仅内部账号可见） */}
-      {internal && (
       <div className="rounded-xl bg-gray-50 border border-gray-100 p-3 space-y-1.5">
         {(!isPlaceholder && p.weight_per_piece_kg > 0) && (
           <div className="flex justify-between items-center">
@@ -810,7 +807,6 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
           </div>
         )}
       </div>
-      )}
 
       {/* 备注 */}
       {!isPlaceholder && p.notes && p.notes.length > 0 && (
