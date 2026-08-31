@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/storage/database/supabase-client";
+import { getAdminFromRequest } from "@/lib/admin";
 
 // GET - 获取任务列表
 export async function GET(request: NextRequest) {
@@ -7,11 +8,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const userId = searchParams.get("user_id");
-    const isAdmin = searchParams.get("is_admin") === "true";
+    const adminPhone = getAdminFromRequest(request);
+    const isAdmin = !!adminPhone;
     const taskType = searchParams.get("type");
 
     const client = getSupabaseClient();
-    
+
     let query = client
       .from("tasks")
       .select(`
@@ -20,8 +22,11 @@ export async function GET(request: NextRequest) {
       `)
       .order("created_at", { ascending: false });
 
-    // 非管理员只能看自己的任务
-    if (!isAdmin && userId) {
+    // 管理员可看全部任务；非管理员只能看自己的（未带user_id则不返回数据）
+    if (!isAdmin) {
+      if (!userId) {
+        return NextResponse.json({ success: true, data: [] });
+      }
       query = query.eq("user_id", userId);
     }
     
