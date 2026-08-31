@@ -114,9 +114,6 @@ export default function AdminTasksPage() {
   if (authLoading || !user) {
     return <div className="flex items-center justify-center min-h-screen text-gray-400 text-sm">请先登录...</div>;
   }
-  if (!isAdmin) {
-    return <div className="flex items-center justify-center min-h-screen text-gray-400 text-sm">无管理员权限，正在跳转...</div>;
-  }
 
   const [tasks, setTasks] = useState<TaskWithProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -268,6 +265,10 @@ export default function AdminTasksPage() {
   
   const drawingTaskCount = tasks.filter(t => t.type === 'manual_quote').length;
   const pendingDrawingCount = tasks.filter(t => t.type === 'manual_quote' && t.status === 'pending').length;
+
+  if (!isAdmin) {
+    return <div className="flex items-center justify-center min-h-screen text-gray-400 text-sm">无管理员权限，正在跳转...</div>;
+  }
 
   return (
     <div className="space-y-6">
