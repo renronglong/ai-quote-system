@@ -810,8 +810,9 @@ function calcExtrusion(
       248: 5.37, 278: 6.88, 297: 7.71, 338: 9.84, 397: 13.33,
     };
 
-    // 管理费率（按厚度H递减，保底15%封顶35%）
-    function getManagementRate(H: number): number {
+    // 管理费率（Φ139和Φ158统一35%，其余按厚度H递减，保底15%封顶35%）
+    function getManagementRate(H: number, dieDia?: number): number {
+      if (dieDia === 139 || dieDia === 158) return 0.35;
       if (H <= 60) return 0.35;
       if (H <= 130) return 0.25;
       if (H <= 190) return 0.18;
@@ -986,12 +987,11 @@ function calcExtrusion(
       perimeterFee = 0.0035 * (finalPerimeter + innerPerimeterForFee) * dieThickness;
       processingFee = baseProcessingFee + perimeterFee;
     }
-    const mgmtRate = getManagementRate(dieThickness);
+    const mgmtRate = getManagementRate(dieThickness, dieDiameter);
     moldCost = roundByMagnitude((materialFee + processingFee) * (1 + mgmtRate));
-    // Φ139小模具统一加价10%（市场实际开模价高于公式计算值）
-    if (dieDiameter === 139) {
-      moldCost = roundByMagnitude(moldCost * 1.1);
-    }
+    // 所有挤压模具统一加价100元
+    const preSurcharge = moldCost;
+    moldCost = moldCost + 100;
 
     const dieTypeMap: Record<string, string> = { flat: '平模', split: '分流模' };
     const dieType = dieTypeMap[dieTypeKey] || '分流模';
@@ -1002,7 +1002,7 @@ function calcExtrusion(
     } else {
       notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + (${Math.round(baseProcessingFee)}基础 + ${Math.round(perimeterFee)}(外周长${Math.round(finalPerimeter)}+内周长${Math.round(innerPerimeterForFee)})×厚度加工) × ${(mgmtRate*100).toFixed(0)}%管理费)`);
     }
-    if (dieDiameter === 139) notes.push(`Φ139小模具加价10%: ${Math.round(moldCost / 1.1)}→${moldCost}元`);
+    notes.push(`模具统一加价+100元: ${preSurcharge}→${moldCost}元`);
     notes.push(`模具费一次性，不计入单件价格`);
 
     breakdown['mold'] = {
