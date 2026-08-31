@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { getAdminFromRequest } from '@/lib/admin';
 
 export const runtime = 'nodejs';
 
@@ -8,6 +9,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!getAdminFromRequest(request)) {
+    return NextResponse.json({ success: false, error: '无管理员权限' }, { status: 403 });
+  }
   try {
     const { id } = await params;
 
