@@ -110,6 +110,7 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
   const [historyOpen, setHistoryOpen] = useState(false);
   const [generated, setGenerated] = useState<{ quoteNo: string; xlsxB64: string; pdfB64: string } | null>(null);
   const [supplierInfo, setSupplierInfo] = useState<{ contact_name?: string; contact_phone?: string; contact_email?: string }>({});
+  const [noCompanyInfo, setNoCompanyInfo] = useState(false);
 
   const loadHistory = async () => {
     if (!userId) return;
@@ -150,7 +151,15 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
       // 加载供方（当前用户）公司资料，用于报价单抬头
       fetch(`/api/auth/profile?user_id=${encodeURIComponent(userId)}`)
         .then(r => r.json())
-        .then(d => { if (d.success?.data?.profile) setSupplierInfo(d.data.profile); })
+        .then(d => {
+          if (d.success?.data) {
+            const u = d.data.user || {};
+            const p = d.data.profile || {};
+            setSupplierInfo(p);
+            // 检查公司名是否已填写
+            if (!u.company_name && !p.company_name) setNoCompanyInfo(true);
+          }
+        })
         .catch(() => {});
       // 默认勾选最新一条
       if (list.length > 0) setSelected(new Set([list[0].id]));
@@ -285,6 +294,21 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
             <span className="font-mono font-semibold text-blue-600">{quoteNo}</span>
             <span className="text-xs text-gray-400">（自动生成，含税价=未税×1.13，导出后可在Excel中修改）</span>
           </div>
+
+          {/* 公司资料未填写提醒 */}
+          {noCompanyInfo && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+              <div className="flex-1 text-sm">
+                <span className="text-amber-800 font-medium">尚未填写公司资料</span>
+                <span className="text-amber-700 ml-1">— 报价单抬头将显示空白，建议先完善公司信息</span>
+                <a href="/profile" target="_blank" rel="noreferrer" className="block mt-1 text-blue-600 hover:underline text-xs font-medium">
+                  → 前往填写公司资料
+                </a>
+              </div>
+              <button onClick={() => setNoCompanyInfo(false)} className="text-amber-400 hover:text-amber-600 text-xs">✕</button>
+            </div>
+          )}
 
           {/* 客户信息 */}
           <div className="space-y-2.5">
