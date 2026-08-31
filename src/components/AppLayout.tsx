@@ -29,6 +29,7 @@ import {
   Phone,
   TrendingUp,
   Handshake,
+} from   UserCircle,
 } from 'lucide-react';
 
 interface NavItem {
@@ -58,6 +59,7 @@ const navGroups: NavGroup[] = [
       { label: '报价历史', href: '/history', icon: <History className="w-5 h-5" /> },
       { label: '供应商', href: '/suppliers', icon: <Building2 className="w-5 h-5" /> },
       { label: '供应商入驻', href: '/supplier', icon: <Handshake className="w-5 h-5" /> },
+      { label: '公司资料', href: '/profile', icon: <UserCircle className="w-5 h-5" /> },
       { label: '联系我们', href: '/contact', icon: <Phone className="w-5 h-5" /> },
       { label: '铝价行情', href: '/market', icon: <TrendingUp className="w-5 h-5" /> },
     ],
@@ -158,6 +160,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                         <Link href="/products" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><Package className="w-4 h-4" />产品管理</Link>
                         <Link href="/inquiries" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><MessageSquare className="w-4 h-4" />询价管理</Link>
                         <Link href="/supplier" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><Handshake className="w-4 h-4" />供应商工作台</Link>
+                        <Link href="/profile" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><UserCircle className="w-4 h-4" />公司资料</Link>
                         <div className="h-px bg-gray-100 my-1" />
                         <Link href="/admin/tasks" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><FileText className="w-4 h-4" />任务管理</Link>
                         <Link href="/admin/users" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><Users className="w-4 h-4" />用户管理</Link>
