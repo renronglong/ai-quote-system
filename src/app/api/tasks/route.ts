@@ -16,10 +16,7 @@ export async function GET(request: NextRequest) {
 
     let query = client
       .from("tasks")
-      .select(`
-        *,
-        user_profile:user_profiles(id, username, company_name)
-      `)
+      .select("*")
       .order("created_at", { ascending: false });
 
     // 管理员可看全部任务；非管理员只能看自己的（未带user_id则不返回数据）
@@ -46,9 +43,31 @@ export async function GET(request: NextRequest) {
       throw new Error(`查询任务失败: ${error.message}`);
     }
 
+    // 管理员视图：批量补全用户手机号/公司名（user_profiles 关联表不存在，改查 users）
+    let resultData: any[] = data || [];
+    if (isAdmin && resultData.length > 0) {
+      const userIds = Array.from(new Set(resultData.map((t: any) => t.user_id).filter(Boolean)));
+      if (userIds.length > 0) {
+        const { data: userRows, error: uErr } = await client
+          .from('users')
+          .select('id,phone,company_name')
+          .in('id', userIds);
+        if (!uErr) {
+          const userMap = new Map(userRows.map((u: any) => [u.id, u]));
+          resultData = resultData.map((t: any) => ({
+            ...t,
+            user_profile: (() => {
+              const u = userMap.get(t.user_id);
+              return u ? { username: u.phone, company_name: u.company_name || '', contact_phone: u.phone, contact_email: '' } : null;
+            })(),
+          }));
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      data: data || [],
+      data: resultData,
     });
   } catch (error) {
     console.error("获取任务列表失败:", error);
