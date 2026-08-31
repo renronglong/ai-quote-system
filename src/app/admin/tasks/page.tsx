@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '@/lib/auth-context';
+import { useAuth, getAdminToken } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -100,17 +100,22 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.
 };
 
 export default function AdminTasksPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, isAdmin } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login?redirect=/admin/tasks');
+    } else if (!authLoading && user && !isAdmin) {
+      router.replace('/');
     }
-  }, [authLoading, user, router]);
+  }, [authLoading, user, isAdmin, router]);
 
   if (authLoading || !user) {
     return <div className="flex items-center justify-center min-h-screen text-gray-400 text-sm">请先登录...</div>;
+  }
+  if (!isAdmin) {
+    return <div className="flex items-center justify-center min-h-screen text-gray-400 text-sm">无管理员权限，正在跳转...</div>;
   }
 
   const [tasks, setTasks] = useState<TaskWithProfile[]>([]);
@@ -147,7 +152,9 @@ export default function AdminTasksPage() {
       }
       params.append('is_admin', 'true');
 
-      const response = await fetch(`/api/tasks?${params.toString()}`);
+      const response = await fetch(`/api/tasks?${params.toString()}`, {
+        headers: { 'x-admin-token': getAdminToken() || '' },
+      });
       const data = await response.json();
       if (data.success) {
         setTasks(data.data);
