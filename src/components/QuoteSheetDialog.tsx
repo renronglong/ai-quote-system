@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { X, FileSpreadsheet, FileText, Check, Loader2, Building2, User, Phone, MapPin, Hash, Download, History } from 'lucide-react';
+import { X, FileSpreadsheet, FileText, Check, Loader2, Building2, User, Phone, MapPin, Hash, Download, History, AlertTriangle } from 'lucide-react';
 import { loadSavedQuotes, saveQuoteToAPI, type SavedQuote } from './SavedQuotesPanel';
 import { useAuth } from '@/lib/auth-context';
 
@@ -241,7 +241,7 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
           quote_no: quoteNo,
           user_id: userId || undefined,
           supplier_company: user?.company_name || '',
-          supplier_contact: supplierInfo.contact_name || supplierInfo.description?.replace('联系人：', '') || user?.company_name?.slice(0, 6) || '龙任荣',
+          supplier_contact: supplierInfo.contact_name || user?.company_name?.slice(0, 6) || '龙任荣',
           supplier_phone: supplierInfo.contact_phone || user?.phone || '18929979760',
           supplier_address: user?.address || '佛山市南海区里水镇',
           customer_name: cust.name,
