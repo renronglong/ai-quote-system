@@ -564,12 +564,12 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
             <span className="text-[10px] text-gray-300">（含13%增值税）</span>
           </div>
         )}
-        <div className="mt-1.5 flex items-baseline gap-1">
+        {internal && <div className="mt-1.5 flex items-baseline gap-1">
           <span className="text-xs text-gray-500">总价</span>
           <span className={`font-bold ${isPlaceholder ? 'text-gray-300' : 'text-gray-800'} ${compact ? 'text-lg' : 'text-2xl'}`}>
             {isPlaceholder ? '¥--' : `¥${(displayUnit * ((p as any).quantity || 1)).toFixed(2)}`}
           </span>
-        </div>
+        </div>}
         {/* 模具费 */}
         {baseMoldFee > 0 && !isPlaceholder && (
           internal ? (
@@ -813,7 +813,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
       )}
 
       {/* 备注 */}
-      {!isPlaceholder && p.notes && p.notes.length > 0 && (
+      {internal && !isPlaceholder && p.notes && p.notes.length > 0 && (
         <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
           {p.notes.map((note: string, i: number) => (
             <div key={i} className="flex items-start gap-1.5 text-xs text-amber-700">
