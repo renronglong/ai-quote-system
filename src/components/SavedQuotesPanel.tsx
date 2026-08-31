@@ -96,6 +96,35 @@ export const EXPORT_SECTIONS = [
 
 export type ExportSectionKey = typeof EXPORT_SECTIONS[number]['key'];
 
+// ==================== Quote-sheet API types ====================
+interface SheetItem {
+  model?: string;
+  spec?: string;
+  name?: string;
+  unit?: string;
+  material?: string;
+  surface?: string;
+  price_ex_tax?: number;
+  price_inc_tax?: number;
+  moq?: number | string;
+  mold_fee?: number | null;
+  remark?: string;
+}
+interface SheetBody {
+  supplier_company?: string;
+  supplier_contact?: string;
+  supplier_phone?: string;
+  supplier_address?: string;
+  customer_name?: string;
+  customer_contact?: string;
+  customer_phone?: string;
+  customer_address?: string;
+  quote_no?: string;
+  aluminum_price?: number;
+  user_id?: string;
+  items: SheetItem[];
+}
+
 // ==================== Component ====================
 interface SavedQuotesPanelProps {
   userId: string;
@@ -112,6 +141,7 @@ export default function SavedQuotesPanel({ userId, trigger, onOpenChange }: Save
     new Set(EXPORT_SECTIONS.filter(s => s.default).map(s => s.key))
   );
   const [exportFormat, setExportFormat] = useState<'excel' | 'pdf'>('excel');
+  const [customerInfo, setCustomerInfo] = useState({ name: '', contact: '', phone: '', address: '' });
   const [exporting, setExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -166,44 +196,91 @@ export default function SavedQuotesPanel({ userId, trigger, onOpenChange }: Save
     });
   };
 
+  // 将 SavedQuote 映射为 quote-sheet API 的 SheetItem
+  const mapToSheetItems = (qs: SavedQuote[]): SheetItem[] => {
+    return qs.map(q => {
+      const p = q.params || {};
+      const r = q.result || {};
+      const bd = r.breakdown || {};
+      // 规格尺寸
+      const dims = p.dimensions || {};
+      const parts: string[] = [];
+      if (dims.width_mm) parts.push(String(dims.width_mm));
+      if (dims.height_mm) parts.push(String(dims.height_mm));
+      if (dims.length_mm) parts.push(String(dims.length_mm));
+      const spec = parts.length > 0 ? parts.join('*') : '';
+      return {
+        model: q.name || '',
+        spec,
+        name: p.productName || p.product_type || p.productType || q.product_type || '',
+        unit: 'pcs',
+        material: p.materialCategory || p.material?.category || '',
+        surface: p.surfaceTreatment || p.materialSurfaceTreatment || '',
+        price_ex_tax: r.unit_price != null ? Number(r.unit_price) : undefined,
+        price_inc_tax: r.unit_price_inc_tax != null ? Number(r.unit_price_inc_tax) : (r.unit_price != null ? Number(r.unit_price) * 1.13 : undefined),
+        moq: p.quantity || '',
+        mold_fee: bd.mold?.amount != null ? Number(bd.mold.amount) : (r.mold_cost != null ? Number(r.mold_cost) : null),
+        remark: '',
+      };
+    });
+  };
+
   const handleExport = async () => {
     const selectedQuotes = quotes.filter(q => selectedIds.has(q.id));
     if (selectedQuotes.length === 0) return;
 
     setExporting(true);
     try {
-      const res = await fetch('/api/saved-quotes/export', {
+      const items = mapToSheetItems(selectedQuotes);
+      const body: SheetBody = {
+        supplier_company: '上栗县碧利五金塑胶制品厂',
+        supplier_contact: '龙任荣',
+        supplier_phone: '18929979760',
+        supplier_address: '佛山市南海区里水镇北沙渡头工业区5号',
+        customer_name: customerInfo.name || undefined,
+        customer_contact: customerInfo.contact || undefined,
+        customer_phone: customerInfo.phone || undefined,
+        customer_address: customerInfo.address || undefined,
+        quote_no: `GY${new Date().toISOString().slice(0,10).replace(/-/g,'')}001`,
+        user_id: userId || undefined,
+        items,
+      };
+
+      const res = await fetch('/api/quote-sheet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          format: exportFormat,
-          quotes: selectedQuotes,
-          sections: Array.from(exportSections),
-        }),
+        body: JSON.stringify(body),
       });
 
-      if (!res.ok) throw new Error('Export failed');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Export failed');
+      }
 
+      const data = await res.json();
       const dateStr = new Date().toISOString().slice(0, 10);
+
       if (exportFormat === 'excel') {
-        const blob = await res.blob();
-        downloadBlob(blob, `报价单_${dateStr}_${selectedQuotes.length}条.xlsx`);
+        // Excel: decode base64 and download
+        const bin = atob(data.xlsx_base64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        downloadBlob(blob, `报价单_${dateStr}_${items.length}条.xlsx`);
       } else {
-        // PDF: open HTML in new window for browser print-to-PDF
-        const html = await res.text();
-        const w = window.open('', '_blank');
-        if (w) {
-          w.document.write(html);
-          w.document.close();
-          setTimeout(() => w.print(), 500);
-        }
+        // PDF: decode base64 and download
+        const bin = atob(data.pdf_base64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        downloadBlob(blob, `报价单_${dateStr}_${items.length}条.pdf`);
       }
 
       setExportSuccess(true);
       setTimeout(() => { setExportSuccess(false); setExportDialogOpen(false); }, 1200);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Export error:', err);
-      alert('导出失败，请重试');
+      alert('导出失败：' + (err?.message || '请重试'));
     } finally {
       setExporting(false);
     }
@@ -383,21 +460,37 @@ export default function SavedQuotesPanel({ userId, trigger, onOpenChange }: Save
                   </div>
                 </div>
 
-                {/* 内容选择 */}
+                {/* 客户信息 */}
                 <div>
-                  <div className="text-xs font-medium text-gray-600 mb-1.5">包含内容</div>
-                  {EXPORT_SECTIONS.map(section => (
-                    <label
-                      key={section.key}
-                      className="flex items-center gap-3 p-2 rounded-md hover:bg-gray-50 cursor-pointer"
-                    >
-                      <Checkbox
-                        checked={exportSections.has(section.key)}
-                        onCheckedChange={() => toggleExportSection(section.key)}
+                  <div className="text-xs font-medium text-gray-600 mb-1.5">客户信息（选填）</div>
+                  <div className="space-y-2">
+                    <input
+                      className="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      placeholder="客户名称"
+                      value={customerInfo.name}
+                      onChange={e => setCustomerInfo(p => ({ ...p, name: e.target.value }))}
+                    />
+                    <div className="flex gap-2">
+                      <input
+                        className="flex-1 px-2.5 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        placeholder="联系人"
+                        value={customerInfo.contact}
+                        onChange={e => setCustomerInfo(p => ({ ...p, contact: e.target.value }))}
                       />
-                      <span className="text-sm text-gray-700">{section.label}</span>
-                    </label>
-                  ))}
+                      <input
+                        className="flex-1 px-2.5 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        placeholder="电话"
+                        value={customerInfo.phone}
+                        onChange={e => setCustomerInfo(p => ({ ...p, phone: e.target.value }))}
+                      />
+                    </div>
+                    <input
+                      className="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      placeholder="地址"
+                      value={customerInfo.address}
+                      onChange={e => setCustomerInfo(p => ({ ...p, address: e.target.value }))}
+                    />
+                  </div>
                 </div>
               </div>
               <div className="flex justify-between mt-2">
