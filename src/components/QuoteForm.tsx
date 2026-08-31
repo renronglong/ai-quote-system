@@ -502,6 +502,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const prevAiDataRef = useRef<AiFormUpdate | null | undefined>(null);
   const [loading, setLoading] = useState(false);
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+  // 请求序号：防止旧响应覆盖新结果（防抖并发时，晚返回的中间态请求直接丢弃）
+  const calcReqSeq = useRef(0);
 
   // Product info state
   const [productName, setProductName] = useState('');
@@ -1140,26 +1142,31 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
   const buildDimensions = () => {
     const parsed = parseProductSize(fields.productSize as string);
+    // 输入框存的是字符串，统一转 number（空串/NaN → undefined）
+    const num = (v: unknown): number | undefined => {
+      const n = typeof v === 'number' ? v : parseFloat(String(v));
+      return Number.isFinite(n) && n > 0 ? n : undefined;
+    };
     if (productType === '挤出') {
-      const width = fields.width as number;
-      const height = fields.height as number;
-      const length = fields.length as number;
-      if (width || height || length || fields.thickness) return {
+      const width = num(fields.width);
+      const height = num(fields.height);
+      const length = num(fields.length);
+      if (width || height || length || num(fields.thickness)) return {
         length_mm: length || 0,
         width_mm: width || 0,
         height_mm: height || undefined,
         standard_category: standardCategory || undefined,
-        wall_thickness_mm: (fields.thickness as number) || undefined,
+        wall_thickness_mm: num(fields.thickness),
         diameter_mm: standardCategory === '铝圆棒' ? (width || undefined) : undefined,
         hex_flat_mm: (standardCategory === '铝六角棒' || standardCategory === '铝六角管') ? (width || undefined) : undefined,
         outer_diameter_mm: standardCategory === '铝圆管' ? (width || undefined) : undefined,
         inner_diameter_mm: (standardCategory === '铝圆管' || standardCategory === '铝六角管') ? (height || undefined) : undefined,
-        perimeter_mm: (fields.perimeter as number) || undefined,
-        inner_perimeter_mm: (fields.innerPerimeter as number) || undefined,
-        num_cavities: parseInt(fields.num_cavities as string) || 1,
+        perimeter_mm: num(fields.perimeter),
+        inner_perimeter_mm: num(fields.innerPerimeter),
+        num_cavities: parseInt(String(fields.num_cavities)) || 1,
         die_type: (fields.die_type === 'flat' || fields.die_type === 'split') ? fields.die_type as 'flat' | 'split' : undefined,
-        meter_weight_kg_per_m: (fields.meterWeight as number) || undefined,
-        net_weight_g: (fields.netWeight as number) || undefined,
+        meter_weight_kg_per_m: num(fields.meterWeight),
+        net_weight_g: num(fields.netWeight),
         die_steel_price: dieSteelPrice ? parseFloat(dieSteelPrice) : undefined,
       };
     }
@@ -1233,13 +1240,17 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       if (processInfo.secondary_operations.length > 0 || processInfo.cut_count !== undefined) {
         payload.process = processInfo;
       }
+      const mySeq = ++calcReqSeq.current;
       const res = await fetch('/api/v1/quote/calculate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+      // 已有更新的请求发出 → 本次结果过期，丢弃，避免旧中间态覆盖新结果
+      if (mySeq !== calcReqSeq.current) { setLoading(false); return; }
       if (res.ok) {
         const data = await res.json();
+        if (mySeq !== calcReqSeq.current) { setLoading(false); return; }
         if (data.success) {
           const result: PricingResult = {
             quotation_id: data.quotation_id || '',
