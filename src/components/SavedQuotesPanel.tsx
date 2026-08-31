@@ -310,7 +310,7 @@ export default function SavedQuotesPanel({ userId, trigger, onOpenChange }: Save
                     </div>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-[11px] text-gray-500">
-                        {quote.params?.quantity || 0}件 · {quote.params?.material?.category || '-'}
+                        {quote.params?.quantity || 0}件 · {quote.params?.materialCategory || quote.params?.material?.category || '-'}
                       </span>
                       {(quote.product_discount || quote.mold_discount) && (
                         <span className="text-[10px] text-orange-500 flex items-center gap-0.5">
