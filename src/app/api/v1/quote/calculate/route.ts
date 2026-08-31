@@ -2003,6 +2003,12 @@ export async function POST(request: NextRequest) {
     result.costs.total_ex_tax = r2(exTaxUnit * body.quantity);
     result.costs.total_in_tax = r2(inTaxUnit * body.quantity);
 
+    // TEMP DEBUG: 把收到的原始参数塞进 notes（结果页橙色警告条可见），排查米重异常
+    try {
+      const dbg = body.dimensions as Record<string, unknown> | undefined;
+      result.notes.push(`[诊断] 收到米重=${dbg?.meter_weight_kg_per_m} 长度=${dbg?.length_mm} 宽=${dbg?.width_mm} 高=${dbg?.height_mm} 周长=${dbg?.perimeter_mm} weightOverride=${body.weight_per_piece_kg} → 算出单件重量=${result.weight}`);
+    } catch (_e) {}
+
     // 5. 最低订单量检查（最低 300kg）
     const totalWeight = result.weight * body.quantity;
     const minOrderWeight = 300;
