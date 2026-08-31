@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { getAdminFromRequest } from '@/lib/admin';
 
 export const runtime = 'nodejs';
 
 // GET - List cad_requests (admin only)
 export async function GET(request: NextRequest) {
+  if (!getAdminFromRequest(request)) {
+    return NextResponse.json({ success: false, error: '无管理员权限' }, { status: 403 });
+  }
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
@@ -53,6 +57,9 @@ export async function GET(request: NextRequest) {
 
 // PUT - Update cad_request status and admin notes
 export async function PUT(request: NextRequest) {
+  if (!getAdminFromRequest(request)) {
+    return NextResponse.json({ success: false, error: '无管理员权限' }, { status: 403 });
+  }
   try {
     const body = await request.json();
     const { id, status, admin_notes } = body;
