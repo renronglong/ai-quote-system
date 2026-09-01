@@ -115,7 +115,7 @@ async function buildExcel(body: SheetBody): Promise<Buffer> {
   ws.getRow(2).height = 24;
 
   const infoRows = [
-    [`供方：${body.supplier_company || ''}`, `客户名称：${body.customer_name || ''}`],
+    [`${body.supplier_company || ''}`, `客户名称：${body.customer_name || ''}`],
     [`联系人：${body.supplier_contact || ''}`, `联系人：${body.customer_contact || ''}`],
     [`电话：${body.supplier_phone || ''}`, `电话：${body.customer_phone || ''}`],
     [`地址：${body.supplier_address || ''}`, `地址：${body.customer_address || ''}`],
@@ -311,7 +311,7 @@ async function buildPdf(body: SheetBody, fontBuf: Buffer): Promise<Buffer> {
     doc.text(right, startX + halfW, y, { width: halfW - 10, lineBreak: false });
     doc.y = y + 15;
   };
-  infoLine(`供方：${body.supplier_company || ''}`, `客户名称：${body.customer_name || ''}`);
+  infoLine(`${body.supplier_company || ''}`, `客户名称：${body.customer_name || ''}`);
   infoLine(`联系人：${body.supplier_contact || ''}`, `联系人：${body.customer_contact || ''}`);
   infoLine(`电话：${body.supplier_phone || ''}`, `电话：${body.customer_phone || ''}`);
   infoLine(`地址：${body.supplier_address || ''}`, `地址：${body.customer_address || ''}`);
