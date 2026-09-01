@@ -1226,7 +1226,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
     setLoading(true);
     try {
-      const surfaceTreatment = mapSurfaceTreatment();
+      const surfaceTreatmentPayload = mapSurfaceTreatment();
       const processInfo = mapProcesses();
 
       // ---- Normal (single) mode ----
@@ -1244,7 +1244,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         payload.dimensions = dimensions;
       }
       if (weightKg !== undefined) payload.weight_per_piece_kg = weightKg;
-      if (surfaceTreatment) payload.surface_treatment = surfaceTreatment;
+      if (surfaceTreatmentPayload) payload.surface_treatment = surfaceTreatmentPayload;
       if (processInfo.secondary_operations.length > 0 || processInfo.cut_count !== undefined) {
         payload.process = processInfo;
       }
