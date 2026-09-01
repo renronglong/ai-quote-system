@@ -1371,28 +1371,34 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (d.product_name) setProductName(d.product_name);
 
     // 字段统一最后填，避免被类别切换的 reset 清掉
+    // toNum: 兼容AI返回的字符串数字（如 "28.5" → 28.5）
+    const toNum = (v: unknown): number | null => {
+      if (typeof v === 'number' && !isNaN(v)) return v;
+      if (typeof v === 'string' && v.trim() !== '') { const n = parseFloat(v); return isNaN(n) ? null : n; }
+      return null;
+    };
     setFields(prev => {
       const next = { ...prev };
-      if (typeof d.width === 'number') next.width = d.width;
-      if (typeof d.height === 'number') next.height = d.height;
-      if (typeof d.length === 'number') next.length = d.length;
-      if (typeof d.perimeter === 'number') next.perimeter = d.perimeter;
-      if (typeof d.inner_perimeter === 'number') next.innerPerimeter = d.inner_perimeter;
-      if (typeof d.num_cavities === 'number') next.num_cavities = d.num_cavities;
+      const w = toNum(d.width); if (w !== null) next.width = w;
+      const h = toNum(d.height); if (h !== null) next.height = h;
+      const l = toNum(d.length); if (l !== null) next.length = l;
+      const p = toNum(d.perimeter); if (p !== null) next.perimeter = p;
+      const ip = toNum(d.inner_perimeter); if (ip !== null) next.innerPerimeter = ip;
+      const nc = toNum(d.num_cavities); if (nc !== null) next.num_cavities = nc;
       // 模具类型兼容英文/中文/中空描述
       const dt = String(d.die_type || '').toLowerCase();
       if (d.die_type === 'flat' || dt === 'flat' || d.die_type === '平模' || d.die_type === '实心') next.die_type = 'flat';
       else if (d.die_type === 'split' || dt === 'split' || d.die_type === '分流模' || d.die_type === '中空' || d.die_type === '空心') next.die_type = 'split';
       // 按内腔数兜底：有内腔=分流模，实心=平模
-      if (typeof d.num_cavities === 'number' && !next.die_type) {
-        next.die_type = d.num_cavities >= 1 ? 'split' : 'flat';
+      if (nc !== null && !next.die_type) {
+        next.die_type = nc >= 1 ? 'split' : 'flat';
       }
-      if (typeof d.meter_weight === 'number') next.meterWeight = d.meter_weight;
-      if (typeof d.quantity === 'number') next.quantity = d.quantity;
-      if (typeof d.wall_thickness === 'number') next.thickness = d.wall_thickness;
+      const mw = toNum(d.meter_weight); if (mw !== null) next.meterWeight = mw;
+      const qty = toNum(d.quantity); if (qty !== null) next.quantity = qty;
+      const wt = toNum(d.wall_thickness); if (wt !== null) next.thickness = wt;
       // 标准件专属尺寸（前端 width/height 复用槽位：圆棒直径、六角对边、圆管外径→width；内径→height）
       const dAny = d as Record<string, unknown>;
-      const num = (v: unknown) => (typeof v === 'number' && v > 0 ? v : null);
+      const num = (v: unknown) => toNum(v) ?? (toNum(v) !== null && (toNum(v) as number) > 0 ? toNum(v) : null);
       const diam = num(dAny.diameter) ?? num(dAny.diameter_mm);
       const hexFlat = num(dAny.hex_flat) ?? num(dAny.hex_flat_mm) ?? num(dAny.hex) ?? num(dAny.hex_flat_distance);
       const outerD = num(dAny.outer_diameter) ?? num(dAny.outer_diameter_mm) ?? num(dAny.outer) ?? num(dAny.outer_dia);
