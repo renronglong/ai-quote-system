@@ -760,7 +760,7 @@ function calcExtrusion(
     if (n <= 0) return 0;
     if (n <= 10) return Math.ceil(n);
     const digits = Math.floor(Math.log10(n));
-    const unit = Math.pow(10, digits - 2); // 取整到十位，保留更多精度
+    const unit = Math.pow(10, digits); // 按最高位向上进位（8010→9000, 350→400, 3500→4000）
     return Math.ceil(n / unit) * unit;
   };
   // 取整工具：按数量级四舍五入（如 350→400, 340→300, 3500→4000）
@@ -768,7 +768,7 @@ function calcExtrusion(
     if (n <= 0) return 0;
     if (n <= 10) return Math.round(n);
     const digits = Math.floor(Math.log10(n));
-    const unit = Math.pow(10, digits - 2); // 取整到十位，保留更多精度
+    const unit = Math.pow(10, digits); // 按最高位四舍五入（350→400, 340→300, 3500→4000）
     return Math.round(n / unit) * unit;
   };
 
