@@ -48,14 +48,13 @@ export default function ProfilePage() {
         const data = await res.json();
         if (data.success) {
           const u = data.data.user || {};
-          const p = data.data.profile || {};
           const prof: UserProfile = {
             phone: u.phone || '',
             company_name: u.company_name || null,
             address: u.address || null,
-            contact_name: p.description?.replace('联系人：', '') || null,
-            contact_phone: p.contact_phone || null,
-            contact_email: p.contact_email || null,
+            contact_name: null,
+            contact_phone: u.phone || null,
+            contact_email: u.email || null,
           };
           setProfile(prof);
           setForm({
@@ -101,8 +100,6 @@ export default function ProfilePage() {
         body: JSON.stringify({
           user_id: user.id,
           company_name: form.company_name.trim() || undefined,
-          contact_name: form.contact_name.trim() || undefined,
-          contact_phone: form.contact_phone.trim() || undefined,
           contact_email: form.contact_email.trim() || undefined,
           address: form.address.trim() || undefined,
         }),
