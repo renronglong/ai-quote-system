@@ -82,6 +82,8 @@ export default function LoginPage() {
         user: {
           id: data.user.id,
           email: null,
+          phone: data.user.phone,
+          is_admin: !!data.user.is_admin,
           app_metadata: {},
           user_metadata: {},
           aud: 'authenticated',
@@ -90,6 +92,13 @@ export default function LoginPage() {
       };
 
       localStorage.setItem('custom_session', JSON.stringify(mockSession));
+
+      // 管理员token存入sessionStorage（刷新不丢，关闭标签页失效）
+      if (data.admin_token) {
+        try { sessionStorage.setItem('admin_token', data.admin_token); } catch { /* ignore */ }
+      } else {
+        try { sessionStorage.removeItem('admin_token'); } catch { /* ignore */ }
+      }
 
       // 记住密码处理
       if (remember) {
