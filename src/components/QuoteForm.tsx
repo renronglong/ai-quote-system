@@ -1292,6 +1292,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               meterWeight: fields.meterWeight as number, netWeight: fields.netWeight as number,
               materialSurfaceTreatment, materialColor, processes,
               productSurfaceTreatment, productColor,
+              surfaceTreatment,
             });
           }
           setLoading(false);
