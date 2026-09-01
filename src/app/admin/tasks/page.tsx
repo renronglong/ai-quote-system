@@ -111,9 +111,6 @@ export default function AdminTasksPage() {
     }
   }, [authLoading, user, isAdmin, router]);
 
-  if (authLoading || !user) {
-    return <div className="flex items-center justify-center min-h-screen text-gray-400 text-sm">请先登录...</div>;
-  }
 
   const [tasks, setTasks] = useState<TaskWithProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -166,6 +163,11 @@ export default function AdminTasksPage() {
   useEffect(() => {
     loadTasks();
   }, [statusFilter, typeFilter]);
+
+  if (authLoading || !user) {
+    return <div className="flex items-center justify-center min-h-screen text-gray-400 text-sm">请先登录...</div>;
+  }
+
 
   const handleViewDetail = async (task: TaskWithProfile) => {
     try {
