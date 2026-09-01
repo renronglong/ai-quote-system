@@ -221,7 +221,7 @@ export default function SavedQuotesPanel({ userId, trigger, onOpenChange }: Save
         name: p.productName || p.product_type || p.productType || q.product_type || '',
         unit: 'pcs',
         material: p.materialCategory || p.material?.category || '6063-T5',
-        surface: (p.productSurfaceTreatment || p.surface_treatment || p.surfaceTreatment || '无') !== '无' ? (p.productSurfaceTreatment || p.surface_treatment || p.surfaceTreatment || '无') : '无',
+        surface: (p.surfaceTreatment || p.surface_treatment || p.productSurfaceTreatment || '无') !== '无' ? (p.surfaceTreatment || p.surface_treatment || p.productSurfaceTreatment || '无') : '无',
         price_ex_tax: r.unit_price != null ? Number(r.unit_price) : undefined,
         price_inc_tax: r.unit_price_inc_tax != null ? Number(r.unit_price_inc_tax) : (r.unit_price != null ? Number(r.unit_price) * 1.13 : undefined),
         moq: r.min_order_qty || p.quantity || '',
