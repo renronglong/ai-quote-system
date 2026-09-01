@@ -202,23 +202,29 @@ export default function SavedQuotesPanel({ userId, trigger, onOpenChange }: Save
       const p = q.params || {};
       const r = q.result || {};
       const bd = r.breakdown || {};
-      // 规格尺寸
+      // 规格尺寸：优先读 dimensions 对象，降级读顶层 width/height/length
       const dims = p.dimensions || {};
-      const parts: string[] = [];
-      if (dims.width_mm) parts.push(String(dims.width_mm));
-      if (dims.height_mm) parts.push(String(dims.height_mm));
-      if (dims.length_mm) parts.push(String(dims.length_mm));
-      const spec = parts.length > 0 ? parts.join('*') : '';
+      const specParts: string[] = [];
+      if (dims.width_mm) specParts.push(String(dims.width_mm));
+      if (dims.height_mm) specParts.push(String(dims.height_mm));
+      if (dims.length_mm) specParts.push(String(dims.length_mm));
+      // 降级：直接读顶层字段（兼容AI识别存入的params结构）
+      if (specParts.length === 0) {
+        if (p.width) specParts.push(`${p.width}`);
+        if (p.height) specParts.push(`${p.height}`);
+        if (p.length) specParts.push(`${p.length}`);
+      }
+      const spec = specParts.length > 0 ? specParts.join('*') : (p.productSize || '');
       return {
-        model: q.name || '',
+        model: p.product_code || p.productCode || '',
         spec,
         name: p.productName || p.product_type || p.productType || q.product_type || '',
         unit: 'pcs',
-        material: p.materialCategory || p.material?.category || '',
-        surface: p.surfaceTreatment || p.materialSurfaceTreatment || '',
+        material: p.materialCategory || p.material?.category || '6063-T5',
+        surface: (p.productSurfaceTreatment || p.surface_treatment || p.surfaceTreatment || '无') !== '无' ? (p.productSurfaceTreatment || p.surface_treatment || p.surfaceTreatment || '无') : '无',
         price_ex_tax: r.unit_price != null ? Number(r.unit_price) : undefined,
         price_inc_tax: r.unit_price_inc_tax != null ? Number(r.unit_price_inc_tax) : (r.unit_price != null ? Number(r.unit_price) * 1.13 : undefined),
-        moq: p.quantity || '',
+        moq: r.min_order_qty || p.quantity || '',
         mold_fee: bd.mold?.amount != null ? Number(bd.mold.amount) : (r.mold_cost != null ? Number(r.mold_cost) : null),
         remark: '',
       };
