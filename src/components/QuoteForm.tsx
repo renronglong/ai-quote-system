@@ -21,6 +21,7 @@ interface QuoteFormData {
   processes: ProcessSelection[];
   productSurfaceTreatment: string;
   productColor: string;
+  surfaceTreatment?: string;
 }
 
 interface ProcessSelection {
