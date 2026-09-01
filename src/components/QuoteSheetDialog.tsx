@@ -86,7 +86,7 @@ function toSheetItem(q: SavedQuote) {
     name: p.productName || p.product_type_name || q.product_type || '铝型材',
     unit: 'pcs',
     material: p.materialCategory || p.grade || '6063-T5',
-    surface: (p.productSurfaceTreatment || p.surface_treatment || p.surfaceTreatment || '无') !== '无' ? (p.productSurfaceTreatment || p.surface_treatment || p.surfaceTreatment || '无') : '无',
+    surface: (p.surfaceTreatment || p.surface_treatment || p.productSurfaceTreatment || '无') !== '无' ? (p.surfaceTreatment || p.surface_treatment || p.productSurfaceTreatment || '无') : '无',
     price_ex_tax: Number(unitPrice.toFixed(4)),
     price_inc_tax: Number((unitPrice * 1.13).toFixed(4)),
     moq: r.min_order_qty || p.quantity || '',
