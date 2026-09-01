@@ -4,10 +4,7 @@ import { getAdminFromRequest } from "@/lib/admin";
 
 // GET - 获取任务列表
 export async function GET(request: NextRequest) {
-  // DEBUG MARKER v2
-  if (request.nextUrl.searchParams.get("debug") === "check") {
-    return NextResponse.json({ debug: "v2-deployed", ts: Date.now() });
-  }
+
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
