@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://br-lush-teal-829ebb2c.supabase2.aidap-global.cn-beijing.volces.com';
@@ -7,7 +7,7 @@ const supabaseServiceKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY || process
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('user_id');
+    const userId = searchParams.get("user_id");
 
     if (!userId) {
       return NextResponse.json({ error: '缺少用户ID' }, { status: 400 });
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
 
     const { data: userData, error: userError } = await supabase
       .from('users')
-      .select('id, phone, company_name, address')
+      .select('id, phone, company_name, address, email')
       .eq('id', userId)
       .single();
 
@@ -31,18 +31,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: '用户不存在' }, { status: 404 });
     }
 
-    const { data: profileData } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
-
     return NextResponse.json({
       success: true,
       data: {
         user: userData,
-        profile: profileData,
-        hasCompanyInfo: !!(userData.company_name || profileData?.company_name),
+        profile: null,
+        hasCompanyInfo: !!userData.company_name,
       },
     });
   } catch (err) {
@@ -80,46 +74,6 @@ export async function POST(request: NextRequest) {
 
     if (userError) {
       throw new Error(`更新用户信息失败: ${userError.message}`);
-    }
-
-    // 检查 user_profiles 是否存在
-    const { data: existingProfile } = await supabase
-      .from('user_profiles')
-      .select('id')
-      .eq('user_id', user_id)
-      .maybeSingle();
-
-    if (existingProfile) {
-      const { error: profileError } = await supabase
-        .from('user_profiles')
-        .update({
-          company_name: company_name || null,
-          contact_phone: contact_phone || null,
-          contact_email: contact_email || null,
-          description: contact_name ? `联系人：${contact_name}` : null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', user_id);
-
-      if (profileError) {
-        throw new Error(`更新用户档案失败: ${profileError.message}`);
-      }
-    } else {
-      const { error: profileError } = await supabase
-        .from('user_profiles')
-        .insert({
-          user_id,
-          username: `user_${user_id.slice(0, 8)}`,
-          company_name: company_name || null,
-          contact_phone: contact_phone || null,
-          contact_email: contact_email || null,
-          description: contact_name ? `联系人：${contact_name}` : null,
-          is_active: true,
-        });
-
-      if (profileError) {
-        throw new Error(`创建用户档案失败: ${profileError.message}`);
-      }
     }
 
     return NextResponse.json({
