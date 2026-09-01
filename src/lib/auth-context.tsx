@@ -21,7 +21,9 @@ export interface ExtendedUser extends User {
 
 /** 管理员token存sessionStorage（关闭标签页失效，安全） */
 export function getAdminToken(): string | null {
-  try { return sessionStorage.getItem('admin_token'); } catch { return null; }
+  try {
+    return sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token');
+  } catch { return null; }
 }
 
 interface AuthContextType {
@@ -114,9 +116,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: data.error || '登录失败' };
       }
       if (data.admin_token) {
-        try { sessionStorage.setItem('admin_token', data.admin_token); } catch { /* ignore */ }
+        try { sessionStorage.setItem('admin_token', data.admin_token); localStorage.setItem('admin_token', data.admin_token); } catch { /* ignore */ }
       } else {
-        try { sessionStorage.removeItem('admin_token'); } catch { /* ignore */ }
+        try { sessionStorage.removeItem('admin_token'); localStorage.removeItem('admin_token'); } catch { /* ignore */ }
       }
       setIsAdmin(!!data.user?.is_admin);
       const mockSession = {
