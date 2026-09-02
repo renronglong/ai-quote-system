@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { X, FileSpreadsheet, FileText, Check, Loader2, Building2, User, Phone, MapPin, Hash, Download, History } from 'lucide-react';
 import { loadSavedQuotes, saveQuoteToAPI, type SavedQuote } from './SavedQuotesPanel';
 import { useAuth } from '@/lib/auth-context';
@@ -112,6 +112,24 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
   const [generated, setGenerated] = useState<{ quoteNo: string; xlsxB64: string; pdfB64: string } | null>(null);
   const [supplierInfo, setSupplierInfo] = useState<{ contact_name?: string; contact_phone?: string; contact_email?: string }>({});
   const [noCompanyInfo, setNoCompanyInfo] = useState(false);
+  
+  // 公司搜索（启信宝/企查查）
+  const [companySearchResults, setCompanySearchResults] = useState<{name: string; address: string; creditCode: string; orgCode: string}[]>([]);
+  const [companySearching, setCompanySearching] = useState(false);
+  const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
+  const companySearchTimer = useRef<NodeJS.Timeout | null>(null);
+  const companyDropdownRef = useRef<HTMLDivElement>(null);
+
+  // 点击外部关闭公司搜索下拉
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (companyDropdownRef.current && !companyDropdownRef.current.contains(e.target as Node)) {
+        setShowCompanyDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const loadHistory = async () => {
     if (!userId) return;
@@ -316,12 +334,37 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
           <div className="space-y-2.5">
             <div className="text-sm font-medium text-gray-700 flex items-center gap-1.5"><Building2 className="w-4 h-4 text-gray-400" />客户信息</div>
             <div className="grid grid-cols-2 gap-2.5">
-              <div className="relative">
-                <input list="cust-names" className={inputCls} placeholder="客户名称 *" value={cust.name}
-                  onChange={(e) => onPickCustomer(e.target.value)} />
-                <datalist id="cust-names">
-                  {customers.map((c) => <option key={c.name} value={c.name} />)}
-                </datalist>
+              <div className="relative" ref={companyDropdownRef}>
+                <input className={inputCls} placeholder="客户名称（输入搜索） *" value={cust.name}
+                  onChange={(e) => onPickCustomer(e.target.value)}
+                  onFocus={() => { if (companySearchResults.length > 0) setShowCompanyDropdown(true); }} />
+                {companySearching && <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin absolute right-2.5 top-2.5" />}
+                {showCompanyDropdown && companySearchResults.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-56 overflow-y-auto">
+                    {companySearchResults.map((c, i) => (
+                      <div key={i} className="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0"
+                        onMouseDown={() => selectCompany(c)}>
+                        <div className="text-sm font-medium text-gray-800">{c.name}</div>
+                        <div className="flex gap-2 mt-0.5 flex-wrap">
+                          {c.creditCode && <span className="text-xs text-blue-500">信用代码: {c.creditCode}</span>}
+                          {c.orgCode && <span className="text-xs text-green-600">组织代码: {c.orgCode}</span>}
+                        </div>
+                        {c.address && <div className="text-xs text-gray-400 truncate mt-0.5">{c.address}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* 已保存的客户资料（非搜索时显示） */}
+                {!showCompanyDropdown && customers.length > 0 && cust.name === '' && (
+                  <div className="absolute z-40 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-40 overflow-y-auto hidden peer-focus:block">
+                    {customers.map((c, i) => (
+                      <div key={i} className="px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-sm text-gray-700"
+                        onMouseDown={() => { setCust(c); }}>
+                        {c.name}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="relative">
                 <User className="w-3.5 h-3.5 text-gray-300 absolute left-2.5 top-2.5" />
