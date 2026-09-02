@@ -66,6 +66,16 @@ function nextQuoteNo(): string {
   return `GY${d}${String(seq).padStart(3, '0')}`;
 }
 
+// 保留n位有效数字
+function sigfig(n: number, digits: number): number {
+  if (n === 0 || !isFinite(n)) return n;
+  const d = Math.ceil(Math.log10(Math.abs(n)));
+  const factor = Math.pow(10, digits - d);
+  return Math.round(n * factor) / factor;
+}
+function r3sig(n: number): number { return sigfig(n, 3); }
+function r2sig(n: number): number { return sigfig(n, 2); }
+
 // 从保存的报价提取出单字段
 function toSheetItem(q: SavedQuote) {
   const p = q.params || {};
@@ -87,10 +97,10 @@ function toSheetItem(q: SavedQuote) {
     unit: 'pcs',
     material: p.materialCategory || p.grade || '6063-T5',
     surface: p.productSurfaceTreatment && p.productSurfaceTreatment !== '无' ? p.productSurfaceTreatment : '无',
-    price_ex_tax: Number(unitPrice.toFixed(4)),
-    price_inc_tax: Number((unitPrice * 1.13).toFixed(4)),
-    moq: r.min_order_qty || p.quantity || '',
-    mold_fee: Number(moldFee.toFixed(2)),
+    price_ex_tax: r3sig(unitPrice),
+    price_inc_tax: r3sig(unitPrice * 1.13),
+    moq: r.min_order_qty || p.quantity ? r2sig(Number(r.min_order_qty || p.quantity || 0)) : '',
+    mold_fee: r2sig(moldFee),
     remark: '',
     _label: `${q.name}｜${specParts.join('*') || '-'}｜未税¥${unitPrice.toFixed(2)}`,
   };
@@ -390,6 +400,19 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
                   onChange={(e) => setCust({ ...cust, address: e.target.value })} />
               </div>
             </div>
+          </div>
+
+          {/* 全局备注 */}
+          <div className="space-y-1.5">
+            <div className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
+              <FileText className="w-4 h-4 text-gray-400" />全局备注
+            </div>
+            <textarea
+              className={`${inputCls} min-h-[48px] resize-none`}
+              placeholder="备注信息（选填，将显示在报价单底部）"
+              value={globalRemark}
+              onChange={(e) => setGlobalRemark(e.target.value)}
+            />
           </div>
 
           {/* 报价勾选 */}
