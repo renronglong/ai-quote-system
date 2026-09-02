@@ -220,10 +220,10 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange }
         unit: 'pcs',
         material: p.materialCategory || p.material?.category || '',
         surface: p.surfaceTreatment || p.materialSurfaceTreatment || '',
-        price_ex_tax: r.unit_price != null ? Number(r.unit_price) : undefined,
-        price_inc_tax: r.unit_price_inc_tax != null ? Number(r.unit_price_inc_tax) : (r.unit_price != null ? Number(r.unit_price) * 1.13 : undefined),
-        moq: p.quantity || '',
-        mold_fee: bd.mold?.amount != null ? Number(bd.mold.amount) : (r.mold_cost != null ? Number(r.mold_cost) : null),
+        price_ex_tax: r.unit_price != null ? r3sig(Number(r.unit_price)) : undefined,
+        price_inc_tax: r.unit_price_inc_tax != null ? r3sig(Number(r.unit_price_inc_tax)) : (r.unit_price != null ? r3sig(Number(r.unit_price) * 1.13) : undefined),
+        moq: p.quantity ? r2sig(Number(p.quantity)) : '',
+        mold_fee: bd.mold?.amount != null ? r2sig(Number(bd.mold.amount)) : (r.mold_cost != null ? r2sig(Number(r.mold_cost)) : null),
         remark: '',
       };
     });
@@ -237,9 +237,9 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange }
     try {
       const items = mapToSheetItems(selectedQuotes);
       const body: SheetBody = {
-        supplier_company: user?.company_name || '上栗县碧利五金塑胶制品厂',
-        supplier_contact: user?.contact_name || user?.company_name?.slice(0, 6) || '龙任荣',
-        supplier_phone: user?.phone || '18929979760',
+        supplier_company: user?.company_name || '',
+        supplier_contact: user?.contact_name || user?.company_name?.slice(0, 6) || '',
+        supplier_phone: user?.phone || '',
         supplier_address: user?.address || '',
         customer_name: customerInfo.name || undefined,
         customer_contact: customerInfo.contact || undefined,
