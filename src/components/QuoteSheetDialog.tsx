@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { X, FileSpreadsheet, FileText, Check, Loader2, Building2, User, Phone, MapPin, Hash, Download, History, AlertTriangle } from 'lucide-react';
+import { X, FileSpreadsheet, FileText, Check, Loader2, Building2, User, Phone, MapPin, Hash, Download, History } from 'lucide-react';
 import { loadSavedQuotes, saveQuoteToAPI, type SavedQuote } from './SavedQuotesPanel';
 import { useAuth } from '@/lib/auth-context';
 
@@ -81,12 +81,12 @@ function toSheetItem(q: SavedQuote) {
   return {
     id: q.id,
     moldGroup: p._mold_group_id || '',
-    model: p.product_code || p.productCode || '',
+    model: '',
     spec: specParts.length ? specParts.join('*') : (p.productSize || ''),
     name: p.productName || p.product_type_name || q.product_type || '铝型材',
     unit: 'pcs',
     material: p.materialCategory || p.grade || '6063-T5',
-    surface: (() => { const s = p.surfaceTreatment || p.surface_treatment || p.productSurfaceTreatment || '无'; if (s === '无') return '无'; const c = p.surfaceColor || p.surface_color || ''; return (c && c !== '本色') ? s + c : s; })(),
+    surface: p.productSurfaceTreatment && p.productSurfaceTreatment !== '无' ? p.productSurfaceTreatment : '无',
     price_ex_tax: Number(unitPrice.toFixed(4)),
     price_inc_tax: Number((unitPrice * 1.13).toFixed(4)),
     moq: r.min_order_qty || p.quantity || '',
@@ -105,7 +105,8 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
   const [quoteNo, setQuoteNo] = useState('');
   const [customers, setCustomers] = useState<CustomerInfo[]>([]);
   const [cust, setCust] = useState<CustomerInfo>({ name: '', contact: '', phone: '', address: '', qq: '' });
-  const [editable, setEditable] = useState<Record<string, any>>({}); // 行内微调（未税价/模具费）
+  const [globalRemark, setGlobalRemark] = useState('');
+    const [editable, setEditable] = useState<Record<string, any>>({}); // 行内微调（未税价/模具费）
   const [history, setHistory] = useState<SheetRecord[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [generated, setGenerated] = useState<{ quoteNo: string; xlsxB64: string; pdfB64: string } | null>(null);
@@ -241,15 +242,16 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
           quote_no: quoteNo,
           user_id: userId || undefined,
           supplier_company: user?.company_name || '',
-          supplier_contact: supplierInfo.contact_name || user?.company_name?.slice(0, 6) || '龙任荣',
+          supplier_contact: supplierInfo.contact_name || supplierInfo.description?.replace('联系人：', '') || user?.company_name?.slice(0, 6) || '龙任荣',
           supplier_phone: supplierInfo.contact_phone || user?.phone || '18929979760',
-          supplier_address: user?.address || '佛山市南海区里水镇',
+          supplier_address: user?.address || '广东省佛山市南海区里水镇布新工业区东街13号之八栋',
           customer_name: cust.name,
           customer_contact: cust.contact,
           customer_phone: cust.phone,
           customer_address: cust.address,
           customer_qq: cust.qq,
           aluminum_price: aluminumPrice,
+          global_remark: globalRemark,
           items: payloadItems,
         }),
       });
