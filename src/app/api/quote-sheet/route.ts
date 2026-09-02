@@ -113,7 +113,7 @@ async function buildExcel(body: SheetBody): Promise<Buffer> {
   };
 
   ws.mergeCells('A1:L1');
-  setCell('A1', body.supplier_company || '佛山市盛世源通铝材有限公司', {
+  setCell('A1', body.supplier_company || '', {
     font: { name: FONT, size: 18, bold: true },
     alignment: { horizontal: 'center', vertical: 'middle' },
   });
@@ -322,7 +322,7 @@ async function buildPdf(body: SheetBody, fontBuf: Buffer): Promise<Buffer> {
     doc.y = y + 26;
   };
 
-  doc.font('cn').fontSize(17).fillColor('#000000').text(body.supplier_company || '佛山市盛世源通铝材有限公司', { align: 'center' });
+  doc.font('cn').fontSize(17).fillColor('#000000').text(body.supplier_company || '', { align: 'center' });
   doc.moveDown(0.3);
   doc.fontSize(14).text('报 价 单', { align: 'center' });
   doc.moveDown(0.6);
