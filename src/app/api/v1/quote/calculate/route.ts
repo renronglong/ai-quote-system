@@ -273,6 +273,19 @@ function r2(n: number): number {
 function r3(n: number): number {
   return Math.round(n * 1000) / 1000;
 }
+/** 保留左边3位有效数字（如 1.234→1.23, 12.34→12.3, 1234→1230） */
+function r3sig(n: number): number {
+  if (n <= 0) return 0;
+  if (n < 0.001) return n; // 太小的数不处理
+  const digits = Math.floor(Math.log10(n));
+  if (digits < 0) {
+    // 小于1的数，如 0.1234 → 保留3位有效数字
+    const unit = Math.pow(10, -digits - 1 + 3);
+    return Math.round(n * unit) / unit;
+  }
+  const unit = Math.pow(10, digits - 2); // 保留3位有效数字
+  return Math.round(n / unit) * unit;
+}
 
 /** 生成报价单号: Q-YYYYMMDD-XXX */
 function generateQuotationId(): string {
@@ -1178,7 +1191,7 @@ function calcExtrusion(
   const preTaxPrice = accumulated;
   const taxRate = isLongMaterial ? 0.09 : 0.13;
   const taxFee = r2(preTaxPrice * taxRate);
-  const unitPrice = r2(preTaxPrice + taxFee);
+  const unitPrice = r3sig(preTaxPrice + taxFee);
   breakdown['tax'] = {
     formula: isLongMaterial ? '总价 × 9%(长料税)' : '总价 × 13%(小料税)',
     detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
@@ -1577,7 +1590,7 @@ function calcSheetMetal(
   const preTaxPrice = accumulated;
   const taxRate = 0.13;
   const taxFee = r2(preTaxPrice * taxRate);
-  const unitPrice = r2(preTaxPrice + taxFee);
+  const unitPrice = r3sig(preTaxPrice + taxFee);
   breakdown['tax'] = {
     formula: '总价 × 13%',
     detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
@@ -1671,7 +1684,7 @@ function calcDieCasting(
   const preTaxPrice = accumulated;
   const taxRate = 0.13;
   const taxFee = r2(preTaxPrice * taxRate);
-  const unitPrice = r2(preTaxPrice + taxFee);
+  const unitPrice = r3sig(preTaxPrice + taxFee);
   breakdown['tax'] = {
     formula: '总价 × 13%',
     detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
@@ -1766,7 +1779,7 @@ function calcZincAlloy(
   const preTaxPrice = accumulated;
   const taxRate = 0.13;
   const taxFee = r2(preTaxPrice * taxRate);
-  const unitPrice = r2(preTaxPrice + taxFee);
+  const unitPrice = r3sig(preTaxPrice + taxFee);
   breakdown['tax'] = {
     formula: '总价 × 13%',
     detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
@@ -1863,7 +1876,7 @@ function calcInjection(
   const preTaxPrice = accumulated;
   const taxRate = 0.13;
   const taxFee = r2(preTaxPrice * taxRate);
-  const unitPrice = r2(preTaxPrice + taxFee);
+  const unitPrice = r3sig(preTaxPrice + taxFee);
   breakdown['tax'] = {
     formula: '总价 × 13%',
     detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
