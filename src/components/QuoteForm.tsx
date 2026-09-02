@@ -22,6 +22,7 @@ interface QuoteFormData {
   productSurfaceTreatment: string;
   productColor: string;
   surfaceTreatment?: string;
+  surfaceColor?: string;
 }
 
 interface ProcessSelection {
