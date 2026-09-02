@@ -131,6 +131,12 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  const selectCompany = (c: { name: string; address: string; creditCode: string; orgCode: string }) => {
+    setCust({ ...cust, name: c.name, address: c.address || cust.address });
+    setShowCompanyDropdown(false);
+    setCompanySearchResults([]);
+  };
+
   const loadHistory = async () => {
     if (!userId) return;
     try {
