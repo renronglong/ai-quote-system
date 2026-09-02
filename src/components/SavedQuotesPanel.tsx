@@ -122,6 +122,8 @@ interface SheetBody {
   quote_no?: string;
   aluminum_price?: number;
   user_id?: string;
+  customer_qq?: string;
+  global_remark?: string;
   items: SheetItem[];
 }
 
