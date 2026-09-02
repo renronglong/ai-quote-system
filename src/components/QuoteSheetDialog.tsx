@@ -120,7 +120,7 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
   const [history, setHistory] = useState<SheetRecord[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [generated, setGenerated] = useState<{ quoteNo: string; xlsxB64: string; pdfB64: string } | null>(null);
-  const [supplierInfo, setSupplierInfo] = useState<{ contact_name?: string; contact_phone?: string; contact_email?: string }>({});
+  const [supplierInfo, setSupplierInfo] = useState<{ company_name?: string; contact_name?: string; contact_phone?: string; contact_email?: string; address?: string }>({});
   const [noCompanyInfo, setNoCompanyInfo] = useState(false);
   
   // 公司搜索（启信宝/企查查）
@@ -275,10 +275,10 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
         body: JSON.stringify({
           quote_no: quoteNo,
           user_id: userId || undefined,
-          supplier_company: user?.company_name || '',
-          supplier_contact: supplierInfo.contact_name || user?.company_name?.slice(0, 6) || '',
-          supplier_phone: supplierInfo.contact_phone || user?.phone || '',
-          supplier_address: user?.address || '',
+          supplier_company: supplierInfo.company_name || '',
+          supplier_contact: supplierInfo.contact_name || '',
+          supplier_phone: supplierInfo.contact_phone || '',
+          supplier_address: supplierInfo.address || '',
           customer_name: cust.name,
           customer_contact: cust.contact,
           customer_phone: cust.phone,
@@ -537,7 +537,7 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
 
         {/* 底部 */}
         <div className="sticky bottom-0 bg-white border-t px-5 py-3 flex items-center justify-between rounded-b-2xl">
-          <div className="text-xs text-gray-400">供方：{user?.company_name || '未填写公司名'} · {user?.phone || ''}</div>
+          <div className="text-xs text-gray-400">供方：{supplierInfo.company_name || '未填写公司名'} · {supplierInfo.contact_phone || ''}</div>
           <div className="flex gap-2">
             <button onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">取消</button>
             <button onClick={handleExport} disabled={exporting || selected.size === 0}
