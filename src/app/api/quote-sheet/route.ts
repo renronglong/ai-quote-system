@@ -33,6 +33,7 @@ interface SheetBody {
   quote_no?: string;
   aluminum_price?: number;
   user_id?: string;        // 登录用户ID（传入则存档到云端）
+  global_remark?: string;  // 报价单全局备注
   items: SheetItem[];
 }
 
@@ -115,7 +116,7 @@ async function buildExcel(body: SheetBody): Promise<Buffer> {
   ws.getRow(2).height = 24;
 
   const infoRows = [
-    [`${body.supplier_company || ''}`, `客户名称：${body.customer_name || ''}`],
+    [`供方：${body.supplier_company || ''}`, `客户名称：${body.customer_name || ''}`],
     [`联系人：${body.supplier_contact || ''}`, `联系人：${body.customer_contact || ''}`],
     [`电话：${body.supplier_phone || ''}`, `电话：${body.customer_phone || ''}`],
     [`地址：${body.supplier_address || ''}`, `地址：${body.customer_address || ''}`],
@@ -240,7 +241,21 @@ async function buildExcel(body: SheetBody): Promise<Buffer> {
     ws.getRow(r).height = 18;
   });
 
-  const alRow = totalRow + 6;
+  let nextRow = totalRow + 6;
+
+  // 备注栏
+  if (body.global_remark) {
+    const rmRow = nextRow;
+    ws.mergeCells(`A${rmRow}:L${rmRow}`);
+    setCell(`A${rmRow}`, `备注：${body.global_remark}`, {
+      font: { name: FONT, size: 11 },
+      alignment: { horizontal: 'left', vertical: 'middle', wrapText: true },
+    });
+    ws.getRow(rmRow).height = 36;
+    nextRow += 1;
+  }
+
+  const alRow = nextRow;
   ws.mergeCells(`A${alRow}:L${alRow}`);
   setCell(`A${alRow}`, body.aluminum_price ? `报价基准：当日铝锭价 ¥${body.aluminum_price.toLocaleString()}/吨` : '', {
     font: { name: FONT, size: 10, color: { argb: 'FF888888' } },
@@ -311,7 +326,7 @@ async function buildPdf(body: SheetBody, fontBuf: Buffer): Promise<Buffer> {
     doc.text(right, startX + halfW, y, { width: halfW - 10, lineBreak: false });
     doc.y = y + 15;
   };
-  infoLine(`${body.supplier_company || ''}`, `客户名称：${body.customer_name || ''}`);
+  infoLine(`供方：${body.supplier_company || ''}`, `客户名称：${body.customer_name || ''}`);
   infoLine(`联系人：${body.supplier_contact || ''}`, `联系人：${body.customer_contact || ''}`);
   infoLine(`电话：${body.supplier_phone || ''}`, `电话：${body.customer_phone || ''}`);
   infoLine(`地址：${body.supplier_address || ''}`, `地址：${body.customer_address || ''}`);
@@ -414,6 +429,12 @@ async function buildPdf(body: SheetBody, fontBuf: Buffer): Promise<Buffer> {
   ].forEach((t) => {
     doc.text(t, TABLE_X, doc.y, { width: TABLE_W });
   });
+
+  if (body.global_remark) {
+    doc.moveDown(0.5);
+    doc.fontSize(10).fillColor('#000000')
+      .text(`备注：${body.global_remark}`, TABLE_X, doc.y, { width: TABLE_W });
+  }
 
   if (body.aluminum_price) {
     doc.moveDown(0.5);
