@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { X, FileSpreadsheet, FileText, Check, Loader2, Building2, User, Phone, MapPin, Hash, Download, History } from 'lucide-react';
+import { X, FileSpreadsheet, FileText, Check, Loader2, Building2, User, Phone, MapPin, Hash, Download, History, AlertTriangle } from 'lucide-react';
 import { loadSavedQuotes, saveQuoteToAPI, type SavedQuote } from './SavedQuotesPanel';
 import { useAuth } from '@/lib/auth-context';
 
