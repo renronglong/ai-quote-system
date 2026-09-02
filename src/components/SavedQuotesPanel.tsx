@@ -142,7 +142,8 @@ export default function SavedQuotesPanel({ userId, trigger, onOpenChange }: Save
   );
   const [exportFormat, setExportFormat] = useState<'excel' | 'pdf'>('excel');
   const [customerInfo, setCustomerInfo] = useState({ name: '', contact: '', phone: '', address: '' });
-  const [exporting, setExporting] = useState(false);
+  const [globalRemark, setGlobalRemark] = useState('');
+    const [exporting, setExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -202,29 +203,23 @@ export default function SavedQuotesPanel({ userId, trigger, onOpenChange }: Save
       const p = q.params || {};
       const r = q.result || {};
       const bd = r.breakdown || {};
-      // 规格尺寸：优先读 dimensions 对象，降级读顶层 width/height/length
+      // 规格尺寸
       const dims = p.dimensions || {};
-      const specParts: string[] = [];
-      if (dims.width_mm) specParts.push(String(dims.width_mm));
-      if (dims.height_mm) specParts.push(String(dims.height_mm));
-      if (dims.length_mm) specParts.push(String(dims.length_mm));
-      // 降级：直接读顶层字段（兼容AI识别存入的params结构）
-      if (specParts.length === 0) {
-        if (p.width) specParts.push(`${p.width}`);
-        if (p.height) specParts.push(`${p.height}`);
-        if (p.length) specParts.push(`${p.length}`);
-      }
-      const spec = specParts.length > 0 ? specParts.join('*') : (p.productSize || '');
+      const parts: string[] = [];
+      if (dims.width_mm) parts.push(String(dims.width_mm));
+      if (dims.height_mm) parts.push(String(dims.height_mm));
+      if (dims.length_mm) parts.push(String(dims.length_mm));
+      const spec = parts.length > 0 ? parts.join('*') : '';
       return {
-        model: p.product_code || p.productCode || '',
+        model: q.name || '',
         spec,
         name: p.productName || p.product_type || p.productType || q.product_type || '',
         unit: 'pcs',
-        material: p.materialCategory || p.material?.category || '6063-T5',
-        surface: (() => { const s = p.surfaceTreatment || p.surface_treatment || p.productSurfaceTreatment || '无'; if (s === '无') return ''; const c = p.surfaceColor || p.surface_color || ''; return (c && c !== '本色') ? s + c : s; })(),
+        material: p.materialCategory || p.material?.category || '',
+        surface: p.surfaceTreatment || p.materialSurfaceTreatment || '',
         price_ex_tax: r.unit_price != null ? Number(r.unit_price) : undefined,
         price_inc_tax: r.unit_price_inc_tax != null ? Number(r.unit_price_inc_tax) : (r.unit_price != null ? Number(r.unit_price) * 1.13 : undefined),
-        moq: r.min_order_qty || p.quantity || '',
+        moq: p.quantity || '',
         mold_fee: bd.mold?.amount != null ? Number(bd.mold.amount) : (r.mold_cost != null ? Number(r.mold_cost) : null),
         remark: '',
       };
@@ -242,13 +237,14 @@ export default function SavedQuotesPanel({ userId, trigger, onOpenChange }: Save
         supplier_company: '上栗县碧利五金塑胶制品厂',
         supplier_contact: '龙任荣',
         supplier_phone: '18929979760',
-        supplier_address: '佛山市南海区里水镇北沙渡头工业区5号',
+        supplier_address: '广东省佛山市南海区里水镇布新工业区东街13号之八栋',
         customer_name: customerInfo.name || undefined,
         customer_contact: customerInfo.contact || undefined,
         customer_phone: customerInfo.phone || undefined,
         customer_address: customerInfo.address || undefined,
         quote_no: `GY${new Date().toISOString().slice(0,10).replace(/-/g,'')}001`,
         user_id: userId || undefined,
+        global_remark: globalRemark,
         items,
       };
 
