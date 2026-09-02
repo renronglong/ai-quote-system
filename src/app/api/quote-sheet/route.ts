@@ -421,9 +421,9 @@ async function buildPdf(body: SheetBody, fontBuf: Buffer): Promise<Buffer> {
     doc.moveTo(TABLE_X + TABLE_W, y).lineTo(TABLE_X + TABLE_W, y + 24).strokeColor('#000000').stroke();
     doc.fontSize(10).fillColor('#000000');
     doc.text('总计', TABLE_X + 2, y + 7, { width: cellX(7) - TABLE_X - 4, align: 'center', lineBreak: false });
-    doc.text(fmtMoney(exSum), cellX(7) + 2, y + 7, { width: COLS[7] - 4, align: 'right', lineBreak: false });
-    doc.text(fmtMoney(incSum), cellX(8) + 2, y + 7, { width: COLS[8] - 4, align: 'right', lineBreak: false });
-    doc.text(fmtMoney(moldSum), cellX(10) + 2, y + 7, { width: COLS[10] - 4, align: 'right', lineBreak: false });
+    doc.text(fmtMoney(r3s(exSum)), cellX(7) + 2, y + 7, { width: COLS[7] - 4, align: 'right', lineBreak: false });
+    doc.text(fmtMoney(r3s(incSum)), cellX(8) + 2, y + 7, { width: COLS[8] - 4, align: 'right', lineBreak: false });
+    doc.text(fmtMoney(r2s(moldSum)), cellX(10) + 2, y + 7, { width: COLS[10] - 4, align: 'right', lineBreak: false });
     doc.y = y + 24;
     doc.x = doc.page.margins.left;
   }
