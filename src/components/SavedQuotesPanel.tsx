@@ -156,6 +156,7 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange }
   const [exportFormat, setExportFormat] = useState<'excel' | 'pdf'>('excel');
   const [customerInfo, setCustomerInfo] = useState({ name: '', contact: '', phone: '', address: '' });
   const [globalRemark, setGlobalRemark] = useState('');
+  const [supplierInfo, setSupplierInfo] = useState<{ company_name?: string; contact_name?: string; contact_phone?: string; address?: string }>({});
     const [exporting, setExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -169,7 +170,13 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange }
   };
 
   useEffect(() => {
-    if (open && userId) reload();
+    if (open && userId) {
+      reload();
+      fetch(`/api/auth/profile?user_id=${encodeURIComponent(userId)}`)
+        .then(r => r.json())
+        .then(d => { if (d.success?.data?.profile) setSupplierInfo(d.data.profile); })
+        .catch(() => {});
+    }
   }, [open, userId]);
 
   const toggleSelect = (id: string) => {
@@ -247,10 +254,10 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange }
     try {
       const items = mapToSheetItems(selectedQuotes);
       const body: SheetBody = {
-        supplier_company: user?.company_name || '',
-        supplier_contact: user?.contact_name || user?.company_name?.slice(0, 6) || '',
-        supplier_phone: user?.phone || '',
-        supplier_address: user?.address || '',
+        supplier_company: supplierInfo.company_name || '',
+        supplier_contact: supplierInfo.contact_name || '',
+        supplier_phone: supplierInfo.contact_phone || '',
+        supplier_address: supplierInfo.address || '',
         customer_name: customerInfo.name || undefined,
         customer_contact: customerInfo.contact || undefined,
         customer_phone: customerInfo.phone || undefined,
