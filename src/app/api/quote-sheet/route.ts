@@ -76,6 +76,16 @@ function fmtMoney(n: number | undefined | null): string {
   return n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// 保留n位有效数字
+function sigfig(n: number, digits: number): number {
+  if (n === 0 || !isFinite(n)) return n;
+  const d = Math.ceil(Math.log10(Math.abs(n)));
+  const factor = Math.pow(10, digits - d);
+  return Math.round(n * factor) / factor;
+}
+function r3s(n: number): number { return sigfig(n, 3); }
+function r2s(n: number): number { return sigfig(n, 2); }
+
 // ===== Excel 生成（质稳模板复刻）============================
 async function buildExcel(body: SheetBody): Promise<Buffer> {
   const items = body.items;
@@ -170,10 +180,10 @@ async function buildExcel(body: SheetBody): Promise<Buffer> {
           item.unit || 'pcs',
           item.material || '',
           item.surface || '',
-          item.price_ex_tax != null ? Number(item.price_ex_tax.toFixed(4)) : '',
-          item.price_inc_tax != null ? Number(item.price_inc_tax.toFixed(4)) : '',
-          item.moq != null ? item.moq : '',
-          item.mold_fee != null ? Number(item.mold_fee.toFixed(2)) : '',
+          item.price_ex_tax != null ? r3s(Number(item.price_ex_tax)) : '',
+          item.price_inc_tax != null ? r3s(Number(item.price_inc_tax)) : '',
+          item.moq != null ? r2s(Number(item.moq)) : '',
+          item.mold_fee != null ? r2s(Number(item.mold_fee)) : '',
           item.remark || '',
         ]
       : [i + 1, '', '', '', '', '', '', '', '', '', '', ''];
@@ -186,7 +196,7 @@ async function buildExcel(body: SheetBody): Promise<Buffer> {
         c.alignment = { horizontal: 'center', vertical: 'middle' };
       } else if (ci === 7 || ci === 8 || ci === 10) {
         c.alignment = { horizontal: 'right', vertical: 'middle' };
-        c.numFmt = '0.00';
+        c.numFmt = '#0.##';
       } else {
         c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
       }
@@ -212,18 +222,18 @@ async function buildExcel(body: SheetBody): Promise<Buffer> {
     c.font = { name: FONT, size: 11 };
   }
   const exCell = ws.getCell(totalRow, 8);
-  exCell.value = Number(exSum.toFixed(4));
-  exCell.numFmt = '0.00';
+  exCell.value = r3s(Number(exSum));
+  exCell.numFmt = '#0.##';
   exCell.alignment = { horizontal: 'right' };
   exCell.font = { name: FONT, size: 11, bold: true };
   const incCell = ws.getCell(totalRow, 9);
-  incCell.value = Number(incSum.toFixed(4));
-  incCell.numFmt = '0.00';
+  incCell.value = r3s(Number(incSum));
+  incCell.numFmt = '#0.##';
   incCell.alignment = { horizontal: 'right' };
   incCell.font = { name: FONT, size: 11, bold: true };
   const moldCell = ws.getCell(totalRow, 11);
-  moldCell.value = Number(moldSum.toFixed(2));
-  moldCell.numFmt = '0.00';
+  moldCell.value = r2s(Number(moldSum));
+  moldCell.numFmt = '#0.##';
   moldCell.alignment = { horizontal: 'right' };
   moldCell.font = { name: FONT, size: 11, bold: true };
 
@@ -351,10 +361,10 @@ async function buildPdf(body: SheetBody, fontBuf: Buffer): Promise<Buffer> {
       item.unit || 'pcs',
       item.material || '',
       item.surface || '',
-      item.price_ex_tax != null ? fmtMoney(item.price_ex_tax) : '',
-      item.price_inc_tax != null ? fmtMoney(item.price_inc_tax) : '',
-      item.moq != null ? String(item.moq) : '',
-      item.mold_fee != null ? fmtMoney(item.mold_fee) : '',
+      item.price_ex_tax != null ? fmtMoney(r3s(Number(item.price_ex_tax))) : '',
+      item.price_inc_tax != null ? fmtMoney(r3s(Number(item.price_inc_tax))) : '',
+      item.moq != null ? String(r2s(Number(item.moq))) : '',
+      item.mold_fee != null ? fmtMoney(r2s(Number(item.mold_fee))) : '',
       item.remark || '',
     ];
     let rowH = 18;
