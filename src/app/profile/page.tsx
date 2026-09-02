@@ -29,6 +29,9 @@ export default function ProfilePage() {
   // 编辑模式
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [companySearchResults, setCompanySearchResults] = useState<{name: string; address: string}[]>([]);
+  const [companySearching, setCompanySearching] = useState(false);
+  const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [form, setForm] = useState({
     company_name: '', contact_name: '', contact_phone: '', contact_email: '', address: '',
@@ -48,13 +51,14 @@ export default function ProfilePage() {
         const data = await res.json();
         if (data.success) {
           const u = data.data.user || {};
+          const p = data.data.profile || {};
           const prof: UserProfile = {
             phone: u.phone || '',
             company_name: u.company_name || null,
             address: u.address || null,
-            contact_name: null,
-            contact_phone: u.phone || null,
-            contact_email: u.email || null,
+            contact_name: p.description?.replace('联系人：', '') || null,
+            contact_phone: p.contact_phone || null,
+            contact_email: p.contact_email || null,
           };
           setProfile(prof);
           setForm({
@@ -100,6 +104,8 @@ export default function ProfilePage() {
         body: JSON.stringify({
           user_id: user.id,
           company_name: form.company_name.trim() || undefined,
+          contact_name: form.contact_name.trim() || undefined,
+          contact_phone: form.contact_phone.trim() || undefined,
           contact_email: form.contact_email.trim() || undefined,
           address: form.address.trim() || undefined,
         }),
@@ -278,8 +284,27 @@ export default function ProfilePage() {
                   <label className={labelCls}>公司名称 <span className="text-red-400">*</span></label>
                   <div className="relative">
                     <Building2 className="w-4 h-4 text-slate-300 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input className={`${inputCls} pl-9`} placeholder="如：上栗县碧利五金塑胶制品厂"
-                      value={form.company_name} onChange={(e) => setForm({...form, company_name: e.target.value})} />
+                    <input className={`${inputCls} pl-9`} placeholder="输入关键词搜索公司..."
+                      value={form.company_name}
+                      onChange={(e) => {
+                        setForm({...form, company_name: e.target.value});
+                        searchCompany(e.target.value);
+                      }}
+                      onBlur={() => setTimeout(() => setShowCompanyDropdown(false), 200)}
+                      onFocus={() => { if (companySearchResults.length > 0) setShowCompanyDropdown(true); }}
+                    />
+                    {companySearching && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-blue-400">搜索中...</span>}
+                    {showCompanyDropdown && companySearchResults.length > 0 && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                        {companySearchResults.map((c, i) => (
+                          <div key={i} className="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0"
+                            onMouseDown={() => selectCompany(c)}>
+                            <div className="text-sm font-medium text-gray-800">{c.name}</div>
+                            {c.address && <div className="text-xs text-gray-400 truncate">{c.address}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
