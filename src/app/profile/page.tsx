@@ -29,7 +29,7 @@ export default function ProfilePage() {
   // 编辑模式
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [companySearchResults, setCompanySearchResults] = useState<{name: string; address: string}[]>([]);
+  const [companySearchResults, setCompanySearchResults] = useState<{name: string; address: string; creditCode: string; orgCode: string}[]>([]);
   const [companySearching, setCompanySearching] = useState(false);
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
@@ -295,12 +295,16 @@ export default function ProfilePage() {
                     />
                     {companySearching && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-blue-400">搜索中...</span>}
                     {showCompanyDropdown && companySearchResults.length > 0 && (
-                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
                         {companySearchResults.map((c, i) => (
                           <div key={i} className="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0"
                             onMouseDown={() => selectCompany(c)}>
                             <div className="text-sm font-medium text-gray-800">{c.name}</div>
-                            {c.address && <div className="text-xs text-gray-400 truncate">{c.address}</div>}
+                            <div className="flex gap-2 mt-0.5">
+                              {c.creditCode && <span className="text-xs text-blue-500">信用代码: {c.creditCode}</span>}
+                              {c.orgCode && <span className="text-xs text-green-600">组织代码: {c.orgCode}</span>}
+                            </div>
+                            {c.address && <div className="text-xs text-gray-400 truncate mt-0.5">{c.address}</div>}
                           </div>
                         ))}
                       </div>
