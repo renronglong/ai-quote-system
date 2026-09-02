@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
@@ -36,6 +36,41 @@ export default function ProfilePage() {
   const [form, setForm] = useState({
     company_name: '', contact_name: '', contact_phone: '', contact_email: '', address: '',
   });
+
+  // 公司搜索防抖
+  const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const searchCompany = (keyword: string) => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (!keyword || keyword.length < 2) {
+      setCompanySearchResults([]);
+      setShowCompanyDropdown(false);
+      return;
+    }
+    searchTimerRef.current = setTimeout(async () => {
+      setCompanySearching(true);
+      try {
+        const res = await fetch('/api/company/search?q=' + encodeURIComponent(keyword));
+        const data = await res.json();
+        if (data.success && data.results?.length > 0) {
+          setCompanySearchResults(data.results);
+          setShowCompanyDropdown(true);
+        } else {
+          setCompanySearchResults([]);
+          setShowCompanyDropdown(false);
+        }
+      } catch (e) {
+        console.error('公司搜索失败:', e);
+      } finally {
+        setCompanySearching(false);
+      }
+    }, 500);
+  };
+
+  const selectCompany = (c: { name: string; address: string; creditCode: string; orgCode: string }) => {
+    setForm({ ...form, company_name: c.name, address: c.address || form.address });
+    setShowCompanyDropdown(false);
+    setCompanySearchResults([]);
+  };
 
   // 未登录跳转
   useEffect(() => {
