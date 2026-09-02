@@ -756,22 +756,25 @@ function calcExtrusion(
   
 
   // 取整工具：按数量级向上进位（如 350→400, 35→40, 3500→4000）
+  // 保留左边两位有效数字，后面补零
   const ceilByMagnitude = (n: number): number => {
     if (n <= 0) return 0;
     if (n <= 10) return Math.ceil(n);
-    if (n <= 100) return Math.ceil(n / 10) * 10; // 11-100: 取整到十位
-    if (n <= 1000) return Math.ceil(n / 100) * 100; // 101-1000: 取整到百位
-    if (n <= 10000) return Math.ceil(n / 100) * 100; // 1001-10000: 取整到百位
-    return Math.ceil(n / 1000) * 1000; // 10000+: 取整到千位
+    if (n <= 100) return Math.ceil(n / 10) * 10; // 11-100: 保留一位小数（十位）
+    // 100+: 保留左边两位有效数字
+    const digits = Math.floor(Math.log10(n));
+    const unit = Math.pow(10, digits - 1); // 保留两位有效数字
+    return Math.ceil(n / unit) * unit;
   };
-  // 取整工具：按数量级四舍五入（如 350→400, 340→300, 3500→4000, 999→1000）
+  // 取整工具：保留左边两位有效数字，后面补零（如 999→1000, 6840→6800, 12345→12000）
   const roundByMagnitude = (n: number): number => {
     if (n <= 0) return 0;
     if (n <= 10) return Math.round(n);
-    if (n <= 100) return Math.round(n / 10) * 10; // 11-100: 取整到十位
-    if (n <= 1000) return Math.round(n / 100) * 100; // 101-1000: 取整到百位
-    if (n <= 10000) return Math.round(n / 100) * 100; // 1001-10000: 取整到百位
-    return Math.round(n / 1000) * 1000; // 10000+: 取整到千位
+    if (n <= 100) return Math.round(n / 10) * 10; // 11-100: 保留一位小数（十位）
+    // 100+: 保留左边两位有效数字
+    const digits = Math.floor(Math.log10(n));
+    const unit = Math.pow(10, digits - 1); // 保留两位有效数字
+    return Math.round(n / unit) * unit;
   };
 
   // 2. 模具费（挤压模具，单独列出）
