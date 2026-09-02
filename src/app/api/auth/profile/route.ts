@@ -32,13 +32,23 @@ export async function GET(request: NextRequest) {
     }
 
     // 供方档案（联系人/业务电话等）存于 supplier_profiles
+    // 先按 user_id 查；查不到再用注册手机号兜底（同一人多个账号时共享档案）
     let profile: any = null;
     const { data: spData } = await supabase
       .from('supplier_profiles')
       .select('company_name, contact_name, phone, address, business_license')
       .eq('user_id', userId)
       .maybeSingle();
-    if (spData) profile = spData;
+    if (spData) {
+      profile = spData;
+    } else if (userData.phone) {
+      const { data: spByPhone } = await supabase
+        .from('supplier_profiles')
+        .select('company_name, contact_name, phone, address, business_license')
+        .eq('phone', userData.phone)
+        .maybeSingle();
+      if (spByPhone) profile = spByPhone;
+    }
 
     // 合并：supplier_profiles 的公司资料优先，users 表兜底
     const merged = {
@@ -95,14 +105,25 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. upsert supplier_profiles（联系人、业务电话、公司名、地址）
+    // 先按 user_id 查；查不到再按业务电话查（同一人多个账号共用同一套供方资料，
+    // supplier_profiles.phone 有唯一约束，插入撞号会 409）
     const { data: existing } = await supabase
       .from('supplier_profiles')
       .select('id')
       .eq('user_id', user_id)
       .maybeSingle();
 
+    let existingId = existing?.id as string | undefined;
+    if (!existingId && contact_phone) {
+      const { data: byPhone } = await supabase
+        .from('supplier_profiles')
+        .select('id')
+        .eq('phone', contact_phone)
+        .maybeSingle();
+      if (byPhone) existingId = byPhone.id;
+    }
+
     const spRow: Record<string, any> = {
-      user_id,
       company_name: company_name || null,
       contact_name: contact_name || null,
       phone: contact_phone || null,
@@ -110,13 +131,14 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
     };
 
-    if (existing) {
+    if (existingId) {
       const { error: spErr } = await supabase
         .from('supplier_profiles')
         .update(spRow)
-        .eq('user_id', user_id);
+        .eq('id', existingId);
       if (spErr) throw new Error(`更新供方档案失败: ${spErr.message}`);
     } else {
+      spRow.user_id = user_id;
       spRow.created_at = new Date().toISOString();
       const { error: spErr } = await supabase
         .from('supplier_profiles')
