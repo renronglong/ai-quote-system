@@ -10,6 +10,16 @@ import {
 import { Button } from '@/components/ui/button';
 import { Download, Trash2, FileText, History, CheckCircle2, FileSpreadsheet, Percent } from 'lucide-react';
 
+// 有效数字取整：单价3位，模具费/起订量2位
+function sigfig(n: number, digits: number): number {
+  if (n === 0 || !isFinite(n)) return n;
+  const d = Math.ceil(Math.log10(Math.abs(n)));
+  const factor = Math.pow(10, digits - d);
+  return Math.round(n * factor) / factor;
+}
+function r3sig(n: number): number { return sigfig(n, 3); }
+function r2sig(n: number): number { return sigfig(n, 2); }
+
 // ==================== Types ====================
 export interface SavedQuote {
   id: string;
