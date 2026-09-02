@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://br-lush-teal-829ebb2c.supabase2.aidap-global.cn-beijing.volces.com';
-const supabaseServiceKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.COZE_SUPABASE_URL || 'https://jotgxnhueagbsvfeepic.supabase.co';
+const supabaseServiceKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 export async function GET(request: NextRequest) {
   try {
@@ -31,12 +31,30 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: '用户不存在' }, { status: 404 });
     }
 
+    // 供方档案（联系人/业务电话等）存于 supplier_profiles
+    let profile: any = null;
+    const { data: spData } = await supabase
+      .from('supplier_profiles')
+      .select('company_name, contact_name, phone, address, business_license')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (spData) profile = spData;
+
+    // 合并：supplier_profiles 的公司资料优先，users 表兜底
+    const merged = {
+      company_name: profile?.company_name || userData.company_name || '',
+      contact_name: profile?.contact_name || '',
+      contact_phone: profile?.phone || '',
+      contact_email: userData.email || '',
+      address: profile?.address || userData.address || '',
+    };
+
     return NextResponse.json({
       success: true,
       data: {
         user: userData,
-        profile: null,
-        hasCompanyInfo: !!userData.company_name,
+        profile: merged,
+        hasCompanyInfo: !!(merged.company_name),
       },
     });
   } catch (err) {
@@ -62,7 +80,7 @@ export async function POST(request: NextRequest) {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // 更新 users 表
+    // 1. 更新 users 表（公司名、地址）
     const { error: userError } = await supabase
       .from('users')
       .update({
@@ -74,6 +92,36 @@ export async function POST(request: NextRequest) {
 
     if (userError) {
       throw new Error(`更新用户信息失败: ${userError.message}`);
+    }
+
+    // 2. upsert supplier_profiles（联系人、业务电话、公司名、地址）
+    const { data: existing } = await supabase
+      .from('supplier_profiles')
+      .select('id')
+      .eq('user_id', user_id)
+      .maybeSingle();
+
+    const spRow: Record<string, any> = {
+      user_id,
+      company_name: company_name || null,
+      contact_name: contact_name || null,
+      phone: contact_phone || null,
+      address: address || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existing) {
+      const { error: spErr } = await supabase
+        .from('supplier_profiles')
+        .update(spRow)
+        .eq('user_id', user_id);
+      if (spErr) throw new Error(`更新供方档案失败: ${spErr.message}`);
+    } else {
+      spRow.created_at = new Date().toISOString();
+      const { error: spErr } = await supabase
+        .from('supplier_profiles')
+        .insert(spRow);
+      if (spErr) throw new Error(`创建供方档案失败: ${spErr.message}`);
     }
 
     return NextResponse.json({
