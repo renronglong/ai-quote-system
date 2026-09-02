@@ -128,11 +128,12 @@ interface SheetBody {
 // ==================== Component ====================
 interface SavedQuotesPanelProps {
   userId: string;
+  user?: any;
   trigger?: React.ReactNode;
   onOpenChange?: (open: boolean) => void;
 }
 
-export default function SavedQuotesPanel({ userId, trigger, onOpenChange }: SavedQuotesPanelProps) {
+export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange }: SavedQuotesPanelProps) {
   const [open, setOpen] = useState(false);
   const [quotes, setQuotes] = useState<SavedQuote[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -234,10 +235,10 @@ export default function SavedQuotesPanel({ userId, trigger, onOpenChange }: Save
     try {
       const items = mapToSheetItems(selectedQuotes);
       const body: SheetBody = {
-        supplier_company: '上栗县碧利五金塑胶制品厂',
-        supplier_contact: '龙任荣',
-        supplier_phone: '18929979760',
-        supplier_address: '广东省佛山市南海区里水镇布新工业区东街13号之八栋',
+        supplier_company: user?.company_name || '上栗县碧利五金塑胶制品厂',
+        supplier_contact: user?.contact_name || user?.company_name?.slice(0, 6) || '龙任荣',
+        supplier_phone: user?.phone || '18929979760',
+        supplier_address: user?.address || '',
         customer_name: customerInfo.name || undefined,
         customer_contact: customerInfo.contact || undefined,
         customer_phone: customerInfo.phone || undefined,
