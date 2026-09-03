@@ -5,9 +5,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import {
-  User, Phone, Building2, MapPin, FileText, Package,
-  BarChart3, KeyRound, LogOut, Clock, Calendar, Shield,
-  ChevronRight, Factory, Loader2, Edit3, Check, X, Mail, UserCircle,
+  Phone, Building2, MapPin,
+  LogOut, ChevronRight, Loader2, Edit3, Check, X, Mail, UserCircle,
 } from 'lucide-react';
 
 interface UserProfile {
@@ -124,10 +123,6 @@ export default function ProfilePage() {
     router.push('/');
   };
 
-  const handleChangePassword = () => {
-    alert('功能开发中，敬请期待！');
-  };
-
   const handleSaveProfile = async () => {
     if (!user?.id) return;
     setSaving(true);
@@ -182,17 +177,7 @@ export default function ProfilePage() {
     setSaveMsg('');
   };
 
-  const stats = [
-    { label: '报价次数', value: '12', icon: FileText, color: 'from-blue-500 to-blue-600' },
-    { label: '产品数量', value: '8', icon: Package, color: 'from-emerald-500 to-emerald-600' },
-    { label: '最近登录', value: '今天', icon: Clock, color: 'from-orange-500 to-orange-600' },
-  ];
-
   const menuItems = [
-    { label: '我的报价', desc: '查看历史报价记录', icon: FileText, href: '/history', color: 'bg-blue-50 text-blue-600' },
-    { label: '我的产品', desc: '管理产品信息', icon: Package, href: '/products', color: 'bg-emerald-50 text-emerald-600' },
-    { label: '库存管理', desc: '查看库存数据', icon: BarChart3, href: '/inventory', color: 'bg-purple-50 text-purple-600' },
-    { label: '修改密码', desc: '更新登录密码', icon: KeyRound, href: null, color: 'bg-orange-50 text-orange-600', action: handleChangePassword },
     { label: '退出登录', desc: '退出当前账号', icon: LogOut, href: null, color: 'bg-red-50 text-red-600', action: handleSignOut, danger: true },
   ];
 
@@ -399,19 +384,6 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* 数据统计区 */}
-        <div className="grid grid-cols-3 gap-4">
-          {stats.map((stat, idx) => (
-            <div key={idx} className="bg-white rounded-xl border border-slate-200 p-4 text-center">
-              <div className={`w-10 h-10 mx-auto mb-2 bg-gradient-to-br ${stat.color} rounded-lg flex items-center justify-center`}>
-                <stat.icon className="w-5 h-5 text-white" />
-              </div>
-              <div className="text-xl font-bold text-slate-800">{stat.value}</div>
-              <div className="text-xs text-slate-500 mt-0.5">{stat.label}</div>
-            </div>
-          ))}
-        </div>
-
         {/* 功能入口列表 */}
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100">
@@ -456,15 +428,7 @@ export default function ProfilePage() {
               {user.created_at ? new Date(user.created_at).toLocaleDateString('zh-CN') : '未知'}
             </span>
           </div>
-          <div className="flex items-center justify-between text-sm mt-3">
-            <div className="flex items-center gap-2 text-slate-500">
-              <Shield className="w-4 h-4" />
-              <span>会员状态</span>
-            </div>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-600 text-xs font-medium rounded-full">
-              标准会员
-            </span>
-          </div>
+
         </div>
 
         {/* 底部版权 */}
@@ -476,3 +440,4 @@ export default function ProfilePage() {
     </div>
   );
 }
+
