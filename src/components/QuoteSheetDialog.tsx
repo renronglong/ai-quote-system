@@ -183,24 +183,36 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
       }
       setQuotes(list);
       loadHistory();
-      // 加载供方（当前用户）公司资料，用于报价单抬头
-      fetch(`/api/auth/profile?user_id=${encodeURIComponent(userId)}`)
-        .then(r => r.json())
-        .then(d => {
-          if (d.success?.data) {
-            const u = d.data.user || {};
-            const p = d.data.profile || {};
-            setSupplierInfo(p);
-            // 检查公司名是否已填写
-            if (!u.company_name && !p.company_name) setNoCompanyInfo(true);
-          }
-        })
-        .catch(() => {});
       // 默认勾选最新一条
       if (list.length > 0) setSelected(new Set([list[0].id]));
       setLoading(false);
     })();
   }, [open, userId]);
+
+  // 加载供方资料（不依赖对话框是否打开，确保随时可用）
+  useEffect(() => {
+    if (userId) {
+      console.log('[QuoteSheetDialog] Loading profile for userId:', userId);
+      fetch(`/api/auth/profile?user_id=${encodeURIComponent(userId)}`)
+        .then(r => r.json())
+        .then(d => {
+          console.log('[QuoteSheetDialog] Profile response:', d);
+          if (d.success?.data) {
+            const u = d.data.user || {};
+            const p = d.data.profile || {};
+            console.log('[QuoteSheetDialog] Setting supplierInfo:', p);
+            setSupplierInfo(p);
+            // 检查公司名是否已填写
+            if (!u.company_name && !p.company_name) setNoCompanyInfo(true);
+          } else {
+            console.warn('[QuoteSheetDialog] No profile data in response');
+          }
+        })
+        .catch(err => {
+          console.error('[QuoteSheetDialog] Failed to load profile:', err);
+        });
+    }
+  }, [userId]);
 
   const items = useMemo(() => {
     const list = quotes.map(toSheetItem);
