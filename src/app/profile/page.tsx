@@ -394,7 +394,7 @@ export default function ProfilePage() {
               const content = (
                 <div className={`flex items-center gap-4 px-6 py-4 transition-colors ${
                   item.danger ? 'hover:bg-red-50' : 'hover:bg-slate-50'
-                } ${item.action ? 'cursor-pointer' : ''}`}>
+                } cursor-pointer`}>
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${item.color}`}>
                     <item.icon className="w-5 h-5" />
                   </div>
