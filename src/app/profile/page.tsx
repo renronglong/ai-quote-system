@@ -90,7 +90,7 @@ export default function ProfilePage() {
             phone: u.phone || '',
             company_name: u.company_name || null,
             address: u.address || null,
-            contact_name: p.description?.replace('联系人：', '') || null,
+            contact_name: p.contact_name || null,
             contact_phone: p.contact_phone || null,
             contact_email: p.contact_email || null,
           };

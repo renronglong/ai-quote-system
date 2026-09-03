@@ -182,7 +182,7 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange }
       fetch(`/api/auth/profile?user_id=${encodeURIComponent(userId)}`)
         .then(r => r.json())
         .then(d => {
-          if (d.success?.data?.profile) {
+          if (d.data?.profile) {
             setSupplierInfo(d.data.profile);
           } else {
             console.warn('[SavedQuotesPanel] No profile data in response');

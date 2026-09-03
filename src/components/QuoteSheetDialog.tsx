@@ -195,12 +195,12 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
       fetch(`/api/auth/profile?user_id=${encodeURIComponent(userId)}`)
         .then(r => r.json())
         .then(d => {
-          if (d.success?.data) {
+          if (d.data?.profile) {
             const u = d.data.user || {};
-            const p = d.data.profile || {};
-            setSupplierInfo(p);
+            const pf = d.data.profile || {};
+            setSupplierInfo(pf);
             // 检查公司名是否已填写
-            if (!u.company_name && !p.company_name) setNoCompanyInfo(true);
+            if (!u.company_name && !pf.company_name) setNoCompanyInfo(true);
           } else {
             console.warn('[QuoteSheetDialog] No profile data in response');
           }
