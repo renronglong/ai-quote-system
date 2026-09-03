@@ -83,8 +83,8 @@ function sigfig(n: number, digits: number): number {
   const factor = Math.pow(10, digits - d);
   return Math.round(n * factor) / factor;
 }
-function r3s(n: number): number { return sigfig(n, 3); }
-function r2s(n: number): number { return sigfig(n, 2); }
+function r3s(n: number): number { return Math.round(n * 100) / 100; }  // 价格2位小数
+function r2s(n: number): number { return Math.round(n); }                // 模具费/起订量取整
 
 // ===== Excel 生成（质稳模板复刻）============================
 async function buildExcel(body: SheetBody): Promise<Buffer> {
@@ -196,7 +196,7 @@ async function buildExcel(body: SheetBody): Promise<Buffer> {
         c.alignment = { horizontal: 'center', vertical: 'middle' };
       } else if (ci === 7 || ci === 8 || ci === 10) {
         c.alignment = { horizontal: 'right', vertical: 'middle' };
-        c.numFmt = '#0.##';
+        c.numFmt = '0.00';
       } else {
         c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
       }
@@ -223,12 +223,12 @@ async function buildExcel(body: SheetBody): Promise<Buffer> {
   }
   const exCell = ws.getCell(totalRow, 8);
   exCell.value = r3s(Number(exSum));
-  exCell.numFmt = '#0.##';
+  exCell.numFmt = '0.00';
   exCell.alignment = { horizontal: 'right' };
   exCell.font = { name: FONT, size: 11, bold: true };
   const incCell = ws.getCell(totalRow, 9);
   incCell.value = r3s(Number(incSum));
-  incCell.numFmt = '#0.##';
+  incCell.numFmt = '0.00';
   incCell.alignment = { horizontal: 'right' };
   incCell.font = { name: FONT, size: 11, bold: true };
   const moldCell = ws.getCell(totalRow, 11);

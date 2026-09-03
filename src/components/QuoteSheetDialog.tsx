@@ -73,8 +73,8 @@ function sigfig(n: number, digits: number): number {
   const factor = Math.pow(10, digits - d);
   return Math.round(n * factor) / factor;
 }
-function r3sig(n: number): number { return sigfig(n, 3); }
-function r2sig(n: number): number { return sigfig(n, 2); }
+function r3sig(n: number): number { return Math.round(n * 100) / 100; }  // 价格统一2位小数
+function r2sig(n: number): number { return Math.round(n); }                       // 模具费/起订量取整
 
 // 从保存的报价提取出单字段
 function toSheetItem(q: SavedQuote) {
@@ -82,27 +82,44 @@ function toSheetItem(q: SavedQuote) {
   const r = q.result || {};
   const pd = (q.product_discount ?? 100) / 100;
   const md = (q.mold_discount ?? 100) / 100;
+  // 规格尺寸：挤出类在 dimensions 里（width_mm/height_mm/length_mm），其他品类在顶层 width/height/productSize
+  const dims = p.dimensions || {};
   const specParts: string[] = [];
-  if (p.width) specParts.push(`${p.width}`);
-  if (p.height) specParts.push(`${p.height}`);
-  if (p.length) specParts.push(`${p.length}`);
+  const w = dims.width_mm ?? p.width;
+  const h = dims.height_mm ?? p.height;
+  const l = dims.length_mm ?? p.length;
+  // 棒材/管材/圆料等只有直径：圆棒显示 ø 直径，圆管显示 外径×内径，其余 宽×高×长
+  const stdCat = dims.standard_category || p.standard_category || '';
+  const dw = dims.diameter_mm, od = dims.outer_diameter_mm, idm = dims.inner_diameter_mm, hx = dims.hex_flat_mm;
+  let spec = '';
+  if (dw) spec = `ø${dw}` + (l ? `×${l}` : '');
+  else if (od) spec = `ø${od}` + (idm ? `×${idm}` : '') + (l ? `×${l}` : '');
+  else if (hx) spec = `H${hx}` + (idm ? `×${idm}` : '') + (l ? `×${l}` : '');
+  else {
+    if (w) specParts.push(`${w}`);
+    if (h) specParts.push(`${h}`);
+    if (l) specParts.push(`${l}`);
+    spec = specParts.length ? specParts.join('*') : (p.productSize || '');
+  }
   const unitPrice = (r.unit_price || 0) * pd;
   const moldFee = (r.mold_cost || 0) * md;
+  // 起订量：以后端计算的 min_order_qty 为准
+  const moqVal = Number(r.min_order_qty || 0);
   return {
     id: q.id,
     moldGroup: p._mold_group_id || '',
     model: '',
-    spec: specParts.length ? specParts.join('*') : (p.productSize || ''),
-    name: p.productName || p.product_type_name || q.product_type || '铝型材',
+    spec,
+    name: p.productName || p.product_type_name || q.product_type || (stdCat ? stdCat + '铝型材' : '铝型材'),
     unit: 'pcs',
     material: p.materialCategory || p.grade || '6063-T5',
     surface: p.productSurfaceTreatment && p.productSurfaceTreatment !== '无' ? p.productSurfaceTreatment : '无',
     price_ex_tax: r3sig(unitPrice),
     price_inc_tax: r3sig(unitPrice * 1.13),
-    moq: (r.min_order_qty || p.quantity) ? r2sig(Number(r.min_order_qty || p.quantity || 0)) : '',
+    moq: moqVal > 0 ? r2sig(moqVal) : (p.quantity ? r2sig(Number(p.quantity)) : ''),
     mold_fee: r2sig(moldFee),
     remark: '',
-    _label: `${q.name}｜${specParts.join('*') || '-'}｜未税¥${unitPrice.toFixed(2)}`,
+    _label: `${q.name}｜${spec || '-'}｜未税¥${unitPrice.toFixed(2)}`,
   };
 }
 
@@ -313,6 +330,7 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
       }
       saveCustomer(cust);
       setGenerated({ quoteNo: data.quote_no || quoteNo, xlsxB64: data.xlsx_base64, pdfB64: data.pdf_base64 });
+      setShowPreview(true); // 生成后自动展开打印预览
       // 默认自动下载 Excel
       downloadB64(data.xlsx_base64, `报价单-${data.quote_no || quoteNo}.xlsx`,
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -512,7 +530,7 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
                 </button>
                 <button onClick={() => setShowPreview(!showPreview)}
                   className={`flex-1 px-3 py-2 text-sm rounded-lg font-medium flex items-center justify-center gap-1.5 transition-colors ${showPreview ? 'bg-blue-600 text-white' : 'bg-white border border-blue-200 text-blue-600 hover:bg-blue-50'}`}>
-                  <Eye className="w-4 h-4" /> {showPreview ? '关闭预览' : '打印预览'}
+                  <Eye className="w-4 h-4" /> {showPreview ? '关闭打印预览' : '打印预览（PDF）'}
                 </button>
               </div>
             </div>
@@ -525,13 +543,17 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
                 <span className="text-sm font-medium text-blue-800 flex items-center gap-1.5">
                   <Eye className="w-4 h-4" /> 报价单打印预览
                 </span>
-                <button onClick={() => window.print()} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1">
-                  <FileText className="w-3.5 h-3.5" /> 打印
+                <button onClick={() => {
+                  const f = document.getElementById('quote-preview-frame') as HTMLIFrameElement | null;
+                  try { f?.contentWindow?.focus(); f?.contentWindow?.print(); } catch { window.print(); }
+                }} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1">
+                  <FileText className="w-3.5 h-3.5" /> 打印此报价单
                 </button>
               </div>
               <iframe
+                id="quote-preview-frame"
                 src={previewUrl}
-                className="w-full h-[500px] border-0"
+                className="w-full h-[560px] border-0"
                 title="报价单预览"
               />
             </div>

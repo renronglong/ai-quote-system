@@ -17,8 +17,8 @@ function sigfig(n: number, digits: number): number {
   const factor = Math.pow(10, digits - d);
   return Math.round(n * factor) / factor;
 }
-function r3sig(n: number): number { return sigfig(n, 3); }
-function r2sig(n: number): number { return sigfig(n, 2); }
+function r3sig(n: number): number { return Math.round(n * 100) / 100; }  // 价格统一2位小数
+function r2sig(n: number): number { return Math.round(n); }
 
 // ==================== Types ====================
 export interface SavedQuote {
@@ -238,13 +238,22 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange }
       const p = q.params || {};
       const r = q.result || {};
       const bd = r.breakdown || {};
-      // 规格尺寸
+      // 规格尺寸：挤出类 dimensions.width_mm/height_mm/length_mm；圆棒/圆管/六角带专属字段
       const dims = p.dimensions || {};
-      const parts: string[] = [];
-      if (dims.width_mm) parts.push(String(dims.width_mm));
-      if (dims.height_mm) parts.push(String(dims.height_mm));
-      if (dims.length_mm) parts.push(String(dims.length_mm));
-      const spec = parts.length > 0 ? parts.join('*') : '';
+      const w = dims.width_mm, h = dims.height_mm, l = dims.length_mm;
+      const dw = dims.diameter_mm, od = dims.outer_diameter_mm, idm = dims.inner_diameter_mm, hx = dims.hex_flat_mm;
+      let spec = '';
+      if (dw) spec = `ø${dw}` + (l ? `×${l}` : '');
+      else if (od) spec = `ø${od}` + (idm ? `×${idm}` : '') + (l ? `×${l}` : '');
+      else if (hx) spec = `H${hx}` + (idm ? `×${idm}` : '') + (l ? `×${l}` : '');
+      else {
+        const parts: string[] = [];
+        if (w) parts.push(String(w));
+        if (h) parts.push(String(h));
+        if (l) parts.push(String(l));
+        spec = parts.length > 0 ? parts.join('*') : (p.productSize || '');
+      }
+      const moqVal = Number(r.min_order_qty || 0);
       return {
         model: q.name || '',
         spec,
@@ -254,7 +263,7 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange }
         surface: p.surfaceTreatment || p.materialSurfaceTreatment || '',
         price_ex_tax: r.unit_price != null ? r3sig(Number(r.unit_price)) : undefined,
         price_inc_tax: r.unit_price_inc_tax != null ? r3sig(Number(r.unit_price_inc_tax)) : (r.unit_price != null ? r3sig(Number(r.unit_price) * 1.13) : undefined),
-        moq: p.quantity ? r2sig(Number(p.quantity)) : '',
+        moq: moqVal > 0 ? r2sig(moqVal) : '',
         mold_fee: bd.mold?.amount != null ? r2sig(Number(bd.mold.amount)) : (r.mold_cost != null ? r2sig(Number(r.mold_cost)) : null),
         remark: '',
       };
