@@ -679,11 +679,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       ...prev,
       perimeter: '',
       meterWeight: '',
+      crossSectionArea: '',
       num_cavities: '',
       die_type: '',
       width: '',
       height: '',
     }));
+    setAreaManual(false);
   };
 
   // 标准件：理论米重自动填入米重框（用户手填或匹配到库存模具后不覆盖；改尺寸/切种类恢复自动）
@@ -1964,7 +1966,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   <button
                     key={cat.key}
                     type="button"
-                    onClick={() => { setStandardCategory(cat.key); resetProfileState(); setMeterWeightManual(false); setPerimeterManual(false); setFields(prev => ({ ...prev, die_type: ['铝圆管','铝六角管','铝方管'].includes(cat.key) ? 'split' : 'flat' })); }}
+                    onClick={() => { setStandardCategory(cat.key); resetProfileState(); setMeterWeightManual(false); setAreaManual(false); setPerimeterManual(false); setFields(prev => ({ ...prev, die_type: ['铝圆管','铝六角管','铝方管'].includes(cat.key) ? 'split' : 'flat' })); }}
                     className={`px-2.5 py-1.5 rounded-lg border text-xs transition-all duration-200 ${
                       standardCategory === cat.key
                         ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
@@ -2104,9 +2106,16 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                             die_type: m.mold_type === '分流模' ? 'split' : 'flat',
                             perimeter: m.perimeter || prev.perimeter,
                             meterWeight: m.weight_per_meter || prev.meterWeight,
+                            // 模具库带米重时，若截面积为空则自动反算（米重×1000/2.7）
+                            crossSectionArea: prev.crossSectionArea
+                              ? prev.crossSectionArea
+                              : (m.weight_per_meter
+                                  ? String(Math.round(parseFloat(m.weight_per_meter) * 1000 / 2.7 * 100) / 100)
+                                  : prev.crossSectionArea),
                           }));
                           setPerimeterManual(true);
                           setMeterWeightManual(true);
+                          setAreaManual(false);
                         }}
                         className={`w-full text-left px-2.5 py-1.5 rounded-lg border text-xs transition-all flex items-center justify-between ${
                           selectedMoldId === m.id
