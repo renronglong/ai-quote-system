@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import {
-  Phone, Building2, MapPin, Factory,
+  Phone, Building2, MapPin, Factory, User, Shield, Calendar,
   LogOut, ChevronRight, Loader2, Edit3, Check, X, Mail, UserCircle,
 } from 'lucide-react';
 
