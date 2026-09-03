@@ -374,6 +374,7 @@ const FIELD_LABELS: Record<string, string> = {
   productSize: '产品尺寸(长×宽×高mm)',
   quantity: '数量(件)',
   meterWeight: '米重(kg/m)',
+  crossSectionArea: '截面积(mm²)',
   netWeight: '产品净重(g·选填·算利用率)',
 };
 
@@ -406,7 +407,8 @@ const CATEGORY_DIM_FIELDS: Record<string, { key: string; label: string; placehol
   '异型材': [
     { key: 'width', label: '宽度(mm)', placeholder: '如 30' },
     { key: 'height', label: '高度(mm)', placeholder: '如 15' },
-    { key: 'meterWeight', label: '米重(kg/m)', placeholder: '如 0.5' },
+    { key: 'meterWeight', label: '米重(kg/m)', placeholder: '填一个自动算另一个' },
+    { key: 'crossSectionArea', label: '截面面积(mm²)', placeholder: '填一个自动算另一个' },
     { key: 'perimeter', label: '外周长(mm)', placeholder: '如 100（只算外轮廓）' },
   ],
   // 异型材需要额外选择模具类型
@@ -529,6 +531,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [meterWeightManual, setMeterWeightManual] = useState(false);
   const [quantityManual, setQuantityManual] = useState(false);
   const [perimeterManual, setPerimeterManual] = useState(false);
+  const [areaManual, setAreaManual] = useState(false);
   const [dieSteelPrice, setDieSteelPrice] = useState<string>('');
 
   // Saved variants (multi-length quoting for extrusion)
@@ -690,6 +693,28 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       setFields(prev => (String(prev.meterWeight ?? '') === String(mw) ? prev : { ...prev, meterWeight: mw }));
     }
   }, [productType, materialCategory, standardCategory, fields.width, fields.height, fields.thickness, meterWeightManual]);
+
+  // 异型材：米重 ↔ 截面积 自动互算（铝密度2.7g/cm³）
+  // 米重(kg/m) = 截面积(mm²) × 2.7 / 1000
+  useEffect(() => {
+    if (productType !== '挤出' || materialCategory !== '异型材') return;
+    const mw = parseFloat(String(fields.meterWeight)) || 0;
+    const area = parseFloat(String(fields.crossSectionArea)) || 0;
+    // 用户手动填了米重 → 自动算截面积
+    if (meterWeightManual && mw > 0 && !areaManual) {
+      const calcArea = Math.round(mw * 1000 / 2.7 * 100) / 100;
+      if (String(fields.crossSectionArea) !== String(calcArea)) {
+        setFields(prev => ({ ...prev, crossSectionArea: String(calcArea) }));
+      }
+    }
+    // 用户手动填了截面积 → 自动算米重
+    else if (areaManual && area > 0 && !meterWeightManual) {
+      const calcMw = Math.round(area * 2.7 / 1000 * 100) / 100;
+      if (String(fields.meterWeight) !== String(calcMw)) {
+        setFields(prev => ({ ...prev, meterWeight: String(calcMw) }));
+      }
+    }
+  }, [productType, materialCategory, fields.meterWeight, fields.crossSectionArea, meterWeightManual, areaManual]);
 
   // 标准件：单件净重(g) = 米重(kg/m) × 长度(mm)，自动填入（规则截面棒/管按长度切割，净重≈消耗重量）
   useEffect(() => {
@@ -1175,6 +1200,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         num_cavities: parseInt(String(fields.num_cavities)) || 1,
         die_type: (fields.die_type === 'flat' || fields.die_type === 'split') ? fields.die_type as 'flat' | 'split' : undefined,
         meter_weight_kg_per_m: num(fields.meterWeight),
+        cross_section_area_mm2: num(fields.crossSectionArea),
         net_weight_g: num(fields.netWeight),
         die_steel_price: dieSteelPrice ? parseFloat(dieSteelPrice) : undefined,
       };
@@ -1609,7 +1635,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   // Field rendering with two-column grid
   const renderFields = () => {
     if (!categoryConfig) return null;
-    const fieldOrder = ['width', 'height', 'length', 'perimeter', 'num_cavities', 'die_type', 'meterWeight', 'thickness', 'productSize', 'quantity', 'netWeight'];
+    const fieldOrder = ['width', 'height', 'length', 'perimeter', 'num_cavities', 'die_type', 'meterWeight', 'crossSectionArea', 'thickness', 'productSize', 'quantity', 'netWeight'];
     let visibleFields = fieldOrder.filter(f => categoryConfig.fields.includes(f));
     // In standard mode, hide num_cavities, die_type, width, height, perimeter
     // (these are handled by structured dimension inputs + mold matching)
@@ -1773,7 +1799,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                         setFields(prev => ({ ...prev, [fieldKey]: raw }));
                         if (fieldKey === 'meterWeight') {
                           setMeterWeightManual(val > 0);
-                          if (val > 0) setQuantityManual(false);
+                          if (val > 0) { setQuantityManual(false); setAreaManual(false); }
+                        }
+                        if (fieldKey === 'crossSectionArea') {
+                          setAreaManual(val > 0);
+                          if (val > 0) { setMeterWeightManual(false); setQuantityManual(false); }
                         }
                         if (fieldKey === 'quantity') {
                           setQuantityManual(true);
