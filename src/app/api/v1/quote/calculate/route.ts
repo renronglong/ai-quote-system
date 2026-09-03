@@ -117,6 +117,7 @@ interface QuoteResponse {
   product_code?: string;
   error?: string;
   mold_cost?: number;              // 模具费（元），一次性，不计入单件价
+  mold_spec?: string;              // 模具规格，如 Φ297×230 分流模
 }
 
 // ============================================================
@@ -742,6 +743,7 @@ function calcExtrusion(
 
   // 2. 模具费（挤压模具，单独列出）
   let moldCost = 0;
+  let moldSpec = ''; // 模具规格，如 Φ297×230 分流模
   if (req.mold_cost && req.mold_cost > 0) {
     moldCost = req.mold_cost;
     notes.push(`挤压模具费: ${moldCost}元（用户指定，一次性，不计入单件价格）`);
@@ -964,7 +966,7 @@ function calcExtrusion(
 
     const dieTypeMap: Record<string, string> = { flat: '平模', split: '分流模' };
     const dieType = dieTypeMap[dieTypeKey] || '分流模';
-    notes.push(`模具规格: Φ${dieDiameter}×${dieThickness} ${dieType}`);
+    moldSpec = `Φ${dieDiameter}×${dieThickness} ${dieType}`;
     notes.push(`模具钢价: ${dieSteelPrice}元/吨${dims.die_steel_price ? '（用户指定）' : '（默认H13均价）'}`);
     if (isFlatDie) {
       notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + (${Math.round(baseProcessingFee)}基础 + ${Math.round(perimeterFee)}周长×厚度加工) × ${(mgmtRate*100).toFixed(0)}%管理费)`);
@@ -1179,6 +1181,7 @@ function calcExtrusion(
       weight_per_piece_kg: mat.weight,
       min_order_qty: minOrderQty,
       mold_cost: moldCost,
+      mold_spec: moldSpec,
     },
     breakdown,
     weight: rawWeight, // 返回未舍入的重量，用于后续总重计算

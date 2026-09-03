@@ -476,7 +476,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
     management_fee: 0, unit_price: 0, unit_price_ex_tax: 0, unit_price_in_tax: 0, total_price: 0, weight_per_piece_kg: 0,
     material_utilization_rate: undefined as number | undefined,
     breakdown: {} as Record<string, { formula: string; detail: string }>,
-    aluminum_index: 0, notes: [] as string[], mold_cost: 0,
+    aluminum_index: 0, notes: [] as string[], mold_cost: 0, mold_spec: '' as string | undefined,
   };
 
   const hasProductDiscount = productDiscount !== 100;
@@ -582,36 +582,43 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
             {isPlaceholder ? '¥--' : `¥${(displayUnit * ((p as any).quantity || 1)).toFixed(2)}`}
           </span>
         </div>
-        {/* 模具费 */}
+        {/* 模具费（右上角标注模具规格） */}
         {baseMoldFee > 0 && !isPlaceholder && (
-          internal ? (
-          <div className="mt-2 flex items-center gap-1.5">
-            <span className="text-[11px] text-gray-500">模具费(一次性)</span>
-            <span className="text-[10px] text-gray-400">¥</span>
-            <input
-              type="number"
-              step="1"
-              min="0"
-              value={manualMoldFee ?? moldFee}
-              onChange={(e) => {
-                const v = parseFloat(e.target.value);
-                if (!isNaN(v) && v >= 0) onManualMoldFeeChange(v);
-              }}
-              className={`w-20 text-right text-xs border rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-400 font-semibold text-blue-700 ${manualMoldFee !== null ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white/50'}`}
-            />
-            {hasMoldDiscount && (
-              <span className="text-[10px] text-amber-600">→ 折后 ¥{discountedMold.toFixed(2)}（{moldDiscount}%）</span>
+          <div className="mt-2">
+            {p.mold_spec && (
+              <div className="flex justify-end">
+                <span className="inline-block text-[10px] text-gray-500 bg-gray-100 rounded px-1.5 py-0.5 font-mono">{p.mold_spec}</span>
+              </div>
             )}
-            {manualMoldFee !== null && (
-              <button onClick={() => onManualMoldFeeChange(null)} className="text-[10px] text-gray-400 hover:text-red-500" title="恢复计算值">✕</button>
+            {internal ? (
+            <div className="mt-1 flex items-center gap-1.5">
+              <span className="text-[11px] text-gray-500">模具费(一次性)</span>
+              <span className="text-[10px] text-gray-400">¥</span>
+              <input
+                type="number"
+                step="1"
+                min="0"
+                value={manualMoldFee ?? moldFee}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  if (!isNaN(v) && v >= 0) onManualMoldFeeChange(v);
+                }}
+                className={`w-20 text-right text-xs border rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-400 font-semibold text-blue-700 ${manualMoldFee !== null ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white/50'}`}
+              />
+              {hasMoldDiscount && (
+                <span className="text-[10px] text-amber-600">→ 折后 ¥{discountedMold.toFixed(2)}（{moldDiscount}%）</span>
+              )}
+              {manualMoldFee !== null && (
+                <button onClick={() => onManualMoldFeeChange(null)} className="text-[10px] text-gray-400 hover:text-red-500" title="恢复计算值">✕</button>
+              )}
+            </div>
+            ) : (
+            <div className="mt-0.5 flex items-baseline gap-1">
+              <span className="text-[11px] text-gray-500">模具费(一次性)</span>
+              <span className="text-sm font-semibold text-blue-700">¥{discountedMold.toFixed(2)}</span>
+            </div>
             )}
           </div>
-          ) : (
-          <div className="mt-1.5 flex items-baseline gap-1">
-            <span className="text-[11px] text-gray-500">模具费(一次性)</span>
-            <span className="text-sm font-semibold text-blue-700">¥{discountedMold.toFixed(2)}</span>
-          </div>
-          )
         )}
         {/* 最小起订量 */}
         {!isPlaceholder && minOrderQty > 0 && (
@@ -825,8 +832,8 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         )}
       </div>
 
-      {/* 备注 */}
-      {!isPlaceholder && p.notes && p.notes.length > 0 && (
+      {/* 备注（成本/模具明细，仅管理员可见） */}
+      {!isPlaceholder && user?.is_admin && p.notes && p.notes.length > 0 && (
         <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
           {p.notes.map((note: string, i: number) => (
             <div key={i} className="flex items-start gap-1.5 text-xs text-amber-700">

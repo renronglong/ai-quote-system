@@ -49,6 +49,7 @@ export interface PricingResult {
   breakdown: Record<string, { formula: string; detail: string }>;
   aluminum_index: number;
   mold_cost?: number;
+  mold_spec?: string;
   min_order_qty?: number;
   notes: string[];
 }
