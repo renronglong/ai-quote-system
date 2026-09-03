@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { X, FileSpreadsheet, FileText, Check, Loader2, Building2, User, Phone, MapPin, Hash, Download, History, AlertTriangle } from 'lucide-react';
+import { X, FileSpreadsheet, FileText, Check, Loader2, Building2, User, Phone, MapPin, Hash, Download, History, AlertTriangle, Eye } from 'lucide-react';
 import { loadSavedQuotes, saveQuoteToAPI, type SavedQuote } from './SavedQuotesPanel';
 import { useAuth } from '@/lib/auth-context';
 
@@ -120,6 +120,14 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
   const [history, setHistory] = useState<SheetRecord[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [generated, setGenerated] = useState<{ quoteNo: string; xlsxB64: string; pdfB64: string } | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const previewUrl = useMemo(() => {
+    if (!generated?.pdfB64) return null;
+    const bin = atob(generated.pdfB64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+  }, [generated]);
   const [supplierInfo, setSupplierInfo] = useState<{ company_name?: string; contact_name?: string; contact_phone?: string; contact_email?: string; address?: string }>({});
   const [noCompanyInfo, setNoCompanyInfo] = useState(false);
   
@@ -502,7 +510,30 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
                   className="flex-1 px-3 py-2 text-sm bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 flex items-center justify-center gap-1.5">
                   <FileText className="w-4 h-4" /> 下载 PDF
                 </button>
+                <button onClick={() => setShowPreview(!showPreview)}
+                  className={`flex-1 px-3 py-2 text-sm rounded-lg font-medium flex items-center justify-center gap-1.5 transition-colors ${showPreview ? 'bg-blue-600 text-white' : 'bg-white border border-blue-200 text-blue-600 hover:bg-blue-50'}`}>
+                  <Eye className="w-4 h-4" /> {showPreview ? '关闭预览' : '打印预览'}
+                </button>
               </div>
+            </div>
+          )}
+
+          {/* PDF 打印预览 */}
+          {showPreview && previewUrl && (
+            <div className="rounded-lg border border-blue-200 overflow-hidden">
+              <div className="px-3 py-2 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
+                <span className="text-sm font-medium text-blue-800 flex items-center gap-1.5">
+                  <Eye className="w-4 h-4" /> 报价单打印预览
+                </span>
+                <button onClick={() => window.print()} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1">
+                  <FileText className="w-3.5 h-3.5" /> 打印
+                </button>
+              </div>
+              <iframe
+                src={previewUrl}
+                className="w-full h-[500px] border-0"
+                title="报价单预览"
+              />
             </div>
           )}
 

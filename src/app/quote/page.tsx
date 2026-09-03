@@ -65,6 +65,7 @@ export default function QuotePage() {
   const [productInfo, setProductInfo] = useState<{ productName: string; productCode: string }>({ productName: '', productCode: '' });
   const [resultExpanded, setResultExpanded] = useState(true);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [showExportLogin, setShowExportLogin] = useState(false); // 游客导出报价单时弹登录墙
   const [showSheetDialog, setShowSheetDialog] = useState(false); // Excel报价单出单弹窗
   const [currentParams, setCurrentParams] = useState<Record<string, any> | null>(null);
@@ -149,6 +150,7 @@ export default function QuotePage() {
 
   // 保存报价 → 调用 API 存入数据库（游客先跳登录）
   const handleSaveQuote = async () => {
+    if (saving || saveSuccess) return;
     if (!user) {
       router.push('/login?redirect=/quote');
       return;
@@ -178,7 +180,9 @@ export default function QuotePage() {
       min_order_qty: manualMinOrderQty ?? pricingResult.min_order_qty ?? 0,
       manual_min_order_qty: manualMinOrderQty,
     };
+    setSaving(true);
     const saved = await saveQuoteToAPI(user.id, params, result, productType, productDiscount, moldDiscount, moldGroupId);
+    setSaving(false);
     if (saved) {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 1500);
@@ -370,6 +374,7 @@ export default function QuotePage() {
                 onMoldDiscountChange={setMoldDiscount}
                 moldFee={moldFee}
                 onSave={handleSaveQuote}
+                saving={saving}
                 saveSuccess={saveSuccess}
                 user={user}
                 baseUnitPrice={baseUnitPrice}
@@ -414,6 +419,7 @@ export default function QuotePage() {
               moldFee={moldFee}
               compact
               onSave={handleSaveQuote}
+              saving={saving}
               saveSuccess={saveSuccess}
               user={user}
               baseUnitPrice={baseUnitPrice}
@@ -436,7 +442,7 @@ export default function QuotePage() {
 
 // ==================== Result Panel Component ====================
 
-function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, compact, productDiscount, moldDiscount, onProductDiscountChange, onMoldDiscountChange, moldFee, onSave, saveSuccess, user, baseUnitPrice, baseMoldFee, manualUnitPrice, manualMoldFee, onManualUnitPriceChange, onManualMoldFeeChange, minOrderQty, manualMinOrderQty, onManualMinOrderQtyChange, onExportPDF }: {
+function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, compact, productDiscount, moldDiscount, onProductDiscountChange, onMoldDiscountChange, moldFee, onSave, saving, saveSuccess, user, baseUnitPrice, baseMoldFee, manualUnitPrice, manualMoldFee, onManualUnitPriceChange, onManualMoldFeeChange, minOrderQty, manualMinOrderQty, onManualMinOrderQtyChange, onExportPDF }: {
   pricingResult: PricingResult | null;
   aluminumPrice: AluminumPrice | null;
   productName: string;
@@ -448,6 +454,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
   onMoldDiscountChange: (v: number) => void;
   moldFee: number;
   onSave?: () => void;
+  saving?: boolean;
   saveSuccess?: boolean;
   user: any;
   baseUnitPrice: number;
@@ -709,14 +716,19 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         <div className="flex gap-2">
           <button
             onClick={onSave}
+            disabled={saving || saveSuccess}
             className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
               saveSuccess
                 ? 'bg-emerald-500 text-white'
-                : 'bg-white border border-gray-200 text-gray-700 hover:border-blue-300 hover:text-blue-600'
+                : saving
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-white border border-gray-200 text-gray-700 hover:border-blue-300 hover:text-blue-600'
             }`}
           >
             {saveSuccess ? (
               <><CheckCircle2 className="w-4 h-4" /> 已保存</>
+            ) : saving ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> 保存中...</>
             ) : (
               <><Save className="w-4 h-4" /> 保存报价</>
             )}
