@@ -2043,7 +2043,16 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                           setUseExistingMold(null);
                           setMoldMatches([]);
                           setPerimeterManual(false);
-                          setMeterWeightManual(false);
+                          // 米重↔截面积 手动标记（触发自动互算）
+                          if (stateKey === 'meterWeight') {
+                            setMeterWeightManual(val > 0);
+                            if (val > 0) setAreaManual(false);
+                          } else if (stateKey === 'crossSectionArea') {
+                            setAreaManual(val > 0);
+                            if (val > 0) setMeterWeightManual(false);
+                          } else {
+                            setMeterWeightManual(false);
+                          }
                         }}
                         className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
                       />
