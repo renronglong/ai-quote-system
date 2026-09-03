@@ -115,7 +115,7 @@ const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
     materialCategories: {
       '异型材': {
         label: '异型材',
-        fields: ['width', 'height', 'length', 'perimeter', 'num_cavities', 'die_type', 'meterWeight', 'quantity', 'netWeight'],
+        fields: ['width', 'height', 'length', 'perimeter', 'num_cavities', 'die_type', 'meterWeight', 'crossSectionArea', 'quantity', 'netWeight'],
         materialSurfaceTreatment: ['无', '氧化', '喷砂氧化', '抛光氧化', '拉丝氧化', '喷涂'],
         materialColorMap: {
           '氧化': ['本色', '红色', '黑色', '金色', '铁灰色'],
@@ -167,7 +167,7 @@ const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
       },
       '标准件': {
         label: '标准件',
-        fields: ['width', 'height', 'length', 'perimeter', 'meterWeight', 'quantity', 'netWeight'],
+        fields: ['width', 'height', 'length', 'perimeter', 'meterWeight', 'crossSectionArea', 'quantity', 'netWeight'],
         materialSurfaceTreatment: ['无', '氧化', '喷砂氧化', '抛光氧化', '拉丝氧化', '喷涂'],
         materialColorMap: {
           '氧化': ['本色', '红色', '黑色', '金色', '铁灰色'],
@@ -629,6 +629,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (cat.fields.includes('thickness')) defaultFields.thickness = 2;
     if (cat.fields.includes('productSize')) defaultFields.productSize = '';
     if (cat.fields.includes('meterWeight')) defaultFields.meterWeight = '';
+    if (cat.fields.includes('crossSectionArea')) defaultFields.crossSectionArea = '';
     if (cat.fields.includes('netWeight')) defaultFields.netWeight = '';
     if (cat.fields.includes('perimeter')) defaultFields.perimeter = '';
     if (cat.fields.includes('num_cavities')) defaultFields.num_cavities = '';
