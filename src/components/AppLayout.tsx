@@ -16,8 +16,6 @@ import {
   Home,
   Package,
   FileText,
-  History,
-  Box,
   MessageSquare,
   Users,
   Settings,
@@ -54,9 +52,7 @@ const navGroups: NavGroup[] = [
       { label: '首页', href: '/', icon: <Home className="w-5 h-5" /> },
       { label: 'AI报价', href: '/quote', icon: <FileText className="w-5 h-5" /> },
       { label: '产品管理', href: '/products', icon: <Package className="w-5 h-5" /> },
-      { label: '库存管理', href: '/inventory', icon: <Box className="w-5 h-5" /> },
       { label: '询价管理', href: '/inquiries', icon: <MessageSquare className="w-5 h-5" /> },
-      { label: '报价历史', href: '/history', icon: <History className="w-5 h-5" /> },
       { label: '供应商', href: '/suppliers', icon: <Building2 className="w-5 h-5" /> },
       { label: '供应商入驻', href: '/supplier', icon: <Handshake className="w-5 h-5" /> },
       { label: '公司资料', href: '/profile', icon: <UserCircle className="w-5 h-5" /> },
@@ -156,7 +152,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                             <Coins className="w-3.5 h-3.5 text-amber-600" />{credits.toFixed(0)} 积分
                           </p>
                         </div>
-                        <Link href="/history" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><History className="w-4 h-4" />报价历史</Link>
                         <Link href="/products" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><Package className="w-4 h-4" />产品管理</Link>
                         <Link href="/inquiries" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><MessageSquare className="w-4 h-4" />询价管理</Link>
                         <Link href="/supplier" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><Handshake className="w-4 h-4" />供应商工作台</Link>

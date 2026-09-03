@@ -29,7 +29,8 @@ export default function SupplierRegisterPage() {
       router.replace('/login?redirect=/supplier/register');
     }
     if (user) {
-      setForm(prev => ({ ...prev, contact_name: user.company_name || prev.contact_name }));
+      // 联系电话默认填登录手机号；联系人姓名不预填（无姓名字段，company_name 是公司名不能用作人名）
+      setForm(prev => ({ ...prev, phone: prev.phone || user.phone || '' }));
     }
   }, [user, authLoading, router]);
 

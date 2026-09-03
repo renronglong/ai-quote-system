@@ -53,7 +53,9 @@ interface Product {
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [productsMap, setProductsMap] = useState<Record<string, Product[]>>({});
+  const [visibleCount, setVisibleCount] = useState<Record<string, number>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const PAGE_SIZE = 50;
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -95,6 +97,7 @@ export default function SuppliersPage() {
       setExpandedId(null);
     } else {
       setExpandedId(id);
+      setVisibleCount((prev) => ({ ...prev, [id]: PAGE_SIZE }));
       loadProducts(id);
     }
   };
@@ -186,7 +189,7 @@ export default function SuppliersPage() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {productsMap[supplier.id].map((product) => (
+                          {productsMap[supplier.id].slice(0, visibleCount[supplier.id] || PAGE_SIZE).map((product) => (
                             <TableRow key={product.id}>
                               <TableCell className="font-mono text-xs">
                                 {product.mold_number || '-'}
@@ -239,6 +242,22 @@ export default function SuppliersPage() {
                           ))}
                         </TableBody>
                       </Table>
+                    )}
+                    {(productsMap[supplier.id]?.length || 0) > (visibleCount[supplier.id] || PAGE_SIZE) && (
+                      <div className="text-center py-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setVisibleCount((prev) => ({
+                              ...prev,
+                              [supplier.id]: (prev[supplier.id] || PAGE_SIZE) + 200,
+                            }))
+                          }
+                        >
+                          加载更多（已显示 {visibleCount[supplier.id] || PAGE_SIZE} / {productsMap[supplier.id].length}）
+                        </Button>
+                      </div>
                     )}
                   </CardContent>
                 )}
