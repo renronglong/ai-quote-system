@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isAdminPhone, signAdminToken } from '@/lib/admin';
+import { verifyPassword, isLegacyPlaintext, hashPassword } from '@/lib/password';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jotgxnhueagbsvfeepic.supabase.co';
 const supabaseServiceKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -28,8 +29,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '用户不存在' }, { status: 400 });
     }
 
-    if (userData.password !== password) {
+    if (!verifyPassword(password, userData.password)) {
       return NextResponse.json({ error: '密码错误' }, { status: 401 });
+    }
+
+    // 历史明文密码：登录成功顺手升级为 scrypt 哈希
+    if (isLegacyPlaintext(userData.password)) {
+      await supabase.from('users').update({ password: hashPassword(password) }).eq('id', userData.id);
     }
 
     const admin = isAdminPhone(userData.phone);

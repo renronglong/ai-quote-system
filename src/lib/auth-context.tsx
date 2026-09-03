@@ -181,15 +181,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const resetPassword = async (phone: string, code: string, newPassword: string): Promise<{ error: string | null }> => {
     try {
-      if (code !== '123456') {
-        return { error: '验证码错误' };
-      }
-      const { error } = await supabase
-        .from('users')
-        .update({ password: newPassword })
-        .eq('phone', phone);
-      if (error) {
-        return { error: '密码重置失败，请稍后重试' };
+      const resp = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, code, newPassword }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) {
+        return { error: data.error || '密码重置失败，请稍后重试' };
       }
       return { error: null };
     } catch (err) {

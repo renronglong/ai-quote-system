@@ -6,39 +6,11 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
 import { calculatePrice, calculateAssembly } from '@/lib/pricing/engine';
+import { getAluminumPrice } from '@/lib/pricing/aluminum-price';
 import type { PricingInput, ExtrusionInput, PlateInput, AssemblyInput } from '@/lib/pricing/types';
 
 const execFileAsync = promisify(execFile);
 
-// 获取实时铝价
-async function getAluminumPrice(): Promise<number> {
-  try {
-    const today = new Date();
-    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
-    const url = `http://www.lvdingjia.com/zhishu/${dateStr}.html`;
-
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
-      next: { revalidate: 3600 },
-    });
-
-    if (response.ok) {
-      const html = await response.text();
-      const match = html.match(/南海(?!灵通)[^<]*?(\d+)~(\d+)/);
-      if (match) {
-        const low = parseInt(match[1]);
-        const high = parseInt(match[2]);
-        return Math.round((low + high) / 2);
-      }
-    }
-  } catch (error) {
-    console.error('Failed to fetch aluminum price:', error);
-  }
-
-  return 23530;
-}
 
 /**
  * POST /api/pricing/step-quote
@@ -99,7 +71,7 @@ export async function POST(request: Request) {
     }
     
     // 获取铝价
-    const aluminumPricePerTon = await getAluminumPrice();
+    const aluminumPricePerTon = (await getAluminumPrice(23530)).price;
     
     // 构造报价输入
     const pricingParams = parseResult.pricingParams;

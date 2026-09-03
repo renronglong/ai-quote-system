@@ -139,7 +139,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   <Avatar className="w-8 h-8">
                     <AvatarImage src="" />
                     <AvatarFallback className="bg-blue-100 text-blue-600">
-                      {(user.phone || 'U').slice(-1)}
+                      {(user?.phone || 'U').slice(-1)}
                     </AvatarFallback>
                   </Avatar>
                   <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
@@ -190,7 +190,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     <Avatar className="w-10 h-10">
                       <AvatarImage src="" />
                       <AvatarFallback className="bg-blue-100 text-blue-600">
-                        U
+                        {(user?.phone || 'U').slice(-1)}
                       </AvatarFallback>
                     </Avatar>
                     <div>

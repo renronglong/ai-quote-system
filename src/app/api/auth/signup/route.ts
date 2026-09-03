@@ -14,6 +14,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { verifySmsCodeForSignup } from '@/lib/sms-middleware';
 import { changeCredits, SIGNUP_BONUS_CREDITS, REFERRAL_BONUS_CREDITS } from '@/lib/credits';
+import { hashPassword } from '@/lib/password';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jotgxnhueagbsvfeepic.supabase.co';
 const supabaseServiceKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -80,7 +81,7 @@ export async function POST(request: Request) {
     // 3. 创建用户
     const insertData: Record<string, unknown> = {
       phone,
-      password,
+      password: hashPassword(password),
       created_at: new Date().toISOString(),
     };
 

@@ -90,7 +90,7 @@ export default function HomePage() {
               </h1>
               <p className="text-blue-100 text-sm md:text-base mb-7 leading-relaxed">
                 实时同步南海铝锭价，上传图纸AI自动识别尺寸，
-                报价免注册，打开就能用。
+                免注册试算，注册后可保存与导出报价单。
               </p>
               <Link href="/quote">
                 <Button size="lg" className="bg-white text-blue-700 hover:bg-blue-50 font-semibold">
@@ -114,7 +114,7 @@ export default function HomePage() {
 
           {/* 底部说明 */}
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 py-2 text-xs text-gray-400">
-            <span className="flex items-center gap-1"><Zap className="w-3.5 h-3.5" />报价无需注册</span>
+            <span className="flex items-center gap-1"><Zap className="w-3.5 h-3.5" />免注册即可试算</span>
             <Link href="/register" className="flex items-center gap-1 hover:text-blue-600 transition-colors"><Sparkles className="w-3.5 h-3.5" />注册送 100 积分，图纸AI识别自动填尺寸</Link>
             <span className="flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5" />数据仅用于报价计算</span>
           </div>

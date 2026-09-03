@@ -1,3 +1,4 @@
+import { getAluminumPrice } from '@/lib/pricing/aluminum-price';
 import { NextRequest } from 'next/server';
 
 // ============================================================
@@ -6,8 +7,6 @@ import { NextRequest } from 'next/server';
 // 支持四种产品类型: sheet_metal | die_casting | zinc_alloy | injection
 // ============================================================
 
-// ---- 默认铝锭价（元/吨），获取失败时降级使用 ----
-const DEFAULT_ALUMINUM_PRICE = 23530;
 
 // ---- 默认不锈钢基准价（元/吨），获取失败时降级 ----
 const DEFAULT_STEEL_304_PRICE = 14500;
@@ -320,55 +319,6 @@ function getBatchCoefficient(qty: number, rules: PricingRules): number {
 // 铝锭价获取 — 优先从 lvdingjia.com 抓取，失败则降级
 // ============================================================
 
-async function fetchAluminumPrice(): Promise<number> {
-  // 数据源1：大沥铝材网 dynamic 页面
-  try {
-    const res = await fetch('https://www.lvdingjia.com/dynamic', {
-      signal: AbortSignal.timeout(8000),
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
-      },
-    });
-    if (res.ok) {
-      const text = await res.text();
-      // 匹配 "南海铝锭XXXXX" 格式
-      const match = text.match(/南海铝锭[^\d]*(\d{5})/);
-      if (match) {
-        const price = parseInt(match[1]);
-        if (price > 10000 && price < 50000) return price;
-      }
-      // 备用匹配
-      const match2 = text.match(/\d{2}月\d{2}日南海铝锭(\d{5})/);
-      if (match2) {
-        const price = parseInt(match2[1]);
-        if (price > 10000 && price < 50000) return price;
-      }
-    }
-  } catch { /* 降级到下一数据源 */ }
-
-  // 数据源2：主页面
-  try {
-    const res = await fetch('https://www.lvdingjia.com/price/nanhai/', {
-      signal: AbortSignal.timeout(8000),
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html,application/json,*/*',
-      },
-    });
-    if (res.ok) {
-      const text = await res.text();
-      const avgMatch = text.match(/南海铝锭[\s\S]*?均价[▼\s]*(\d{4,6})/);
-      if (avgMatch) {
-        const price = parseInt(avgMatch[1]);
-        if (price > 10000 && price < 50000) return price;
-      }
-    }
-  } catch { /* 降级到默认值 */ }
-
-  // 全部失败，返回默认值
-  return DEFAULT_ALUMINUM_PRICE;
-}
 
 // ============================================================
 // 加载报价规则 — 优先从 Supabase Storage 读取
@@ -1981,7 +1931,7 @@ export async function POST(request: NextRequest) {
 
     // 2. 并行加载：铝锭价 + 报价规则
     const [aluminumPrice, rules] = await Promise.all([
-      body.aluminum_price_override ? Promise.resolve(body.aluminum_price_override) : fetchAluminumPrice(),
+      body.aluminum_price_override ? Promise.resolve(body.aluminum_price_override) : getAluminumPrice(23530).then(r => r.price),
       loadPricingRules(),
     ]);
 
@@ -2091,7 +2041,7 @@ export async function GET(request: NextRequest) {
 
     // 2. 并行加载：铝锭价 + 报价规则
     const [aluminumPrice, rules] = await Promise.all([
-      body.aluminum_price_override ? Promise.resolve(body.aluminum_price_override) : fetchAluminumPrice(),
+      body.aluminum_price_override ? Promise.resolve(body.aluminum_price_override) : getAluminumPrice(23530).then(r => r.price),
       loadPricingRules(),
     ]);
 

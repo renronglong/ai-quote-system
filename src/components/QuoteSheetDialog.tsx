@@ -192,15 +192,12 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
   // 加载供方资料（不依赖对话框是否打开，确保随时可用）
   useEffect(() => {
     if (userId) {
-      console.log('[QuoteSheetDialog] Loading profile for userId:', userId);
       fetch(`/api/auth/profile?user_id=${encodeURIComponent(userId)}`)
         .then(r => r.json())
         .then(d => {
-          console.log('[QuoteSheetDialog] Profile response:', d);
           if (d.success?.data) {
             const u = d.data.user || {};
             const p = d.data.profile || {};
-            console.log('[QuoteSheetDialog] Setting supplierInfo:', p);
             setSupplierInfo(p);
             // 检查公司名是否已填写
             if (!u.company_name && !p.company_name) setNoCompanyInfo(true);

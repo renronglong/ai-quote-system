@@ -179,13 +179,10 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange }
   // 加载供方资料（不依赖对话框是否打开，确保随时可用）
   useEffect(() => {
     if (userId) {
-      console.log('[SavedQuotesPanel] Loading profile for userId:', userId);
       fetch(`/api/auth/profile?user_id=${encodeURIComponent(userId)}`)
         .then(r => r.json())
         .then(d => {
-          console.log('[SavedQuotesPanel] Profile response:', d);
           if (d.success?.data?.profile) {
-            console.log('[SavedQuotesPanel] Setting supplierInfo:', d.data.profile);
             setSupplierInfo(d.data.profile);
           } else {
             console.warn('[SavedQuotesPanel] No profile data in response');
