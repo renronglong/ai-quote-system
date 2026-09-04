@@ -532,6 +532,7 @@ function calcStandardMeterWeight(
     }
     case '铝六角管': {
       if (!(s > 0 && id >= 0)) return null;
+      // 六角管外六角内圆孔
       const outer = 2.598 * s * s;
       const inner = id > 0 ? Math.PI * id * id / 4 : 0;
       area = outer - inner;

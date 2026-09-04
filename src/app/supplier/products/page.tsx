@@ -43,6 +43,7 @@ import {
   Save,
   X,
   Image as ImageIcon,
+  Upload,
 } from 'lucide-react';
 
 interface SupplierProfile {
@@ -312,11 +313,17 @@ function SupplierProductsContent() {
             <h1 className="text-2xl font-bold text-gray-900">产品管理</h1>
             <p className="text-gray-500 text-sm mt-1">{profile?.company_name}</p>
           </div>
-          <Button onClick={openAddDialog}>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => router.push('/supplier/products/page-batch')}>
+              <Upload className="w-4 h-4 mr-1" />
+              批量上传 Excel
+            </Button>
+            <Button onClick={openAddDialog}>
             <Plus className="w-4 h-4 mr-1" />
             新增产品
           </Button>
         </div>
+          </div>
 
         {/* 产品表格 */}
         <Card>
