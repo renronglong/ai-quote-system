@@ -444,16 +444,11 @@ export default function QuotePage() {
 
 // 三位有效数字取整，用于前端价格显示
 function fmtPrice(n: number): string {
-  if (n === 0 || !isFinite(n)) return '0';
+  if (n === 0 || !isFinite(n)) return n === 0 ? '0.00' : String(n);
   const d = Math.ceil(Math.log10(Math.abs(n)));
   const factor = Math.pow(10, 3 - d);
   const rounded = Math.round(n * factor) / factor;
-  // 去掉末尾多余的零，但保留至少一位小数
-  let s = rounded.toFixed(2);
-  // 如果是整数（如 4400），不显示小数
-  if (rounded === Math.round(rounded) && Math.abs(rounded) >= 100) return String(Math.round(rounded));
-  // 去掉末尾多余的零
-  return s.replace(/0+$/, '').replace(/\.$/, '');
+  return rounded.toFixed(2);
 }
 
 

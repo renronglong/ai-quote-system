@@ -196,7 +196,7 @@ async function buildExcel(body: SheetBody): Promise<Buffer> {
         c.alignment = { horizontal: 'center', vertical: 'middle' };
       } else if (ci === 7 || ci === 8 || ci === 10) {
         c.alignment = { horizontal: 'right', vertical: 'middle' };
-        c.numFmt = '#0.##';
+        c.numFmt = '0.00';
       } else {
         c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
       }
@@ -223,17 +223,17 @@ async function buildExcel(body: SheetBody): Promise<Buffer> {
   }
   const exCell = ws.getCell(totalRow, 8);
   exCell.value = r3s(Number(exSum));
-  exCell.numFmt = '#0.##';
+  exCell.numFmt = '0.00';
   exCell.alignment = { horizontal: 'right' };
   exCell.font = { name: FONT, size: 11, bold: true };
   const incCell = ws.getCell(totalRow, 9);
   incCell.value = r3s(Number(incSum));
-  incCell.numFmt = '#0.##';
+  incCell.numFmt = '0.00';
   incCell.alignment = { horizontal: 'right' };
   incCell.font = { name: FONT, size: 11, bold: true };
   const moldCell = ws.getCell(totalRow, 11);
   moldCell.value = r2s(Number(moldSum));
-  moldCell.numFmt = '#0.##';
+  moldCell.numFmt = '0.00';
   moldCell.alignment = { horizontal: 'right' };
   moldCell.font = { name: FONT, size: 11, bold: true };
 
