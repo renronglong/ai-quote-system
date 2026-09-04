@@ -487,6 +487,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
     material_utilization_rate: undefined as number | undefined,
     breakdown: {} as Record<string, { formula: string; detail: string }>,
     aluminum_index: 0, notes: [] as string[], mold_cost: 0, mold_spec: '' as string | undefined,
+    min_order_weight_kg: 0,
   };
 
   const hasProductDiscount = productDiscount !== 100;
@@ -654,7 +655,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
           ) : (
           <div className="mt-2 pt-2 border-t border-emerald-200/40 flex items-baseline gap-1">
             <span className="text-[11px] text-gray-500">最小起订量</span>
-            <span className="text-sm font-semibold text-gray-700">{manualMinOrderQty ?? minOrderQty} 件</span>
+            <span className="text-sm font-semibold text-gray-700">{manualMinOrderQty ?? minOrderQty} 件{(p as any).min_order_weight_kg ? <span className="text-[10px] text-gray-400 font-normal ml-1">约{(p as any).min_order_weight_kg}kg</span> : null}</span>
           </div>
           )
         )}

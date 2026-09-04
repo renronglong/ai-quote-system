@@ -744,6 +744,8 @@ function calcExtrusion(
   // 2. 模具费（挤压模具，单独列出）
   let moldCost = 0;
   let moldSpec = ''; // 模具规格，如 Φ297×230 分流模
+  let finalDieDiameter = 0; // 最终选定的模具直径（用于起订量分档）
+  let minOrderWeightKg = 300; // 最低起订重量(kg)，按模具规格分档
   if (req.mold_cost && req.mold_cost > 0) {
     moldCost = req.mold_cost;
     notes.push(`挤压模具费: ${moldCost}元（用户指定，一次性，不计入单件价格）`);
@@ -967,6 +969,7 @@ function calcExtrusion(
     const dieTypeMap: Record<string, string> = { flat: '平模', split: '分流模' };
     const dieType = dieTypeMap[dieTypeKey] || '分流模';
     moldSpec = `Φ${dieDiameter}×${dieThickness} ${dieType}`;
+    finalDieDiameter = dieDiameter;
     notes.push(`模具钢价: ${dieSteelPrice}元/吨${dims.die_steel_price ? '（用户指定）' : '（默认H13均价）'}`);
     if (isFlatDie) {
       notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + (${Math.round(baseProcessingFee)}基础 + ${Math.round(perimeterFee)}周长×厚度加工) × ${(mgmtRate*100).toFixed(0)}%管理费)`);
@@ -1153,8 +1156,11 @@ function calcExtrusion(
   // 使用未舍入的原始重量计算MOQ，避免精度丢失导致MOQ为0
   const rawWeight = mat.rawWeight || mat.weight;
   
-  // 最小起订量：按300kg最低起订重量换算件数，按数量级向上进位
-  const minOrderWeightKg = 300;
+  // 最小起订量：按模具规格分档最低起订重量换算件数，按数量级向上进位
+  // Φ397及以上→1000kg，Φ338→500kg，其余（含无模具/小模具）→300kg
+  if (finalDieDiameter >= 397) minOrderWeightKg = 1000;
+  else if (finalDieDiameter >= 338) minOrderWeightKg = 500;
+  else minOrderWeightKg = 300;
   const minOrderQtyRaw = rawWeight > 0 ? Math.ceil(minOrderWeightKg / rawWeight) : 0;
   const minOrderQty = ceilByMagnitude(minOrderQtyRaw);
   if (minOrderQty > 0) {
@@ -1180,6 +1186,7 @@ function calcExtrusion(
       total_in_tax: unitPrice,
       weight_per_piece_kg: mat.weight,
       min_order_qty: minOrderQty,
+      min_order_weight_kg: minOrderWeightKg,
       mold_cost: moldCost,
       mold_spec: moldSpec,
     },
@@ -1975,9 +1982,9 @@ export async function POST(request: NextRequest) {
     result.costs.total_ex_tax = r2(exTaxUnit * body.quantity);
     result.costs.total_in_tax = r2(inTaxUnit * body.quantity);
 
-    // 5. 最低订单量检查（最低 300kg）
+    // 5. 最低订单量检查（按模具规格分档：300/500/1000kg）
     const totalWeight = result.weight * body.quantity;
-    const minOrderWeight = 300;
+    const minOrderWeight = result.costs.min_order_weight_kg || 300;
     const minOrderMet = totalWeight >= minOrderWeight;
     if (!minOrderMet) {
       result.notes.push(`订单总重量 ${r2(totalWeight)}kg 未达到最低起订量 ${minOrderWeight}kg`);
@@ -2085,9 +2092,9 @@ export async function GET(request: NextRequest) {
     result.costs.total_ex_tax = r2(exTaxUnit * body.quantity);
     result.costs.total_in_tax = r2(inTaxUnit * body.quantity);
 
-    // 5. 最低订单量检查（最低 300kg）
+    // 5. 最低订单量检查（按模具规格分档：300/500/1000kg）
     const totalWeight = result.weight * body.quantity;
-    const minOrderWeight = 300;
+    const minOrderWeight = result.costs.min_order_weight_kg || 300;
     const minOrderMet = totalWeight >= minOrderWeight;
     if (!minOrderMet) {
       result.notes.push(`订单总重量 ${r2(totalWeight)}kg 未达到最低起订量 ${minOrderWeight}kg`);

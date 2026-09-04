@@ -50,6 +50,7 @@ export interface PricingResult {
   aluminum_index: number;
   mold_cost?: number;
   mold_spec?: string;
+  min_order_weight_kg?: number;
   min_order_qty?: number;
   notes: string[];
 }
@@ -1310,7 +1311,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             aluminum_index: data.aluminum_index || 0,
             notes: data.notes || [],
             mold_cost: data.mold_cost || 0,
+            mold_spec: data.mold_spec || '',
             min_order_qty: data.min_order_qty || 0,
+            min_order_weight_kg: data.min_order_weight_kg || 0,
           };
           onResult?.(result);
           reportRecognitionFeedback();
