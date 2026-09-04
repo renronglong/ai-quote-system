@@ -17,7 +17,7 @@ function sigfig(n: number, digits: number): number {
   const factor = Math.pow(10, digits - d);
   return Math.round(n * factor) / factor;
 }
-function r3sig(n: number): number { return Math.round(n * 100) / 100; }  // 价格统一2位小数
+function r3sig(n: number): number { return sigfig(n, 3); }  // 价格三位有效数字
 function r2sig(n: number): number { return Math.round(n); }
 
 // ==================== Types ====================
