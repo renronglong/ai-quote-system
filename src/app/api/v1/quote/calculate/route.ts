@@ -796,7 +796,23 @@ function calcExtrusion(
     // 步骤1：对角线 → 模具直径
     const W = dims.width_mm || 50;
     const H_dim = dims.height_mm || 25;
-    const diagonal = Math.sqrt(W * W + H_dim * H_dim);
+    // 按标准件类型计算外接圆直径（对角线）
+    const cat = dims.standard_category;
+    let diagonal: number;
+    if (cat === '铝圆管') {
+      // 圆管外接圆 = 外径
+      diagonal = dims.outer_diameter_mm || W;
+    } else if (cat === '铝圆棒') {
+      // 圆棒外接圆 = 直径
+      diagonal = dims.diameter_mm || W;
+    } else if (cat === '铝六角棒' || cat === '铝六角管') {
+      // 六角外接圆 = 对边 / sin(60°) = 对边 × 2/√3
+      const hexFlat = dims.hex_flat_mm || W;
+      diagonal = hexFlat / Math.sin(Math.PI / 3);
+    } else {
+      // 方/扁棒、角铝、方管、异型材：矩形对角线
+      diagonal = Math.sqrt(W * W + H_dim * H_dim);
+    }
     let phiDiag = diagonal * 1.1 + 80;
     let dieDiameter = STANDARD_DIE_SIZES.find(s => s >= phiDiag) || STANDARD_DIE_SIZES[STANDARD_DIE_SIZES.length - 1];
     if (phiDiag <= 140) dieDiameter = 139;
