@@ -75,6 +75,7 @@ interface QuoteFormProps {
   onCalculate?: (data: QuoteFormData) => void;
   onResult?: (result: PricingResult | null) => void;
   onProductInfoChange?: (info: { productName: string; productCode: string }) => void;
+  onMoldInfoChange?: (info: { useExistingMold: boolean | null; selectedMoldId: string | null }) => void;
   onSaveVariant?: () => Promise<boolean>;
   onNewQuote?: () => void;
   aiData?: AiFormUpdate | null;
@@ -493,11 +494,11 @@ const PROCESS_SUB_PARAMS: Record<string, { name: string; type: string; label: st
 };
 
 // Allowed upload extensions
-const ALLOWED_EXTENSIONS = ['.dxf', '.dwg', '.step', '.stp', '.igs', '.pdf', '.jpg', '.png'];
+const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png'];
 
 // ==================== Component ====================
 
-export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, onSaveVariant, onNewQuote, aiData }: QuoteFormProps) {
+export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, onMoldInfoChange, onSaveVariant, onNewQuote, aiData }: QuoteFormProps) {
   // ===== 登录 + 识图额度 =====
   const { user, quota, checkQuota, referralLink, ensureReferralLink } = useAuth();
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -1062,6 +1063,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     onProductInfoChange?.({ productName, productCode });
   }, [productName, productCode]);
 
+  // Notify parent when mold selection changes
+  useEffect(() => {
+    onMoldInfoChange?.({ useExistingMold, selectedMoldId });
+  }, [useExistingMold, selectedMoldId]);
+
   // ==================== Mapping Helpers ====================
 
   const mapProductType = (): string => {
@@ -1271,6 +1277,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       };
       if (productName) payload.product_name = productName;
       if (productCode) payload.product_code = productCode;
+      if (useExistingMold === true) payload.use_existing_mold = true;
       if (dimensions) {
         if (productType === '挤出') (dimensions as any).material_size_type = materialSizeType;
         payload.dimensions = dimensions;
@@ -1599,6 +1606,32 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // ==================== Paste Support ====================
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            const ext = '.' + file.name.split('.').pop()?.toLowerCase() || '.png';
+            if (ALLOWED_EXTENSIONS.includes(ext) || ext === '.png') {
+              // 给粘贴的文件一个默认名
+              const namedFile = new File([file], `pasted_${Date.now()}.png`, { type: file.type });
+              setUploadedFile(namedFile);
+              recognizeFile(namedFile);
+            }
+          }
+          break;
+        }
+      }
+    };
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, []);
+
+
   const requestDeepQuote = async () => {
     if (!uploadedFile || deepQuoteLoading) return;
     setDeepQuoteLoading(true);
@@ -1668,7 +1701,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               if (fieldKey === 'productSize') {
                 return (
                   <div key={fieldKey}>
-                    <label className="block text-[11px] text-gray-500 mb-1">{FIELD_LABELS[fieldKey]}</label>
+                    <label className="block text-[12px] text-gray-500 mb-1">{FIELD_LABELS[fieldKey]}</label>
                     <input
                       type="text"
                       placeholder="如 100×50×30"
@@ -1685,9 +1718,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 const cavLabel = !cavVal ? '' : fields.die_type === 'split' ? '分流模' : '平模';
                 return (
                   <div key={fieldKey}>
-                    <label className="block text-[11px] text-gray-500 mb-1">
+                    <label className="block text-[12px] text-gray-500 mb-1">
                       {FIELD_LABELS[fieldKey]}
-                      <span className="ml-1 text-[10px] text-blue-500">({cavLabel})</span>
+                      <span className="ml-1 text-[11px] text-blue-500">({cavLabel})</span>
                     </label>
                     <select
                       value={cavVal}
@@ -1715,7 +1748,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 const dtVal = fields[fieldKey] as string;
                 return (
                   <div key={fieldKey}>
-                    <label className="block text-[11px] text-gray-500 mb-1">{FIELD_LABELS[fieldKey]}</label>
+                    <label className="block text-[12px] text-gray-500 mb-1">{FIELD_LABELS[fieldKey]}</label>
                     <select
                       value={dtVal || ''}
                       onChange={e => {
@@ -1751,9 +1784,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 const canAdd = lengthVal > 0 && calcWeight > 0;
                 return (
                   <div key={fieldKey}>
-                    <label className="block text-[11px] text-gray-500 mb-1">
+                    <label className="block text-[12px] text-gray-500 mb-1">
                       {FIELD_LABELS[fieldKey]}
-                      <span className="ml-1 text-[10px] text-blue-400">点＋把当前长度存入报价池（同副模具只算一次模具费）</span>
+                      <span className="ml-1 text-[11px] text-blue-400">点＋把当前长度存入报价池（同副模具只算一次模具费）</span>
                     </label>
                     <div className="flex gap-1">
                       <input
@@ -1795,7 +1828,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               }
               return (
                 <div key={fieldKey}>
-                  <label className="block text-[11px] text-gray-500 mb-1">{FIELD_LABELS[fieldKey]}</label>
+                  <label className="block text-[12px] text-gray-500 mb-1">{FIELD_LABELS[fieldKey]}</label>
                   <input
                     type="number"
                     min={0}
@@ -1839,7 +1872,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           if (wg === null) return null;
           const densityTxt = materialCategory === '铝板' ? '2.7' : materialCategory === '不锈钢' ? '7.93' : '7.85';
           return (
-            <div className="mt-1 flex flex-wrap items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-100 px-2.5 py-1.5 text-[11px] text-blue-700">
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-100 px-2.5 py-1.5 text-[12px] text-blue-700">
               <span className="font-semibold">单件理论重量</span>
               <span className="font-mono font-semibold text-blue-800">{wg} g</span>
               <span className="text-blue-400">（{parsed!.l}×{parsed!.w}×{t}mm × {densityTxt}g/cm³ 自动计算，直接用于报价）</span>
@@ -1858,7 +1891,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
         {/* ---- 模具组工具条：点「新建报价」=开一副新模具 ---- */}
         <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-blue-50/70 border border-blue-100">
-          <div className="text-[11px] text-blue-700 leading-snug">
+          <div className="text-[12px] text-blue-700 leading-snug">
             当前为<b>同一副模具</b>：改长度后点长度框旁的<b>＋</b>存入报价池，出单时模具费只算一次。
           </div>
           <button
@@ -1883,7 +1916,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[11px] text-gray-500 mb-1">产品名称</label>
+              <label className="block text-[12px] text-gray-500 mb-1">产品名称</label>
               <input
                 type="text"
                 placeholder="输入产品名称"
@@ -1893,7 +1926,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               />
             </div>
             <div>
-              <label className="block text-[11px] text-gray-500 mb-1">产品编号</label>
+              <label className="block text-[12px] text-gray-500 mb-1">产品编号</label>
               <input
                 type="text"
                 placeholder="输入产品编号"
@@ -1923,7 +1956,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   <span className="text-base">{cfg.icon}</span>
                   {cfg.label}
                   {key === '注塑' && (
-                    <span className="ml-0.5 px-1 py-0.5 rounded bg-amber-100 text-amber-600 text-[9px] font-normal leading-none">待开发</span>
+                    <span className="ml-0.5 px-1 py-0.5 rounded bg-amber-100 text-amber-600 text-[10px] font-normal leading-none">待开发</span>
                   )}
                 </span>
                 {productType === key && (
@@ -1936,7 +1969,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
         {/* ---- 材料类别 ---- */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-          <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">材料类别</label>
+          <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">材料类别</label>
           <div className="flex flex-wrap gap-1.5">
             {Object.entries(productConfig?.materialCategories || {}).map(([key, cfg]) => (
               <button
@@ -1962,7 +1995,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           if (visibleCats.length === 0) return null;
           return (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-              <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+              <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
                 标准件种类
               </label>
               <div className="flex flex-wrap gap-1.5">
@@ -1978,8 +2011,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     }`}
                   >
                     {cat.label}
-                    <span className="ml-1 text-[10px] opacity-60">({cat.count})</span>
-                    <span className={`ml-1 text-[10px] ${cat.mold_type === '分流模' ? 'text-red-400' : 'text-gray-400'}`}>
+                    <span className="ml-1 text-[11px] opacity-60">({cat.count})</span>
+                    <span className={`ml-1 text-[11px] ${cat.mold_type === '分流模' ? 'text-red-400' : 'text-gray-400'}`}>
                       {cat.mold_type}
                     </span>
                   </button>
@@ -1992,7 +2025,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         {/* ---- 异型材模具类型选择 (仅挤出·异型材，上移直接选) ---- */}
         {productType === '挤出' && materialCategory === '异型材' && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-            <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+            <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
               模具类型（先选再填尺寸）
             </label>
             <div className="flex gap-2">
@@ -2014,7 +2047,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               ))}
             </div>
             {!fields.die_type && (
-              <div className="mt-1.5 text-[11px] text-amber-500">请先选择模具类型，再填尺寸点搜索</div>
+              <div className="mt-1.5 text-[12px] text-amber-500">请先选择模具类型，再填尺寸点搜索</div>
             )}
           </div>
         )}
@@ -2025,7 +2058,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           if (!dimFields) return null;
           return (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-              <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+              <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
                 输入尺寸 · 填完点按钮匹配模具
               </label>
               <div className={`grid ${dimFields.length >= 3 ? 'grid-cols-3' : dimFields.length === 2 ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
@@ -2034,7 +2067,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   const stateKey = fieldMap[df.key] || df.key;
                   return (
                     <div key={df.key}>
-                      <label className="block text-[10px] text-gray-400 mb-0.5">{df.label}</label>
+                      <label className="block text-[11px] text-gray-400 mb-0.5">{df.label}</label>
                       <input
                         type="number"
                         min={0}
@@ -2071,7 +2104,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               {!CATEGORY_NEEDS_DIE_SELECTION.includes(standardCategory) && (() => {
                 const mw = calcStdMeterWeight(standardCategory, fields.width as number, fields.height as number, fields.thickness as number);
                 return mw !== null ? (
-                  <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-100 px-2.5 py-1.5 text-[11px] text-blue-700">
+                  <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-100 px-2.5 py-1.5 text-[12px] text-blue-700">
                     <span className="font-semibold">理论米重</span>
                     <span className="font-mono font-semibold text-blue-800">{mw} kg/m</span>
                     <span className="text-blue-400">（按6063铝密度2.7g/cm³自动计算，直接用于报价）</span>
@@ -2091,7 +2124,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
               {!moldMatchLoading && moldMatches.length > 0 && !(selectedMoldId && useExistingMold) && (
                 <div className="mt-2 space-y-1.5">
-                  <div className="text-[11px] font-medium text-gray-600 flex items-center gap-1">
+                  <div className="text-[12px] font-medium text-gray-600 flex items-center gap-1">
                     <CheckCircle2 className="w-3 h-3 text-green-500" />
                     找到 {moldMatches.length} 个相近模具（公差≤15%）
                   </div>
@@ -2130,12 +2163,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                         <div className="flex items-center gap-2 min-w-0">
                           {/* 任务1：异型材显示模具编号，标准件无编号不显示 */}
                           {standardCategory === '异型材' && m.mold_number && (
-                            <span className="shrink-0 px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-mono text-[10px] font-medium">{m.mold_number}</span>
+                            <span className="shrink-0 px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-mono text-[11px] font-medium">{m.mold_number}</span>
                           )}
                           <span className="font-medium shrink-0">{m.cross_section_mm}</span>
                           <span className="text-gray-400 shrink-0">·</span>
                           <span className="text-gray-500 truncate">{m.weight_per_meter}kg/m</span>
-                          <span className={`shrink-0 px-1 py-0.5 rounded text-[9px] ${
+                          <span className={`shrink-0 px-1 py-0.5 rounded text-[10px] ${
                             m.mold_type === '分流模' ? 'bg-red-50 text-red-500' : 'bg-gray-100 text-gray-500'
                           }`}>{m.mold_type}</span>
                         </div>
@@ -2154,9 +2187,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="text-green-600 text-xs">✓</span>
                           <span className="text-xs font-medium text-green-700 truncate">{sel?.cross_section_mm || '已选模具'}</span>
-                          <span className="text-[10px] text-gray-400">{sel?.weight_per_meter}kg/m</span>
+                          <span className="text-[11px] text-gray-400">{sel?.weight_per_meter}kg/m</span>
                         </div>
-                        <button type="button" onClick={() => { setSelectedMoldId(null); setUseExistingMold(null); }} className="text-[10px] text-blue-500 hover:text-blue-700 shrink-0 ml-2">更换</button>
+                        <button type="button" onClick={() => { setSelectedMoldId(null); setUseExistingMold(null); }} className="text-[11px] text-blue-500 hover:text-blue-700 shrink-0 ml-2">更换</button>
                       </div>
                     );
                   })()}
@@ -2167,7 +2200,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     <button
                       type="button"
                       onClick={() => setUseExistingMold(true)}
-                      className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${
                         useExistingMold === true
                           ? 'bg-green-50 border-green-300 text-green-700'
                           : 'bg-white border-gray-200 text-gray-500 hover:border-green-200'
@@ -2178,7 +2211,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     <button
                       type="button"
                       onClick={() => { setUseExistingMold(false); setSelectedMoldId(null); }}
-                      className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${
                         useExistingMold === false
                           ? 'bg-orange-50 border-orange-300 text-orange-700'
                           : 'bg-white border-gray-200 text-gray-500 hover:border-orange-200'
@@ -2193,11 +2226,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
               {!moldMatchLoading && moldMatches.length === 0 && standardCategory && (fields.width || fields.height || fields.perimeter || fields.meterWeight) && (
                 <div className="mt-2 flex items-center justify-between bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
-                  <span className="text-[11px] text-orange-600">未找到相近现有模具</span>
+                  <span className="text-[12px] text-orange-600">未找到相近现有模具</span>
                   <button
                     type="button"
                     onClick={() => setUseExistingMold(false)}
-                    className={`px-2 py-1 rounded text-[11px] font-medium border transition-all ${
+                    className={`px-2 py-1 rounded text-[12px] font-medium border transition-all ${
                       useExistingMold === false
                         ? 'bg-orange-500 border-orange-500 text-white'
                         : 'bg-white border-orange-300 text-orange-600 hover:bg-orange-100'
@@ -2213,14 +2246,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
         {/* ---- 基本参数 ---- */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-          <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">基本参数</label>
+          <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">基本参数</label>
           {renderFields()}
         </div>
 
         {/* ---- 加工工艺 ---- */}
         {categoryConfig && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-            <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">加工工艺（可多选）</label>
+            <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">加工工艺（可多选）</label>
             <div className="flex flex-wrap gap-1.5">
               {categoryConfig.processes.map(proc => {
                 const isNone = proc.name === '无';
@@ -2252,7 +2285,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                           onChange={e => updateProcessQuantity(proc.name, e.target.value)}
                           className="w-16 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
                         />
-                        <span className="text-[10px] text-gray-400">{proc.unit}</span>
+                        <span className="text-[11px] text-gray-400">{proc.unit}</span>
                       </div>
                     )}
                   </div>
@@ -2265,11 +2298,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               if (!subDef) return null;
               return (
                 <div key={proc.name + '_params'} className="mt-2 p-2 bg-blue-50/50 rounded-lg border border-blue-100">
-                  <div className="text-[11px] font-medium text-blue-700 mb-1.5">{proc.name} 参数</div>
+                  <div className="text-[12px] font-medium text-blue-700 mb-1.5">{proc.name} 参数</div>
                   <div className="flex flex-wrap gap-2">
                     {proc.name === '冲压' && (
                       <div className="flex items-center gap-1">
-                        <span className="text-[10px] text-gray-500">冲次:</span>
+                        <span className="text-[11px] text-gray-500">冲次:</span>
                         <input
                           type="number"
                           min={0}
@@ -2278,12 +2311,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                           onChange={e => updateProcessQuantity(proc.name, e.target.value)}
                           className="w-16 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
                         />
-                        <span className="text-[10px] text-gray-400">次</span>
+                        <span className="text-[11px] text-gray-400">次</span>
                       </div>
                     )}
                     {subDef.map(param => (
                       <div key={param.name} className="flex items-center gap-1">
-                        <span className="text-[10px] text-gray-500">{param.label}:</span>
+                        <span className="text-[11px] text-gray-500">{param.label}:</span>
                         {param.type === 'select' && param.options ? (
                           <select
                             value={proc.subParams?.[param.name] ?? param.options[0]}
@@ -2314,7 +2347,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         {/* ---- 表面处理（合并材料+产品，二选一） ---- */}
         {(showMaterialSurface || showProductSurface) && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-            <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">表面处理</label>
+            <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">表面处理</label>
             <CustomSelect
               value={surfaceTreatment}
               options={getSurfaceTreatmentOptions().map(o => o.name)}
@@ -2322,14 +2355,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             />
             {getSurfaceColorOptions().length > 0 && (
               <div className="mt-2">
-                <label className="block text-[11px] text-gray-500 mb-1">颜色</label>
+                <label className="block text-[12px] text-gray-500 mb-1">颜色</label>
                 <CustomSelect value={surfaceColor} options={getSurfaceColorOptions()} onChange={setSurfaceColor} />
               </div>
             )}
             {/* 长料/小料切换 — 仅挤压铝型材显示 */}
             {productType === '挤出' && surfaceTreatment && surfaceTreatment !== '无' && (
               <div className="mt-2">
-                <label className="block text-[11px] text-gray-500 mb-1">材料规格</label>
+                <label className="block text-[12px] text-gray-500 mb-1">材料规格</label>
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -2362,12 +2395,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         {/* ---- 其他参数（挤出专用） ---- */}
         {productType === '挤出' && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-            <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">其他参数</label>
+            <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">其他参数</label>
             {/* 模具钢价输入框已隐藏，后端使用默认值 18000 元/吨 */}
             <div style={{ display: 'none' }}>
-              <label className="block text-[11px] text-gray-500 mb-1">
+              <label className="block text-[12px] text-gray-500 mb-1">
                 模具钢价(元/吨)
-                <span className="ml-1 text-[10px] text-gray-400">选填，默认18000(H13均价)</span>
+                <span className="ml-1 text-[11px] text-gray-400">选填，默认18000(H13均价)</span>
               </label>
               <input
                 type="number"
@@ -2384,7 +2417,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
         {/* ---- 图纸上传 ---- */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-          <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">图纸上传（可选）</label>
+          <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">图纸上传（可选）</label>
           <div
             onDragOver={e => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
@@ -2411,7 +2444,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   <FileText className="w-5 h-5 text-emerald-500 shrink-0" />
                   <div>
                     <div className="text-sm font-medium text-gray-800 truncate max-w-[160px]">{uploadedFile.name}</div>
-                    <div className="text-[10px] text-gray-400">{(uploadedFile.size / 1024).toFixed(1)} KB</div>
+                    <div className="text-[11px] text-gray-400">{(uploadedFile.size / 1024).toFixed(1)} KB</div>
                   </div>
                 </div>
                 <button
@@ -2426,7 +2459,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               <div>
                 <Upload className={`w-6 h-6 mx-auto mb-1.5 ${dragOver ? 'text-blue-500' : 'text-gray-400'}`} />
                 <p className="text-xs text-gray-500">拖拽文件到此处，或<span className="text-blue-500 font-medium">点击上传</span></p>
-                <p className="text-[10px] text-gray-400 mt-1">支持 .dxf .dwg .step .stp .igs .pdf .jpg .png</p>
+                <p className="text-[11px] text-gray-400 mt-1">支持 .pdf .jpg .png，也可 Ctrl+V 粘贴图片</p>
               </div>
             )}
           </div>
@@ -2457,7 +2490,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     type="button"
                     onClick={requestDeepQuote}
                     disabled={deepQuoteLoading}
-                    className="mt-1.5 inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[11px] font-medium hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="mt-1.5 inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[12px] font-medium hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {deepQuoteLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <User className="w-3 h-3" />}
                     {deepQuoteLoading ? '深度识别中...' : '申请深度报价'}
@@ -2480,7 +2513,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 ) : (
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
                 )}
-                <span className={`text-[11px] font-semibold ${
+                <span className={`text-[12px] font-semibold ${
                   recogResult.needs_human ? 'text-amber-700' : 'text-emerald-700'
                 }`}>
                   {recogResult.needs_human ? '识别不确定，请确认参数' : 'AI已自动填入参数'}
@@ -2489,7 +2522,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   )}
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] text-gray-600">
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[12px] text-gray-600">
                 {recogResult.width != null && <div>宽: <b>{recogResult.width}mm</b></div>}
                 {recogResult.height != null && <div>高: <b>{recogResult.height}mm</b></div>}
                 {recogResult.wall_thickness != null && <div>壁厚: <b>{recogResult.wall_thickness}mm</b></div>}
@@ -2502,7 +2535,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 {recogResult.product_code && <div className="col-span-2">图号: <b>{recogResult.product_code}</b></div>}
               </div>
               {recogResult.handoff_reason && (
-                <div className="mt-1.5 text-[10px] text-amber-600">{recogResult.handoff_reason}</div>
+                <div className="mt-1.5 text-[11px] text-amber-600">{recogResult.handoff_reason}</div>
               )}
               <div className="mt-2 flex gap-2">
                 {recogResult.needs_human && (
@@ -2510,7 +2543,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     <button
                       type="button"
                       onClick={() => applyRecogToForm(recogResult)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-500 text-white text-[11px] font-medium hover:bg-emerald-600 transition-colors"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-500 text-white text-[12px] font-medium hover:bg-emerald-600 transition-colors"
                     >
                       <CheckCircle2 className="w-3 h-3" />
                       确认填入
@@ -2519,7 +2552,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                       type="button"
                       onClick={requestDeepQuote}
                       disabled={deepQuoteLoading}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[11px] font-medium hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[12px] font-medium hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {deepQuoteLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <User className="w-3 h-3" />}
                       {deepQuoteLoading ? '深度识别中...' : '申请深度报价'}

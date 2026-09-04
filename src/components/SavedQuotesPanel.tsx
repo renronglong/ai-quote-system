@@ -423,21 +423,21 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange }
                       <div className="text-right shrink-0">
                         <span className="text-sm font-bold text-emerald-600">{unitPrice}</span>
                         {isDiscounted && (
-                          <div className="text-[10px] text-gray-400 line-through">
+                          <div className="text-[11px] text-gray-400 line-through">
                             {fmt(quote.result?.unit_price)}
                           </div>
                         )}
                       </div>
                     </div>
-                    <div className="text-[11px] text-gray-400 mt-0.5">
+                    <div className="text-[12px] text-gray-400 mt-0.5">
                       {new Date(quote.date || quote.created_at || '').toLocaleString('zh-CN')}
                     </div>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[11px] text-gray-500">
+                      <span className="text-[12px] text-gray-500">
                         {quote.params?.quantity || 0}件 · {quote.params?.materialCategory || quote.params?.material?.category || '-'}
                       </span>
                       {(quote.product_discount || quote.mold_discount) && (
-                        <span className="text-[10px] text-orange-500 flex items-center gap-0.5">
+                        <span className="text-[11px] text-orange-500 flex items-center gap-0.5">
                           <Percent className="w-3 h-3" />
                           {quote.product_discount && quote.product_discount < 100 && `产品${quote.product_discount}%折`}
                           {quote.product_discount && quote.product_discount < 100 && quote.mold_discount && quote.mold_discount < 100 && ' '}

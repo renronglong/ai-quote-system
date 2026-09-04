@@ -2589,34 +2589,34 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
                   )}
                   <div className="text-xs font-mono text-gray-800 font-medium truncate">{m.mold_number || '无编号'}</div>
                   <div className="text-xs text-gray-500 truncate">{m.product_name || '-'}</div>
-                  <div className="text-[11px] text-gray-600 mt-0.5">{m.cross_section_mm || '-'}</div>
+                  <div className="text-[12px] text-gray-600 mt-0.5">{m.cross_section_mm || '-'}</div>
                   <div className="mt-1.5 space-y-0.5">
                     <div className="flex items-center gap-1">
-                      <span className="text-[10px] text-gray-400 w-6 shrink-0">尺寸</span>
+                      <span className="text-[11px] text-gray-400 w-6 shrink-0">尺寸</span>
                       <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
                         <div className="h-full rounded-full bg-blue-400" style={{width: `${m.dim_score}%`}} />
                       </div>
-                      <span className="text-[10px] text-gray-500">{m.dim_score}%</span>
+                      <span className="text-[11px] text-gray-500">{m.dim_score}%</span>
                     </div>
                     <div className="flex items-center gap-1">
-                      <span className="text-[10px] text-gray-400 w-6 shrink-0">米重</span>
+                      <span className="text-[11px] text-gray-400 w-6 shrink-0">米重</span>
                       <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
                         <div className="h-full rounded-full bg-green-400" style={{width: `${m.weight_score}%`}} />
                       </div>
-                      <span className="text-[10px] text-gray-500">{m.weight_score}%</span>
+                      <span className="text-[11px] text-gray-500">{m.weight_score}%</span>
                     </div>
                     {m.image_similarity > 0 && (
                       <div className="flex items-center gap-1">
-                        <span className="text-[10px] text-gray-400 w-6 shrink-0">截面</span>
+                        <span className="text-[11px] text-gray-400 w-6 shrink-0">截面</span>
                         <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
                           <div className="h-full rounded-full bg-orange-400" style={{width: `${m.image_similarity}%`}} />
                         </div>
-                        <span className="text-[10px] text-gray-500">{m.image_similarity}%</span>
+                        <span className="text-[11px] text-gray-500">{m.image_similarity}%</span>
                       </div>
                     )}
                   </div>
                   <div className="mt-1 pt-1 border-t border-gray-100">
-                    <span className="text-[10px] font-semibold text-blue-700">综合 {m.score}%</span>
+                    <span className="text-[11px] font-semibold text-blue-700">综合 {m.score}%</span>
                   </div>
                 </div>
               ))}

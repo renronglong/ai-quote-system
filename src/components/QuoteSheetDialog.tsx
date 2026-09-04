@@ -453,7 +453,7 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
           {/* 报价勾选 */}
           <div className="space-y-2">
             <div className="text-sm font-medium text-gray-700">勾选本次报价（{selected.size} 项）
-              <span className="ml-2 text-[11px] font-normal text-blue-600">
+              <span className="ml-2 text-[12px] font-normal text-blue-600">
                 含同模具 {(() => {
                   const sel = items.filter(it => selected.has(it.id) && it.moldGroup);
                   const groups = new Set(sel.map(it => it.moldGroup));
@@ -484,7 +484,7 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
                             {it.moldGroup && (
-                              <span className="shrink-0 px-1.5 py-0 rounded bg-orange-50 border border-orange-200 text-orange-600 text-[10px] font-medium">同一副模</span>
+                              <span className="shrink-0 px-1.5 py-0 rounded bg-orange-50 border border-orange-200 text-orange-600 text-[11px] font-medium">同一副模</span>
                             )}
                             <div className="text-sm text-gray-800 truncate">{it._label}</div>
                           </div>
@@ -577,7 +577,7 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
                         <span className="font-mono text-blue-600">{h.quote_no}</span>
                         {h.customer_name && <span className="ml-2">{h.customer_name}</span>}
                       </div>
-                      <div className="text-[11px] text-gray-400">
+                      <div className="text-[12px] text-gray-400">
                         {h.created_at ? new Date(h.created_at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
                         {' · '}{h.item_count}项 · 未税¥{Number(h.ex_sum).toFixed(0)} · 含税¥{Number(h.inc_sum).toFixed(0)}
                       </div>

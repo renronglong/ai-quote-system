@@ -73,7 +73,8 @@ export default function QuotePage() {
   const [moldDiscount, setMoldDiscount] = useState<number>(100); // 模具费折扣，100=无折扣
   const [manualUnitPrice, setManualUnitPrice] = useState<number | null>(null); // 手动覆盖单价
   const [manualMoldFee, setManualMoldFee] = useState<number | null>(null); // 手动覆盖模具费
-  const [manualMinOrderQty, setManualMinOrderQty] = useState<number | null>(null); // 手动覆盖最小起订量
+  const [manualMinOrderQty, setManualMinOrderQty] = useState<number | null>(null);
+  const [useExistingMold, setUseExistingMoldState] = useState<boolean | null>(null); // 手动覆盖最小起订量
   const [moldGroupId, setMoldGroupId] = useState<string>(() => 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)); // 当前模具组ID：同组报价共用一副模具
   const [formNonce, setFormNonce] = useState(0); // 新建报价时重挂载 QuoteForm 清空表单
   const aiDataCounter = useRef(0);
@@ -96,6 +97,10 @@ export default function QuotePage() {
 
   const handleProductInfoChange = useCallback((info: { productName: string; productCode: string }) => {
     setProductInfo(info);
+  }, []);
+
+  const handleMoldInfoChange = useCallback((info: { useExistingMold: boolean | null; selectedMoldId: string | null }) => {
+    setUseExistingMoldState(info.useExistingMold);
   }, []);
 
   // 长度＋：把当前长度/参数的报价存进报价池（归属当前模具组）
@@ -229,6 +234,7 @@ export default function QuotePage() {
   const finalUnit = discountedUnit; // 产品折后单价
   const hasProductDiscount = productDiscount !== 100;
   const hasMoldDiscount = moldDiscount !== 100 && moldFee > 0;
+  const hideMoldFeeForUser = useExistingMold === true && !user?.is_admin;
   const hasAnyDiscount = hasProductDiscount || hasMoldDiscount;
   const hasManualUnitPrice = manualUnitPrice !== null;
   const hasManualMoldFee = manualMoldFee !== null;
@@ -245,7 +251,7 @@ export default function QuotePage() {
               </div>
               <div className="flex items-baseline gap-1.5">
                 <span className="text-base font-bold text-gray-800">报价计算器</span>
-                <span className="hidden sm:inline text-[10px] text-gray-400">gyparts.cn</span>
+                <span className="hidden sm:inline text-[11px] text-gray-400">gyparts.cn</span>
               </div>
             </Link>
 
@@ -274,9 +280,9 @@ export default function QuotePage() {
               {aluminumPrice && (
                 <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-50 border border-gray-200">
                   <TrendingUp className="w-3 h-3 text-orange-500" />
-                  <span className="text-[10px] text-gray-500">铝锭</span>
+                  <span className="text-[11px] text-gray-500">铝锭</span>
                   <span className="text-xs font-bold text-gray-800">¥{aluminumPrice.price.toLocaleString()}</span>
-                  <span className={`text-[10px] font-medium ${aluminumPrice.change >= 0 ? 'text-red-500' : 'text-green-500'}`}>
+                  <span className={`text-[11px] font-medium ${aluminumPrice.change >= 0 ? 'text-red-500' : 'text-green-500'}`}>
                     {aluminumPrice.change >= 0 ? '↑' : '↓'}{Math.abs(aluminumPrice.changePercent).toFixed(2)}%
                   </span>
                 </div>
@@ -352,6 +358,7 @@ export default function QuotePage() {
               aiData={aiFormData}
               onResult={handleResult}
               onProductInfoChange={handleProductInfoChange}
+              onMoldInfoChange={handleMoldInfoChange}
               onSaveVariant={handleSaveVariant}
               onNewQuote={handleNewQuote}
               onCalculate={handleParamsUpdate}
@@ -379,6 +386,7 @@ export default function QuotePage() {
                 user={user}
                 baseUnitPrice={baseUnitPrice}
                 baseMoldFee={baseMoldFee}
+                useExistingMold={useExistingMold}
                 manualUnitPrice={manualUnitPrice}
                 manualMoldFee={manualMoldFee}
                 onManualUnitPriceChange={setManualUnitPrice}
@@ -424,6 +432,7 @@ export default function QuotePage() {
               user={user}
               baseUnitPrice={baseUnitPrice}
               baseMoldFee={baseMoldFee}
+              useExistingMold={useExistingMold}
               manualUnitPrice={manualUnitPrice}
               manualMoldFee={manualMoldFee}
               onManualUnitPriceChange={setManualUnitPrice}
@@ -452,7 +461,7 @@ function fmtPrice(n: number): string {
 }
 
 
-function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, compact, productDiscount, moldDiscount, onProductDiscountChange, onMoldDiscountChange, moldFee, onSave, saving, saveSuccess, user, baseUnitPrice, baseMoldFee, manualUnitPrice, manualMoldFee, onManualUnitPriceChange, onManualMoldFeeChange, minOrderQty, manualMinOrderQty, onManualMinOrderQtyChange, onExportPDF }: {
+function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, compact, productDiscount, moldDiscount, onProductDiscountChange, onMoldDiscountChange, moldFee, onSave, saving, saveSuccess, user, baseUnitPrice, baseMoldFee, useExistingMold, manualUnitPrice, manualMoldFee, onManualUnitPriceChange, onManualMoldFeeChange, minOrderQty, manualMinOrderQty, onManualMinOrderQtyChange, onExportPDF }: {
   pricingResult: PricingResult | null;
   aluminumPrice: AluminumPrice | null;
   productName: string;
@@ -469,6 +478,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
   user: any;
   baseUnitPrice: number;
   baseMoldFee: number;
+  useExistingMold?: boolean | null;
   manualUnitPrice: number | null;
   manualMoldFee: number | null;
   onManualUnitPriceChange: (v: number | null) => void;
@@ -492,6 +502,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
 
   const hasProductDiscount = productDiscount !== 100;
   const hasMoldDiscount = moldDiscount !== 100 && moldFee > 0;
+  const hideMoldFeeForUser = useExistingMold === true && !user?.is_admin;
   const discountedUnit = p.unit_price * (productDiscount / 100);
   const discountedMold = moldFee * (moldDiscount / 100);
   const displayUnit = hasProductDiscount ? discountedUnit : p.unit_price;
@@ -513,13 +524,13 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         <div className="rounded-xl bg-white border border-gray-200 shadow-sm px-3 py-2.5">
           {productName && (
             <div className="flex items-baseline gap-2">
-              <span className="text-[11px] text-gray-400 shrink-0">名称</span>
+              <span className="text-[12px] text-gray-400 shrink-0">名称</span>
               <span className="text-sm font-semibold text-gray-800 truncate">{productName}</span>
             </div>
           )}
           {productCode && (
             <div className="flex items-baseline gap-2 mt-0.5">
-              <span className="text-[11px] text-gray-400 shrink-0">编号</span>
+              <span className="text-[12px] text-gray-400 shrink-0">编号</span>
               <span className="text-xs font-medium text-gray-500 font-mono">{productCode}</span>
             </div>
           )}
@@ -531,12 +542,12 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-1.5">
             <Package className="w-3.5 h-3.5 text-emerald-600" />
-            <span className="text-[11px] font-medium text-emerald-600 uppercase tracking-wide">未税单价</span>
+            <span className="text-[12px] font-medium text-emerald-600 uppercase tracking-wide">未税单价</span>
           </div>
           {!isPlaceholder && (
             internal ? (
             <div className="flex items-center gap-1">
-              <span className="text-[10px] text-gray-400">¥</span>
+              <span className="text-[11px] text-gray-400">¥</span>
               <input
                 type="number"
                 step="0.01"
@@ -550,7 +561,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
               />
               <span className={`text-sm ${isPlaceholder ? 'text-gray-300' : 'text-emerald-500'}`}>/件</span>
               {manualUnitPrice !== null && (
-                <button onClick={() => onManualUnitPriceChange(null)} className="text-[10px] text-gray-400 hover:text-red-500 ml-0.5" title="恢复计算值">✕</button>
+                <button onClick={() => onManualUnitPriceChange(null)} className="text-[11px] text-gray-400 hover:text-red-500 ml-0.5" title="恢复计算值">✕</button>
               )}
             </div>
             ) : (
@@ -565,26 +576,26 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
           <div className={`font-bold text-gray-300 ${compact ? 'text-2xl' : 'text-4xl'}`}>¥--</div>
         )}
         {internal && hasProductDiscount && !isPlaceholder && (
-          <div className="text-[11px] text-red-500 mt-0.5">
+          <div className="text-[12px] text-red-500 mt-0.5">
             基准 ¥{fmtPrice(baseUnitPrice)}{manualUnitPrice !== null ? ` → 手动 ¥${fmtPrice(manualUnitPrice)}` : ''} · {productDiscount > 100 ? `加价${productDiscount - 100}%` : `${productDiscount}%折`}
           </div>
         )}
         {internal && !hasProductDiscount && manualUnitPrice !== null && !isPlaceholder && (
-          <div className="text-[11px] text-amber-600 mt-0.5">
+          <div className="text-[12px] text-amber-600 mt-0.5">
             手动调整：计算值 ¥{fmtPrice(baseUnitPrice)} → ¥{fmtPrice(manualUnitPrice)}
           </div>
         )}
         {/* 含税单价 */}
         {!isPlaceholder && p.unit_price_in_tax && p.unit_price_in_tax > 0 && (
           <div className="mt-1 flex items-baseline gap-1.5">
-            <span className="text-[10px] text-gray-400">含税单价</span>
+            <span className="text-[11px] text-gray-400">含税单价</span>
             <span className="text-sm font-semibold text-gray-600">
               ¥{fmtPrice(manualUnitPrice
                 ? manualUnitPrice * (p.unit_price_in_tax / (p.unit_price_ex_tax || p.unit_price || 1))
                 : p.unit_price_in_tax
               )}/件
             </span>
-            <span className="text-[10px] text-gray-300">（含13%增值税）</span>
+            <span className="text-[11px] text-gray-300">（含13%增值税）</span>
           </div>
         )}
         <div className="mt-1.5 flex items-baseline gap-1">
@@ -594,17 +605,17 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
           </span>
         </div>
         {/* 模具费（右上角标注模具规格） */}
-        {baseMoldFee > 0 && !isPlaceholder && (
+        {baseMoldFee > 0 && !isPlaceholder && !hideMoldFeeForUser && (
           <div className="mt-2">
             {p.mold_spec && (
               <div className="flex justify-end">
-                <span className="inline-block text-[10px] text-gray-500 bg-gray-100 rounded px-1.5 py-0.5 font-mono">{p.mold_spec}</span>
+                <span className="inline-block text-[11px] text-gray-500 bg-gray-100 rounded px-1.5 py-0.5 font-mono">{p.mold_spec}</span>
               </div>
             )}
             {internal ? (
             <div className="mt-1 flex items-center gap-1.5">
-              <span className="text-[11px] text-gray-500">模具费(一次性)</span>
-              <span className="text-[10px] text-gray-400">¥</span>
+              <span className="text-[12px] text-gray-500">模具费(一次性)</span>
+              <span className="text-[11px] text-gray-400">¥</span>
               <input
                 type="number"
                 step="1"
@@ -617,15 +628,15 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
                 className={`w-20 text-right text-xs border rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-400 font-semibold text-blue-700 ${manualMoldFee !== null ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white/50'}`}
               />
               {hasMoldDiscount && (
-                <span className="text-[10px] text-amber-600">→ 折后 ¥{fmtPrice(discountedMold)}（{moldDiscount}%）</span>
+                <span className="text-[11px] text-amber-600">→ 折后 ¥{fmtPrice(discountedMold)}（{moldDiscount}%）</span>
               )}
               {manualMoldFee !== null && (
-                <button onClick={() => onManualMoldFeeChange(null)} className="text-[10px] text-gray-400 hover:text-red-500" title="恢复计算值">✕</button>
+                <button onClick={() => onManualMoldFeeChange(null)} className="text-[11px] text-gray-400 hover:text-red-500" title="恢复计算值">✕</button>
               )}
             </div>
             ) : (
             <div className="mt-0.5 flex items-baseline gap-1">
-              <span className="text-[11px] text-gray-500">模具费(一次性)</span>
+              <span className="text-[12px] text-gray-500">模具费(一次性)</span>
               <span className="text-sm font-semibold text-blue-700">¥{fmtPrice(discountedMold)}</span>
             </div>
             )}
@@ -635,7 +646,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         {!isPlaceholder && minOrderQty > 0 && (
           internal ? (
           <div className="mt-2 flex items-center gap-1.5 pt-2 border-t border-emerald-200/40">
-            <span className="text-[11px] text-gray-500">最小起订量</span>
+            <span className="text-[12px] text-gray-500">最小起订量</span>
             <input
               type="number"
               step="1"
@@ -647,15 +658,15 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
               }}
               className={`w-20 text-right text-xs border rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-400 font-semibold text-gray-700 ${manualMinOrderQty !== null ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white/50'}`}
             />
-            <span className="text-[10px] text-gray-400">件</span>
+            <span className="text-[11px] text-gray-400">件</span>
             {manualMinOrderQty !== null && (
-              <button onClick={() => onManualMinOrderQtyChange(null)} className="text-[10px] text-gray-400 hover:text-red-500" title="恢复计算值">✕</button>
+              <button onClick={() => onManualMinOrderQtyChange(null)} className="text-[11px] text-gray-400 hover:text-red-500" title="恢复计算值">✕</button>
             )}
           </div>
           ) : (
           <div className="mt-2 pt-2 border-t border-emerald-200/40 flex items-baseline gap-1">
-            <span className="text-[11px] text-gray-500">最小起订量</span>
-            <span className="text-sm font-semibold text-gray-700">{manualMinOrderQty ?? minOrderQty} 件{(p as any).min_order_weight_kg ? <span className="text-[10px] text-gray-400 font-normal ml-1">约{(p as any).min_order_weight_kg}kg</span> : null}</span>
+            <span className="text-[12px] text-gray-500">最小起订量</span>
+            <span className="text-sm font-semibold text-gray-700">{manualMinOrderQty ?? minOrderQty} 件{(p as any).min_order_weight_kg ? <span className="text-[11px] text-gray-400 font-normal ml-1">约{(p as any).min_order_weight_kg}kg</span> : null}</span>
           </div>
           )
         )}
@@ -666,7 +677,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         <div className="rounded-xl bg-white border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-3 py-2 bg-amber-50 border-b border-amber-100 flex items-center gap-1.5">
             <Percent className="w-3.5 h-3.5 text-amber-600" />
-            <span className="text-[11px] font-semibold text-amber-700 uppercase tracking-wide">折扣调整</span>
+            <span className="text-[12px] font-semibold text-amber-700 uppercase tracking-wide">折扣调整</span>
           </div>
           <div className="divide-y divide-gray-100">
             {/* 产品折扣 */}
@@ -693,7 +704,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
                   }}
                   className="w-14 text-xs text-right border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-amber-400"
                 />
-                <span className="text-[10px] text-gray-400 w-8">{productDiscount > 100 ? '加价' : '%折'}</span>
+                <span className="text-[11px] text-gray-400 w-8">{productDiscount > 100 ? '加价' : '%折'}</span>
               </div>
             </div>
             {/* 模具费折扣 */}
@@ -721,7 +732,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
                     }}
                     className="w-14 text-xs text-right border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-amber-400"
                   />
-                  <span className="text-[10px] text-gray-400 w-8">{moldDiscount > 100 ? '加价' : '%折'}</span>
+                  <span className="text-[11px] text-gray-400 w-8">{moldDiscount > 100 ? '加价' : '%折'}</span>
                 </div>
               </div>
             )}
@@ -763,7 +774,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
       {/* 费用明细（仅内部账号可见） */}
       <div className="rounded-xl bg-white border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
-          <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">费用明细</span>
+          <span className="text-[12px] font-semibold text-gray-500 uppercase tracking-wide">费用明细</span>
         </div>
         <div className="divide-y divide-gray-100">
           {breakdownItems.map((item, idx) => (
@@ -774,7 +785,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
                   {isPlaceholder ? '--' : `¥${fmtPrice(item.value)}`}
                 </span>
                 {!isPlaceholder && p.breakdown?.[item.key] && (
-                  <div className="text-[10px] text-gray-400 leading-tight">
+                  <div className="text-[11px] text-gray-400 leading-tight">
                     {p.breakdown[item.key].formula && (
                       <span className="italic">{p.breakdown[item.key].formula}</span>
                     )}
@@ -784,7 +795,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
             </div>
           ))}
           {/* 模具费（一次性，独立显示） */}
-          {moldFee > 0 && (
+          {moldFee > 0 && !hideMoldFeeForUser && (
             <div className="flex justify-between items-center px-3 py-2 bg-blue-50/30">
               <span className="text-xs text-blue-600 font-medium">模具费（一次性）</span>
               <div className="text-right">
@@ -792,7 +803,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
                   {hasMoldDiscount ? `¥${fmtPrice(discountedMold)}` : `¥${fmtPrice(moldFee)}`}
                 </span>
                 {hasMoldDiscount && (
-                  <div className="text-[10px] text-gray-400 line-through">¥{fmtPrice(moldFee)}</div>
+                  <div className="text-[11px] text-gray-400 line-through">¥{fmtPrice(moldFee)}</div>
                 )}
               </div>
             </div>
@@ -813,7 +824,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
       <div className="rounded-xl bg-gray-50 border border-gray-100 p-3 space-y-1.5">
         {(!isPlaceholder && p.weight_per_piece_kg > 0) && (
           <div className="flex justify-between items-center">
-            <span className="text-[11px] text-gray-400">单件型材消耗</span>
+            <span className="text-[12px] text-gray-400">单件型材消耗</span>
             <span className="text-xs font-medium text-gray-600">
               {p.weight_per_piece_kg >= 1
                 ? `${p.weight_per_piece_kg.toFixed(3)} kg`
@@ -823,7 +834,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         )}
         {(!isPlaceholder && p.material_utilization_rate != null && p.material_utilization_rate > 0) && (
           <div className="flex justify-between items-center">
-            <span className="text-[11px] text-gray-400">材料利用率</span>
+            <span className="text-[12px] text-gray-400">材料利用率</span>
             <span className={`text-xs font-semibold ${(p.material_utilization_rate * 100) >= 80 ? 'text-emerald-600' : (p.material_utilization_rate * 100) >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
               {(p.material_utilization_rate * 100).toFixed(1)}%
             </span>
@@ -831,13 +842,13 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         )}
         {aluminumPrice && (
           <div className="flex justify-between items-center">
-            <span className="text-[11px] text-gray-400">铝锭基价</span>
+            <span className="text-[12px] text-gray-400">铝锭基价</span>
             <span className="text-xs font-medium text-gray-600">¥{aluminumPrice.price.toLocaleString()}/吨</span>
           </div>
         )}
         {!isPlaceholder && p.aluminum_index > 0 && (
           <div className="flex justify-between items-center">
-            <span className="text-[11px] text-gray-400">计价铝锭价</span>
+            <span className="text-[12px] text-gray-400">计价铝锭价</span>
             <span className="text-xs font-medium text-gray-600">¥{p.aluminum_index.toLocaleString()}/吨</span>
           </div>
         )}

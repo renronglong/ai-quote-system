@@ -84,6 +84,7 @@ interface QuoteRequest {
   aluminum_price_override?: number; // 铝锭价覆盖值（元/吨）
   weight_per_piece_kg?: number;     // 单件重量，不填则根据体积×密度估算
   mold_cost?: number;               // 模具费（元），可选
+  use_existing_mold?: boolean;          // 使用已有模具（模具费为0）
   product_name?: string;            // 产品名称（可选，用于保存报价记录）
   product_code?: string;            // 产品编号（可选，用于保存报价记录）
 }
@@ -969,6 +970,11 @@ function calcExtrusion(
     const dieTypeMap: Record<string, string> = { flat: '平模', split: '分流模' };
     const dieType = dieTypeMap[dieTypeKey] || '分流模';
     moldSpec = `Φ${dieDiameter}×${dieThickness} ${dieType}`;
+    // 使用已有模具时，模具费为0
+    if (req.use_existing_mold) {
+      moldCost = 0;
+      notes.push('使用已有模具，模具费为0元');
+    }
     finalDieDiameter = dieDiameter;
     notes.push(`模具钢价: ${dieSteelPrice}元/吨${dims.die_steel_price ? '（用户指定）' : '（默认H13均价）'}`);
     if (isFlatDie) {
@@ -1187,7 +1193,7 @@ function calcExtrusion(
       weight_per_piece_kg: mat.weight,
       min_order_qty: minOrderQty,
       min_order_weight_kg: minOrderWeightKg,
-      mold_cost: moldCost,
+      mold_cost: req.use_existing_mold ? 0 : moldCost,
       mold_spec: moldSpec,
     },
     breakdown,
