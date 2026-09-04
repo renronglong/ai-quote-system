@@ -510,7 +510,8 @@ function calcStandardMeterWeight(
     }
     case '铝六角棒': {
       if (!(s > 0)) return null;
-      area = 2.598 * s * s;  // 正六边形面积 = 3√3/2 × S² ≈ 2.598×S²
+      // 对边距S，面积 = (√3/2) × S² ≈ 0.866 × S²
+      area = 0.866 * s * s;  // 正六边形面积 = 3√3/2 × S² ≈ 2.598×S²
       formula = `六角棒 对边距${s}mm：2.598×${s}² = ${area.toFixed(2)}mm²`;
       break;
     }
@@ -533,10 +534,11 @@ function calcStandardMeterWeight(
     case '铝六角管': {
       if (!(s > 0 && id >= 0)) return null;
       // 六角管外六角内圆孔
-      const outer = 2.598 * s * s;
+      // 对边距S，面积 = (√3/2) × S² ≈ 0.866 × S²
+      const outer = 0.866 * s * s;
       const inner = id > 0 ? Math.PI * id * id / 4 : 0;
       area = outer - inner;
-      formula = `六角管 对边距${s}/内Ø${id || 0}mm：2.598×${s}²${id > 0 ? `-π×${id}²/4` : ''} = ${area.toFixed(2)}mm²`;
+      formula = `六角管 对边距${s}/内Ø${id || 0}mm：0.866×${s}²${id > 0 ? `-π×${id}²/4` : ''} = ${area.toFixed(2)}mm²`;
       break;
     }
     case '铝方管': {

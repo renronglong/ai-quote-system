@@ -430,10 +430,10 @@ function calcStdMeterWeight(cat: string, width?: number|string, height?: number|
   switch (cat) {
     case '铝圆棒': if (!(w > 0)) return null; area = Math.PI * w * w / 4; break;
     case '铝方/扁棒': if (!(w > 0 && h > 0)) return null; area = w * h; break;
-    case '铝六角棒': if (!(w > 0)) return null; area = 2.598 * w * w; break;
+    case '铝六角棒': if (!(w > 0)) return null; area = 0.866 * w * w; break;
     case '角铝': if (!(w > 0 && h > 0 && t > 0)) return null; area = t * (w + h - t); break;
     case '铝圆管': if (!(w > 0)) return null; area = h > 0 ? Math.PI * (w * w - h * h) / 4 : Math.PI * w * w / 4; break;
-    case '铝六角管': if (!(w > 0)) return null; area = 2.598 * w * w - (h > 0 ? Math.PI * h * h / 4 : 0); break;
+    case '铝六角管': if (!(w > 0)) return null; area = 0.866 * w * w - (h > 0 ? Math.PI * h * h / 4 : 0); break;
     case '铝方管': if (!(w > 0 && h > 0 && t > 0 && w > 2 * t && h > 2 * t)) return null; area = w * h - (w - 2 * t) * (h - 2 * t); break;
     default: return null;
   }
