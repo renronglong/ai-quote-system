@@ -280,6 +280,7 @@ export default function QuotePage() {
                 <SavedQuotesPanel
                   userId={user.id}
                   user={user}
+                  onEditQuote={handleEditQuote}
                   trigger={
                     <button className="hidden sm:flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors">
                       <History className="w-3.5 h-3.5" />
