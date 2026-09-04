@@ -28,6 +28,7 @@ import {
   TrendingUp,
   Handshake,
   UserCircle,
+  UserCheck,
 } from 'lucide-react';
 
 interface NavItem {
@@ -64,6 +65,7 @@ const navGroups: NavGroup[] = [
     label: '管理',
     items: [
       { label: '用户管理', href: '/admin/users', icon: <Users className="w-5 h-5" />, adminOnly: true },
+      { label: '客户管理', href: '/admin/customers', icon: <UserCheck className="w-5 h-5" />, adminOnly: true },
       { label: '任务管理', href: '/admin/tasks', icon: <FileText className="w-5 h-5" />, adminOnly: true },
       { label: '询价工单', href: '/admin/inquiries', icon: <MessageSquare className="w-5 h-5" />, adminOnly: true },
     ],
@@ -160,6 +162,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                         <div className="h-px bg-gray-100 my-1" />
                         <Link href="/admin/tasks" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><FileText className="w-4 h-4" />任务管理</Link>
                         <Link href="/admin/users" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><Users className="w-4 h-4" />用户管理</Link>
+                        <Link href="/admin/customers" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><UserCheck className="w-4 h-4" />客户管理</Link>
                         </>)}
                         <div className="h-px bg-gray-100 my-1" />
                         <button onClick={() => { setUserMenuOpen(false); signOut(); }} className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50">
