@@ -8,7 +8,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Download, Trash2, FileText, History, CheckCircle2, FileSpreadsheet, Percent } from 'lucide-react';
+import { Download, Trash2, FileText, History, CheckCircle2, FileSpreadsheet, Percent, Pencil } from 'lucide-react';
 
 // 有效数字取整：单价3位，模具费/起订量2位
 function sigfig(n: number, digits: number): number {
@@ -143,9 +143,10 @@ interface SavedQuotesPanelProps {
   user?: any;
   trigger?: React.ReactNode;
   onOpenChange?: (open: boolean) => void;
+  onEditQuote?: (quote: SavedQuote) => void;
 }
 
-export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange }: SavedQuotesPanelProps) {
+export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, onEditQuote }: SavedQuotesPanelProps) {
   const [open, setOpen] = useState(false);
   const [quotes, setQuotes] = useState<SavedQuote[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -446,6 +447,13 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange }
                       )}
                     </div>
                   </div>
+                  <button
+                    onClick={() => onEditQuote?.(quote)}
+                    className="p-1 text-gray-400 hover:text-blue-500 transition-colors shrink-0"
+                    title="编辑此报价"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
                   <button
                     onClick={() => handleDelete(quote.id)}
                     className="p-1 text-gray-400 hover:text-red-500 transition-colors shrink-0"

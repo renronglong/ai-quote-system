@@ -79,6 +79,7 @@ interface QuoteFormProps {
   onSaveVariant?: () => Promise<boolean>;
   onNewQuote?: () => void;
   aiData?: AiFormUpdate | null;
+  loadQuoteData?: Record<string, any> | null;
 }
 
 // ==================== Configuration Data ====================
@@ -498,7 +499,7 @@ const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png'];
 
 // ==================== Component ====================
 
-export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, onMoldInfoChange, onSaveVariant, onNewQuote, aiData }: QuoteFormProps) {
+export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, onMoldInfoChange, onSaveVariant, onNewQuote, aiData, loadQuoteData }: QuoteFormProps) {
   // ===== 登录 + 识图额度 =====
   const { user, quota, checkQuota, referralLink, ensureReferralLink } = useAuth();
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -1057,6 +1058,54 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     const timer = setTimeout(() => setAiSynced(false), 3000);
     return () => clearTimeout(timer);
   }, [aiData]);
+
+  // Load saved quote data into form
+  useEffect(() => {
+    if (!loadQuoteData) return;
+    const p = loadQuoteData.params || loadQuoteData;
+    const r = loadQuoteData.result || {};
+
+    // Restore product type
+    if (p.productType) setProductType(p.productType);
+    else if (p.product_type) {
+      const typeMap: Record<string, string> = { extrusion: '挤出', sheet: '板材', die_casting: '压铸', injection: '注塑' };
+      setProductType(typeMap[p.product_type] || p.product_type);
+    }
+
+    // Restore material category
+    if (p.materialCategory) setMaterialCategory(p.materialCategory);
+    else if (p.material_category) setMaterialCategory(p.material_category);
+    else if (p.standardCategory) setStandardCategory(p.standardCategory);
+
+    // Restore fields
+    const fieldKeys = ['width', 'height', 'length', 'thickness', 'perimeter', 'innerPerimeter', 'meterWeight', 'quantity', 'productSize', 'diameter', 'hexFlat', 'outerDiameter', 'innerDiameter', 'area', 'netWeight', 'grossWeight'];
+    const newFields: Record<string, number | string> = {};
+    for (const k of fieldKeys) {
+      if (p[k] !== undefined) newFields[k] = p[k];
+    }
+    if (Object.keys(newFields).length > 0) setFields(prev => ({ ...prev, ...newFields }));
+
+    // Restore surface treatments
+    if (p.materialSurfaceTreatment) setMaterialSurfaceTreatment(p.materialSurfaceTreatment);
+    if (p.productSurfaceTreatment) setProductSurfaceTreatment(p.productSurfaceTreatment);
+    if (p.surfaceTreatment) setSurfaceTreatment(p.surfaceTreatment);
+    if (p.materialColor) setMaterialColor(p.materialColor);
+    if (p.productColor) setProductColor(p.productColor);
+    if (p.surfaceColor) setSurfaceColor(p.surfaceColor);
+
+    // Restore processes
+    if (Array.isArray(p.processes) && p.processes.length > 0) {
+      setProcesses(p.processes.map((proc: any) => ({
+        name: proc.name || proc.process_name,
+        quantity: proc.quantity || 1,
+        params: proc.params || {},
+      })));
+    }
+
+    // Restore product name/code
+    if (p.productName) setProductName(p.productName);
+    if (p.productCode) setProductCode(p.productCode);
+  }, [loadQuoteData]);
 
   // Notify parent of product info changes
   useEffect(() => {

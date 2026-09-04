@@ -75,6 +75,7 @@ export default function QuotePage() {
   const [manualMoldFee, setManualMoldFee] = useState<number | null>(null); // 手动覆盖模具费
   const [manualMinOrderQty, setManualMinOrderQty] = useState<number | null>(null);
   const [useExistingMold, setUseExistingMoldState] = useState<boolean | null>(null); // 手动覆盖最小起订量
+  const [editQuoteData, setEditQuoteData] = useState<Record<string, any> | null>(null);
   const [moldGroupId, setMoldGroupId] = useState<string>(() => 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)); // 当前模具组ID：同组报价共用一副模具
   const [formNonce, setFormNonce] = useState(0); // 新建报价时重挂载 QuoteForm 清空表单
   const aiDataCounter = useRef(0);
@@ -101,6 +102,20 @@ export default function QuotePage() {
 
   const handleMoldInfoChange = useCallback((info: { useExistingMold: boolean | null; selectedMoldId: string | null }) => {
     setUseExistingMoldState(info.useExistingMold);
+  }, []);
+
+  // Clear editQuoteData after QuoteForm consumes it
+  useEffect(() => {
+    if (editQuoteData) {
+      const timer = setTimeout(() => setEditQuoteData(null), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [editQuoteData]);
+
+  const handleEditQuote = useCallback((quote: any) => {
+    setEditQuoteData(quote);
+    // Scroll to top of form
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
   // 长度＋：把当前长度/参数的报价存进报价池（归属当前模具组）
@@ -356,6 +371,7 @@ export default function QuotePage() {
             <QuoteForm
               key={formNonce}
               aiData={aiFormData}
+              loadQuoteData={editQuoteData}
               onResult={handleResult}
               onProductInfoChange={handleProductInfoChange}
               onMoldInfoChange={handleMoldInfoChange}
