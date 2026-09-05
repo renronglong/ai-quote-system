@@ -249,10 +249,10 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
       const w = dims.width_mm ?? p.width, h = dims.height_mm ?? p.height, l = dims.length_mm ?? p.length;
       const dw = dims.diameter_mm, od = dims.outer_diameter_mm, idm = dims.inner_diameter_mm, hx = dims.hex_flat_mm;
       let spec = '';
-      if (p.moldCrossSection) spec = String(p.moldCrossSection) + (l ? `*${l}` : '');
-      else if (dw) spec = `ø${dw}` + (l ? `×${l}` : '');
-      else if (od) spec = `ø${od}` + (idm ? `×${idm}` : '') + (l ? `×${l}` : '');
-      else if (hx) spec = `H${hx}` + (idm ? `×${idm}` : '') + (l ? `×${l}` : '');
+      if (p.moldCrossSection) spec = String(p.moldCrossSection).replace(/×/g, '*') + (l ? `*${l}` : '');
+      else if (dw) spec = `ø${dw}` + (l ? `*${l}` : '');
+      else if (od) spec = `ø${od}` + (idm ? `*${idm}` : '') + (l ? `*${l}` : '');
+      else if (hx) spec = `H${hx}` + (idm ? `*${idm}` : '') + (l ? `*${l}` : '');
       else {
         const parts: string[] = [];
         if (w) parts.push(String(w));
