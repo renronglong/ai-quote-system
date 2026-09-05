@@ -82,44 +82,73 @@ function toSheetItem(q: SavedQuote) {
   const r = q.result || {};
   const pd = (q.product_discount ?? 100) / 100;
   const md = (q.mold_discount ?? 100) / 100;
-  // 规格尺寸：挤出类在 dimensions 里（width_mm/height_mm/length_mm），其他品类在顶层 width/height/productSize
   const dims = p.dimensions || {};
-  const specParts: string[] = [];
+  const stdCat = dims.standard_category || p.standardCategory || p.standard_category || '';
+  const isExtrusion = (p.productType || p.product_type) === '挤出' || stdCat !== '' || !!p.materialCategory;
+
+  // ---- 规格尺寸 ----
+  // 1) 选中产品管理里的现有模具：优先用模具库登记的截面规格（如 53*9、ø30×2）
+  // 2) 否则按本次输入的尺寸拼接
   const w = dims.width_mm ?? p.width;
   const h = dims.height_mm ?? p.height;
   const l = dims.length_mm ?? p.length;
-  // 棒材/管材/圆料等只有直径：圆棒显示 ø 直径，圆管显示 外径×内径，其余 宽×高×长
-  const stdCat = dims.standard_category || p.standard_category || '';
   const dw = dims.diameter_mm, od = dims.outer_diameter_mm, idm = dims.inner_diameter_mm, hx = dims.hex_flat_mm;
   let spec = '';
-  if (dw) spec = `ø${dw}` + (l ? `×${l}` : '');
-  else if (od) spec = `ø${od}` + (idm ? `×${idm}` : '') + (l ? `×${l}` : '');
-  else if (hx) spec = `H${hx}` + (idm ? `×${idm}` : '') + (l ? `×${l}` : '');
-  else {
-    if (w) specParts.push(`${w}`);
-    if (h) specParts.push(`${h}`);
-    if (l) specParts.push(`${l}`);
-    spec = specParts.length ? specParts.join('*') : (p.productSize || '');
+  if (p.moldCrossSection) {
+    spec = String(p.moldCrossSection);
+  } else {
+    const specParts: string[] = [];
+    if (dw) spec = `ø${dw}` + (l ? `×${l}` : '');
+    else if (od) spec = `ø${od}` + (idm ? `×${idm}` : '') + (l ? `×${l}` : '');
+    else if (hx) spec = `H${hx}` + (idm ? `×${idm}` : '') + (l ? `×${l}` : '');
+    else {
+      if (w) specParts.push(`${w}`);
+      if (h) specParts.push(`${h}`);
+      if (l) specParts.push(`${l}`);
+      spec = specParts.length ? specParts.join('*') : (p.productSize || '');
+    }
   }
+
+  // ---- 表面处理：按产品管理带出的优先；否则取本次报价实际选择；无则留空 ----
+  let surface = '';
+  if (p.moldSurface) surface = String(p.moldSurface);
+  else {
+    const st = p.surfaceTreatment && p.surfaceTreatment !== '无' ? p.surfaceTreatment : '';
+    surface = st || '';
+  }
+
+  // ---- 材质：按产品管理/表单材质牌号；铝型材缺省 6063-T5；其他品类显示材料类别 ----
+  let material = '';
+  if (p.materialGrade) material = String(p.materialGrade);
+  else if (dims?.material_grade) material = String(dims.material_grade);
+  else if (isExtrusion) material = '6063-T5';
+  else material = p.materialCategory || '';
+
   const unitPrice = (r.unit_price || 0) * pd;
   const moldFee = (r.mold_cost || 0) * md;
   // 起订量：以后端计算的 min_order_qty 为准
   const moqVal = Number(r.min_order_qty || 0);
+
+  // ---- 客户型号：产品管理的模具编号（选了现有模具）；其次表单产品编号；无则空 ----
+  const model = p.moldNumber || p.productCode || '';
+  // ---- 产品名称：产品管理的产品名称；其次表单产品名称；无则空 ----
+  const name = p.moldProductName || p.productName || '';
+
   return {
     id: q.id,
     moldGroup: p._mold_group_id || '',
-    model: '',
+    model,
     spec,
-    name: p.productName || p.product_type_name || q.product_type || (stdCat ? stdCat + '铝型材' : '铝型材'),
+    name,
     unit: 'pcs',
-    material: p.materialCategory || p.grade || '6063-T5',
-    surface: p.productSurfaceTreatment && p.productSurfaceTreatment !== '无' ? p.productSurfaceTreatment : '无',
+    material,
+    surface,
     price_ex_tax: r3sig(unitPrice),
     price_inc_tax: r3sig(unitPrice * 1.13),
     moq: moqVal > 0 ? r2sig(moqVal) : (p.quantity ? r2sig(Number(p.quantity)) : ''),
     mold_fee: r2sig(moldFee),
     remark: '',
-    _label: `${q.name}｜${spec || '-'}｜未税¥${unitPrice.toFixed(2)}`,
+    _label: `${model || name || q.name}｜${spec || '-'}｜未税¥${unitPrice.toFixed(2)}`,
   };
 }
 

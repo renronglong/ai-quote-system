@@ -224,7 +224,7 @@ export async function GET(request: NextRequest) {
     // Fetch all products in category
     let query = supabase
       .from('supplier_products')
-      .select('id, product_name, mold_number, cross_section_mm, weight_per_meter, perimeter, num_dies, remarks')
+      .select('id, product_name, mold_number, cross_section_mm, weight_per_meter, perimeter, num_dies, remarks, surface_treatments')
       .not('product_name', 'is', null)
       .limit(10000);
 
@@ -275,6 +275,7 @@ export async function GET(request: NextRequest) {
           mold_number: spec.mold_number,
           match_score: score,
           product_name: spec.product_name,
+          surface_treatments: spec.surface_treatments || [],
           remarks: spec.remarks,
         };
       })

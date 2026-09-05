@@ -23,6 +23,12 @@ interface QuoteFormData {
   productColor: string;
   surfaceTreatment?: string;
   surfaceColor?: string;
+  standardCategory?: string;
+  materialGrade?: string;
+  moldNumber?: string;
+  moldProductName?: string;
+  moldCrossSection?: string;
+  moldSurface?: string;
 }
 
 interface ProcessSelection {
@@ -551,6 +557,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [moldMatchLoading, setMoldMatchLoading] = useState(false);
   const [selectedMoldId, setSelectedMoldId] = useState<string | null>(null);
   const [useExistingMold, setUseExistingMold] = useState<boolean | null>(null); // null=未选择, true=现有, false=新开
+  const [selectedMold, setSelectedMold] = useState<any | null>(null); // 选中的现有模具完整信息（来自产品管理/供应商产品库）
 
   // Parse cross_section_mm into dimension field values based on category
   const parseMoldDimensions = (category: string, cs: string): Record<string, number> => {
@@ -1105,6 +1112,20 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     // Restore product name/code
     if (p.productName) setProductName(p.productName);
     if (p.productCode) setProductCode(p.productCode);
+
+    // Restore material grade
+    if (p.materialGrade) setMaterialGrade(p.materialGrade);
+
+    // Restore selected mold（选中现有模具的报价，恢复模具完整信息，重新计算时仍能带出编号/名称/规格）
+    if (p.moldNumber || p.moldCrossSection) {
+      setUseExistingMold(true);
+      setSelectedMold({
+        mold_number: p.moldNumber || '',
+        product_name: p.moldProductName || '',
+        cross_section_mm: p.moldCrossSection || '',
+        surface_treatments: p.moldSurface ? [p.moldSurface] : [],
+      });
+    }
   }, [loadQuoteData]);
 
   // Notify parent of product info changes
@@ -1375,7 +1396,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           reportRecognitionFeedback();
           if (onCalculate) {
             onCalculate({
-              productType, materialCategory,
+              productType, materialCategory, standardCategory,
               quantity: (fields.quantity as number) || 1,
               width: fields.width as number, height: fields.height as number,
               length: fields.length as number, thickness: fields.thickness as number,
@@ -1384,6 +1405,15 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               materialSurfaceTreatment, materialColor, processes,
               productSurfaceTreatment, productColor,
               surfaceTreatment, surfaceColor,
+              // 材质牌号（挤出铝型材默认 6063-T5 在出单侧兜底）
+              materialGrade: materialGrade || undefined,
+              // 选中现有模具：带出产品管理中的模具编号/名称/规格/表面处理，出单直接使用
+              moldNumber: useExistingMold === true && selectedMold ? (selectedMold.mold_number || '') : '',
+              moldProductName: useExistingMold === true && selectedMold ? (standardCategory === '异型材' ? (selectedMold.product_name || '') : '') : '',
+              moldCrossSection: useExistingMold === true && selectedMold ? (selectedMold.cross_section_mm || '') : '',
+              moldSurface: useExistingMold === true && selectedMold && Array.isArray(selectedMold.surface_treatments)
+                ? (selectedMold.surface_treatments.map((x: string) => String(x || '').trim()).filter((x: string) => x && x !== '素材' && x !== '无').join('、'))
+                : '',
             });
           }
           setLoading(false);
@@ -2082,7 +2112,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 <button
                   key={opt.v}
                   type="button"
-                  onClick={() => { setFields(prev => ({ ...prev, die_type: opt.v })); setSelectedMoldId(null); setUseExistingMold(null); setMoldMatches([]); }}
+                  onClick={() => { setFields(prev => ({ ...prev, die_type: opt.v })); setSelectedMoldId(null); setUseExistingMold(null); setSelectedMold(null); setMoldMatches([]); }}
                   className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-all ${
                     fields.die_type === opt.v
                       ? opt.v === 'split'
@@ -2185,6 +2215,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                         onClick={() => {
                           setSelectedMoldId(m.id);
                           setUseExistingMold(true);
+                          setSelectedMold(m);
+                          // 按产品管理带出：编号=模具编号，名称=产品名称
+                          if (m.mold_number) setProductCode(m.mold_number);
+                          if (standardCategory === '异型材' && m.product_name) setProductName(m.product_name);
+                          // 注：表面处理不改表单选择（表面处理费按用户实际选择计算）；
+                          // 产品库登记的表面处理原文通过 selectedMold → moldSurface 带到报价单显示
                           const dims = parseMoldDimensions(standardCategory, m.cross_section_mm);
                           setFields(prev => ({
                             ...prev,
@@ -2235,10 +2271,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                       <div className="mt-2 flex items-center justify-between px-2.5 py-1.5 bg-green-50 rounded-lg border border-green-200">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="text-green-600 text-xs">✓</span>
+                          {sel?.mold_number && (
+                            <span className="shrink-0 px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-mono text-[11px] font-medium">{sel.mold_number}</span>
+                          )}
                           <span className="text-xs font-medium text-green-700 truncate">{sel?.cross_section_mm || '已选模具'}</span>
                           <span className="text-[11px] text-gray-400">{sel?.weight_per_meter}kg/m</span>
                         </div>
-                        <button type="button" onClick={() => { setSelectedMoldId(null); setUseExistingMold(null); }} className="text-[11px] text-blue-500 hover:text-blue-700 shrink-0 ml-2">更换</button>
+                        <button type="button" onClick={() => { setSelectedMoldId(null); setUseExistingMold(null); setSelectedMold(null); }} className="text-[11px] text-blue-500 hover:text-blue-700 shrink-0 ml-2">更换</button>
                       </div>
                     );
                   })()}
@@ -2259,7 +2298,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setUseExistingMold(false); setSelectedMoldId(null); }}
+                      onClick={() => { setUseExistingMold(false); setSelectedMoldId(null); setSelectedMold(null); }}
                       className={`flex-1 px-2 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${
                         useExistingMold === false
                           ? 'bg-orange-50 border-orange-300 text-orange-700'
