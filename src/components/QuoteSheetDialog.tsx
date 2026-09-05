@@ -105,7 +105,8 @@ function toSheetItem(q: SavedQuote) {
   const dw = dims.diameter_mm, od = dims.outer_diameter_mm, idm = dims.inner_diameter_mm, hx = dims.hex_flat_mm;
   let spec = '';
   if (p.moldCrossSection) {
-    spec = String(p.moldCrossSection);
+    // 模具截面（宽*高 / ø外径×壁厚）+ 本次切割长度
+    spec = String(p.moldCrossSection) + (l ? `*${l}` : '');
   } else {
     const specParts: string[] = [];
     if (dw) spec = `ø${dw}` + (l ? `×${l}` : '');
@@ -123,8 +124,10 @@ function toSheetItem(q: SavedQuote) {
   let surface = '';
   if (p.moldSurface) surface = String(p.moldSurface);
   else {
-    const st = p.surfaceTreatment && p.surfaceTreatment !== '无' ? p.surfaceTreatment : '';
-    surface = st || '';
+    // 表面处理 + 颜色，如「氧化」+「铁灰色」→ 氧化铁灰色
+    const st = p.surfaceTreatment && p.surfaceTreatment !== '无' ? String(p.surfaceTreatment) : '';
+    const co = p.surfaceColor && p.surfaceColor !== '无' ? String(p.surfaceColor) : '';
+    surface = st ? (st + co) : '';
   }
 
   // ---- 材质：按产品管理/表单材质牌号；铝型材缺省 6063-T5；其他品类显示材料类别 ----

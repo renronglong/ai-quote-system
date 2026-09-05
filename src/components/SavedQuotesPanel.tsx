@@ -249,7 +249,7 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
       const w = dims.width_mm ?? p.width, h = dims.height_mm ?? p.height, l = dims.length_mm ?? p.length;
       const dw = dims.diameter_mm, od = dims.outer_diameter_mm, idm = dims.inner_diameter_mm, hx = dims.hex_flat_mm;
       let spec = '';
-      if (p.moldCrossSection) spec = String(p.moldCrossSection);
+      if (p.moldCrossSection) spec = String(p.moldCrossSection) + (l ? `*${l}` : '');
       else if (dw) spec = `ø${dw}` + (l ? `×${l}` : '');
       else if (od) spec = `ø${od}` + (idm ? `×${idm}` : '') + (l ? `×${l}` : '');
       else if (hx) spec = `H${hx}` + (idm ? `×${idm}` : '') + (l ? `×${l}` : '');
@@ -264,7 +264,12 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
       // 表面处理：产品库登记原文优先；否则本次报价实际选择；无则空（不取材料表面处理 materialSurfaceTreatment）
       let surface = '';
       if (p.moldSurface) surface = String(p.moldSurface);
-      else surface = (p.surfaceTreatment && p.surfaceTreatment !== '无') ? String(p.surfaceTreatment) : '';
+      else {
+        // 表面处理 + 颜色，如「氧化」+「铁灰色」→ 氧化铁灰色
+        const st = (p.surfaceTreatment && p.surfaceTreatment !== '无') ? String(p.surfaceTreatment) : '';
+        const co = (p.surfaceColor && p.surfaceColor !== '无') ? String(p.surfaceColor) : '';
+        surface = st ? (st + co) : '';
+      }
 
       // 材质：牌号优先；铝型材缺省 6063-T5；其他品类显示材料类别
       let material = '';
