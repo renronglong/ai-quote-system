@@ -105,13 +105,13 @@ function toSheetItem(q: SavedQuote) {
   const dw = dims.diameter_mm, od = dims.outer_diameter_mm, idm = dims.inner_diameter_mm, hx = dims.hex_flat_mm;
   let spec = '';
   if (p.moldCrossSection) {
-    // 模具截面（宽*高 / ø外径×壁厚）+ 本次切割长度
-    spec = String(p.moldCrossSection) + (l ? `*${l}` : '');
+    // 模具截面（宽*高 / ø外径*壁厚）+ 本次切割长度；截面里的 × 统一替换为 *
+    spec = String(p.moldCrossSection).replace(/×/g, '*') + (l ? `*${l}` : '');
   } else {
     const specParts: string[] = [];
-    if (dw) spec = `ø${dw}` + (l ? `×${l}` : '');
-    else if (od) spec = `ø${od}` + (idm ? `×${idm}` : '') + (l ? `×${l}` : '');
-    else if (hx) spec = `H${hx}` + (idm ? `×${idm}` : '') + (l ? `×${l}` : '');
+    if (dw) spec = `ø${dw}` + (l ? `*${l}` : '');
+    else if (od) spec = `ø${od}` + (idm ? `*${idm}` : '') + (l ? `*${l}` : '');
+    else if (hx) spec = `H${hx}` + (idm ? `*${idm}` : '') + (l ? `*${l}` : '');
     else {
       if (w) specParts.push(`${w}`);
       if (h) specParts.push(`${h}`);
