@@ -76,6 +76,16 @@ function sigfig(n: number, digits: number): number {
 function r3sig(n: number): number { return sigfig(n, 3); }  // 价格三位有效数字
 function r2sig(n: number): number { return Math.round(n); }                       // 模具费/起订量取整
 
+// 产品库中个别产品名称被登记成了类别名（如"异型材"），出单时回退到用户手填的产品名称
+const GENERIC_CATEGORY_NAMES = new Set([
+  '异型材', '标准件', '铝型材', '铝合金', '型材', '挤出', '挤出铝型材', '挤压铝型材',
+  '铝圆管', '铝圆棒', '铝方管', '铝六角管', '铝六角棒', '铝方/扁棒', '角铝', '铝板', '不锈钢', '铝',
+]);
+function realProductName(n: unknown): string {
+  const v = String(n ?? '').trim();
+  return v && !GENERIC_CATEGORY_NAMES.has(v) ? v : '';
+}
+
 // 从保存的报价提取出单字段
 function toSheetItem(q: SavedQuote) {
   const p = q.params || {};
@@ -132,7 +142,7 @@ function toSheetItem(q: SavedQuote) {
   // ---- 客户型号：产品管理的模具编号（选了现有模具）；其次表单产品编号；无则空 ----
   const model = p.moldNumber || p.productCode || '';
   // ---- 产品名称：产品管理的产品名称；其次表单产品名称；无则空 ----
-  const name = p.moldProductName || p.productName || '';
+  const name = realProductName(p.moldProductName) || p.productName || '';
 
   return {
     id: q.id,

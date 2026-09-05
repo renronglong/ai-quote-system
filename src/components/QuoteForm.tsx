@@ -426,6 +426,16 @@ const CATEGORY_DIM_FIELDS: Record<string, { key: string; label: string; placehol
 
 const CATEGORY_NEEDS_DIE_SELECTION = ['异型材'];
 
+// 产品库中个别产品名称被登记成了类别名（如"异型材"），不作为产品名称带出
+const GENERIC_PRODUCT_NAMES = new Set([
+  '异型材', '标准件', '铝型材', '铝合金', '型材', '挤出', '挤出铝型材', '挤压铝型材',
+  '铝圆管', '铝圆棒', '铝方管', '铝六角管', '铝六角棒', '铝方/扁棒', '角铝', '铝板', '不锈钢', '铝',
+]);
+function realMoldProductName(n: unknown): string {
+  const v = String(n ?? '').trim();
+  return v && !GENERIC_PRODUCT_NAMES.has(v) ? v : '';
+}
+
 // 标准件理论米重（与后端 /api/v1/quote/calculate 公式一致，6063铝密度2.7g/cm³）
 // 前端字段映射：diameter/hex/outer 都存入 width，inner 存入 height
 function calcStdMeterWeight(cat: string, width?: number|string, height?: number|string, thickness?: number|string): number | null {
@@ -1409,7 +1419,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               materialGrade: materialGrade || undefined,
               // 选中现有模具：带出产品管理中的模具编号/名称/规格/表面处理，出单直接使用
               moldNumber: useExistingMold === true && selectedMold ? (selectedMold.mold_number || '') : '',
-              moldProductName: useExistingMold === true && selectedMold ? (standardCategory === '异型材' ? (selectedMold.product_name || '') : '') : '',
+              moldProductName: useExistingMold === true && selectedMold ? (standardCategory === '异型材' ? realMoldProductName(selectedMold.product_name) : '') : '',
               moldCrossSection: useExistingMold === true && selectedMold ? (selectedMold.cross_section_mm || '') : '',
               moldSurface: useExistingMold === true && selectedMold && Array.isArray(selectedMold.surface_treatments)
                 ? (selectedMold.surface_treatments.map((x: string) => String(x || '').trim()).filter((x: string) => x && x !== '素材' && x !== '无').join('、'))
@@ -2218,7 +2228,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                           setSelectedMold(m);
                           // 按产品管理带出：编号=模具编号，名称=产品名称
                           if (m.mold_number) setProductCode(m.mold_number);
-                          if (standardCategory === '异型材' && m.product_name) setProductName(m.product_name);
+                          if (standardCategory === '异型材' && realMoldProductName(m.product_name)) setProductName(realMoldProductName(m.product_name));
                           // 注：表面处理不改表单选择（表面处理费按用户实际选择计算）；
                           // 产品库登记的表面处理原文通过 selectedMold → moldSurface 带到报价单显示
                           const dims = parseMoldDimensions(standardCategory, m.cross_section_mm);
