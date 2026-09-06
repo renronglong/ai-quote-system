@@ -80,6 +80,7 @@ interface QuoteRequest {
     stamping_tonnage?: string;   // 冲压吨位（如 '<=35T', '45T', '200T双轴' 等）
     stamping_count?: number;     // 冲次数量
     cnc_time?: { minutes: number }; // CNC/车加工时间
+    bend_count?: number;    // 折弯刀数（钣金）
   } | null;
   aluminum_price_override?: number; // 铝锭价覆盖值（元/吨）
   weight_per_piece_kg?: number;     // 单件重量，不填则根据体积×密度估算
@@ -404,15 +405,24 @@ function calcSheetMaterialCost(
 
   // 体积（cm³）→ 重量（kg）= 体积cm³ × 密度 / 1000
   const volumeCm3 = (length_mm * width_mm * t) / 1000; // mm³ → cm³
-  const weightKg = volumeCm3 * density / 1000; // cm³ × g/cm³ / 1000 = kg
-  const materialCost = weightKg * pricePerTon / 1000; // kg × (元/吨) / 1000 = 元
+  const weightKg = volumeCm3 * density / 1000; // cm³ × g/cm³ / 1000 = kg（单件净重，用于包装/运输/表面处理）
 
-  // 排版计算（简化：按面积排版）
-  const partArea = length_mm * width_mm;
-  const sheetArea = sheetSize.length_mm * sheetSize.width_mm;
-  const nestingQty = Math.max(1, Math.floor(sheetArea / partArea));
+  // 材料费 = 整张板材价格 ÷ 排版数量（按展开外形矩形排版，含废料利用率）
+  // 整张板体积 cm³ = 2440×1220×t / 1000
+  const sheetVolumeCm3 = (sheetSize.length_mm * sheetSize.width_mm * t) / 1000;
+  const sheetWeightKg = sheetVolumeCm3 * density / 1000;
+  const sheetPrice = sheetWeightKg * pricePerTon / 1000; // kg × (元/吨) / 1000 = 元
 
-  detailStr += ` | 体积: ${length_mm}×${width_mm}×${t}mm = ${r2(volumeCm3)}cm³ × ${density}g/cm³ = 单件${r2(weightKg)}kg, 排版: ${nestingQty}件/张`;
+  // 排版：板材 2440×1220 两个方向都试，取能排下的最大件数（单件外形矩形 + 10mm 割缝/边距）
+  const gap = 10;
+  const partL = length_mm + gap, partW = width_mm + gap;
+  const n1 = Math.floor(sheetSize.length_mm / partL) * Math.floor(sheetSize.width_mm / partW);
+  const n2 = Math.floor(sheetSize.length_mm / partW) * Math.floor(sheetSize.width_mm / partL);
+  const nestingQty = Math.max(1, n1, n2);
+  const materialCost = sheetPrice / nestingQty;
+
+  const netMaterialCost = weightKg * pricePerTon / 1000; // 净重材料参考价（展示用）
+  detailStr += ` | 整张${sheetSize.length_mm}×${sheetSize.width_mm}×${t}mm = ${r2(sheetWeightKg)}kg → 整板${r2(sheetPrice)}元；展开件${length_mm}×${width_mm}排版 ${nestingQty}件/张 → 单件材料费 ${r2(materialCost)}元（净重参考 ${r2(netMaterialCost)}元，单件 ${r2(weightKg)}kg）`;
 
   return {
     cost: r2(materialCost),
@@ -1485,6 +1495,8 @@ function calcSecondaryOperationsCost(
     details.push(`去毛刺: ${rate}元/件`);
   }
 
+  // 折弯费在板材主引擎中按工序累计（×1.03×1.03），此处不重复计
+
   // CNC/车加工：时间费 1元/分钟 + 材料费的10%（2026-08-30 龙哥规则）
   if (process.cnc_time && process.cnc_time.minutes > 0) {
     const CNC_RATE_PER_MIN = 1; // 元/分钟
@@ -1527,13 +1539,43 @@ function calcSheetMetal(
   breakdown['material'] = { formula: mat.formula, detail: mat.detail };
 
   // 2. 加工费
-  const proc = calcSheetProcessingFee(dims, volumeCm3, req.material.category, rules);
+  // 钣金件落料：若工序含激光切割 → 按切割周长×板厚×材料费率(铝板4/冷板1.5/不锈钢2.5 元/米)；
+  // 否则按冲压吨位规则（冲床落料）
+  const opsList = req.process?.secondary_operations || [];
+  const hasLaser = opsList.includes('激光切割');
+  const t = dims.wall_thickness_mm || dims.height_mm || 2;
+  const cutPerimeter = 2 * (dims.length_mm + dims.width_mm); // 展开外形周长 mm
+  let proc: { cost: number; formula: string; detail: string; sizeSurcharge: number; volumeSurcharge: number };
+  if (hasLaser) {
+    const cat = req.material.category;
+    const ratePerMeterPerMm = cat.includes('铝') ? 4 : cat.includes('不锈钢') ? 2.5 : 1.5; // 元/米/mm板厚
+    const cutLengthM = cutPerimeter / 1000;
+    const laserCost = r2(cutLengthM * t * ratePerMeterPerMm);
+    // 穿孔费 0.1元/孔（外形起割点1个 + 内孔 holes+tapped_holes）
+    const pierceCount = 1 + (req.process?.holes?.count || 0) + (req.process?.tapped_holes?.count || 0);
+    const pierceCost = r2(pierceCount * 0.1);
+    const totalLaser = r2(laserCost + pierceCost);
+    proc = {
+      cost: totalLaser,
+      formula: '激光切割：切割长度×板厚×费率 + 穿孔0.1元/孔',
+      detail: `周长${cutPerimeter}mm=${r2(cutLengthM)}m × ${t}mm厚 × ${ratePerMeterPerMm}元 = ${laserCost}元；穿孔${pierceCount}个×0.1=${pierceCost}元；合计${totalLaser}元`,
+      sizeSurcharge: 0, volumeSurcharge: 0,
+    };
+  } else {
+    proc = calcSheetProcessingFee(dims, volumeCm3, req.material.category, rules);
+  }
   breakdown['processing'] = { formula: proc.formula, detail: proc.detail };
 
   // 3. 工序累计（每道工序: 累计 = (前面累计 + 加工费) × 1.03(损耗) × 1.03(管销)）
-  // 简化：假设只有1道冲压工序
   let accumulated = mat.cost;
   accumulated = (accumulated + proc.cost) * 1.03 * 1.03;
+  // 折弯作为独立工序再累计一道（0.2元/刀）
+  const bendCount = (req.process as any)?.bend_count || 0;
+  if (bendCount > 0) {
+    const bendCost = r2(bendCount * 0.2);
+    accumulated = (accumulated + bendCost) * 1.03 * 1.03;
+    breakdown['bending'] = { formula: '折弯 0.2元/刀', detail: `${bendCount}刀 × 0.2 = ${bendCost}元（已×1.03×1.03计入累计）` };
+  }
 
   // 冲压附加费 = 尺寸附加 + 体积附加（不含吨位基数）
   const stampingSurcharge = proc.sizeSurcharge + proc.volumeSurcharge;
