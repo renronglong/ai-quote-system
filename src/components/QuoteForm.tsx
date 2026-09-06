@@ -959,7 +959,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     return selected?.colors || [];
   };
 
-  const handleProductTypeChange = (pt: string) => setProductType(pt);
+  const handleProductTypeChange = (pt: string) => {
+    setProductType(pt);
+    if (pt === '板材') setMaterialGrade('5052');
+  };
   const handleMaterialCategoryChange = (mc: string) => {
     setMaterialCategory(mc);
     resetCategoryState(mc);
@@ -1211,6 +1214,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     let holes: { count: number; diameter_range?: string } | undefined;
     let tappedHoles: { count: number; size?: string } | undefined;
     let cncTime: { minutes: number } | undefined;
+    let bendCount: number | undefined;
 
     for (const proc of processes) {
       if (proc.name === '锯切') {
@@ -1237,6 +1241,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         secondaryOps.push('车加工');
         const mins = Number(proc.subParams?.minutes ?? proc.quantity) || 0;
         if (mins > 0) cncTime = { minutes: (cncTime?.minutes || 0) + mins };
+      } else if (proc.name === '折弯') {
+        secondaryOps.push('折弯');
+        bendCount = Number(proc.quantity) || 1;
       } else if (processMap[proc.name]) {
         secondaryOps.push(processMap[proc.name]);
       }
@@ -1249,6 +1256,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (holes) result.holes = holes;
     if (tappedHoles) result.tapped_holes = tappedHoles;
     if (cncTime) result.cnc_time = cncTime;
+    if (bendCount !== undefined) result.bend_count = bendCount;
     return result;
   };
 
@@ -1352,7 +1360,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const dimensions = buildDimensions();
       const payload: Record<string, any> = {
         product_type: mapProductType(),
-        material: { category: mapMaterialCategory(), grade: materialGrade || undefined },
+        material: { category: mapMaterialCategory(), grade: materialGrade || (productType === '板材' ? '5052' : undefined) },
         quantity: (fields.quantity as number) || 1,
       };
       if (productName) payload.product_name = productName;
@@ -2076,6 +2084,38 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             ))}
           </div>
         </div>
+
+        {/* ---- 铝板牌号选择（仅板材·铝板；默认5052） ---- */}
+        {productType === '板材' && materialCategory === '铝板' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+            <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+              铝板牌号 <span className="normal-case text-gray-400">（铝锭价+牌号加价，元/吨）</span>
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {([
+                { g: '1060', label: '1060 纯铝', add: '+1000' },
+                { g: '3003', label: '3003 防锈', add: '+2000' },
+                { g: '5052', label: '5052 镁铝', add: '+3000' },
+                { g: '5083', label: '5083 海洋级', add: '+3000' },
+                { g: '7075', label: '7075 航空铝', add: '+4000' },
+              ] as const).map(opt => (
+                <button
+                  key={opt.g}
+                  type="button"
+                  onClick={() => setMaterialGrade(opt.g)}
+                  className={`px-2.5 py-1 rounded-lg border text-xs transition-all duration-200 ${
+                    (materialGrade || '5052') === opt.g
+                      ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
+                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {opt.label} <span className="opacity-60">{opt.add}</span>
+                </button>
+              ))}
+            </div>
+            <div className="mt-1.5 text-[11px] text-gray-400">默认 5052；整板规格 2440×1220mm，按展开尺寸排版算材料费</div>
+          </div>
+        )}
 
         {/* ---- 标准件种类选择 (仅挤出·标准件；异型材唯一分类无需再点) ---- */}
         {productType === '挤出' && materialCategory === '标准件' && (() => {
