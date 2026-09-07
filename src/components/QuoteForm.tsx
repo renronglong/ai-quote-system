@@ -388,6 +388,15 @@ const FIELD_LABELS: Record<string, string> = {
   netWeight: '产品净重(g·选填·算利用率)',
 };
 
+// 按产品类型覆盖字段标签
+const FIELD_LABEL_OVERRIDES: Record<string, Record<string, string>> = {
+  '板材': { productSize: '展开尺寸(长×宽mm)' },
+};
+
+const getFieldLabel = (productType: string, fieldKey: string): string => {
+  return FIELD_LABEL_OVERRIDES[productType]?.[fieldKey] || FIELD_LABELS[fieldKey] || fieldKey;
+};
+
 // 标准件类别 → 尺寸输入配置
 const CATEGORY_DIM_FIELDS: Record<string, { key: string; label: string; placeholder: string }[]> = {
   '铝圆棒': [{ key: 'diameter', label: '直径 Ø(mm)', placeholder: '如 10' }],
@@ -1535,7 +1544,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       }
       const mw = toNum(d.meter_weight); if (mw !== null) next.meterWeight = mw;
       const qty = toNum(d.quantity); if (qty !== null) next.quantity = qty;
-      const wt = toNum(d.wall_thickness); if (wt !== null) next.thickness = wt;
+      const wt = toNum(d.wall_thickness) ?? toNum(d.thickness); if (wt !== null) next.thickness = wt;
+      // 板材专用：展开尺寸 sheet_length × sheet_width → productSize
+      const sheetL = toNum(d.sheet_length);
+      const sheetW = toNum(d.sheet_width);
+      if (sheetL !== null && sheetW !== null) {
+        next.productSize = sheetL + '×' + sheetW;
+      }
       // 标准件专属尺寸（前端 width/height 复用槽位：圆棒直径、六角对边、圆管外径→width；内径→height）
       const dAny = d as Record<string, unknown>;
       const num = (v: unknown) => toNum(v) ?? (toNum(v) !== null && (toNum(v) as number) > 0 ? toNum(v) : null);
@@ -1566,17 +1581,32 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         setProductSurfaceTreatment(mappedSt);
       }
     }
-    // 工序：Bot返回格式如 "锯切,冲压(3次),CNC加工(10分钟)"
-    if (d.processes && typeof d.processes === 'string' && d.processes !== '无') {
-      const procs: ProcessSelection[] = d.processes.split(/[,，、]/).map((p: string) => {
-        const m = p.trim().match(/^(.+?)(?:\((\d+)(分钟|次|mm|个)?\))?$/);
-        if (m) return { name: m[1], quantity: m[2] ? parseInt(m[2]) : undefined };
-        return { name: p.trim() };
-      }).filter((p: ProcessSelection) => p.name);
+    // 工序：支持字符串格式 "锯切,冲压(3次)" 和 数组格式 ["激光切割","折弯"]
+    if (d.processes && d.processes !== '无') {
+      let procs: ProcessSelection[] = [];
+      if (Array.isArray(d.processes)) {
+        // 板材API返回数组格式
+        procs = d.processes.map((p: string) => ({ name: p.trim() })).filter((p: ProcessSelection) => p.name);
+      } else if (typeof d.processes === 'string') {
+        procs = d.processes.split(/[,，、]/).map((p: string) => {
+          const m = p.trim().match(/^(.+?)(?:\((\d+)(分钟|次|mm|个)?\))?$/);
+          if (m) return { name: m[1], quantity: m[2] ? parseInt(m[2]) : undefined };
+          return { name: p.trim() };
+        }).filter((p: ProcessSelection) => p.name);
+      }
       if (procs.length > 0) setProcesses(procs);
     }
     // 备注/说明
     if (d.notes) setFileRemark(prev => prev ? prev + '; ' + d.notes : d.notes);
+    // 板材专用：将孔数/折弯数等信息写入备注
+    if (productType === '板材' || d.sheet_length || d.sheet_width) {
+      const sheetNotes: string[] = [];
+      if (d.hole_count) sheetNotes.push('孔数: ' + d.hole_count);
+      if (d.bend_count) sheetNotes.push('折弯数: ' + d.bend_count);
+      if (d.bend_length) sheetNotes.push('折弯总长: ' + d.bend_length + 'mm');
+      if (d.theoretical_weight_kg) sheetNotes.push('单件理论重量: ' + d.theoretical_weight_kg + 'kg');
+      if (sheetNotes.length > 0) setFileRemark(prev => prev ? prev + '; ' + sheetNotes.join(', ') : sheetNotes.join(', '));
+    }
     setAiSynced(true);
     setTimeout(() => setAiSynced(false), 2500);
   };
@@ -1648,7 +1678,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       }
       const fd = new FormData();
       fd.append('file', fileToSend);
-      const resp = await fetch('/api/recognize-drawing?userId=' + user!.id, { method: 'POST', body: fd });
+      // 根据产品类型路由到不同的识别API：板材用独立API
+      const apiEndpoint = productType === '板材' ? '/api/recognize-sheet' : '/api/recognize-drawing';
+      const resp = await fetch(apiEndpoint + '?userId=' + user!.id, { method: 'POST', body: fd });
       const json = await resp.json();
       if (resp.status === 429 || json.quotaExceeded) {
         checkQuota();
@@ -1798,10 +1830,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               if (fieldKey === 'productSize') {
                 return (
                   <div key={fieldKey}>
-                    <label className="block text-[12px] text-gray-500 mb-1">{FIELD_LABELS[fieldKey]}</label>
+                    <label className="block text-[12px] text-gray-500 mb-1">{getFieldLabel(productType, fieldKey)}</label>
                     <input
                       type="text"
-                      placeholder="如 100×50×30"
+                      placeholder={productType === '板材' ? '如 500×300' : '如 100×50×30'}
                       value={(fields[fieldKey] as string) || ''}
                       onChange={e => setFields(prev => ({ ...prev, [fieldKey]: e.target.value }))}
                       className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
@@ -1816,7 +1848,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 return (
                   <div key={fieldKey}>
                     <label className="block text-[12px] text-gray-500 mb-1">
-                      {FIELD_LABELS[fieldKey]}
+                      {getFieldLabel(productType, fieldKey)}
                       <span className="ml-1 text-[11px] text-blue-500">({cavLabel})</span>
                     </label>
                     <select
@@ -1845,7 +1877,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 const dtVal = fields[fieldKey] as string;
                 return (
                   <div key={fieldKey}>
-                    <label className="block text-[12px] text-gray-500 mb-1">{FIELD_LABELS[fieldKey]}</label>
+                    <label className="block text-[12px] text-gray-500 mb-1">{getFieldLabel(productType, fieldKey)}</label>
                     <select
                       value={dtVal || ''}
                       onChange={e => {
@@ -1882,7 +1914,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 return (
                   <div key={fieldKey}>
                     <label className="block text-[12px] text-gray-500 mb-1">
-                      {FIELD_LABELS[fieldKey]}
+                      {getFieldLabel(productType, fieldKey)}
                       <span className="ml-1 text-[11px] text-blue-400">点＋把当前长度存入报价池（同副模具只算一次模具费）</span>
                     </label>
                     <div className="flex gap-1">
@@ -1925,7 +1957,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               }
               return (
                 <div key={fieldKey}>
-                  <label className="block text-[12px] text-gray-500 mb-1">{FIELD_LABELS[fieldKey]}</label>
+                  <label className="block text-[12px] text-gray-500 mb-1">{getFieldLabel(productType, fieldKey)}</label>
                   <input
                     type="number"
                     min={0}
