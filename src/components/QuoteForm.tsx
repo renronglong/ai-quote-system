@@ -1470,8 +1470,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   };
 
   const applyRecogToForm = (d: Record<string, any>) => {
-    // 产品类型映射
-    if (d.product_type) {
+    // 如果当前是板材tab，强制覆盖AI可能返回的错误product_type
+    if (productType === '板材') {
+      d.product_type = d.product_type || 'stamping';
+      d.material_category = d.material_category || '铝板';
+    }
+    // 产品类型映射：当前已是板材时，不因AI返回的product_type切换tab
+    if (d.product_type && productType !== '板材') {
       const ptMap: Record<string,string> = {
         extrusion: '挤出', stamping: '板材', sheet_metal: '板材', die_casting: '压铸',
         zinc_alloy: '压铸', cnc: '挤出', injection: '注塑',
@@ -1501,8 +1506,17 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       setStandardCategory(resolvedCat);
     } else if (d.material_category) {
       // 归一化：挤出铝型材类 → 异型材；板材/压铸等保持各自key
+      // 但如果当前是板材tab，不要因为材料含"铝"就跳到异型材
       const mc = String(d.material_category);
-      if (/铝合金|铝型材|^铝$|挤压|挤出/.test(mc)) {
+      if (productType === '板材') {
+        // 板材模式下，直接用material_category作为板材的细分类
+        const catMap: Record<string,string> = {
+          '铝板': '铝板', '铝合金': '铝板', '铝': '铝板',
+          '不锈钢': '不锈钢', '冷轧板': '冷轧板', '冷板': '冷轧板', '镀锌板': '镀锌板',
+        };
+        const mapped = catMap[mc] || mc;
+        if (mapped) setMaterialCategory(mapped);
+      } else if (/铝合金|铝型材|^铝$|挤压|挤出/.test(mc)) {
         setMaterialCategory('异型材');
         setStandardCategory('异型材');
       } else {
@@ -1545,11 +1559,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const mw = toNum(d.meter_weight); if (mw !== null) next.meterWeight = mw;
       const qty = toNum(d.quantity); if (qty !== null) next.quantity = qty;
       const wt = toNum(d.wall_thickness) ?? toNum(d.thickness); if (wt !== null) next.thickness = wt;
-      // 板材专用：展开尺寸 sheet_length × sheet_width → productSize
-      const sheetL = toNum(d.sheet_length);
-      const sheetW = toNum(d.sheet_width);
+      // 板材专用：展开尺寸 → productSize（兼容新旧字段名）
+      const sheetL = toNum(d.unfold_length) ?? toNum(d.sheet_length);
+      const sheetW = toNum(d.unfold_width) ?? toNum(d.sheet_width);
       if (sheetL !== null && sheetW !== null) {
-        next.productSize = sheetL + '×' + sheetW;
+        next.productSize = Math.round(sheetL) + '×' + Math.round(sheetW);
       }
       // 标准件专属尺寸（前端 width/height 复用槽位：圆棒直径、六角对边、圆管外径→width；内径→height）
       const dAny = d as Record<string, unknown>;
@@ -1599,11 +1613,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     // 备注/说明
     if (d.notes) setFileRemark(prev => prev ? prev + '; ' + d.notes : d.notes);
     // 板材专用：将孔数/折弯数等信息写入备注
-    if (productType === '板材' || d.sheet_length || d.sheet_width) {
+    if (productType === '板材' || d.sheet_length || d.sheet_width || d.unfold_length) {
       const sheetNotes: string[] = [];
+      if (d.unfold_detail) sheetNotes.push(d.unfold_detail);
       if (d.hole_count) sheetNotes.push('孔数: ' + d.hole_count);
       if (d.bend_count) sheetNotes.push('折弯数: ' + d.bend_count);
-      if (d.bend_length) sheetNotes.push('折弯总长: ' + d.bend_length + 'mm');
       if (d.theoretical_weight_kg) sheetNotes.push('单件理论重量: ' + d.theoretical_weight_kg + 'kg');
       if (sheetNotes.length > 0) setFileRemark(prev => prev ? prev + '; ' + sheetNotes.join(', ') : sheetNotes.join(', '));
     }
