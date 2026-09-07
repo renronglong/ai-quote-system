@@ -19,7 +19,7 @@ export default function RootLayout({
         <AuthProvider>
           {children}
         </AuthProvider>
-        <div style={{position:'fixed',bottom:'4px',right:'8px',fontSize:'10px',color:'#ccc',pointerEvents:'none',zIndex:9999}}>v1.0.11</div>
+        <div style={{position:'fixed',bottom:'4px',right:'8px',fontSize:'10px',color:'#ccc',pointerEvents:'none',zIndex:9999}}>v1.0.12</div>
       </body>
     </html>
   );
