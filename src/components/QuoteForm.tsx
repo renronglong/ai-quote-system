@@ -235,7 +235,7 @@ const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
     materialCategories: {
       '铝板': {
         label: '铝板',
-        fields: ['thickness', 'productSize', 'quantity'],
+        fields: ['thickness', 'length', 'width', 'quantity'],
         processes: [
           { name: '无' },
           { name: '冲压', unit: '次' },
@@ -257,7 +257,7 @@ const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
       },
       '冷轧板': {
         label: '冷轧板',
-        fields: ['thickness', 'productSize', 'quantity'],
+        fields: ['thickness', 'length', 'width', 'quantity'],
         processes: [
           { name: '无' },
           { name: '冲压', unit: '次' },
@@ -276,7 +276,7 @@ const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
       },
       '不锈钢': {
         label: '不锈钢',
-        fields: ['thickness', 'productSize', 'quantity'],
+        fields: ['thickness', 'length', 'width', 'quantity'],
         processes: [
           { name: '无' },
           { name: '冲压', unit: '次' },
@@ -295,7 +295,7 @@ const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
       },
       '镀锌板': {
         label: '镀锌板',
-        fields: ['thickness', 'productSize', 'quantity'],
+        fields: ['thickness', 'length', 'width', 'quantity'],
         processes: [
           { name: '无' },
           { name: '冲压', unit: '次' },
@@ -390,7 +390,7 @@ const FIELD_LABELS: Record<string, string> = {
 
 // 按产品类型覆盖字段标签
 const FIELD_LABEL_OVERRIDES: Record<string, Record<string, string>> = {
-  '板材': { productSize: '展开尺寸(长×宽mm)' },
+  '板材': { length: '展开长(mm)', width: '展开宽(mm)' },
 };
 
 const getFieldLabel = (productType: string, fieldKey: string): string => {
@@ -1315,6 +1315,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     }
     if (productType === '板材') {
       const thickness = fields.thickness as number;
+      const num = (v: unknown): number | undefined => {
+        const n = typeof v === 'number' ? v : parseFloat(String(v));
+        return Number.isFinite(n) && n > 0 ? n : undefined;
+      };
+      const bL = num(fields.length);
+      const bW = num(fields.width);
+      if (bL && bW) return { length_mm: bL, width_mm: bW, wall_thickness_mm: thickness || undefined };
+      // 兼容旧 productSize 字段
       if (parsed) return { length_mm: parsed.l, width_mm: parsed.w, wall_thickness_mm: thickness || undefined };
     }
     if (productType === '压铸' || productType === '注塑') {
@@ -1350,7 +1358,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       } else {
         allFilled = cat.fields.filter(f => ['width', 'height', 'length', 'thickness', 'productSize'].includes(f)).every(f => {
           const val = fields[f];
-          return val !== '' && val !== undefined && val !== null && Number(val) > 0;
+          if (val === '' || val === undefined || val === null) return false;
+          // productSize 是复合字符串如 "100×200"，需要 parseProductSize 解析
+          if (f === 'productSize') return parseProductSize(String(val)) !== null;
+          return Number(val) > 0;
         });
       }
       if (!allFilled) {
@@ -1427,7 +1438,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               quantity: (fields.quantity as number) || 1,
               width: fields.width as number, height: fields.height as number,
               length: fields.length as number, thickness: fields.thickness as number,
-              productSize: fields.productSize as string,
+              productSize: (fields.productSize as string) || ((fields.length ? String(fields.length) : '') + (fields.width ? '×' + fields.width : '')),
               meterWeight: fields.meterWeight as number, netWeight: fields.netWeight as number,
               materialSurfaceTreatment, materialColor, processes,
               productSurfaceTreatment, productColor,
@@ -1559,12 +1570,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const mw = toNum(d.meter_weight); if (mw !== null) next.meterWeight = mw;
       const qty = toNum(d.quantity); if (qty !== null) next.quantity = qty;
       const wt = toNum(d.wall_thickness) ?? toNum(d.thickness); if (wt !== null) next.thickness = wt;
-      // 板材专用：展开尺寸 → productSize（兼容新旧字段名）
+      // 板材专用：展开尺寸 → length + width 独立字段
       const sheetL = toNum(d.unfold_length) ?? toNum(d.sheet_length);
       const sheetW = toNum(d.unfold_width) ?? toNum(d.sheet_width);
-      if (sheetL !== null && sheetW !== null) {
-        next.productSize = Math.round(sheetL) + '×' + Math.round(sheetW);
-      }
+      if (sheetL !== null) next.length = Math.round(sheetL);
+      if (sheetW !== null) next.width = Math.round(sheetW);
       // 标准件专属尺寸（前端 width/height 复用槽位：圆棒直径、六角对边、圆管外径→width；内径→height）
       const dAny = d as Record<string, unknown>;
       const num = (v: unknown) => toNum(v) ?? (toNum(v) !== null && (toNum(v) as number) > 0 ? toNum(v) : null);
@@ -1818,7 +1828,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   // Field rendering with two-column grid
   const renderFields = () => {
     if (!categoryConfig) return null;
-    const fieldOrder = ['width', 'height', 'length', 'perimeter', 'num_cavities', 'die_type', 'meterWeight', 'crossSectionArea', 'thickness', 'productSize', 'quantity', 'netWeight'];
+    const fieldOrder = ['thickness', 'length', 'width', 'height', 'perimeter', 'num_cavities', 'die_type', 'meterWeight', 'crossSectionArea', 'productSize', 'quantity', 'netWeight'];
     let visibleFields = fieldOrder.filter(f => categoryConfig.fields.includes(f));
     // In standard mode, hide num_cavities, die_type, width, height, perimeter
     // (these are handled by structured dimension inputs + mold matching)
@@ -2009,16 +2019,21 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         ))}
         {/* 板材：长×宽×厚自动算单件理论重量 */}
         {productType === '板材' && (() => {
-          const parsed = parseProductSize(fields.productSize as string);
+          const bL = parseFloat(fields.length as string) || 0;
+          const bW = parseFloat(fields.width as string) || 0;
           const t = Number(fields.thickness) || 0;
-          const wg = parsed ? calcSheetWeightG(materialCategory, parsed.l, parsed.w, t) : null;
+          // 兼容旧 productSize
+          const parsed = (bL <= 0 || bW <= 0) ? parseProductSize(fields.productSize as string) : null;
+          const l = bL > 0 ? bL : (parsed?.l || 0);
+          const w = bW > 0 ? bW : (parsed?.w || 0);
+          const wg = (l > 0 && w > 0) ? calcSheetWeightG(materialCategory, l, w, t) : null;
           if (wg === null) return null;
           const densityTxt = materialCategory === '铝板' ? '2.7' : materialCategory === '不锈钢' ? '7.93' : '7.85';
           return (
             <div className="mt-1 flex flex-wrap items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-100 px-2.5 py-1.5 text-[12px] text-blue-700">
               <span className="font-semibold">单件理论重量</span>
               <span className="font-mono font-semibold text-blue-800">{wg} g</span>
-              <span className="text-blue-400">（{parsed!.l}×{parsed!.w}×{t}mm × {densityTxt}g/cm³ 自动计算，直接用于报价）</span>
+              <span className="text-blue-400">（{l}×{w}×{t}mm × {densityTxt}g/cm³ 自动计算，直接用于报价）</span>
             </div>
           );
         })()}

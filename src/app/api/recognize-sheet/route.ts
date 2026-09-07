@@ -143,42 +143,45 @@ export async function POST(request: NextRequest) {
 
     const systemPrompt = `你是钣金/冲压件工程图纸识别专家。请仔细分析这张板材零件图纸/展开图/零件照片，提取所有报价所需的原始参数。
 
-重要：你只负责提取原始参数，展开尺寸由后端自动计算，你不需要计算展开尺寸。
+【核心原则】你只负责提取原始参数，展开尺寸由后端自动计算，你不需要计算展开尺寸。
+
+【尺寸识别规则 - 最重要】
+1. 首先判断图纸是否有折弯：
+   - 无折弯（平板/异形轮廓件）：直接填 length=外轮廓最大长边, width=外轮廓最大短边。忽略孔、槽、凸耳等内部特征对尺寸的影响。
+   - 有折弯：按展开方向识别各段直线尺寸填入 sections，width 填垂直于展开方向的宽度。
+2. 对于不规则外形（带凸耳、缺口、异形边）：以能包围整个零件的最小矩形外轮廓为准。
+3. 优先读取图纸上标注的尺寸数字，不要自己测量图片像素估算。
 
 请逐项识别以下信息，无法确定的字段填 null：
 
 1. material_grade: 材质牌号，如 5052-H32、6061-T6、304不锈钢、SPCC、SGCC、DC01、Q235
 2. material_category: 材料类别，取值之一：铝板、不锈钢、冷轧板、镀锌板、热轧板
 3. thickness: 板材厚度mm（通常标注在侧视图或技术要求中，如 t=2.0、S=1.5）
-4. sections: 折弯件各段直线尺寸数组(mm)，按从一端到另一端的顺序列出每段直线长度。
-   - 如果是简单矩形平板（无折弯），sections 只填 [长度, 宽度]
-   - 如果有折弯，按展开方向依次列出每段直边的长度。例如一个L形件，竖直段30mm，水平段50mm → [30, 50]
-   - 例如一个U形件，左竖边40mm，底边60mm，右竖边40mm → [40, 60, 40]
-5. bend_angles: 每个折弯的角度数组(度)，与sections中相邻段的折弯对应。
-   - 例如一个90°的L形折弯 → [90]
-   - 两个90°折弯的U形件 → [90, 90]
-   - 如果没有折弯，填 []
-   - 如果角度不明确，默认90°
-6. bend_radius: 内弯曲半径mm（图纸标注了则提取，否则填 null，后端默认取板厚）
-7. width: 宽度方向尺寸mm（垂直于展开方向的尺寸，如折弯件的深度/宽度）
-8. surface_treatment: 表面处理，如 氧化本色、氧化黑色、粉末喷涂、电镀、拉丝、钝化、无
-9. processes: 加工工艺数组，可能的值：["激光切割","冲压落料","折弯","钻孔","攻牙","去毛刺","打磨","焊接","铆接"]
-10. hole_count: 孔的数量
-11. bend_count: 折弯数量
-12. quantity: 订单数量（如有标注）
-13. product_name: 产品名称（标题栏提取）
-14. product_code: 产品编号/图号
-15. tolerance: 关键公差（如有标注）
-16. notes: 其他技术要求的文字说明
+4. length: 零件外轮廓最大长度mm（无折弯件必填！）
+5. width: 零件外轮廓最大宽度mm（无折弯件必填！）
+6. sections: 仅折弯件需要 — 各段直线尺寸数组(mm)，按展开方向列出。
+   - 无折弯件填 null 或 []
+   - 有折弯件：例如L形件竖直段30mm+水平段50mm → [30, 50]
+7. bend_angles: 每个折弯的角度数组(度)，无折弯填 []，有折弯默认90°
+8. bend_radius: 内弯曲半径mm（图纸标注了则提取，否则填 null，后端默认取板厚）
+9. surface_treatment: 表面处理，如 氧化本色、氧化黑色、粉末喷涂、电镀、拉丝、钝化、无
+10. processes: 加工工艺数组，可能的值：["激光切割","冲压落料","折弯","钻孔","攻牙","去毛刺","打磨","焊接","铆接"]
+11. hole_count: 孔的数量
+12. bend_count: 折弯数量
+13. quantity: 订单数量（如有标注）
+14. product_name: 产品名称（标题栏提取）
+15. product_code: 产品编号/图号
+16. tolerance: 关键公差（如有标注）
+17. notes: 其他技术要求的文字说明
 
 必须只输出一个JSON对象，不要输出任何其他文字或markdown标记。
 
 重要规则：
-- sections 数组是展开尺寸计算的关键，请仔细识别每一段直线尺寸
-- 如果图纸是零件的成形视图（折弯后的样子），请识别出每段直边的长度（外尺寸或内尺寸均可，后端会补偿）
-- 如果图纸已经是展开图，直接识别各段尺寸即可
+- length 和 width 是材料费计算的关键！必须取零件外轮廓的最大尺寸
+- 图纸上标注的尺寸数字优先于视觉估算
+- 对于带凸耳/凸出/缺口的异形件，外轮廓尺寸 = 能包围零件的最小矩形
+- 不要把凸耳长度当成零件主尺寸，不要把零件主尺寸当成凸耳尺寸
 - thickness 是板材厚度
-- 实物照片尽力估算并在 notes 说明
 - confidence 为 0-1 的整体置信度`;
 
     console.log(`[RecognizeSheet] 调用豆包API, model: ${DOUBAO_MODEL}`);
@@ -240,7 +243,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '识别结果解析失败', raw_response: resultContent }, { status: 422 });
     }
 
-    // ===== 后端自动计算展开尺寸 =====
+    // ===== 展开尺寸计算 =====
+    const parsedLength = typeof parsed.length === 'number' ? parsed.length
+      : (typeof parsed.length === 'string' ? parseFloat(parsed.length) : NaN);
+    const parsedWidth = typeof parsed.width === 'number' ? parsed.width
+      : (typeof parsed.width === 'string' ? parseFloat(parsed.width) : NaN);
     const thickness = typeof parsed.thickness === 'number' ? parsed.thickness
       : (typeof parsed.thickness === 'string' ? parseFloat(parsed.thickness) : NaN);
 
@@ -248,19 +255,49 @@ export async function POST(request: NextRequest) {
       const sections = Array.isArray(parsed.sections) ? parsed.sections.map(Number).filter(n => !isNaN(n) && n > 0) : [];
       const bendAngles = Array.isArray(parsed.bend_angles) ? parsed.bend_angles.map(Number).filter(n => !isNaN(n) && n > 0) : [];
       const bendRadius = typeof parsed.bend_radius === 'number' ? parsed.bend_radius : undefined;
-      const width = typeof parsed.width === 'number' ? parsed.width : undefined;
+      const width = !isNaN(parsedWidth) ? parsedWidth : undefined;
 
-      const unfold = computeUnfold({
-        sections,
-        bendAngles,
-        thickness,
-        bendRadius,
-        materialCategory: parsed.material_category as string,
-        width,
-      });
-
-      Object.assign(parsed, unfold);
-      console.log(`[RecognizeSheet] 展开计算结果: ${JSON.stringify(unfold)}`);
+      if (sections.length >= 2) {
+        // 有折弯件：走展开计算
+        const unfold = computeUnfold({
+          sections,
+          bendAngles,
+          thickness,
+          bendRadius,
+          materialCategory: parsed.material_category as string,
+          width,
+        });
+        Object.assign(parsed, unfold);
+        console.log(`[RecognizeSheet] 折弯件展开计算: ${JSON.stringify(unfold)}`);
+      } else if (!isNaN(parsedLength) && parsedLength > 0 && !isNaN(parsedWidth) && parsedWidth > 0) {
+        // 无折弯平板件：AI直接返回了 length + width，直接使用
+        parsed.unfold_length = parsedLength;
+        parsed.unfold_width = parsedWidth;
+        parsed.perimeter = Math.round(2 * (parsedLength + parsedWidth) * 100) / 100;
+        const areaMm2 = parsedLength * parsedWidth;
+        parsed.area_mm2 = areaMm2;
+        parsed.area_m2 = Math.round(areaMm2 / 1000000 * 10000) / 10000;
+        const densityMap: Record<string, number> = {
+          '铝板': 2.70, '不锈钢': 7.93, '冷轧板': 7.85, '镀锌板': 7.85, '热轧板': 7.85,
+        };
+        const density = densityMap[String(parsed.material_category || '')] ?? 2.70;
+        const weightKg = (parsedLength / 1000) * (parsedWidth / 1000) * (thickness / 1000) * density * 1000;
+        parsed.theoretical_weight_kg = Math.round(weightKg * 1000) / 1000;
+        parsed.unfold_detail = `无折弯平板，外轮廓 ${parsedLength}×${parsedWidth}mm`;
+        console.log(`[RecognizeSheet] 平板件直接使用: ${parsedLength}×${parsedWidth}mm`);
+      } else if (sections.length === 1 && width) {
+        // 单段+宽度
+        const unfold = computeUnfold({
+          sections: [sections[0], width],
+          bendAngles: [],
+          thickness,
+          bendRadius,
+          materialCategory: parsed.material_category as string,
+          width,
+        });
+        Object.assign(parsed, unfold);
+        console.log(`[RecognizeSheet] 单段展开: ${JSON.stringify(unfold)}`);
+      }
     }
 
     const confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0;
