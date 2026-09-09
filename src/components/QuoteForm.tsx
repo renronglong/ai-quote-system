@@ -725,7 +725,7 @@ const PROCESS_SUB_PARAMS: Record<string, { name: string; type: string; label: st
 };
 
 // Allowed upload extensions
-const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.dxf'];
+const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t'];
 
 // ==================== Component ====================
 
@@ -1676,7 +1676,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
   // ==================== File Upload ====================
   // 图片扩展名 — 触发AI识别
-  const AI_RECOG_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf', '.dxf'];
+  const AI_RECOG_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf', '.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t'];
   // CAD扩展名 — 本地解析或转发
   const CAD_EXTS = ['.dxf', '.dwg', '.step', '.stp', '.igs'];
 
