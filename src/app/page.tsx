@@ -27,7 +27,7 @@ const supplierLinks = [
 const quoteHighlights = [
   { icon: Sparkles, title: '图纸AI识别', desc: '上传截面图自动识别尺寸并填入报价表' },
   { icon: TrendingUp, title: '实时铝锭价', desc: '南海现货价每日同步，成本透明' },
-  { icon: ShieldCheck, title: '五大品类', desc: '挤压型材、板材、压铸、锌合金、注塑' },
+  { icon: ShieldCheck, title: '六大品类', desc: '挤压型材、板材、压铸、锌合金、注塑、钢材' },
 ];
 
 export default function HomePage() {
