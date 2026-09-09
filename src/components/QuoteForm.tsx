@@ -1902,9 +1902,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     try {
       setRecogError('正在识别工艺类型...');
       const classifyResp = await fetch('/api/classify', { method: 'POST', body: classifyFd });
+      console.log('[自动分类] API响应状态:', classifyResp.status);
       if (classifyResp.ok) {
         const classifyResult = await classifyResp.json();
-        const processType = classifyResult.process_type || classifyResult.processType;
+        console.log('[自动分类] API返回数据:', classifyResult);
+        const processType = classifyResult.process_type || classifyResult.processType || classifyResult.process;
         const confidence = classifyResult.confidence || 0;
         
         // 映射 API 返回的工艺类型到前端 productType
