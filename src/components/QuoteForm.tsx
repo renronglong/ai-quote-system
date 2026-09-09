@@ -1895,6 +1895,39 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       return;
     }
     if (!AI_RECOG_EXTS.includes(ext)) return; // 3D CAD走原有解析流程
+
+    // ===== 自动工艺分类 =====
+    const classifyFd = new FormData();
+    classifyFd.append('file', file);
+    try {
+      setRecogError('正在识别工艺类型...');
+      const classifyResp = await fetch('/api/classify', { method: 'POST', body: classifyFd });
+      if (classifyResp.ok) {
+        const classifyResult = await classifyResp.json();
+        const processType = classifyResult.process_type || classifyResult.processType;
+        const confidence = classifyResult.confidence || 0;
+        
+        // 映射 API 返回的工艺类型到前端 productType
+        const processToProductType: Record<string, string> = {
+          '挤压铝型材': '挤出',
+          '板材': '板材',
+          '铝板': '板材',
+          '锌合金压铸': '压铸',
+          '铝合金压铸': '压铸',
+          '注塑': '注塑',
+        };
+        
+        if (processType && processToProductType[processType]) {
+          const newProductType = processToProductType[processType];
+          setProductType(newProductType);
+          console.log(`[自动分类] ${processType} (置信度${(confidence*100).toFixed(0)}%) → ${newProductType}`);
+        }
+      }
+    } catch (classifyErr) {
+      console.warn('[自动分类] 失败，继续使用当前品类', classifyErr);
+    }
+    setRecogError(null);
+
     setRecognizing(true);
     setRecogError(null);
     setRecogResult(null);
