@@ -1817,8 +1817,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (d.processes && d.processes !== '无') {
       let procs: ProcessSelection[] = [];
       if (Array.isArray(d.processes)) {
-        // 板材API返回数组格式
-        procs = d.processes.map((p: string) => ({ name: p.trim() })).filter((p: ProcessSelection) => p.name);
+        // 板材API返回数组格式 或 3D CAD传入的对象数组
+        procs = d.processes.map((p: any) => {
+          if (typeof p === 'string') return { name: p.trim() };
+          return { name: p.name, quantity: p.quantity, subParams: p.subParams };
+        }).filter((p: ProcessSelection) => p.name);
       } else if (typeof d.processes === 'string') {
         procs = d.processes.split(/[,，、]/).map((p: string) => {
           const m = p.trim().match(/^(.+?)(?:\((\d+)(分钟|次|mm|个)?\))?$/);
@@ -2007,13 +2010,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           return;
         }
         // 从解析结果提取参数，映射到表单字段名（/api/parse/stp 返回的字段在顶层）
-        // 构建 CNC 深加工工序
-        const cncProcesses: string[] = [];
+        // 构建 CNC 深加工工序（带 subParams 确保表单输入框有值）
+        const cncProcs: ProcessSelection[] = [];
         if (cadJson.cnc_total_holes > 0) {
-          cncProcesses.push(`钻孔(${cadJson.cnc_total_holes}个)`);
+          cncProcs.push({ name: '钻孔', quantity: cadJson.cnc_total_holes, subParams: { hole_count: cadJson.cnc_total_holes, diameter_range: 'ø3~6' } });
         }
         if (cadJson.machining_time_min > 0) {
-          cncProcesses.push(`CNC加工(${Math.round(cadJson.machining_time_min)}分钟)`);
+          cncProcs.push({ name: 'CNC加工', quantity: Math.round(cadJson.machining_time_min), subParams: { minutes: Math.round(cadJson.machining_time_min) } });
         }
         const recogData: Record<string, any> = {
           confidence: 0.9,
@@ -2030,8 +2033,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           length: cadJson.extrusion_length_mm,
           notes: `3D 模型解析 | ⚠️仅用于报价估算，不可作为开模依据`,
         };
-        if (cncProcesses.length > 0) {
-          recogData.processes = cncProcesses.join(',');
+        if (cncProcs.length > 0) {
+          recogData.processes = cncProcs;
         }
         setRecogResult(recogData);
         checkQuota();
