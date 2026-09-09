@@ -1704,47 +1704,63 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const isCAD = ['.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t'].some(ext => file.name.toLowerCase().endsWith(ext));
       if (isCAD) {
         setRecogError('CAD文件正在解析...');
-        const dxfFd = new FormData();
-        dxfFd.append('file', file);
-        const dxfResp = await fetch('/api/drawing-parse', { method: 'POST', body: dxfFd });
-        const dxfJson = await dxfResp.json();
+        const cadFd = new FormData();
+        cadFd.append('file', file);
+        const cadResp = await fetch('/api/drawing-parse', { method: 'POST', body: cadFd });
+        const cadJson = await cadResp.json();
         setRecogError(null);
-        if (!dxfResp.ok || !dxfJson.parse_success) {
-          setRecogError(dxfJson.error || dxfJson.parse_errors || 'DXF解析失败');
+        if (!cadResp.ok || !cadJson.parse_success) {
+          setRecogError(cadJson.error || (Array.isArray(cadJson.parse_errors) ? cadJson.parse_errors.join('; ') : cadJson.parse_errors) || 'CAD解析失败');
           return;
         }
-        // 从 dimensions 计算展开尺寸
-        const dims = dxfJson.drawing_dimensions || [];
-        const hDims = dims.filter((d: any) => d.direction === '水平').map((d: any) => d.measurement_mm);
-        const vDims = dims.filter((d: any) => d.direction === '垂直').map((d: any) => d.measurement_mm);
-        const maxH = hDims.length ? Math.max(...hDims) : 0;
-        const maxV = vDims.length ? Math.max(...vDims) : 0;
-        // 主体高度：出现>=2次的最大垂直DIM
-        const vCount: Record<number, number> = {};
-        vDims.forEach((v: number) => { const k = Math.round(v * 10); vCount[k] = (vCount[k] || 0) + 1; });
-        const bodyH = Math.max(...Object.entries(vCount).filter(([, c]) => c >= 2).map(([k]) => Number(k) / 10), 0);
-        const bendExt = vDims.filter((v: number) => Math.abs(v - bodyH) > bodyH * 0.3 && Math.abs(v - maxV) < 1);
-        const bendVal = bendExt.length ? Math.max(...bendExt) : 0;
-        const unfoldL = maxH > 0 ? Math.round((maxH + bendVal) * 100) / 100 : maxH;
-        const unfoldW = maxV;
-        // 孔信息
-        const holes = dxfJson.hole_groups || [];
-        const totalHoles = dxfJson.hole_count || holes.reduce((s: number, h: any) => s + h.count, 0);
-        const holeDesc = holes.map((h: any) => `Ø${h.diameter_mm}×${h.count}`).join(' + ');
-        // 构造兼容格式
-        const recogData: Record<string, any> = {
-          confidence: 0.95,
-          product_type: productType === '板材' ? 'stamping' : productType,
-          material_category: '铝板',
-          unfold_length: unfoldL,
-          unfold_width: unfoldW,
-          hole_count: totalHoles,
-          thickness: null,
-          notes: `${ext.toUpperCase().slice(1)}解析 | 展开${unfoldL}×${unfoldW}mm | 孔: ${holeDesc || '无'} | ⚠️仅用于报价估算，不可作为开模依据`,
-        };
+        const fExt = ext.replace('.', '');
+        const is3D = ['stp', 'step', 'igs', 'iges', 'x_t'].includes(fExt);
+        let recogData: Record<string, any> = { confidence: 0.9 };
+        if (is3D && cadJson.section_width_mm) {
+          // STP/3D 格式 → 铝型材截面数据
+          recogData = {
+            ...recogData,
+            product_type: 'extrusion',
+            material_category: '铝型材',
+            width: cadJson.section_width_mm,
+            height: cadJson.section_height_mm,
+            meter_weight: cadJson.weight_kg_per_m || null,
+            perimeter: cadJson.outer_perimeter_mm || null,
+            wall_thickness: cadJson.wall_thickness || null,
+            length: cadJson.extrusion_length_mm || null,
+            notes: `${fExt.toUpperCase()} 3D解析 | 截面${cadJson.section_width_mm}×${cadJson.section_height_mm}mm | ⚠️仅用于报价估算`,
+          };
+        } else {
+          // DXF/DWG 2D 格式 → 板材展开数据
+          const dims = cadJson.drawing_dimensions || [];
+          const hDims = dims.filter((d: any) => d.direction === '水平').map((d: any) => d.measurement_mm);
+          const vDims = dims.filter((d: any) => d.direction === '垂直').map((d: any) => d.measurement_mm);
+          const maxH = hDims.length ? Math.max(...hDims) : 0;
+          const maxV = vDims.length ? Math.max(...vDims) : 0;
+          const vCount: Record<number, number> = {};
+          vDims.forEach((v: number) => { const k = Math.round(v * 10); vCount[k] = (vCount[k] || 0) + 1; });
+          const bodyH = Math.max(...Object.entries(vCount).filter(([, c]) => c >= 2).map(([k]) => Number(k) / 10), 0);
+          const bendExt = vDims.filter((v: number) => Math.abs(v - bodyH) > bodyH * 0.3 && Math.abs(v - maxV) < 1);
+          const bendVal = bendExt.length ? Math.max(...bendExt) : 0;
+          const unfoldL = maxH > 0 ? Math.round((maxH + bendVal) * 100) / 100 : maxH;
+          const unfoldW = maxV;
+          const holes = cadJson.hole_groups || [];
+          const totalHoles = cadJson.hole_count || holes.reduce((s: number, h: any) => s + h.count, 0);
+          const holeDesc = holes.map((h: any) => `Ø${h.diameter_mm}×${h.count}`).join(' + ');
+          recogData = {
+            ...recogData,
+            product_type: productType === '板材' ? 'stamping' : productType,
+            material_category: '铝板',
+            unfold_length: unfoldL,
+            unfold_width: unfoldW,
+            hole_count: totalHoles,
+            thickness: null,
+            notes: `${fExt.toUpperCase()}解析 | 展开${unfoldL}×${unfoldW}mm | 孔: ${holeDesc || '无'} | ⚠️仅用于报价估算，不可作为开模依据`,
+          };
+        }
         setRecogResult(recogData);
         checkQuota();
-        setRecognitionId("dxf_" + Date.now());
+        setRecognitionId("cad_" + Date.now());
         applyRecogToForm(recogData);
         return;
       }
