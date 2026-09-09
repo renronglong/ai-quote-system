@@ -3035,7 +3035,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               <div>
                 <Upload className={`w-6 h-6 mx-auto mb-1.5 ${dragOver ? 'text-blue-500' : 'text-gray-400'}`} />
                 <p className="text-xs text-gray-500">拖拽文件到此处，或<span className="text-blue-500 font-medium">点击上传</span></p>
-                <p className="text-[11px] text-gray-400 mt-1">支持 .pdf .jpg .png，也可 Ctrl+V 粘贴图片</p>
+                <p className="text-[11px] text-gray-400 mt-1">支持 PDF、JPG、PNG、DXF、DWG、STP、STEP、IGS、X_T，也可 Ctrl+V 粘贴图片</p>
               </div>
             )}
           </div>
