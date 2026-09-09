@@ -1906,7 +1906,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       if (classifyResp.ok) {
         const classifyResult = await classifyResp.json();
         console.log('[自动分类] API返回数据:', classifyResult);
-        const processType = classifyResult.process_type_cn || classifyResult.process_type || classifyResult.processType || classifyResult.process;
+        const processType = classifyResult.process_type || classifyResult.processType || classifyResult.process;
         const confidence = classifyResult.confidence || 0;
         
         // 映射 API 返回的工艺类型到前端 productType
@@ -1987,6 +1987,32 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         setRecogResult(recogData);
         checkQuota();
         setRecognitionId("dxf_" + Date.now());
+        applyRecogToForm(recogData);
+        return;
+      }
+      // ===== 3D CAD 图纸解析：走 drawing_parser 服务 =====
+      const is3DCAD = ['.stp', '.step', '.igs', '.iges', '.x_t', '.dwg'].includes(ext);
+      if (is3DCAD) {
+        setRecogError('3D 模型正在解析...');
+        const cadFd = new FormData();
+        cadFd.append('file', file);
+        const cadResp = await fetch('/api/drawing-parse', { method: 'POST', body: cadFd });
+        const cadJson = await cadResp.json();
+        setRecogError(null);
+        if (!cadResp.ok || !cadJson.parse_success) {
+          setRecogError(cadJson.error || cadJson.parse_errors || '3D 模型解析失败');
+          return;
+        }
+        // 从解析结果提取参数
+        const recogData: Record<string, any> = {
+          confidence: 0.9,
+          product_type: productType,
+          ...cadJson,
+          notes: `3D 模型解析 | ⚠️仅用于报价估算，不可作为开模依据`,
+        };
+        setRecogResult(recogData);
+        checkQuota();
+        setRecognitionId("cad_" + Date.now());
         applyRecogToForm(recogData);
         return;
       }
