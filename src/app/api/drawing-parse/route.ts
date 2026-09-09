@@ -2,6 +2,17 @@ import { NextRequest } from "next/server";
 
 const PARSER_API = process.env.DRAWING_PARSER_URL || "http://129.204.40.114:8000";
 
+// 3D CAD 格式映射到对应解析端点
+const FORMAT_ENDPOINTS: Record<string, string> = {
+  '.stp': '/api/parse/stp',
+  '.step': '/api/parse/stp',
+  '.igs': '/api/parse/stp',
+  '.iges': '/api/parse/stp',
+  '.x_t': '/api/parse/stp',
+  '.dwg': '/api/parse/dwg',
+  '.dxf': '/api/parse/dxf',
+};
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -14,15 +25,19 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // 根据文件扩展名选择解析端点
+    const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+    const endpoint = FORMAT_ENDPOINTS[ext] || "/api/parse/upload";
+
     // 转发到 drawing_parser API
     const proxyForm = new FormData();
-    const blob = new Blob([await file.arrayBuffer()], { type: file.type });
+    const blob = new Blob([await file.arrayBuffer()], { type: file.type || 'application/octet-stream' });
     proxyForm.append("file", blob, file.name);
 
-    const response = await fetch(`${PARSER_API}/api/parse/upload`, {
+    const response = await fetch(`${PARSER_API}${endpoint}`, {
       method: "POST",
       body: proxyForm,
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(120000),
     });
 
     if (!response.ok) {

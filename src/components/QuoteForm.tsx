@@ -1701,8 +1701,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         setRecogError(null);
       }
       // ===== DXF 图纸解析：走 drawing_parser 服务 =====
-      if (file.name.toLowerCase().endsWith('.dxf')) {
-        setRecogError('DXF正在解析...');
+      const isCAD = ['.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t'].some(ext => file.name.toLowerCase().endsWith(ext));
+      if (isCAD) {
+        setRecogError('CAD文件正在解析...');
         const dxfFd = new FormData();
         dxfFd.append('file', file);
         const dxfResp = await fetch('/api/drawing-parse', { method: 'POST', body: dxfFd });
@@ -1739,7 +1740,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           unfold_width: unfoldW,
           hole_count: totalHoles,
           thickness: null,
-          notes: `DXF解析 | 展开${unfoldL}×${unfoldW}mm | 孔: ${holeDesc || '无'} | ⚠️仅用于报价估算，不可作为开模依据`,
+          notes: `${ext.toUpperCase().slice(1)}解析 | 展开${unfoldL}×${unfoldW}mm | 孔: ${holeDesc || '无'} | ⚠️仅用于报价估算，不可作为开模依据`,
         };
         setRecogResult(recogData);
         checkQuota();
