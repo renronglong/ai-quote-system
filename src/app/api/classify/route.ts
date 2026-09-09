@@ -6,18 +6,23 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
+    const fileId = formData.get("file_id") as string | null;
 
-    if (!file) {
-      return new Response(JSON.stringify({ error: "未收到文件" }), {
+    if (!file && !fileId) {
+      return new Response(JSON.stringify({ error: "未收到文件或 file_id" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    // 转发到 drawing_parser API 的 classify/process 端点
     const proxyForm = new FormData();
-    const blob = new Blob([await file.arrayBuffer()], { type: file.type || 'application/octet-stream' });
-    proxyForm.append("file", blob, file.name);
+
+    if (fileId) {
+      proxyForm.append("file_id", fileId);
+    } else {
+      const blob = new Blob([await file!.arrayBuffer()], { type: file!.type || 'application/octet-stream' });
+      proxyForm.append("file", blob, file!.name);
+    }
 
     const response = await fetch(`${PARSER_API}/api/classify/process`, {
       method: "POST",
