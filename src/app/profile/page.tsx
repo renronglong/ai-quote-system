@@ -205,7 +205,7 @@ export default function ProfilePage() {
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center">
                 <Factory className="w-4 h-4 text-white" />
               </div>
-              <span className="text-base font-bold text-slate-800">工品报价</span>
+              <span className="text-base font-bold text-slate-800">碧利制造</span>
             </Link>
             <Link href="/" className="text-sm text-slate-500 hover:text-slate-700 transition-colors">
               返回首页
@@ -433,7 +433,7 @@ export default function ProfilePage() {
 
         {/* 底部版权 */}
         <div className="text-center py-4 text-xs text-slate-400">
-          <p>工品报价 gyparts.cn</p>
+          <p>碧利制造 gyparts.cn</p>
           <p className="mt-1">© {new Date().getFullYear()} 版权所有</p>
         </div>
       </div>

@@ -239,7 +239,7 @@ export default function MarketPage() {
                 <Factory className="w-5 h-5 text-white" />
               </div>
               <div>
-                <span className="text-lg font-bold text-slate-800">工品报价</span>
+                <span className="text-lg font-bold text-slate-800">碧利制造</span>
                 <span className="hidden sm:inline text-xs ml-1 text-slate-400">gyparts.cn</span>
               </div>
             </Link>
@@ -411,10 +411,10 @@ export default function MarketPage() {
             <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
               <Factory className="w-4 h-4 text-white" />
             </div>
-            <span className="font-bold">工品报价</span>
+            <span className="font-bold">碧利制造</span>
           </div>
           <p className="text-xs text-slate-500">
-            © {new Date().getFullYear()} 工品报价 gyparts.cn — 铝价行情数据仅供参考
+            © {new Date().getFullYear()} 碧利制造 gyparts.cn — 铝价行情数据仅供参考
           </p>
         </div>
       </footer>
