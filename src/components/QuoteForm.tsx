@@ -834,6 +834,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     }).catch(() => {});
   }, [recognitionId, recogResult, fields, productType, materialCategory, productSurfaceTreatment, user]);
   const [recogError, setRecogError] = useState<string | null>(null);
+  const [checkQuestions, setCheckQuestions] = useState<any[]>([]);
+  const [checkAnswers, setCheckAnswers] = useState<Record<string, any>>({});
+  const [showCheckDialog, setShowCheckDialog] = useState(false);
   const [deepQuoteLoading, setDeepQuoteLoading] = useState(false);
   const [copiedInvite, setCopiedInvite] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1885,6 +1888,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     });
   };
 
+  const processToProductType: Record<string, string> = {
+    '挤压铝型材': '挤出', '板材': '板材', '铝板': '板材',
+    '锌合金压铸': '压铸', '铝合金压铸': '压铸', '注塑': '注塑',
+  };
   const recognizeFile = async (file: File) => {
     const ext = '.' + file.name.split('.').pop()?.toLowerCase();
     // ===== 登录检查 =====
@@ -1914,15 +1921,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         const processType = classifyResult.process_type || classifyResult.processType || classifyResult.process;
         const confidence = classifyResult.confidence || 0;
         
-        // 映射 API 返回的工艺类型到前端 productType
-        const processToProductType: Record<string, string> = {
-          '挤压铝型材': '挤出',
-          '板材': '板材',
-          '铝板': '板材',
-          '锌合金压铸': '压铸',
-          '铝合金压铸': '压铸',
-          '注塑': '注塑',
-        };
+        // 映射 API 返回的工艺类型到前端 productType (processToProductType 已在外层定义)
         
         if (processType && processToProductType[processType]) {
           const newProductType = processToProductType[processType];
@@ -2020,7 +2019,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           return;
         }
         // 先分类
-        setRecogError(\`解压成功，正在识别 \${targetFile.name}...\`);
+        setRecogError(`解压成功，正在识别 ${targetFile.name}...`);
         const clsFd = new FormData();
         clsFd.append('file_id', targetFile.file_id);
         const clsResp = await fetch('/api/classify', { method: 'POST', body: clsFd });
@@ -2068,7 +2067,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           num_cavities: parseJson.is_hollow ? 1 : 0,
           material_category: parseJson.material_grade || '',
           length: parseJson.extrusion_length_mm,
-          notes: \`压缩包解析: \${targetFile.name} | ⚠️仅用于报价估算，不可作为开模依据\`,
+          notes: `压缩包解析: ${targetFile.name} | ⚠️仅用于报价估算，不可作为开模依据`,
         };
         if (cncProcs.length > 0) {
           recogData.processes = cncProcs;
@@ -2127,6 +2126,20 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         setRecognitionId("cad_" + Date.now());
         applyRecogToForm(recogData);
         setTimeout(() => { skipCategoryResetRef.current = false; }, 100);
+        // 调用完整性检查，获取需要用户确认的问题
+        const checkFd = new FormData();
+        checkFd.append('file', file);
+        try {
+          const checkResp = await fetch('/api/check', { method: 'POST', body: checkFd });
+          if (checkResp.ok) {
+            const checkData = await checkResp.json();
+            if (checkData.success && checkData.questions && checkData.questions.length > 0) {
+              setCheckQuestions(checkData.questions);
+              setCheckAnswers({});
+              setShowCheckDialog(true);
+            }
+          }
+        } catch(e) { /* 检查失败不影响主流程 */ }
         return;
       }
       const fd = new FormData();
@@ -3281,6 +3294,134 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             </div>
           )}
         </div>
+
+        {/* ===== AI确认对话框 ===== */}
+        {showCheckDialog && checkQuestions.length > 0 && (
+          <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50/80 p-4 space-y-3">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center">
+                <span className="text-white text-xs font-bold">AI</span>
+              </div>
+              <span className="text-sm font-semibold text-blue-800">需要确认以下信息</span>
+            </div>
+            {checkQuestions.map((q: any, idx: number) => (
+              <div key={idx} className="bg-white rounded-lg p-3 border border-blue-100">
+                <div className="text-sm text-gray-700 mb-2">{q.question}</div>
+                {q.input_type === 'select' && (
+                  <select
+                    className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    defaultValue={q.default || ''}
+                    onChange={(e) => {
+                      setCheckAnswers(prev => ({ ...prev, [q.field]: e.target.value }));
+                    }}
+                  >
+                    {q.options?.map((opt: string) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                )}
+                {q.input_type === 'number' && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      className="flex-1 text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      defaultValue={q.default ?? ''}
+                      placeholder={q.unit || ''}
+                      onChange={(e) => {
+                        setCheckAnswers(prev => ({ ...prev, [q.field]: Number(e.target.value) }));
+                      }}
+                    />
+                    {q.unit && <span className="text-xs text-gray-500">{q.unit}</span>}
+                  </div>
+                )}
+                {q.input_type === 'confirm' && (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className={`px-3 py-1 text-xs rounded-md border transition ${
+                        checkAnswers[q.field] === 'yes' || checkAnswers[q.field] === undefined
+                          ? 'bg-blue-500 text-white border-blue-500'
+                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                      }`}
+                      onClick={() => setCheckAnswers(prev => ({ ...prev, [q.field]: 'yes' }))}
+                    >
+                      ✓ 正确
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-3 py-1 text-xs rounded-md border transition ${
+                        checkAnswers[q.field] === 'no'
+                          ? 'bg-red-500 text-white border-red-500'
+                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                      }`}
+                      onClick={() => setCheckAnswers(prev => ({ ...prev, [q.field]: 'no' }))}
+                    >
+                      ✗ 需要修改
+                    </button>
+                  </div>
+                )}
+                {q.input_type === 'text' && (
+                  <input
+                    type="text"
+                    className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    defaultValue={q.default || ''}
+                    placeholder={q.label || ''}
+                    onChange={(e) => {
+                      setCheckAnswers(prev => ({ ...prev, [q.field]: e.target.value }));
+                    }}
+                  />
+                )}
+              </div>
+            ))}
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                className="flex-1 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition"
+                onClick={() => {
+                  // 将用户回答应用到表单
+                  const answers = { ...checkAnswers };
+                  // 填充默认值（用户未修改的）
+                  checkQuestions.forEach((q: any) => {
+                    if (answers[q.field] === undefined && q.default !== undefined) {
+                      answers[q.field] = q.default;
+                    }
+                  });
+                  // 应用确认类问题
+                  checkQuestions.forEach((q: any) => {
+                    if (q.input_type === 'confirm' && answers[q.field] === 'no') {
+                      // 用户否认了推荐值，清空该字段
+                      // 具体处理视字段而定
+                    }
+                  });
+                  // 映射到表单字段
+                  if (answers.material_grade) setMaterialGrade(answers.material_grade);
+                  if (answers.surface_treatment) {
+                    const stMap: Record<string,string> = {
+                      '阳极氧化': '氧化', '粉末喷涂': '喷涂', '氟碳喷涂': '喷涂', '木纹转印': '喷涂', '电镀': '无', '无': '无',
+                    };
+                    const mapped = stMap[answers.surface_treatment] || answers.surface_treatment;
+                    setProductSurfaceTreatment(mapped);
+                    setMaterialSurfaceTreatment(mapped);
+                  }
+                  if (answers.length_mm) {
+                    setFields(prev => ({ ...prev, length: answers.length_mm }));
+                  }
+                  setShowCheckDialog(false);
+                  setCheckQuestions([]);
+                }}
+              >
+                确认并填入
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition"
+                onClick={() => { setShowCheckDialog(false); setCheckQuestions([]); }}
+              >
+                跳过
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ===== 登录提示弹窗 ===== */}
         {showLoginModal && (
