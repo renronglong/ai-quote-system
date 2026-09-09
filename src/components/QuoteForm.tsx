@@ -520,7 +520,7 @@ const PROCESS_SUB_PARAMS: Record<string, { name: string; type: string; label: st
 };
 
 // Allowed upload extensions
-const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png'];
+const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.dxf'];
 
 // ==================== Component ====================
 
@@ -1471,7 +1471,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
   // ==================== File Upload ====================
   // 图片扩展名 — 触发AI识别
-  const AI_RECOG_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf'];
+  const AI_RECOG_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf', '.dxf'];
   // CAD扩展名 — 本地解析或转发
   const CAD_EXTS = ['.dxf', '.dwg', '.step', '.stp', '.igs'];
 
@@ -1699,6 +1699,53 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         setRecogError('PDF正在转为图片识别...');
         fileToSend = await convertPdfToPng(file);
         setRecogError(null);
+      }
+      // ===== DXF 图纸解析：走 drawing_parser 服务 =====
+      if (file.name.toLowerCase().endsWith('.dxf')) {
+        setRecogError('DXF正在解析...');
+        const dxfFd = new FormData();
+        dxfFd.append('file', file);
+        const dxfResp = await fetch('/api/drawing-parse', { method: 'POST', body: dxfFd });
+        const dxfJson = await dxfResp.json();
+        setRecogError(null);
+        if (!dxfResp.ok || !dxfJson.parse_success) {
+          setRecogError(dxfJson.error || dxfJson.parse_errors || 'DXF解析失败');
+          return;
+        }
+        // 从 dimensions 计算展开尺寸
+        const dims = dxfJson.drawing_dimensions || [];
+        const hDims = dims.filter((d: any) => d.direction === '水平').map((d: any) => d.measurement_mm);
+        const vDims = dims.filter((d: any) => d.direction === '垂直').map((d: any) => d.measurement_mm);
+        const maxH = hDims.length ? Math.max(...hDims) : 0;
+        const maxV = vDims.length ? Math.max(...vDims) : 0;
+        // 主体高度：出现>=2次的最大垂直DIM
+        const vCount: Record<number, number> = {};
+        vDims.forEach((v: number) => { const k = Math.round(v * 10); vCount[k] = (vCount[k] || 0) + 1; });
+        const bodyH = Math.max(...Object.entries(vCount).filter(([, c]) => c >= 2).map(([k]) => Number(k) / 10), 0);
+        const bendExt = vDims.filter((v: number) => Math.abs(v - bodyH) > bodyH * 0.3 && Math.abs(v - maxV) < 1);
+        const bendVal = bendExt.length ? Math.max(...bendExt) : 0;
+        const unfoldL = maxH > 0 ? Math.round((maxH + bendVal) * 100) / 100 : maxH;
+        const unfoldW = maxV;
+        // 孔信息
+        const holes = dxfJson.hole_groups || [];
+        const totalHoles = dxfJson.hole_count || holes.reduce((s: number, h: any) => s + h.count, 0);
+        const holeDesc = holes.map((h: any) => `Ø${h.diameter_mm}×${h.count}`).join(' + ');
+        // 构造兼容格式
+        const recogData: Record<string, any> = {
+          confidence: 0.95,
+          product_type: productType === '板材' ? 'stamping' : productType,
+          material_category: '铝板',
+          unfold_length: unfoldL,
+          unfold_width: unfoldW,
+          hole_count: totalHoles,
+          thickness: null,
+          notes: `DXF解析 | 展开${unfoldL}×${unfoldW}mm | 孔: ${holeDesc || '无'} | ⚠️仅用于报价估算，不可作为开模依据`,
+        };
+        setRecogResult(recogData);
+        checkQuota();
+        setRecognitionId("dxf_" + Date.now());
+        applyRecogToForm(recogData);
+        return;
       }
       const fd = new FormData();
       fd.append('file', fileToSend);
@@ -2897,4 +2944,5 @@ function CustomSelect({ value, options, onChange }: { value: string; options: st
     </div>
   );
 }
+
 
