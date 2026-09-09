@@ -462,7 +462,6 @@ const CATEGORY_DIM_FIELDS: Record<string, { key: string; label: string; placehol
     { key: 'width', label: '宽度(mm)', placeholder: '如 30' },
     { key: 'height', label: '高度(mm)', placeholder: '如 15' },
     { key: 'meterWeight', label: '米重(kg/m)', placeholder: '填一个自动算另一个' },
-    { key: 'crossSectionArea', label: '截面面积(mm²)', placeholder: '填一个自动算另一个' },
     { key: 'perimeter', label: '外周长(mm)', placeholder: '如 100（只算外轮廓）' },
   ],
   // ===== 钢材标准件尺寸配置 =====
