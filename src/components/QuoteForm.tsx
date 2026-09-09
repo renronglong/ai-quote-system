@@ -370,7 +370,6 @@ const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
       'PMMA': { label: 'PMMA', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }] },
     },
   },
-},
   '钢材': {
     label: '钢材',
     icon: '⊟',
