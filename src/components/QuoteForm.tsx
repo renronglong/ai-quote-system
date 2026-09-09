@@ -2004,6 +2004,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           return;
         }
         // 从解析结果提取参数，映射到表单字段名（/api/parse/stp 返回的字段在顶层）
+        // 构建 CNC 深加工工序
+        const cncProcesses: string[] = [];
+        if (cadJson.cnc_total_holes > 0) {
+          cncProcesses.push(`钻孔(${cadJson.cnc_total_holes}个)`);
+        }
+        if (cadJson.machining_time_min > 0) {
+          cncProcesses.push(`CNC加工(${Math.round(cadJson.machining_time_min)}分钟)`);
+        }
         const recogData: Record<string, any> = {
           confidence: 0.9,
           product_type: productType,
@@ -2016,8 +2024,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           die_type: cadJson.die_type,
           num_cavities: cadJson.is_hollow ? 1 : 0,
           material_category: cadJson.material_grade || '',
+          length: cadJson.extrusion_length_mm,
           notes: `3D 模型解析 | ⚠️仅用于报价估算，不可作为开模依据`,
         };
+        if (cncProcesses.length > 0) {
+          recogData.processes = cncProcesses.join(',');
+        }
         setRecogResult(recogData);
         checkQuota();
         setRecognitionId("cad_" + Date.now());
