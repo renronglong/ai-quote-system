@@ -1995,6 +1995,92 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         applyRecogToForm(recogData);
         return;
       }
+      // ===== ZIP 压缩包：解压后逐个解析 =====
+      const isZip = ['.zip', '.rar', '.7z', '.tar', '.gz'].includes(ext);
+      if (isZip) {
+        setRecogError('压缩包正在解压...');
+        const zipFd = new FormData();
+        zipFd.append('file', file);
+        const zipResp = await fetch('/api/extract', { method: 'POST', body: zipFd });
+        const zipJson = await zipResp.json();
+        if (!zipResp.ok || !zipJson.success) {
+          setRecogError(zipJson.error || '压缩包解压失败');
+          return;
+        }
+        const files = zipJson.files || [];
+        if (files.length === 0) {
+          setRecogError('压缩包中没有可识别的文件');
+          return;
+        }
+        // 找到第一个支持的图纸文件
+        const DRAWABLE_EXTS = ['.stp', '.step', '.igs', '.iges', '.x_t', '.dwg', '.dxf', '.pdf'];
+        const targetFile = files.find((f: any) => DRAWABLE_EXTS.includes('.' + f.name.split('.').pop()?.toLowerCase()));
+        if (!targetFile) {
+          setRecogError('压缩包中没有支持的图纸格式(STP/DXF/DWG/PDF)');
+          return;
+        }
+        // 先分类
+        setRecogError(\`解压成功，正在识别 \${targetFile.name}...\`);
+        const clsFd = new FormData();
+        clsFd.append('file_id', targetFile.file_id);
+        const clsResp = await fetch('/api/classify', { method: 'POST', body: clsFd });
+        if (clsResp.ok) {
+          const classifyData = await clsResp.json();
+          const mapped = processToProductType[classifyData.process_type_cn];
+          if (mapped && PRODUCT_TYPES[mapped] && mapped !== productType) {
+            skipCategoryResetRef.current = true;
+            setProductType(mapped);
+          }
+        }
+        // 解析图纸
+        const parseFd = new FormData();
+        parseFd.append('file_id', targetFile.file_id);
+        const parseResp = await fetch('/api/drawing-parse', {
+          method: 'POST',
+          body: parseFd,
+          headers: { 'x-file-name': targetFile.name }
+        });
+        const parseJson = await parseResp.json();
+        setRecogError(null);
+        if (!parseResp.ok || !parseJson.parse_success) {
+          setRecogError(parseJson.error || parseJson.parse_errors || '图纸解析失败');
+          return;
+        }
+        // 构建表单数据（同 3D CAD 逻辑）
+        const cncProcs: ProcessSelection[] = [];
+        if (parseJson.cnc_total_holes > 0) {
+          cncProcs.push({ name: '钻孔', quantity: parseJson.cnc_total_holes, subParams: { hole_count: parseJson.cnc_total_holes, diameter_range: 'ø3~6' } });
+        }
+        if (parseJson.machining_time_min > 0) {
+          cncProcs.push({ name: 'CNC加工', quantity: Math.round(parseJson.machining_time_min), subParams: { minutes: Math.round(parseJson.machining_time_min) } });
+        }
+        const recogData: Record<string, any> = {
+          confidence: 0.9,
+          product_type: productType,
+          width: parseJson.section_width_mm,
+          height: parseJson.section_height_mm,
+          perimeter: parseJson.outer_perimeter_mm,
+          inner_perimeter: parseJson.inner_perimeter_mm,
+          meter_weight: parseJson.weight_kg_per_m,
+          wall_thickness: parseJson.wall_thickness_mm,
+          crossSectionArea: parseJson.section_area_mm2,
+          die_type: parseJson.die_type,
+          num_cavities: parseJson.is_hollow ? 1 : 0,
+          material_category: parseJson.material_grade || '',
+          length: parseJson.extrusion_length_mm,
+          notes: \`压缩包解析: \${targetFile.name} | ⚠️仅用于报价估算，不可作为开模依据\`,
+        };
+        if (cncProcs.length > 0) {
+          recogData.processes = cncProcs;
+        }
+        setRecogResult(recogData);
+        checkQuota();
+        setRecognitionId("zip_" + Date.now());
+        applyRecogToForm(recogData);
+        setTimeout(() => { skipCategoryResetRef.current = false; }, 100);
+        return;
+      }
+
       // ===== 3D CAD 图纸解析：走 drawing_parser 服务 =====
       const is3DCAD = ['.stp', '.step', '.igs', '.iges', '.x_t', '.dwg'].includes(ext);
       if (is3DCAD) {
