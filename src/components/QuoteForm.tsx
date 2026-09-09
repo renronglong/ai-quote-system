@@ -2062,8 +2062,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           length: parseJson.extrusion_length_mm,
           notes: `压缩包解析: ${targetFile.name} | ⚠️仅用于报价估算，不可作为开模依据`,
         };
-        if (cncProcs.length > 0) {
-          }
         setRecogResult(recogData);
         checkQuota();
         setRecognitionId("zip_" + Date.now());
@@ -2103,8 +2101,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           length: cadJson.extrusion_length_mm,
           notes: `3D 模型解析 | ⚠️仅用于报价估算，不可作为开模依据`,
         };
-        if (cncProcs.length > 0) {
-          }
         setRecogResult(recogData);
         checkQuota();
         setRecognitionId("cad_" + Date.now());
