@@ -2003,11 +2003,24 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           setRecogError(cadJson.error || cadJson.parse_errors || '3D 模型解析失败');
           return;
         }
-        // 从解析结果提取参数
+        // 从解析结果提取参数，映射到表单字段名
+        const measurements = cadJson?.recommended_params?.actual_measurements || {};
         const recogData: Record<string, any> = {
           confidence: 0.9,
           product_type: productType,
-          ...cadJson,
+          // 截面尺寸映射
+          width: measurements.section_width_mm || cadJson.section_width_mm,
+          height: measurements.section_height_mm || cadJson.section_height_mm,
+          perimeter: measurements.outer_perimeter_mm || cadJson.outer_perimeter_mm,
+          inner_perimeter: measurements.inner_perimeter_mm || cadJson.inner_perimeter_mm,
+          meter_weight: measurements.weight_kg_per_m || cadJson.weight_kg_per_m,
+          wall_thickness: measurements.wall_thickness_mm || cadJson.wall_thickness_mm,
+          // 模具类型
+          die_type: measurements.die_type || cadJson.die_type,
+          // 中空判断 → 内腔数
+          num_cavities: measurements.is_hollow ? 1 : 0,
+          // 材料
+          material_category: cadJson.material_grade || '',
           notes: `3D 模型解析 | ⚠️仅用于报价估算，不可作为开模依据`,
         };
         setRecogResult(recogData);
