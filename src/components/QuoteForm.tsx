@@ -2046,13 +2046,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           return;
         }
         // 构建表单数据（同 3D CAD 逻辑）
-        const cncProcs: ProcessSelection[] = [];
-        if (parseJson.cnc_total_holes > 0) {
-          cncProcs.push({ name: '钻孔', quantity: parseJson.cnc_total_holes, subParams: { hole_count: parseJson.cnc_total_holes, diameter_range: 'ø3~6' } });
-        }
-        if (parseJson.machining_time_min > 0) {
-          cncProcs.push({ name: 'CNC加工', quantity: Math.round(parseJson.machining_time_min), subParams: { minutes: Math.round(parseJson.machining_time_min) } });
-        }
         const recogData: Record<string, any> = {
           confidence: 0.9,
           product_type: productType,
@@ -2070,8 +2063,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           notes: `压缩包解析: ${targetFile.name} | ⚠️仅用于报价估算，不可作为开模依据`,
         };
         if (cncProcs.length > 0) {
-          recogData.processes = cncProcs;
-        }
+          }
         setRecogResult(recogData);
         checkQuota();
         setRecognitionId("zip_" + Date.now());
@@ -2095,13 +2087,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         }
         // 从解析结果提取参数，映射到表单字段名（/api/parse/stp 返回的字段在顶层）
         // 构建 CNC 深加工工序（带 subParams 确保表单输入框有值）
-        const cncProcs: ProcessSelection[] = [];
-        if (cadJson.cnc_total_holes > 0) {
-          cncProcs.push({ name: '钻孔', quantity: cadJson.cnc_total_holes, subParams: { hole_count: cadJson.cnc_total_holes, diameter_range: 'ø3~6' } });
-        }
-        if (cadJson.machining_time_min > 0) {
-          cncProcs.push({ name: 'CNC加工', quantity: Math.round(cadJson.machining_time_min), subParams: { minutes: Math.round(cadJson.machining_time_min) } });
-        }
         const recogData: Record<string, any> = {
           confidence: 0.9,
           product_type: productType,
@@ -2119,8 +2104,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           notes: `3D 模型解析 | ⚠️仅用于报价估算，不可作为开模依据`,
         };
         if (cncProcs.length > 0) {
-          recogData.processes = cncProcs;
-        }
+          }
         setRecogResult(recogData);
         checkQuota();
         setRecognitionId("cad_" + Date.now());
