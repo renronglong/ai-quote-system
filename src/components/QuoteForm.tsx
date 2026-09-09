@@ -757,6 +757,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [materialGrade, setMaterialGrade] = useState('');
   const [materialColor, setMaterialColor] = useState('');
   const [processes, setProcesses] = useState<ProcessSelection[]>([]);
+  const skipCategoryResetRef = useRef(false);
   const [productSurfaceTreatment, setProductSurfaceTreatment] = useState('无');
   const [productColor, setProductColor] = useState('');
   const [surfaceTreatment, setSurfaceTreatment] = useState('无');
@@ -849,7 +850,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const firstCat = Object.keys(config.materialCategories)[0];
       setMaterialCategory(firstCat);
       setStandardCategory(firstCat === '异型材' ? '异型材' : '');
-      resetCategoryState(firstCat);
+      if (!skipCategoryResetRef.current) {
+        resetCategoryState(firstCat);
+      }
     }
   }, [productType]);
 
@@ -2034,6 +2037,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         checkQuota();
         setRecognitionId("cad_" + Date.now());
         applyRecogToForm(recogData);
+        setTimeout(() => { skipCategoryResetRef.current = false; }, 100);
         return;
       }
       const fd = new FormData();
@@ -2062,6 +2066,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       setRecognitionId(json.recognition_id || ("rec_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8)));
       if (json.autoFill && d.confidence >= 0.75) {
         applyRecogToForm(d);
+        setTimeout(() => { skipCategoryResetRef.current = false; }, 100);
       }
     } catch (e: any) {
       setRecogError(e?.message || '网络错误');
