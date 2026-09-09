@@ -725,7 +725,7 @@ const PROCESS_SUB_PARAMS: Record<string, { name: string; type: string; label: st
 };
 
 // Allowed upload extensions
-const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t'];
+const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t', '.zip', '.rar', '.7z', '.tar', '.gz'];
 
 // ==================== Component ====================
 
@@ -1676,7 +1676,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
   // ==================== File Upload ====================
   // 图片扩展名 — 触发AI识别
-  const AI_RECOG_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf', '.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t'];
+  const AI_RECOG_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf', '.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t', '.zip', '.rar', '.7z', '.tar', '.gz'];
   // CAD扩展名 — 本地解析或转发
   const CAD_EXTS = ['.dxf', '.dwg', '.step', '.stp', '.igs'];
 
@@ -3035,7 +3035,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               <div>
                 <Upload className={`w-6 h-6 mx-auto mb-1.5 ${dragOver ? 'text-blue-500' : 'text-gray-400'}`} />
                 <p className="text-xs text-gray-500">拖拽文件到此处，或<span className="text-blue-500 font-medium">点击上传</span></p>
-                <p className="text-[11px] text-gray-400 mt-1">支持 PDF、JPG、PNG、DXF、DWG、STP、STEP、IGS、X_T，也可 Ctrl+V 粘贴图片</p>
+                <p className="text-[11px] text-gray-400 mt-1">支持 PDF、JPG、PNG、DXF、DWG、STP、STEP、IGS、X_T、ZIP、RAR、7Z 等，也可 Ctrl+V 粘贴图片</p>
               </div>
             )}
           </div>
