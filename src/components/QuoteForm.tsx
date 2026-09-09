@@ -2480,7 +2480,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   <button
                     key={cat}
                     type="button"
-                    onClick={() => { setStandardCategory(cat); setMeterWeightManual(false); setFields(prev => ({ ...prev, width: undefined, height: undefined, thickness: undefined })); }}
+                    onClick={() => { setStandardCategory(cat); setMeterWeightManual(false); setFields(prev => ({ ...prev, width: '', height: '', thickness: '' })); }}
                     className={`px-2.5 py-1.5 rounded-lg border text-xs transition-all duration-200 ${
                       standardCategory === cat
                         ? 'bg-orange-50 border-orange-300 text-orange-700 font-medium'
@@ -2535,11 +2535,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                         setMeterWeightManual(false);
                         setFields(prev => ({
                           ...prev,
-                          diameter: spec.dims.diameter,
-                          hex: spec.dims.hex,
-                          width: spec.dims.width,
-                          height: spec.dims.height,
-                          thickness: spec.dims.thickness,
+                          diameter: spec.dims.diameter ?? '',
+                          hex: spec.dims.hex ?? '',
+                          width: spec.dims.width ?? '',
+                          height: spec.dims.height ?? '',
+                          thickness: spec.dims.thickness ?? '',
                           meterWeight: spec.weight,
                         }));
                       }}
