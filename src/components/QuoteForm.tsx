@@ -1701,7 +1701,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         setRecogError(null);
       }
       // ===== DXF 图纸解析：走 drawing_parser 服务 =====
-      const isCAD = ['.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t'].some(ext => file.name.toLowerCase().endsWith(ext));
+      const isCAD = ['.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t', '.zip', '.rar', '.7z', '.tar.gz', '.tgz'].some(ext => file.name.toLowerCase().endsWith(ext));
       if (isCAD) {
         setRecogError('CAD文件正在解析...');
         const cadFd = new FormData();
@@ -1755,8 +1755,44 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             unfold_width: unfoldW,
             hole_count: totalHoles,
             thickness: null,
-            notes: `${fExt.toUpperCase()}解析 | 展开${unfoldL}×${unfoldW}mm | 孔: ${holeDesc || '无'} | ⚠️仅用于报价估算，不可作为开模依据`,
+            notes: `${fExt.startsWith('.') ? fExt.slice(1).toUpperCase() : fExt.toUpperCase()}解析 | 展开${unfoldL}×${unfoldW}mm | 孔: ${holeDesc || '无'} | ⚠️仅用于报价估算，不可作为开模依据`,
           };
+        }
+        // 压缩包特殊处理：从解析结果提取最佳匹配
+        if (['zip', 'rar', '7z', 'tar.gz', 'tgz', '.zip', '.rar', '.7z', '.tar.gz'].includes(fExt)) {
+          const files = cadJson.file_groups || cadJson.files || [];
+          const bestFile = files.find((f: any) => f.parse_success && (f.drawing_dimensions || f.section_width_mm));
+          if (bestFile) {
+            const bfExt = bestFile.file_type || '';
+            if (bestFile.section_width_mm) {
+              recogData = {
+                confidence: 0.9,
+                product_type: 'extrusion',
+                material_category: '铝型材',
+                width: bestFile.section_width_mm,
+                height: bestFile.section_height_mm,
+                meter_weight: bestFile.weight_kg_per_m || null,
+                notes: `压缩包(${bestFile.file_name}) | 截面${bestFile.section_width_mm}×${bestFile.section_height_mm}mm | ⚠️仅用于报价估算`,
+              };
+            } else if (bestFile.drawing_dimensions) {
+              const bDims = bestFile.drawing_dimensions || [];
+              const bHDims = bDims.filter((d: any) => d.direction === '水平').map((d: any) => d.measurement_mm);
+              const bVDims = bDims.filter((d: any) => d.direction === '垂直').map((d: any) => d.measurement_mm);
+              const bMaxH = bHDims.length ? Math.max(...bHDims) : 0;
+              const bMaxV = bVDims.length ? Math.max(...bVDims) : 0;
+              recogData = {
+                confidence: 0.9,
+                product_type: 'stamping',
+                material_category: '铝板',
+                unfold_length: bMaxH,
+                unfold_width: bMaxV,
+                hole_count: bestFile.hole_count || 0,
+                notes: `压缩包(${bestFile.file_name}) | 展开${bMaxH}×${bMaxV}mm | ⚠️仅用于报价估算`,
+              };
+            }
+          } else {
+            recogData.notes = `压缩包已解析，共${files.length}个文件，未找到可识别的图纸 | ⚠️仅用于报价估算`;
+          }
         }
         setRecogResult(recogData);
         checkQuota();
