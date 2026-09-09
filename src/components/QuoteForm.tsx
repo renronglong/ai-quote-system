@@ -370,6 +370,42 @@ const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
       'PMMA': { label: 'PMMA', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }] },
     },
   },
+},
+  '钢材': {
+    label: '钢材',
+    icon: '⊟',
+    materialCategories: {
+      '钢标准件': {
+        label: '钢材标准件',
+        fields: ['width', 'height', 'length', 'thickness', 'quantity', 'netWeight'],
+        materialSurfaceTreatment: ['无', '发黑', '镀锌', '镀铬', '镀镍'],
+        materialColorMap: {
+          '镀锌': ['白色', '蓝色', '彩色'],
+          '镀铬': ['亮铬', '哑铬'],
+          '镀镍': ['亮镍', '哑镍'],
+        },
+        processes: [
+          { name: '无' },
+          { name: '锯切' },
+          { name: 'CNC加工', unit: '分钟' },
+          { name: '车加工', unit: '分钟' },
+          { name: '钻孔', unit: '次' },
+          { name: '攻牙', unit: '次' },
+          { name: '铣削', unit: '分钟' },
+          { name: '磨削', unit: '分钟' },
+        ],
+        productSurfaceTreatment: [
+          { name: '无' },
+          { name: '发黑' },
+          { name: '镀锌', colors: ['白色', '蓝色', '彩色'] },
+          { name: '镀铬' },
+          { name: '镀镍' },
+          { name: '喷涂' },
+          { name: '热浸锌' },
+        ],
+      },
+    },
+  },
 };
 
 // Field display labels
@@ -430,6 +466,34 @@ const CATEGORY_DIM_FIELDS: Record<string, { key: string; label: string; placehol
     { key: 'crossSectionArea', label: '截面面积(mm²)', placeholder: '填一个自动算另一个' },
     { key: 'perimeter', label: '外周长(mm)', placeholder: '如 100（只算外轮廓）' },
   ],
+  // ===== 钢材标准件尺寸配置 =====
+  '圆钢': [{ key: 'diameter', label: '直径 Ø(mm)', placeholder: '如 20' }],
+  '方钢': [{ key: 'width', label: '边宽(mm)', placeholder: '如 20' }],
+  '六角钢': [{ key: 'hex', label: '对边距 H(mm)', placeholder: '如 17' }],
+  '角钢': [
+    { key: 'width', label: '边宽(mm)', placeholder: '如 30' },
+    { key: 'height', label: '边宽(mm)', placeholder: '如 30' },
+    { key: 'thickness', label: '边厚(mm)', placeholder: '如 3' },
+  ],
+  '圆钢管': [
+    { key: 'outer', label: '外径(mm)', placeholder: '如 25' },
+    { key: 'inner', label: '内径(mm)', placeholder: '如 20' },
+  ],
+  '方管': [
+    { key: 'width', label: '宽(mm)', placeholder: '如 30' },
+    { key: 'height', label: '高(mm)', placeholder: '如 30' },
+    { key: 'thickness', label: '壁厚(mm)', placeholder: '如 2' },
+  ],
+  '槽钢': [
+    { key: 'height', label: '高度h(mm)', placeholder: '如 100（国标10#）' },
+    { key: 'width', label: '腿宽b(mm)', placeholder: '如 48' },
+    { key: 'thickness', label: '腰厚d(mm)', placeholder: '如 5.5' },
+  ],
+  '工字钢': [
+    { key: 'height', label: '高度h(mm)', placeholder: '如 160（国标16#）' },
+    { key: 'width', label: '腿宽b(mm)', placeholder: '如 88' },
+    { key: 'thickness', label: '腰厚d(mm)', placeholder: '如 6.0' },
+  ],
   // 异型材需要额外选择模具类型
 };
 
@@ -439,6 +503,7 @@ const CATEGORY_NEEDS_DIE_SELECTION = ['异型材'];
 const GENERIC_PRODUCT_NAMES = new Set([
   '异型材', '标准件', '铝型材', '铝合金', '型材', '挤出', '挤出铝型材', '挤压铝型材',
   '铝圆管', '铝圆棒', '铝方管', '铝六角管', '铝六角棒', '铝方/扁棒', '角铝', '铝板', '不锈钢', '铝',
+  '圆钢', '方钢', '六角钢', '角钢', '圆钢管', '方管', '槽钢', '工字钢', '钢材标准件',
 ]);
 function realMoldProductName(n: unknown): string {
   const v = String(n ?? '').trim();
@@ -466,6 +531,27 @@ function calcStdMeterWeight(cat: string, width?: number|string, height?: number|
   return Math.round((area * 2.7 / 1000) * 1000) / 1000;
 }
 
+// 钢材标准件理论米重（碳钢密度7.85g/cm³，不锈钢7.93g/cm³）
+function calcSteelMeterWeight(cat: string, width?: number|string, height?: number|string, thickness?: number|string, density: number = 7.85): number | null {
+  const w = typeof width === 'string' ? parseFloat(width) : (width || 0);
+  const h = typeof height === 'string' ? parseFloat(height) : (height || 0);
+  const t = typeof thickness === 'string' ? parseFloat(thickness) : (thickness || 0);
+  let area = 0;
+  switch (cat) {
+    case '圆钢': if (!(w > 0)) return null; area = Math.PI * w * w / 4; break;
+    case '方钢': if (!(w > 0)) return null; area = w * w; break;
+    case '六角钢': if (!(w > 0)) return null; area = 0.866 * w * w; break;
+    case '角钢': if (!(w > 0 && h > 0 && t > 0)) return null; area = t * (w + h - t); break;
+    case '圆钢管': if (!(w > 0)) return null; area = h > 0 ? Math.PI * (w * w - h * h) / 4 : Math.PI * w * w / 4; break;
+    case '方管': if (!(w > 0 && h > 0 && t > 0 && w > 2 * t && h > 2 * t)) return null; area = w * h - (w - 2 * t) * (h - 2 * t); break;
+    case '槽钢': if (!(h > 0 && w > 0 && t > 0)) return null; area = h * t + 2 * (w - t) * t; break;
+    case '工字钢': if (!(h > 0 && w > 0 && t > 0)) return null; area = h * t + 2 * (w - t / 2) * t; break;
+    default: return null;
+  }
+  if (!(area > 0)) return null;
+  return Math.round((area * density / 1000) * 1000) / 1000;
+}
+
 // 标准件几何周长(mm)：外周长（周长框自动填）+ 内孔周长（分流模模具费，随请求传后端）
 function calcStdPerimeters(cat: string, width?: number|string, height?: number|string, thickness?: number|string): { outer: number; inner: number } | null {
   const w = Number(width) || 0;
@@ -484,6 +570,25 @@ function calcStdPerimeters(cat: string, width?: number|string, height?: number|s
       const iw = w - 2 * t, ih = h - 2 * t;
       return { outer: 2 * (w + h), inner: iw > 0 && ih > 0 ? 2 * (iw + ih) : 0 };
     }
+    default: return null;
+  }
+}
+
+// 钢材标准件几何周长(mm)
+function calcSteelPerimeters(cat: string, width?: number|string, height?: number|string, thickness?: number|string): { outer: number; inner: number } | null {
+  const w = Number(width) || 0;
+  const h = Number(height) || 0;
+  const t = Number(thickness) || 0;
+  const r1 = (v: number) => Math.round(v * 10) / 10;
+  switch (cat) {
+    case '圆钢': if (!(w > 0)) return null; return { outer: r1(Math.PI * w), inner: 0 };
+    case '方钢': if (!(w > 0)) return null; return { outer: 4 * w, inner: 0 };
+    case '六角钢': if (!(w > 0)) return null; return { outer: r1(6 * w / Math.sqrt(3)), inner: 0 };
+    case '角钢': if (!(w > 0 && h > 0)) return null; return { outer: 2 * (w + h), inner: 0 };
+    case '圆钢管': if (!(w > 0)) return null; return { outer: r1(Math.PI * w), inner: h > 0 ? r1(Math.PI * h) : 0 };
+    case '方管': if (!(w > 0 && h > 0 && t > 0)) return null; return { outer: 2 * (w + h), inner: 2 * (w - 2*t) + 2 * (h - 2*t) };
+    case '槽钢': if (!(h > 0 && w > 0)) return null; return { outer: r1(h + 2 * w), inner: 0 };
+    case '工字钢': if (!(h > 0 && w > 0)) return null; return { outer: r1(h + 2 * w), inner: 0 };
     default: return null;
   }
 }
@@ -1701,102 +1806,52 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         setRecogError(null);
       }
       // ===== DXF 图纸解析：走 drawing_parser 服务 =====
-      const isCAD = ['.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t', '.zip', '.rar', '.7z', '.tar.gz', '.tgz'].some(ext => file.name.toLowerCase().endsWith(ext));
-      if (isCAD) {
-        setRecogError('CAD文件正在解析...');
-        const cadFd = new FormData();
-        cadFd.append('file', file);
-        const cadResp = await fetch('/api/drawing-parse', { method: 'POST', body: cadFd });
-        const cadJson = await cadResp.json();
+      if (file.name.toLowerCase().endsWith('.dxf')) {
+        setRecogError('DXF正在解析...');
+        const dxfFd = new FormData();
+        dxfFd.append('file', file);
+        const dxfResp = await fetch('/api/drawing-parse', { method: 'POST', body: dxfFd });
+        const dxfJson = await dxfResp.json();
         setRecogError(null);
-        if (!cadResp.ok || !cadJson.parse_success) {
-          setRecogError(cadJson.error || (Array.isArray(cadJson.parse_errors) ? cadJson.parse_errors.join('; ') : cadJson.parse_errors) || 'CAD解析失败');
+        if (!dxfResp.ok || !dxfJson.parse_success) {
+          setRecogError(dxfJson.error || dxfJson.parse_errors || 'DXF解析失败');
           return;
         }
-        const fExt = ext.replace('.', '');
-        const is3D = ['stp', 'step', 'igs', 'iges', 'x_t'].includes(fExt);
-        let recogData: Record<string, any> = { confidence: 0.9 };
-        if (is3D && cadJson.section_width_mm) {
-          // STP/3D 格式 → 铝型材截面数据
-          recogData = {
-            ...recogData,
-            product_type: 'extrusion',
-            material_category: '铝型材',
-            width: cadJson.section_width_mm,
-            height: cadJson.section_height_mm,
-            meter_weight: cadJson.weight_kg_per_m || null,
-            perimeter: cadJson.outer_perimeter_mm || null,
-            wall_thickness: cadJson.wall_thickness || null,
-            length: cadJson.extrusion_length_mm || null,
-            notes: `${fExt.toUpperCase()} 3D解析 | 截面${cadJson.section_width_mm}×${cadJson.section_height_mm}mm | ⚠️仅用于报价估算`,
-          };
-        } else {
-          // DXF/DWG 2D 格式 → 板材展开数据
-          const dims = cadJson.drawing_dimensions || [];
-          const hDims = dims.filter((d: any) => d.direction === '水平').map((d: any) => d.measurement_mm);
-          const vDims = dims.filter((d: any) => d.direction === '垂直').map((d: any) => d.measurement_mm);
-          const maxH = hDims.length ? Math.max(...hDims) : 0;
-          const maxV = vDims.length ? Math.max(...vDims) : 0;
-          const vCount: Record<number, number> = {};
-          vDims.forEach((v: number) => { const k = Math.round(v * 10); vCount[k] = (vCount[k] || 0) + 1; });
-          const bodyH = Math.max(...Object.entries(vCount).filter(([, c]) => c >= 2).map(([k]) => Number(k) / 10), 0);
-          const bendExt = vDims.filter((v: number) => Math.abs(v - bodyH) > bodyH * 0.3 && Math.abs(v - maxV) < 1);
-          const bendVal = bendExt.length ? Math.max(...bendExt) : 0;
-          const unfoldL = maxH > 0 ? Math.round((maxH + bendVal) * 100) / 100 : maxH;
-          const unfoldW = maxV;
-          const holes = cadJson.hole_groups || [];
-          const totalHoles = cadJson.hole_count || holes.reduce((s: number, h: any) => s + h.count, 0);
-          const holeDesc = holes.map((h: any) => `Ø${h.diameter_mm}×${h.count}`).join(' + ');
-          recogData = {
-            ...recogData,
-            product_type: productType === '板材' ? 'stamping' : productType,
-            material_category: '铝板',
-            unfold_length: unfoldL,
-            unfold_width: unfoldW,
-            hole_count: totalHoles,
-            thickness: null,
-            notes: `${fExt.startsWith('.') ? fExt.slice(1).toUpperCase() : fExt.toUpperCase()}解析 | 展开${unfoldL}×${unfoldW}mm | 孔: ${holeDesc || '无'} | ⚠️仅用于报价估算，不可作为开模依据`,
-          };
-        }
-        // 压缩包特殊处理：从解析结果提取最佳匹配
-        if (['zip', 'rar', '7z', 'tar.gz', 'tgz', '.zip', '.rar', '.7z', '.tar.gz'].includes(fExt)) {
-          const files = cadJson.file_groups || cadJson.files || [];
-          const bestFile = files.find((f: any) => f.parse_success && (f.drawing_dimensions || f.section_width_mm));
-          if (bestFile) {
-            const bfExt = bestFile.file_type || '';
-            if (bestFile.section_width_mm) {
-              recogData = {
-                confidence: 0.9,
-                product_type: 'extrusion',
-                material_category: '铝型材',
-                width: bestFile.section_width_mm,
-                height: bestFile.section_height_mm,
-                meter_weight: bestFile.weight_kg_per_m || null,
-                notes: `压缩包(${bestFile.file_name}) | 截面${bestFile.section_width_mm}×${bestFile.section_height_mm}mm | ⚠️仅用于报价估算`,
-              };
-            } else if (bestFile.drawing_dimensions) {
-              const bDims = bestFile.drawing_dimensions || [];
-              const bHDims = bDims.filter((d: any) => d.direction === '水平').map((d: any) => d.measurement_mm);
-              const bVDims = bDims.filter((d: any) => d.direction === '垂直').map((d: any) => d.measurement_mm);
-              const bMaxH = bHDims.length ? Math.max(...bHDims) : 0;
-              const bMaxV = bVDims.length ? Math.max(...bVDims) : 0;
-              recogData = {
-                confidence: 0.9,
-                product_type: 'stamping',
-                material_category: '铝板',
-                unfold_length: bMaxH,
-                unfold_width: bMaxV,
-                hole_count: bestFile.hole_count || 0,
-                notes: `压缩包(${bestFile.file_name}) | 展开${bMaxH}×${bMaxV}mm | ⚠️仅用于报价估算`,
-              };
-            }
-          } else {
-            recogData.notes = `压缩包已解析，共${files.length}个文件，未找到可识别的图纸 | ⚠️仅用于报价估算`;
-          }
-        }
+        // 从 dimensions 计算展开尺寸
+        const dims = dxfJson.drawing_dimensions || [];
+        const hDims = dims.filter((d: any) => d.direction === '水平').map((d: any) => d.measurement_mm);
+        const vDims = dims.filter((d: any) => d.direction === '垂直').map((d: any) => d.measurement_mm);
+        // 展开长 = 水平最大 + 垂直outlier(折弯延伸) - BD(≈板厚)
+        // 展开宽 = 垂直最大
+        const maxH = hDims.length ? Math.max(...hDims) : 0;
+        const maxV = vDims.length ? Math.max(...vDims) : 0;
+        // 主体高度：出现>=2次的最大垂直DIM
+        const vCount: Record<number, number> = {};
+        vDims.forEach((v: number) => { const k = Math.round(v * 10); vCount[k] = (vCount[k] || 0) + 1; });
+        const bodyH = Math.max(...Object.entries(vCount).filter(([, c]) => c >= 2).map(([k]) => Number(k) / 10), 0);
+        // 折弯延伸 = 非主体高度的垂直DIM
+        const bendExt = vDims.filter((v: number) => Math.abs(v - bodyH) > bodyH * 0.3 && Math.abs(v - maxV) < 1);
+        const bendVal = bendExt.length ? Math.max(...bendExt) : 0;
+        const unfoldL = maxH > 0 ? Math.round((maxH + bendVal) * 100) / 100 : maxH;
+        const unfoldW = maxV;
+        // 孔信息
+        const holes = dxfJson.hole_groups || [];
+        const totalHoles = dxfJson.hole_count || holes.reduce((s: number, h: any) => s + h.count, 0);
+        const holeDesc = holes.map((h: any) => `Ø${h.diameter_mm}×${h.count}`).join(' + ');
+        // 构造兼容格式
+        const recogData: Record<string, any> = {
+          confidence: 0.95,
+          product_type: productType === '板材' ? 'stamping' : productType,
+          material_category: '铝板',
+          unfold_length: unfoldL,
+          unfold_width: unfoldW,
+          hole_count: totalHoles,
+          thickness: null, // 暂不自动填板厚
+          notes: `DXF解析 | 展开${unfoldL}×${unfoldW}mm | 孔: ${holeDesc || '无'} | ⚠️仅用于报价估算，不可作为开模依据`,
+        };
         setRecogResult(recogData);
         checkQuota();
-        setRecognitionId("cad_" + Date.now());
+        setRecognitionId("dxf_" + Date.now());
         applyRecogToForm(recogData);
         return;
       }
@@ -2997,5 +3052,4 @@ function CustomSelect({ value, options, onChange }: { value: string; options: st
     </div>
   );
 }
-
 
