@@ -1906,7 +1906,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       if (classifyResp.ok) {
         const classifyResult = await classifyResp.json();
         console.log('[自动分类] API返回数据:', classifyResult);
-        const processType = classifyResult.process_type || classifyResult.processType || classifyResult.process;
+        const processType = classifyResult.process_type_cn || classifyResult.process_type || classifyResult.processType || classifyResult.process;
         const confidence = classifyResult.confidence || 0;
         
         // 映射 API 返回的工艺类型到前端 productType
