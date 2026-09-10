@@ -1810,6 +1810,21 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       }
       if (procs.length > 0) setProcesses(procs);
     }
+    // 二次加工工序：从 process.secondary_operations 读取
+    const secOps = d.process?.secondary_operations || d.secondary_operations;
+    if (secOps && Array.isArray(secOps) && secOps.length > 0) {
+      const secProcs = secOps.map((op: any) => ({
+        name: op.name || op,
+        quantity: op.quantity,
+      })).filter((p: ProcessSelection) => p.name);
+      if (secProcs.length > 0) {
+        setProcesses(prev => {
+          const existingNames = new Set(prev.map(p => p.name));
+          const newProcs = secProcs.filter(p => !existingNames.has(p.name));
+          return newProcs.length > 0 ? [...prev, ...newProcs] : prev;
+        });
+      }
+    }
     // 备注/说明
     if (d.notes) setFileRemark(prev => prev ? prev + '; ' + d.notes : d.notes);
     // 板材专用：将孔数/折弯数等信息写入备注
