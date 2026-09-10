@@ -18,68 +18,65 @@ import {
   FileCheck,
   Clock,
 } from 'lucide-react';
-
 const supplierLinks = [
   { href: '/suppliers', label: '供应商产品库', desc: '浏览现货型材与模具', icon: Building2 },
   { href: '/supplier', label: '供应商工作台', desc: '登录管理产品与询价', icon: LayoutDashboard },
   { href: '/market', label: '铝价行情', desc: '南海现货铝锭价', icon: TrendingUp },
   { href: '/contact', label: '联系我们', desc: '合作咨询与支持', icon: Phone },
 ];
-
 const quoteHighlights = [
   { icon: Sparkles, title: '图纸AI识别', desc: '上传截面图自动识别尺寸并填入报价表' },
   { icon: TrendingUp, title: '实时铝锭价', desc: '南海现货价每日同步，成本透明' },
   { icon: ShieldCheck, title: '六大品类', desc: '挤压型材、板材、压铸、锌合金、注塑、钢材' },
 ];
-
 const stats = [
   { value: '2,500+', label: '在库产品', icon: Building2 },
   { value: '秒级', label: '报价速度', icon: Clock },
   { value: '6', label: '加工品类', icon: FileCheck },
   { value: '100+', label: '合作企业', icon: Users },
 ];
-
 export default function HomePage() {
   return (
     <AppLayout>
+      {/* Hero 区域 - 浅色商务风 */}
       <section className="mb-8">
-        <div className="relative rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 overflow-hidden shadow-xl">
-          <div className="absolute inset-0 opacity-10">
-            <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500 rounded-full blur-3xl transform translate-x-1/2 -translate-y-1/2" />
-            <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-600 rounded-full blur-3xl transform -translate-x-1/2 translate-y-1/2" />
+        <div className="relative rounded-2xl bg-gradient-to-br from-blue-50 via-white to-slate-50 overflow-hidden shadow-lg border border-gray-100">
+          <div className="absolute inset-0 opacity-[0.03]">
+            <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500 rounded-full blur-3xl transform translate-x-1/3 -translate-y-1/3" />
+            <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-400 rounded-full blur-3xl transform -translate-x-1/3 translate-y-1/3" />
           </div>
-          
+          <div className="absolute top-0 right-0 w-72 h-72 bg-blue-100/50 rounded-full blur-3xl transform translate-x-1/4 -translate-y-1/4" />
+
           <div className="relative px-6 py-12 md:px-12 md:py-16 lg:px-16 lg:py-20">
             <div className="max-w-3xl">
-              <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-1.5 text-sm text-white/90 mb-6">
+              <div className="inline-flex items-center gap-2 bg-blue-600/10 border border-blue-200 rounded-full px-4 py-1.5 text-sm text-blue-700 mb-6">
                 <Sparkles className="w-4 h-4" />
                 <span>制造业一站式 AI 报价平台</span>
               </div>
-              
-              <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white leading-tight mb-4">
+
+              <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight mb-4">
                 铝型材 · 五金加工
                 <br />
-                <span className="text-blue-400">智能报价，秒级出结果</span>
+                <span className="text-blue-600">智能报价，秒级出结果</span>
               </h1>
-              
-              <p className="text-lg text-slate-300 mb-8 max-w-2xl leading-relaxed">
+
+              <p className="text-lg text-gray-600 mb-8 max-w-2xl leading-relaxed">
                 实时同步南海铝锭价，上传图纸AI自动识别尺寸。
                 <br className="hidden md:block" />
                 免注册试算，注册后保存并导出专业报价单。
               </p>
-              
+
               <div className="flex flex-wrap gap-4">
                 <Link href="/quote">
-                  <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-lg shadow-blue-600/30 px-6">
+                  <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-lg shadow-blue-600/25 px-6">
                     <Calculator className="w-5 h-5 mr-2" />
                     开始报价
                     <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 </Link>
-                <Link href="/suppliers">
-                  <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10 font-medium px-6">
-                    浏览供应商
-                  </Button>
+                <Link href="/suppliers" className="inline-flex items-center text-blue-600 hover:text-blue-700 font-medium px-4 py-3 rounded-lg hover:bg-blue-50 transition-colors">
+                  浏览供应商产品库
+                  <ChevronRight className="w-4 h-4 ml-1" />
                 </Link>
               </div>
             </div>
@@ -87,6 +84,7 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* 数据统计 */}
       <section className="mb-8">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {stats.map((stat) => (
@@ -99,6 +97,7 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* 核心能力 + 供应商专区 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <div>
@@ -118,7 +117,6 @@ export default function HomePage() {
               ))}
             </div>
           </div>
-
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 py-4 px-4 bg-white rounded-xl border border-gray-100">
             <span className="flex items-center gap-1.5 text-sm text-gray-500">
               <Zap className="w-4 h-4 text-green-500" />免注册即可试算
@@ -133,7 +131,6 @@ export default function HomePage() {
             </span>
           </div>
         </div>
-
         <div className="lg:col-span-1">
           <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm h-full">
             <div className="flex items-center gap-3 mb-4">
@@ -145,20 +142,19 @@ export default function HomePage() {
                 <p className="text-xs text-gray-500">免费入驻平台</p>
               </div>
             </div>
-            
+
             <p className="text-sm text-gray-600 mb-4 leading-relaxed">
               发布产品与产能，接收采购方精准询价
             </p>
-            
+
             <Link href="/supplier" className="block mb-5">
               <Button size="lg" className="w-full bg-emerald-600 hover:bg-emerald-700 font-semibold shadow-sm">
                 供应商入驻
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             </Link>
-
             <div className="h-px bg-gray-100 mb-3" />
-            
+
             <div className="space-y-1">
               {supplierLinks.map((l) => (
                 <Link
