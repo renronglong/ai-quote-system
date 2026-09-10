@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Upload, FileText, X, Sparkles, Loader2, AlertTriangle, Plus, User, CheckCircle2, Share2 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
+import { STEEL_STANDARD_SPECS } from '@/data/steelStandardSpecs';
 
 // ==================== Types ====================
 
@@ -593,104 +594,6 @@ function calcSteelPerimeters(cat: string, width?: number|string, height?: number
 
 
 
-// 钢材国标常用规格表（规格号 → {尺寸, 理论米重kg/m}）
-// 圆钢/方钢密度7.85, 不锈钢7.93
-const STEEL_STANDARD_SPECS: Record<string, { label: string; dims: { width?: number; height?: number; thickness?: number; diameter?: number; hex?: number }; weight: number }> = {
-  // ===== 圆钢 (Q235/45# 密度7.85) =====
-  '圆钢-Φ6':  { label: 'Φ6',   dims: { diameter: 6 },   weight: 0.222 },
-  '圆钢-Φ8':  { label: 'Φ8',   dims: { diameter: 8 },   weight: 0.395 },
-  '圆钢-Φ10': { label: 'Φ10',  dims: { diameter: 10 },  weight: 0.617 },
-  '圆钢-Φ12': { label: 'Φ12',  dims: { diameter: 12 },  weight: 0.888 },
-  '圆钢-Φ14': { label: 'Φ14',  dims: { diameter: 14 },  weight: 1.21 },
-  '圆钢-Φ16': { label: 'Φ16',  dims: { diameter: 16 },  weight: 1.58 },
-  '圆钢-Φ18': { label: 'Φ18',  dims: { diameter: 18 },  weight: 2.00 },
-  '圆钢-Φ20': { label: 'Φ20',  dims: { diameter: 20 },  weight: 2.47 },
-  '圆钢-Φ22': { label: 'Φ22',  dims: { diameter: 22 },  weight: 2.98 },
-  '圆钢-Φ25': { label: 'Φ25',  dims: { diameter: 25 },  weight: 3.85 },
-  '圆钢-Φ28': { label: 'Φ28',  dims: { diameter: 28 },  weight: 4.83 },
-  '圆钢-Φ30': { label: 'Φ30',  dims: { diameter: 30 },  weight: 5.55 },
-  '圆钢-Φ32': { label: 'Φ32',  dims: { diameter: 32 },  weight: 6.31 },
-  '圆钢-Φ36': { label: 'Φ36',  dims: { diameter: 36 },  weight: 7.99 },
-  '圆钢-Φ40': { label: 'Φ40',  dims: { diameter: 40 },  weight: 9.87 },
-  '圆钢-Φ50': { label: 'Φ50',  dims: { diameter: 50 },  weight: 15.4 },
-  '圆钢-Φ60': { label: 'Φ60',  dims: { diameter: 60 },  weight: 22.2 },
-  '圆钢-Φ80': { label: 'Φ80',  dims: { diameter: 80 },  weight: 39.5 },
-  '圆钢-Φ100':{ label: 'Φ100', dims: { diameter: 100 }, weight: 61.7 },
-  // ===== 方钢 =====
-  '方钢-10': { label: '10×10',   dims: { width: 10 },  weight: 0.785 },
-  '方钢-12': { label: '12×12',   dims: { width: 12 },  weight: 1.13 },
-  '方钢-15': { label: '15×15',   dims: { width: 15 },  weight: 1.77 },
-  '方钢-20': { label: '20×20',   dims: { width: 20 },  weight: 3.14 },
-  '方钢-25': { label: '25×25',   dims: { width: 25 },  weight: 4.91 },
-  '方钢-30': { label: '30×30',   dims: { width: 30 },  weight: 7.07 },
-  '方钢-40': { label: '40×40',   dims: { width: 40 },  weight: 12.6 },
-  '方钢-50': { label: '50×50',   dims: { width: 50 },  weight: 19.6 },
-  // ===== 六角钢 (对边距) =====
-  '六角钢-H8':  { label: 'H8',  dims: { hex: 8 },  weight: 0.522 },
-  '六角钢-H10': { label: 'H10', dims: { hex: 10 }, weight: 0.820 },
-  '六角钢-H12': { label: 'H12', dims: { hex: 12 }, weight: 1.18 },
-  '六角钢-H14': { label: 'H14', dims: { hex: 14 }, weight: 1.60 },
-  '六角钢-H17': { label: 'H17', dims: { hex: 17 }, weight: 2.35 },
-  '六角钢-H19': { label: 'H19', dims: { hex: 19 }, weight: 2.95 },
-  '六角钢-H22': { label: 'H22', dims: { hex: 22 }, weight: 3.94 },
-  '六角钢-H24': { label: 'H24', dims: { hex: 24 }, weight: 4.67 },
-  '六角钢-H27': { label: 'H27', dims: { hex: 27 }, weight: 5.91 },
-  '六角钢-H30': { label: 'H30', dims: { hex: 30 }, weight: 7.32 },
-  // ===== 等边角钢 (GB/T 9787) =====
-  '角钢-∠25×3':  { label: '∠25×25×3',  dims: { width: 25, height: 25, thickness: 3 },  weight: 1.12 },
-  '角钢-∠30×3':  { label: '∠30×30×3',  dims: { width: 30, height: 30, thickness: 3 },  weight: 1.37 },
-  '角钢-∠40×4':  { label: '∠40×40×4',  dims: { width: 40, height: 40, thickness: 4 },  weight: 2.42 },
-  '角钢-∠50×5':  { label: '∠50×50×5',  dims: { width: 50, height: 50, thickness: 5 },  weight: 3.77 },
-  '角钢-∠63×6':  { label: '∠63×63×6',  dims: { width: 63, height: 63, thickness: 6 },  weight: 5.72 },
-  '角钢-∠75×8':  { label: '∠75×75×8',  dims: { width: 75, height: 75, thickness: 8 },  weight: 9.03 },
-  '角钢-∠90×8':  { label: '∠90×90×8',  dims: { width: 90, height: 90, thickness: 8 },  weight: 10.9 },
-  '角钢-∠100×10':{ label: '∠100×100×10',dims: { width: 100, height: 100, thickness: 10 }, weight: 15.1 },
-  // ===== 圆钢管 (常用外径×壁厚) =====
-  '圆管-Φ20×2':    { label: 'Φ20×2',    dims: { width: 20, height: 16 },    weight: 0.888 },
-  '圆管-Φ25×2.5':  { label: 'Φ25×2.5',  dims: { width: 25, height: 20 },    weight: 1.39 },
-  '圆管-Φ32×3':    { label: 'Φ32×3',    dims: { width: 32, height: 26 },    weight: 2.15 },
-  '圆管-Φ38×3':    { label: 'Φ38×3',    dims: { width: 38, height: 32 },    weight: 2.59 },
-  '圆管-Φ48×3.5':  { label: 'Φ48×3.5',  dims: { width: 48, height: 41 },    weight: 3.84 },
-  '圆管-Φ60×3.5':  { label: 'Φ60×3.5',  dims: { width: 60, height: 53 },    weight: 4.88 },
-  '圆管-Φ76×4':    { label: 'Φ76×4',    dims: { width: 76, height: 68 },    weight: 7.10 },
-  '圆管-Φ89×4':    { label: 'Φ89×4',    dims: { width: 89, height: 81 },    weight: 8.38 },
-  '圆管-Φ108×4':   { label: 'Φ108×4',   dims: { width: 108, height: 100 },  weight: 10.3 },
-  // ===== 方管 (常用) =====
-  '方管-20×20×2':    { label: '20×20×2',    dims: { width: 20, height: 20, thickness: 2 },   weight: 1.09 },
-  '方管-25×25×2':    { label: '25×25×2',    dims: { width: 25, height: 25, thickness: 2 },   weight: 1.40 },
-  '方管-30×30×2.5':  { label: '30×30×2.5',  dims: { width: 30, height: 30, thickness: 2.5 }, weight: 2.05 },
-  '方管-40×40×3':    { label: '40×40×3',    dims: { width: 40, height: 40, thickness: 3 },   weight: 3.30 },
-  '方管-50×50×3':    { label: '50×50×3',    dims: { width: 50, height: 50, thickness: 3 },   weight: 4.28 },
-  '方管-60×60×3.5':  { label: '60×60×3.5',  dims: { width: 60, height: 60, thickness: 3.5 }, weight: 6.04 },
-  '方管-80×80×4':    { label: '80×80×4',    dims: { width: 80, height: 80, thickness: 4 },   weight: 9.22 },
-  '方管-100×100×4':  { label: '100×100×4',  dims: { width: 100, height: 100, thickness: 4 }, weight: 11.7 },
-  '方管-100×100×5':  { label: '100×100×5',  dims: { width: 100, height: 100, thickness: 5 }, weight: 14.4 },
-  // ===== 槽钢 (GB/T 706) =====
-  '槽钢-5#':   { label: '5#',   dims: { height: 50,  width: 37, thickness: 4.5 }, weight: 5.44 },
-  '槽钢-6.3#': { label: '6.3#', dims: { height: 63,  width: 40, thickness: 4.8 }, weight: 6.63 },
-  '槽钢-8#':   { label: '8#',   dims: { height: 80,  width: 43, thickness: 5.0 }, weight: 8.04 },
-  '槽钢-10#':  { label: '10#',  dims: { height: 100, width: 48, thickness: 5.3 }, weight: 10.0 },
-  '槽钢-12#':  { label: '12#',  dims: { height: 120, width: 53, thickness: 5.5 }, weight: 12.1 },
-  '槽钢-14#':  { label: '14#',  dims: { height: 140, width: 58, thickness: 6.0 }, weight: 14.5 },
-  '槽钢-16#':  { label: '16#',  dims: { height: 160, width: 63, thickness: 6.5 }, weight: 17.2 },
-  '槽钢-18#':  { label: '18#',  dims: { height: 180, width: 68, thickness: 7.0 }, weight: 20.2 },
-  '槽钢-20#':  { label: '20#',  dims: { height: 200, width: 73, thickness: 7.5 }, weight: 22.6 },
-  '槽钢-22#':  { label: '22#',  dims: { height: 220, width: 77, thickness: 7.0 }, weight: 24.0 },
-  '槽钢-25#':  { label: '25#',  dims: { height: 250, width: 78, thickness: 7.0 }, weight: 27.0 },
-  // ===== 工字钢 (GB/T 706) =====
-  '工字钢-10#':  { label: '10#',  dims: { height: 100, width: 68, thickness: 4.5 }, weight: 11.2 },
-  '工字钢-12#':  { label: '12#',  dims: { height: 120, width: 74, thickness: 5.0 }, weight: 14.0 },
-  '工字钢-14#':  { label: '14#',  dims: { height: 140, width: 80, thickness: 5.5 }, weight: 16.9 },
-  '工字钢-16#':  { label: '16#',  dims: { height: 160, width: 88, thickness: 6.0 }, weight: 20.5 },
-  '工字钢-18#':  { label: '18#',  dims: { height: 180, width: 94, thickness: 6.5 }, weight: 24.1 },
-  '工字钢-20#':  { label: '20#',  dims: { height: 200, width: 100, thickness: 7.0 }, weight: 27.9 },
-  '工字钢-22#':  { label: '22#',  dims: { height: 220, width: 110, thickness: 7.5 }, weight: 33.0 },
-  '工字钢-25#':  { label: '25#',  dims: { height: 250, width: 116, thickness: 8.0 }, weight: 38.1 },
-  '工字钢-28#':  { label: '28#',  dims: { height: 280, width: 122, thickness: 8.5 }, weight: 43.4 },
-  '工字钢-32#':  { label: '32#',  dims: { height: 320, width: 130, thickness: 9.5 }, weight: 52.7 },
-  '工字钢-36#':  { label: '36#',  dims: { height: 360, width: 136, thickness: 10.0 }, weight: 59.8 },
-  '工字钢-40#':  { label: '40#',  dims: { height: 400, width: 142, thickness: 10.5 }, weight: 67.6 },
-};
 
 // 板材单件理论重量(g)：长×宽×厚(mm) × 密度(g/cm³) / 1000
 // 密度：铝板2.7，冷轧板/镀锌板7.85，不锈钢7.93
