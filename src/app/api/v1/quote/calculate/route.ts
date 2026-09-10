@@ -1127,7 +1127,7 @@ function calcExtrusion(
     applySurfaceCost(useLongRate);
 
     if (req.process) {
-      const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, dims);
+      const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions || {});
       if (sec.cost > 0 && sec.detail && sec.detail !== '无二次加工') {
         const opsCount = countSecondaryOps(req.process);
         const perOpCostWithLoss = r2((sec.cost / opsCount) * 1.03);
@@ -1591,7 +1591,7 @@ function calcSheetMetal(
   // 5. 二次加工费
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, dims);
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions || {});
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
@@ -1691,7 +1691,7 @@ function calcDieCasting(
   // 5. 二次加工费
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, dims);
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions || {});
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
@@ -1786,7 +1786,7 @@ function calcZincAlloy(
   // 5. 二次加工费
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, dims);
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions || {});
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
@@ -1883,7 +1883,7 @@ function calcInjection(
   // 5. 二次加工费
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, dims);
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions || {});
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
