@@ -348,7 +348,7 @@ function SupplierProductsContent() {
             </div>
             {searchQuery && (
               <div className="mt-1.5 text-xs text-gray-400">
-                {(() => { const q = searchQuery.trim().toLowerCase(); return products.filter(p => (p.mold_number||'').toLowerCase().includes(q) || (p.cross_section_mm||'').toLowerCase().includes(q) || (p.product_name||'').toLowerCase().includes(q)).length; })()} 条匹配结果
+                {(() => { const q = searchQuery.trim().toLowerCase(); if(!q) return products.length; const kws = q.split(/\s+/).filter(Boolean); return products.filter(p => { const s = ((p.mold_number||'')+' '+(p.cross_section_mm||'')+' '+(p.product_name||'')).toLowerCase(); return kws.every(k=>s.includes(k)); }).length; })()} 条匹配结果
               </div>
             )}
           </div>
@@ -379,9 +379,10 @@ function SupplierProductsContent() {
                     {products.filter(p => {
                       const q = searchQuery.trim().toLowerCase();
                       if (!q) return true;
-                      return (p.mold_number || '').toLowerCase().includes(q) ||
-                             (p.cross_section_mm || '').toLowerCase().includes(q) ||
-                             (p.product_name || '').toLowerCase().includes(q);
+                      // 多关键词空格分隔，全部匹配才显示
+                      const keywords = q.split(/\s+/).filter(Boolean);
+                      const searchIn = ((p.mold_number || '') + ' ' + (p.cross_section_mm || '') + ' ' + (p.product_name || '')).toLowerCase();
+                      return keywords.every(kw => searchIn.includes(kw));
                     }).map((product) => (
                       <TableRow key={product.id}>
                         <TableCell className="font-mono text-xs">
