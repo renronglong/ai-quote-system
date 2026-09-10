@@ -530,6 +530,21 @@ function calcStdMeterWeight(cat: string, width?: number|string, height?: number|
   return Math.round((area * 2.7 / 1000) * 1000) / 1000;
 }
 
+// 钢材默认材料价格（元/吨）- 临时前端取值，后续接入实时抓取
+const STEEL_DEFAULT_PRICES: Record<string, number> = {
+  'Q235': 3700,
+  '45#': 3650,
+  '40Cr': 3900,
+  '304': 15000,
+  '316': 17000,
+  '黄铜H59': 80000,
+};
+function getSteelDensity(grade: string): number {
+  if (['304', '316'].includes(grade)) return 7.93;
+  if (grade === '黄铜H59') return 8.5;
+  return 7.85;
+}
+
 // 钢材标准件理论米重（碳钢密度7.85g/cm³，不锈钢7.93g/cm³）
 function calcSteelMeterWeight(cat: string, width?: number|string, height?: number|string, thickness?: number|string, density: number = 7.85): number | null {
   const w = typeof width === 'string' ? parseFloat(width) : (width || 0);
@@ -1282,6 +1297,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       return materialCategory === '锌合金' ? 'zinc_alloy' : 'die_casting';
     }
     if (productType === '注塑') return 'injection';
+    if (productType === '钢材') return 'steel_standard';
     return 'sheet_metal';
   };
 
@@ -1389,6 +1405,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const length = fields.length as number;
       if (meterWeight && length) return (meterWeight * length) / 1000;
     }
+    if (productType === '钢材') {
+      // 钢材：用米重×长度计算单件重量
+      const mw = fields.meterWeight as number;
+      const len = fields.length as number;
+      if (mw && len) return (mw * len) / 1000;
+    }
     // 其他品类：用净重
     const netWeight = fields.netWeight as number;
     if (netWeight && netWeight > 0) return netWeight / 1000;
@@ -1481,6 +1503,58 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         onResult?.(null);
         return;
       }
+    }
+
+    // ===== 钢材标准件：前端直接算（后端暂不支持） =====
+    if (productType === '钢材') {
+      const grade = (fields.materialGrade as string) || materialGrade || 'Q235';
+      const pricePerTon = STEEL_DEFAULT_PRICES[grade] || 3700;
+      const density = getSteelDensity(grade);
+      const mw = Number(fields.meterWeight) || 0;
+      const len = Number(fields.length) || 0;
+      const qty = Number(fields.quantity) || 1;
+      if (!mw || !len) { onResult?.(null); return; }
+
+      const weightPerPiece = (mw * len) / 1000; // kg
+      const totalWeight = weightPerPiece * qty;
+      const materialCost = totalWeight * pricePerTon / 1000;
+
+      // 锯切费：0.5元/刀（临时，后续费率确认后再调）
+      const cutCount = processes.some(p => p.name === '锯切') ? (Number((processes.find(p => p.name === '锯切') as any)?.quantity) || 1) : 0;
+      const processingCost = cutCount > 0 ? cutCount * qty * 0.5 : 0;
+
+      const subtotal = materialCost + processingCost;
+      const mgmtFee = subtotal * 0.13;
+      const unitPrice = Math.round((subtotal + mgmtFee) * 100) / 100;
+      const totalPrice = Math.round(unitPrice * qty * 100) / 100;
+
+      onResult?.({
+        quotation_id: `STEEL-${Date.now()}`,
+        material_cost: Math.round(materialCost * 100) / 100,
+        processing_cost: processingCost,
+        surface_treatment_cost: 0,
+        secondary_operations_cost: 0,
+        packaging_cost: 0,
+        transport_cost: 0,
+        management_fee: Math.round(mgmtFee * 100) / 100,
+        unit_price: unitPrice,
+        unit_price_ex_tax: unitPrice,
+        unit_price_in_tax: Math.round(unitPrice * 1.13 * 100) / 100,
+        total_price: totalPrice,
+        weight_per_piece_kg: Math.round(weightPerPiece * 1000) / 1000,
+        breakdown: {
+          material: { formula: `${weightPerPiece.toFixed(2)}kg×${pricePerTon}元/吨×${qty}件`, detail: `材料费: ${grade} ${pricePerTon}元/吨 × ${weightPerPiece.toFixed(2)}kg/件 × ${qty}件 = ${Math.round(materialCost)}元` },
+          ...(cutCount > 0 ? { processing: { formula: `${cutCount}刀×${qty}件×0.5元`, detail: `锯切: ${cutCount}×${qty}×0.5 = ${processingCost}元` } } : {}),
+          management: { formula: `管理费13%`, detail: `管理费: (${Math.round(materialCost)}+${processingCost})×13% = ${Math.round(mgmtFee)}元` },
+        },
+        aluminum_index: 0,
+        notes: [`${grade}圆钢参考价 ${pricePerTon}元/吨（2026-09-10 上海）`, '加工费率待确认，当前仅含材料费+锯切'],
+        mold_cost: 0,
+        mold_spec: '',
+        min_order_qty: 1,
+        min_order_weight_kg: 0,
+      });
+      return;
     }
 
     setLoading(true);
