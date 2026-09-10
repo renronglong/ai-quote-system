@@ -376,16 +376,13 @@ function SupplierProductsContent() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(() => {
+                    {products.filter(p => {
                       const q = searchQuery.trim().toLowerCase();
-                      const filtered = q
-                        ? products.filter(p =>
-                            (p.mold_number || '').toLowerCase().includes(q) ||
-                            (p.cross_section_mm || '').toLowerCase().includes(q) ||
-                            (p.product_name || '').toLowerCase().includes(q)
-                          )
-                        : products;
-                      return filtered.map((product) => (
+                      if (!q) return true;
+                      return (p.mold_number || '').toLowerCase().includes(q) ||
+                             (p.cross_section_mm || '').toLowerCase().includes(q) ||
+                             (p.product_name || '').toLowerCase().includes(q);
+                    }).map((product) => (
                       <TableRow key={product.id}>
                         <TableCell className="font-mono text-xs">
                           {product.mold_number || '-'}
@@ -458,7 +455,7 @@ function SupplierProductsContent() {
                         </TableCell>
                       </TableRow>
                     ))}
-                    );})()}
+                    )}
                   </TableBody>
                 </Table>
               </div>
