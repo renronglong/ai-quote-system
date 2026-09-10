@@ -1113,7 +1113,7 @@ function calcExtrusion(
       const volumeSurcharge = volumeMm3 * 0.00000003;
       stampingSurchargePerPass = lengthSurcharge + volumeSurcharge;
 
-      const actualRate = rate * 2;
+      const actualRate = tonnage === '≤35T' ? rate : rate * 2;
       const stampingFeePerPass = r2(actualRate + lengthSurcharge + volumeSurcharge);
       for (let i = 0; i < count; i++) {
         accumulated = (accumulated + stampingFeePerPass) * 1.03;
@@ -1122,7 +1122,7 @@ function calcExtrusion(
 
       const lengthPart = lengthSurcharge > 0 ? ` + 长度附加${lengthSurcharge}` : '';
       const volumePart = volumeSurcharge > 0 ? ` + 体积附加${r2(volumeSurcharge)}` : '';
-      secondaryDetails.push(`冲压(${req.process.stamping_tonnage}): ${count}次 × (${actualRate}=${rate}×2${lengthPart}${volumePart}) ×1.03损耗 = ${r2(accumulated - mat.cost)}元`);
+      secondaryDetails.push(`冲压(${req.process.stamping_tonnage}): ${count}次 × (${actualRate}=${rate}${tonnage === '≤35T' ? '' : '×2'}${lengthPart}${volumePart}) ×1.03损耗 = ${r2(accumulated - mat.cost)}元`);
       secondaryFormulaParts.push(`冲压×${count}`);
     }
 
