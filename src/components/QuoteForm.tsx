@@ -2027,6 +2027,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           confidence: 0.9,
           product_type: productType,
           product_code: parseJson.product_code || '',
+          surface_treatment: parseJson.surface_treatment || '',
+          material_grade: parseJson.material_grade || '',
           width: parseJson.section_width_mm,
           height: parseJson.section_height_mm,
           perimeter: parseJson.outer_perimeter_mm,
@@ -2067,6 +2069,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           confidence: 0.9,
           product_type: productType,
           product_code: cadJson.product_code || '',
+          surface_treatment: cadJson.surface_treatment || '',
+          material_grade: cadJson.material_grade || '',
           width: cadJson.section_width_mm,
           height: cadJson.section_height_mm,
           perimeter: cadJson.outer_perimeter_mm,
@@ -3221,7 +3225,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 {recogResult.inner_perimeter != null && <div>内周长: <b>{recogResult.inner_perimeter}mm</b></div>}
                 {recogResult.meter_weight != null && <div>米重: <b>{recogResult.meter_weight}kg/m</b></div>}
                 {recogResult.num_cavities != null && <div>面域: <b>{recogResult.num_cavities}</b></div>}
-                {recogResult.material_grade && <div className="col-span-2">材质: <b>{recogResult.material_grade}</b></div>}
+                {recogResult.material_grade ? <div className="col-span-2">材质: <b>{recogResult.material_grade}</b></div> : <div className="col-span-2 text-amber-600">材质: 无法识别，请手动选择</div>}
+                {recogResult.surface_treatment ? <div className="col-span-2">表面处理: <b>{recogResult.surface_treatment}</b></div> : <div className="col-span-2 text-amber-600">表面处理: 无法识别，请手动选择</div>}
                 {recogResult.product_code && <div className="col-span-2">图号: <b>{recogResult.product_code}</b></div>}
               </div>
               {recogResult.handoff_reason && (
