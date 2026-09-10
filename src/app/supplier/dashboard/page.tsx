@@ -58,6 +58,7 @@ export default function SupplierDashboardPage() {
   const [products, setProducts] = useState<SupplierProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (authLoading) return;
@@ -190,6 +191,32 @@ export default function SupplierDashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
+            {products.length > 0 && (
+              <div className="mb-4">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="搜索模具编号 / 截面尺寸 / 产品名称..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full h-9 pl-9 pr-4 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                  />
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  {searchQuery && (
+                    <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  )}
+                </div>
+                {searchQuery && (
+                  <div className="mt-1.5 text-xs text-gray-400">
+                    {(() => { const q = searchQuery.trim().toLowerCase(); if(!q) return products.length; const kws = q.split(/\s+/).filter(Boolean); return products.filter(p => { const s = ((p.mold_number||'')+' '+(p.cross_section_mm||'')+' '+(p.product_name||'')).toLowerCase(); return kws.every(k=>s.includes(k)); }).length; })()} 条匹配结果
+                  </div>
+                )}
+              </div>
+            )}
             {products.length === 0 ? (
               <div className="text-center py-12">
                 <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
@@ -216,7 +243,13 @@ export default function SupplierDashboardPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {products.map((product) => (
+                    {products.filter(p => {
+                      const q = searchQuery.trim().toLowerCase();
+                      if (!q) return true;
+                      const keywords = q.split(/\s+/).filter(Boolean);
+                      const searchIn = ((p.mold_number || '') + ' ' + (p.cross_section_mm || '') + ' ' + (p.product_name || '')).toLowerCase();
+                      return keywords.every(kw => searchIn.includes(kw));
+                    }).map((product) => (
                       <TableRow key={product.id}>
                         <TableCell className="font-mono text-xs">
                           {product.mold_number || '-'}
