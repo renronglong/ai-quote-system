@@ -98,7 +98,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <Package className="w-5 h-5 text-white" />
               </div>
               <span className="font-bold text-xl text-gray-900 hidden sm:inline tracking-tight">
-                碧利制造
+                碧利制造 · AI报价系统
               </span>
             </Link>
           </div>
