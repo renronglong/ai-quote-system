@@ -455,7 +455,6 @@ function SupplierProductsContent() {
                         </TableCell>
                       </TableRow>
                     ))}
-                    )}
                   </TableBody>
                 </Table>
               </div>
