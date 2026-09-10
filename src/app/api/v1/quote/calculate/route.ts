@@ -1114,15 +1114,13 @@ function calcExtrusion(
       stampingSurchargePerPass = lengthSurcharge + volumeSurcharge;
 
       const actualRate = tonnage === '≤35T' ? rate : rate * 2;
-      const stampingFeePerPass = r2(actualRate + lengthSurcharge + volumeSurcharge);
-      for (let i = 0; i < count; i++) {
-        accumulated = (accumulated + stampingFeePerPass) * 1.03;
-      }
+      const stampingFeePerPass = r2((actualRate + lengthSurcharge + volumeSurcharge) * 1.03);
+      accumulated += stampingFeePerPass * count;
       totalSecondaryCost += accumulated - mat.cost;
 
       const lengthPart = lengthSurcharge > 0 ? ` + 长度附加${lengthSurcharge}` : '';
       const volumePart = volumeSurcharge > 0 ? ` + 体积附加${r2(volumeSurcharge)}` : '';
-      secondaryDetails.push(`冲压(${req.process.stamping_tonnage}): ${count}次 × (${actualRate}=${rate}${tonnage === '≤35T' ? '' : '×2'}${lengthPart}${volumePart}) ×1.03损耗 = ${r2(accumulated - mat.cost)}元`);
+      secondaryDetails.push(`冲压(${req.process.stamping_tonnage}): ${count}次 × ${stampingFeePerPass}元/次 = ${r2(stampingFeePerPass * count)}元`);
       secondaryFormulaParts.push(`冲压×${count}`);
     }
 
@@ -1132,26 +1130,23 @@ function calcExtrusion(
       const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, dims);
       if (sec.cost > 0 && sec.detail && sec.detail !== '无二次加工') {
         const opsCount = countSecondaryOps(req.process);
-        const perOpCost = r2(sec.cost / opsCount);
-        const prevAccumulated = accumulated;
-        for (let i = 0; i < opsCount; i++) {
-          accumulated = (accumulated + perOpCost) * 1.03;
-        }
-        totalSecondaryCost += accumulated - prevAccumulated;
+        const perOpCostWithLoss = r2((sec.cost / opsCount) * 1.03);
+        accumulated += perOpCostWithLoss * opsCount;
+        totalSecondaryCost += perOpCostWithLoss * opsCount;
         secondaryDetails.push(sec.detail);
         secondaryFormulaParts.push(sec.formula);
       }
     }
 
     if (productLengthMm > 0) {
-      const sawCost = r2(mat.cost * 0.1);
-      accumulated = (accumulated + sawCost) * 1.03;
-      totalSecondaryCost += sawCost * 1.03;
-      secondaryDetails.push(`锯切(默认,长度<3m): 材料费${mat.cost}元 × 10% ×1.03损耗 = ${r2(sawCost * 1.03)}元`);
+      const sawCost = r2(mat.cost * 0.1 * 1.03);
+      accumulated += sawCost;
+      totalSecondaryCost += sawCost;
+      secondaryDetails.push(`锯切(默认,长度<3m): 材料费${mat.cost}元 × 10% = ${sawCost}元`);
       secondaryFormulaParts.push('锯切(材料×10%)');
       breakdown['sawing'] = {
         formula: '材料费 × 10%（长度<3m默认锯切）',
-        detail: `${mat.cost} × 10% = ${sawCost}元（含×1.03损耗后 ${r2(sawCost * 1.03)}元）`,
+        detail: `${mat.cost} × 10% = ${sawCost}元`,
       };
     }
 
@@ -1452,15 +1447,11 @@ function calcSecondaryOperationsCost(
     const volumeMm3 = lengthMm * widthMm * heightMm;
     const volumeSurcharge = volumeMm3 * 0.00000003;
     const feePerHole = r2(baseRate + lengthSurcharge + volumeSurcharge);
-    let holeAccumulated = materialCost > 0 ? materialCost : 0;
-    for (let i = 0; i < process.holes.count; i++) {
-      holeAccumulated = (holeAccumulated + feePerHole) * 1.03;
-    }
-    const holeCost = holeAccumulated - (materialCost > 0 ? materialCost : 0);
+    const holeCost = r2(process.holes.count * feePerHole);
     totalCost += holeCost;
     const lp = lengthSurcharge > 0 ? ` + 长度${lengthSurcharge}` : '';
     const vp = volumeSurcharge > 0 ? ` + 体积${r2(volumeSurcharge)}` : '';
-    details.push(`钻孔: ${process.holes.count}孔 × (${feePerHole}=0.10${lp}${vp}) ×1.03损耗 = ${r2(holeCost)}元`);
+    details.push(`钻孔: ${process.holes.count}孔 × ${feePerHole}元/孔 = ${holeCost}元`);
   }
 
   // 攻丝费（按≤35T冲压公式：基数0.10 + 长度附加 + 体积附加）
@@ -1474,15 +1465,11 @@ function calcSecondaryOperationsCost(
     const volumeMm3 = lengthMm * widthMm * heightMm;
     const volumeSurcharge = volumeMm3 * 0.00000003;
     const feePerHole = r2(baseRate + lengthSurcharge + volumeSurcharge);
-    let tapAccumulated = materialCost > 0 ? materialCost : 0;
-    for (let i = 0; i < process.tapped_holes.count; i++) {
-      tapAccumulated = (tapAccumulated + feePerHole) * 1.03;
-    }
-    const tapCost = tapAccumulated - (materialCost > 0 ? materialCost : 0);
+    const tapCost = r2(process.tapped_holes.count * feePerHole);
     totalCost += tapCost;
     const lp = lengthSurcharge > 0 ? ` + 长度${lengthSurcharge}` : '';
     const vp = volumeSurcharge > 0 ? ` + 体积${r2(volumeSurcharge)}` : '';
-    details.push(`攻丝: ${process.tapped_holes.count}孔 × (${feePerHole}=0.10${lp}${vp}) ×1.03损耗 = ${r2(tapCost)}元`);
+    details.push(`攻丝: ${process.tapped_holes.count}孔 × ${feePerHole}元/孔 = ${tapCost}元`);
   }
 
   // 铣槽费
