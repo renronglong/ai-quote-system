@@ -1129,7 +1129,7 @@ function calcExtrusion(
     applySurfaceCost(useLongRate);
 
     if (req.process) {
-      const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost);
+      const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, dims);
       if (sec.cost > 0 && sec.detail && sec.detail !== '无二次加工') {
         const opsCount = countSecondaryOps(req.process);
         const perOpCost = r2(sec.cost / opsCount);
@@ -1434,43 +1434,55 @@ function calcSecondaryOperationsCost(
   process: NonNullable<QuoteRequest['process']>,
   rules: PricingRules,
   materialCost = 0,
+  dims: { length_mm?: number; width_mm?: number; height_mm?: number } = {},
 ): { cost: number; formula: string; detail: string } {
   let totalCost = 0;
   const details: string[] = [];
   const formulaParts: string[] = [];
   const cncRates = rules.cnc_rates || {};
 
-  // 钻孔费
+  // 钻孔费（按≤35T冲压公式：基数0.10 + 长度附加 + 体积附加）
   if (process.holes && process.holes.count > 0) {
-    const holeRates = cncRates['钻孔'] || {};
-    const range = process.holes.diameter_range || 'ø6~10mm';
-    // 匹配费率
-    let rate = midOfRange(holeRates['ø6~10mm'] || [0.5, 0.8]);
-    for (const [key, val] of Object.entries(holeRates)) {
-      if (range.includes(key.replace('ø', '').split('~')[0]) || key.includes(range)) {
-        rate = midOfRange(val as number[]);
-        break;
-      }
+    const baseRate = 0.10;
+    const lengthMm = dims.length_mm || 0;
+    const widthMm = dims.width_mm || 0;
+    const heightMm = dims.height_mm || 0;
+    const maxDim = Math.max(lengthMm, widthMm, heightMm);
+    const lengthSurcharge = maxDim > 100 ? Math.floor((maxDim - 1) / 100) * 0.01 : 0;
+    const volumeMm3 = lengthMm * widthMm * heightMm;
+    const volumeSurcharge = volumeMm3 * 0.00000003;
+    const feePerHole = r2(baseRate + lengthSurcharge + volumeSurcharge);
+    let holeAccumulated = materialCost > 0 ? materialCost : 0;
+    for (let i = 0; i < process.holes.count; i++) {
+      holeAccumulated = (holeAccumulated + feePerHole) * 1.03;
     }
-    const holeCost = process.holes.count * rate;
+    const holeCost = holeAccumulated - (materialCost > 0 ? materialCost : 0);
     totalCost += holeCost;
-    details.push(`钻孔: ${process.holes.count}孔 × ${rate}元 = ${r2(holeCost)}元`);
+    const lp = lengthSurcharge > 0 ? ` + 长度${lengthSurcharge}` : '';
+    const vp = volumeSurcharge > 0 ? ` + 体积${r2(volumeSurcharge)}` : '';
+    details.push(`钻孔: ${process.holes.count}孔 × (${feePerHole}=0.10${lp}${vp}) ×1.03损耗 = ${r2(holeCost)}元`);
   }
 
-  // 攻丝费
+  // 攻丝费（按≤35T冲压公式：基数0.10 + 长度附加 + 体积附加）
   if (process.tapped_holes && process.tapped_holes.count > 0) {
-    const tapRates = cncRates['攻丝'] || {};
-    const size = process.tapped_holes.size || 'M5~M6';
-    let rate = midOfRange(tapRates['M5~M6'] || [0.5, 0.8]);
-    for (const [key, val] of Object.entries(tapRates)) {
-      if (size.includes(key) || key.includes(size)) {
-        rate = midOfRange(val as number[]);
-        break;
-      }
+    const baseRate = 0.10;
+    const lengthMm = dims.length_mm || 0;
+    const widthMm = dims.width_mm || 0;
+    const heightMm = dims.height_mm || 0;
+    const maxDim = Math.max(lengthMm, widthMm, heightMm);
+    const lengthSurcharge = maxDim > 100 ? Math.floor((maxDim - 1) / 100) * 0.01 : 0;
+    const volumeMm3 = lengthMm * widthMm * heightMm;
+    const volumeSurcharge = volumeMm3 * 0.00000003;
+    const feePerHole = r2(baseRate + lengthSurcharge + volumeSurcharge);
+    let tapAccumulated = materialCost > 0 ? materialCost : 0;
+    for (let i = 0; i < process.tapped_holes.count; i++) {
+      tapAccumulated = (tapAccumulated + feePerHole) * 1.03;
     }
-    const tapCost = process.tapped_holes.count * rate;
+    const tapCost = tapAccumulated - (materialCost > 0 ? materialCost : 0);
     totalCost += tapCost;
-    details.push(`攻丝: ${process.tapped_holes.count}孔 × ${rate}元 = ${r2(tapCost)}元`);
+    const lp = lengthSurcharge > 0 ? ` + 长度${lengthSurcharge}` : '';
+    const vp = volumeSurcharge > 0 ? ` + 体积${r2(volumeSurcharge)}` : '';
+    details.push(`攻丝: ${process.tapped_holes.count}孔 × (${feePerHole}=0.10${lp}${vp}) ×1.03损耗 = ${r2(tapCost)}元`);
   }
 
   // 铣槽费
@@ -1592,7 +1604,7 @@ function calcSheetMetal(
   // 5. 二次加工费
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost);
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, dims);
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
@@ -1692,7 +1704,7 @@ function calcDieCasting(
   // 5. 二次加工费
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost);
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, dims);
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
@@ -1787,7 +1799,7 @@ function calcZincAlloy(
   // 5. 二次加工费
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost);
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, dims);
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
@@ -1884,7 +1896,7 @@ function calcInjection(
   // 5. 二次加工费
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost);
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, dims);
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
