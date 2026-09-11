@@ -2055,6 +2055,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           num_cavities: parseJson.is_hollow ? 1 : 0,
           material_category: parseJson.material_grade || '',
           length: parseJson.extrusion_length_mm,
+          process: parseJson.process || null,
+          secondary_operations: parseJson.secondary_operations || null,
           notes: `压缩包解析: ${targetFile.name} | ⚠️仅用于报价估算，不可作为开模依据`,
         };
         setRecogResult(recogData);
@@ -2097,6 +2099,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           num_cavities: cadJson.is_hollow ? 1 : 0,
           material_category: cadJson.material_grade || '',
           length: cadJson.extrusion_length_mm,
+          process: cadJson.process || null,
+          secondary_operations: cadJson.secondary_operations || null,
           notes: `3D 模型解析 | ⚠️仅用于报价估算，不可作为开模依据`,
         };
         setRecogResult(recogData);
