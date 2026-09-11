@@ -2029,7 +2029,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         const parseResp = await fetch('/api/drawing-parse', {
           method: 'POST',
           body: parseFd,
-          headers: { 'x-file-name': targetFile.name }
+          headers: { 'x-file-name': encodeURIComponent(targetFile.name) }
         });
         const parseJson = await parseResp.json();
         setRecogError(null);
