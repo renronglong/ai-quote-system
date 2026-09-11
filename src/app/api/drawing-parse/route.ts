@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
       // 用 file_id 引用已解压的文件
       proxyForm.append("file_id", fileId);
       // 根据文件名确定格式，或者从请求头传
-      const fileName = request.headers.get("x-file-name") || "file.stp";
+      const fileName = decodeURIComponent(request.headers.get("x-file-name") || "file.stp");
       const ext = '.' + fileName.split('.').pop()?.toLowerCase();
       const endpoint = FORMAT_ENDPOINTS[ext] || "/api/parse/upload";
 
