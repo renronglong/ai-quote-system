@@ -883,4 +883,2716 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   useEffect(() => {
     if (productType !== '挤出' || materialCategory !== '标准件') return;
     const mw = parseFloat(String(fields.meterWeight)) || 0;
-    const len = parseFloat(St
+    const len = parseFloat(String(fields.length)) || 0;
+    if (mw > 0 && len > 0) {
+      const g = Math.round(mw * len);
+      setFields(prev => (parseFloat(String(prev.netWeight)) === g ? prev : { ...prev, netWeight: g }));
+    }
+  }, [productType, materialCategory, fields.meterWeight, fields.length]);
+
+  // 标准件：外周长自动填入周长框、内孔周长写入隐藏字段（分流模模具费外+内周长；手填周长后不覆盖）
+  useEffect(() => {
+    if (productType !== '挤出' || materialCategory !== '标准件' || perimeterManual) return;
+    const per = calcStdPerimeters(standardCategory, fields.width as number, fields.height as number, fields.thickness as number);
+    if (per) {
+      setFields(prev => {
+        const changed = parseFloat(String(prev.perimeter)) !== per.outer || parseFloat(String(prev.innerPerimeter ?? '')) !== per.inner;
+        return changed ? { ...prev, perimeter: per.outer, innerPerimeter: per.inner } : prev;
+      });
+    }
+  }, [productType, materialCategory, standardCategory, fields.width, fields.height, fields.thickness, perimeterManual]);
+
+  // 手动触发模具匹配（用户点击搜索按钮才搜索，不自动触发）
+  const runMoldSearch = async () => {
+    if (productType !== '挤出' || !standardCategory) return;
+    const dimFields = CATEGORY_DIM_FIELDS[standardCategory];
+    if (!dimFields) return;
+    const cur = fieldsRef.current;
+    // 异型材必须先选模具类型再搜索
+    if (standardCategory === '异型材' && !cur.die_type) return;
+    const dimFieldMap: Record<string, string> = { diameter: 'width', hex: 'width', outer: 'width', inner: 'height' };
+    const params = new URLSearchParams({ category: standardCategory });
+    let hasInput = false;
+    for (const df of dimFields) {
+      const stateKey = dimFieldMap[df.key] || df.key;
+      const val = cur[stateKey] as number;
+      if (val && val > 0) {
+        params.set(df.key, String(val));
+        hasInput = true;
+      }
+    }
+    if (standardCategory === '异型材') {
+      if (cur.width) { params.set('width', String(cur.width)); hasInput = true; }
+      if (cur.height) { params.set('height', String(cur.height)); hasInput = true; }
+      if (cur.meterWeight) { params.set('meter_weight', String(cur.meterWeight)); hasInput = true; }
+      if (cur.perimeter) { params.set('perimeter', String(cur.perimeter)); hasInput = true; }
+      if (cur.die_type) params.set('die_type', cur.die_type as string);
+    } else if (cur.perimeter) {
+      params.set('perimeter', String(cur.perimeter));
+    }
+    if (!hasInput) { setMoldMatches([]); setSelectedMoldId(null); setUseExistingMold(null); return; }
+
+    setMoldMatchLoading(true);
+    setSelectedMoldId(null);
+    setUseExistingMold(null);
+    try {
+      const res = await fetch(`/api/mold-match?${params.toString()}`);
+      const data = await res.json();
+      if (data.success) {
+        setMoldMatches(data.matches || []);
+      }
+    } catch (e) {
+      console.error('Mold match failed:', e);
+    } finally {
+      setMoldMatchLoading(false);
+    }
+  };
+
+
+  // Reset manual flags when switching to standard mode
+  useEffect(() => {
+    if (productType === '挤出') {
+      setPerimeterManual(false);
+      setMeterWeightManual(false);
+    }
+  }, [productType]);
+
+  // ==================== Auto-calculate meter weight from cross-section ====================
+  // DISABLED: 米重/重量由用户手动输入，不再根据宽高自动计算
+  // useEffect(() => {
+  //   if (productType !== '挤出') return;
+  //   if (meterWeightManual) return;
+  //   ...
+  // }, [fields.width, fields.height, productType, materialCategory]);
+
+  // ==================== Perimeter: only auto-fill from DB on spec select; no formula fallback ====================
+  // 2*(w+h) is wrong for non-rectangular cross-sections, removed.
+
+  // ==================== Auto 锯切：挤出长度<3000mm 默认勾选锯切 ====================
+  // 注意：不再按长度强制切换"小料/长料"按钮，用户可手动选择（<3m也可走长料氧化后加工）
+  const autoSawAppliedRef = useRef(false);
+  const lastLenRef = useRef(0);
+  useEffect(() => {
+    if (productType !== '挤出') { autoSawAppliedRef.current = false; return; }
+    const len = Number(fields.length) || 0;
+    if (len === lastLenRef.current) return;
+    lastLenRef.current = len;
+
+    const hasSaw = processes.some(p => p.name === '锯切');
+    if (len > 0 && len < 3000) {
+      // <3m：默认加锯切（用户可手动取消）
+      if (!hasSaw) {
+        setProcesses(prev => [...prev, { name: '锯切', quantity: 1 }]);
+        autoSawAppliedRef.current = true;
+      }
+    } else if (len >= 3000) {
+      // ≥3m物理长料：移除锯切+二次加工（整根出货，无法再冲压/CNC）
+      const blocked = ['锯切','冲压','CNC加工','车加工','钻孔','攻牙'];
+      const filtered = processes.filter(p => !blocked.includes(p.name));
+      if (filtered.length !== processes.length) setProcesses(filtered);
+      autoSawAppliedRef.current = false;
+    }
+  }, [productType, fields.length]);
+
+  // ==================== Auto-calculate min order quantity ====================
+  useEffect(() => {
+    if (productType !== '挤出') return;
+    if (quantityManual) return;
+    const mw = fields.meterWeight as number;
+    const len = fields.length as number;
+    if (mw && len && mw > 0 && len > 0) {
+      // 与API口径一致：单件重量含+5mm锯切余量，再按数量级向上取整到十位
+      const singleWeightKg = mw * (Number(len) + 5) / 1000;
+      if (singleWeightKg > 0) {
+        const raw = Math.ceil(300 / singleWeightKg);
+        let minQty = raw;
+        if (raw > 10) {
+          const digits = Math.floor(Math.log10(raw));
+          const unit = Math.pow(10, digits - 2);
+          minQty = Math.ceil(raw / unit) * unit;
+        }
+        setFields(prev => ({ ...prev, quantity: minQty }));
+      }
+    }
+  }, [fields.meterWeight, fields.length, productType]);
+
+  // ==================== Auto-calculate with debounce ====================
+  // triggerCalculate 定义在 doCalculate 之后（见文件下方），用 ref 持有最新实现，
+  // 避免闭包捕获旧 state（历史bug：选「分流模」后自动报价仍按旧 die_type='flat' 计算）
+  const doCalculateRef = useRef<() => void>(() => {});
+
+  const triggerCalculate = useCallback(() => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => {
+      doCalculateRef.current();
+    }, 500);
+  }, []);
+
+  // Trigger on any field change
+  useEffect(() => {
+    triggerCalculate();
+    return () => { if (debounceTimer.current) clearTimeout(debounceTimer.current); };
+  }, [productType, materialCategory, fields, materialSurfaceTreatment, materialColor, processes, productSurfaceTreatment, productColor, surfaceTreatment, surfaceColor, materialSizeType, dieSteelPrice, materialGrade, triggerCalculate]);
+
+  // Get available product surface treatments
+  const getProductSurfaceOptions = (): ProductSurfaceOption[] => {
+    if (!categoryConfig) return [];
+    if (productType === '注塑') return [];
+    if (categoryConfig.productSurfaceTreatmentMap) {
+      return categoryConfig.productSurfaceTreatmentMap[materialSurfaceTreatment] || [];
+    }
+    if (categoryConfig.productSurfaceTreatment) {
+      return categoryConfig.productSurfaceTreatment;
+    }
+    return [];
+  };
+
+  const getMaterialColorOptions = (): string[] => {
+    if (!categoryConfig?.materialColorMap) return [];
+    return categoryConfig.materialColorMap[materialSurfaceTreatment] || [];
+  };
+
+  const getProductColorOptions = (): string[] => {
+    const opts = getProductSurfaceOptions();
+    const selected = opts.find(o => o.name === productSurfaceTreatment);
+    return selected?.colors || [];
+  };
+
+  // 合并材料表面处理 + 产品表面处理选项（去重，默认"无"）
+  const getSurfaceTreatmentOptions = (): { name: string; colors?: string[] }[] => {
+    const seen = new Map<string, string[] | undefined>();
+    const addOption = (name: string, colors?: string[]) => {
+      if (!seen.has(name)) seen.set(name, colors);
+    };
+    addOption('无');
+    if (categoryConfig?.materialSurfaceTreatment) {
+      for (const name of categoryConfig.materialSurfaceTreatment) {
+        if (name === '无') continue;
+        const colorOpts = categoryConfig?.materialColorMap?.[name];
+        addOption(name, colorOpts);
+      }
+    }
+    const productOpts = getProductSurfaceOptions();
+    for (const opt of productOpts) {
+      if (opt.name === '无') continue;
+      if (seen.has(opt.name)) {
+        // 合并颜色
+        const existing = seen.get(opt.name);
+        if (opt.colors && existing) {
+          const merged = [...existing];
+          for (const c of opt.colors) if (!merged.includes(c)) merged.push(c);
+          seen.set(opt.name, merged);
+        } else if (opt.colors) {
+          seen.set(opt.name, opt.colors);
+        }
+      } else {
+        addOption(opt.name, opt.colors);
+      }
+    }
+    return Array.from(seen.entries()).map(([name, colors]) => ({ name, colors }));
+  };
+
+  const getSurfaceColorOptions = (): string[] => {
+    const opts = getSurfaceTreatmentOptions();
+    const selected = opts.find(o => o.name === surfaceTreatment);
+    return selected?.colors || [];
+  };
+
+  const handleProductTypeChange = (pt: string) => {
+    setProductType(pt);
+    if (pt === '板材') setMaterialGrade('5052');
+  };
+  const handleMaterialCategoryChange = (mc: string) => {
+    setMaterialCategory(mc);
+    resetCategoryState(mc);
+    // 异型材是唯一细分类，直接选中，免去多余的二次点击；标准件则需再选具体种类
+    setStandardCategory(mc === '异型材' ? '异型材' : '');
+    setMoldMatches([]);
+    setSelectedMoldId(null);
+    setUseExistingMold(null);
+  };
+
+  const toggleProcess = (procName: string) => {
+    if (procName === '无') { setProcesses([]); return; }
+    setProcesses(prev => {
+      const exists = prev.find(p => p.name === procName);
+      if (exists) return prev.filter(p => p.name !== procName);
+      // Initialize subParams if this process has them
+      const subDef = PROCESS_SUB_PARAMS[procName];
+      const subParams: Record<string, any> = {};
+      if (subDef) {
+        for (const param of subDef) {
+          if (param.type === 'number') subParams[param.name] = '';
+          else if (param.type === 'select' && param.options) subParams[param.name] = param.options[0];
+        }
+      }
+      return [...prev, { name: procName, ...(Object.keys(subParams).length > 0 ? { subParams } : {}) }];
+    });
+  };
+
+  const updateProcessQuantity = (procName: string, qty: number | string) => {
+    setProcesses(prev => prev.map(p => p.name === procName ? { ...p, quantity: qty as any } : p));
+  };
+
+
+  const updateSubParam = (procName: string, paramName: string, value: any) => {
+    setProcesses(prev => prev.map(p =>
+      p.name === procName ? { ...p, subParams: { ...p.subParams, [paramName]: value } } : p
+    ));
+  };
+
+  const handleProductSurfaceChange = (val: string) => {
+    setProductSurfaceTreatment(val);
+    setProductColor('');
+  };
+
+  // Sync AI data（图纸识别参数回填）
+  useEffect(() => {
+    if (!aiData || aiData === prevAiDataRef.current) return;
+    prevAiDataRef.current = aiData;
+
+    // 产品类型：英文key / 中文别名 → 表单tab key
+    if (aiData.productType) {
+      const ptMap: Record<string, string> = {
+        'extrusion': '挤出', '挤压铝型材': '挤出', '挤出铝型材': '挤出', '挤出': '挤出', '挤压': '挤出', '铝型材': '挤出',
+        'sheet_metal': '板材', '铝板/铝平板': '板材', '板材': '板材', '铝板': '板材', '钣金': '板材',
+        'die_casting': '压铸', '压铸铝件': '压铸', '压铸': '压铸', '压铸铝': '压铸',
+        'zinc_alloy': '压铸',
+        'injection': '注塑', '注塑': '注塑', '注塑件': '注塑',
+        'cnc': '挤出', 'stamping': '板材',
+      };
+      const mapped = ptMap[aiData.productType] || aiData.productType;
+      if (PRODUCT_TYPES[mapped]) setProductType(mapped);
+    }
+
+    // 挤出类材料大类：异型材 / 标准件
+    if (productType === '挤出' || aiData.productType) {
+      if (aiData.materialCategory === '标准件') {
+        setMaterialCategory('标准件');
+        // 标准件细分类由下方 aiData.standardCategory 分支设置
+      } else if (aiData.materialCategory) {
+        // 异型材（含 '铝合金'/'铝型材' 等旧值兼容）：唯一细分类直接选中
+        setMaterialCategory('异型材');
+        setStandardCategory('异型材');
+      }
+    } else if (aiData.materialCategory) {
+      setMaterialCategory(aiData.materialCategory);
+    }
+
+    // 标准件小类：铝圆棒/铝方管/角铝...
+    if (aiData.standardCategory) {
+      const STD_KEYS = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管', '铝方管', '异型材'];
+      const stdMap: Record<string, string> = {
+        '铝方': '铝方/扁棒', '扁棒': '铝方/扁棒', '铝棒': '铝圆棒', '圆棒': '铝圆棒',
+        '方管': '铝方管', '圆管': '铝圆管', '六角棒': '铝六角棒', '六角管': '铝六角管', '角铝': '角铝',
+      };
+      const key = STD_KEYS.includes(aiData.standardCategory)
+        ? aiData.standardCategory
+        : (stdMap[aiData.standardCategory] || '');
+      if (key) {
+        setMaterialCategory('标准件');
+        setStandardCategory(key);
+      }
+    }
+
+    if (aiData.materialGrade) setMaterialGrade(aiData.materialGrade);
+    if (aiData.quantity) setFields(prev => ({ ...prev, quantity: aiData.quantity! }));
+    if (aiData.width) setFields(prev => ({ ...prev, width: aiData.width! }));
+    if (aiData.height) setFields(prev => ({ ...prev, height: aiData.height! }));
+    if (aiData.length) setFields(prev => ({ ...prev, length: aiData.length! }));
+    if (aiData.wallThickness) setFields(prev => ({ ...prev, thickness: aiData.wallThickness! }));
+    if (aiData.surfaceTreatment && aiData.surfaceTreatment !== '无') {
+      const st = String(aiData.surfaceTreatment);
+      const stMap: Record<string,string> = {
+        '阳极氧化': '氧化', '氧化本色': '氧化', '本色氧化': '氧化', '阳极氧化-自然色': '氧化', '阳极氧化-黑色': '喷砂氧化',
+        '喷砂': '喷砂氧化', '喷砂阳极氧化': '喷砂氧化',
+        '抛光': '抛光氧化', '抛光阳极氧化': '抛光氧化',
+        '拉丝': '拉丝氧化', '拉丝阳极氧化': '拉丝氧化',
+        '喷粉': '喷涂', '粉末喷涂': '喷涂', '喷漆': '喷涂',
+      };
+      const mapped = stMap[st] || (['氧化','喷砂氧化','抛光氧化','拉丝氧化','喷涂'].includes(st) ? st : '');
+      if (mapped) setMaterialSurfaceTreatment(mapped);
+    }
+    setAiSynced(true);
+    const timer = setTimeout(() => setAiSynced(false), 3000);
+    return () => clearTimeout(timer);
+  }, [aiData]);
+
+  // Load saved quote data into form
+  useEffect(() => {
+    if (!loadQuoteData) return;
+    const p = loadQuoteData.params || loadQuoteData;
+    const r = loadQuoteData.result || {};
+
+    // Restore product type
+    if (p.productType) setProductType(p.productType);
+    else if (p.product_type) {
+      const typeMap: Record<string, string> = { extrusion: '挤出', sheet: '板材', die_casting: '压铸', injection: '注塑' };
+      setProductType(typeMap[p.product_type] || p.product_type);
+    }
+
+    // Restore material category
+    if (p.materialCategory) setMaterialCategory(p.materialCategory);
+    else if (p.material_category) setMaterialCategory(p.material_category);
+    else if (p.standardCategory) setStandardCategory(p.standardCategory);
+
+    // Restore fields
+    const fieldKeys = ['width', 'height', 'length', 'thickness', 'perimeter', 'innerPerimeter', 'meterWeight', 'quantity', 'productSize', 'diameter', 'hexFlat', 'outerDiameter', 'innerDiameter', 'area', 'netWeight', 'grossWeight'];
+    const newFields: Record<string, number | string> = {};
+    for (const k of fieldKeys) {
+      if (p[k] !== undefined) newFields[k] = p[k];
+    }
+    if (Object.keys(newFields).length > 0) setFields(prev => ({ ...prev, ...newFields }));
+
+    // Restore surface treatments
+    if (p.materialSurfaceTreatment) setMaterialSurfaceTreatment(p.materialSurfaceTreatment);
+    if (p.productSurfaceTreatment) setProductSurfaceTreatment(p.productSurfaceTreatment);
+    if (p.surfaceTreatment) setSurfaceTreatment(p.surfaceTreatment);
+    if (p.materialColor) setMaterialColor(p.materialColor);
+    if (p.productColor) setProductColor(p.productColor);
+    if (p.surfaceColor) setSurfaceColor(p.surfaceColor);
+
+    // Restore processes
+    if (Array.isArray(p.processes) && p.processes.length > 0) {
+      setProcesses(p.processes.map((proc: any) => ({
+        name: proc.name || proc.process_name,
+        quantity: proc.quantity || 1,
+        params: proc.params || {},
+      })));
+    }
+
+    // Restore product name/code
+    if (p.productName) setProductName(p.productName);
+    if (p.productCode) setProductCode(p.productCode);
+
+    // Restore material grade
+    if (p.materialGrade) setMaterialGrade(p.materialGrade);
+
+    // Restore selected mold（选中现有模具的报价，恢复模具完整信息，重新计算时仍能带出编号/名称/规格）
+    if (p.moldNumber || p.moldCrossSection) {
+      setUseExistingMold(true);
+      setSelectedMold({
+        mold_number: p.moldNumber || '',
+        product_name: p.moldProductName || '',
+        cross_section_mm: p.moldCrossSection || '',
+        surface_treatments: p.moldSurface ? [p.moldSurface] : [],
+      });
+    }
+  }, [loadQuoteData]);
+
+  // Notify parent of product info changes
+  useEffect(() => {
+    onProductInfoChange?.({ productName, productCode });
+  }, [productName, productCode]);
+
+  // Notify parent when mold selection changes
+  useEffect(() => {
+    onMoldInfoChange?.({ useExistingMold, selectedMoldId });
+  }, [useExistingMold, selectedMoldId]);
+
+  // ==================== Mapping Helpers ====================
+
+  const mapProductType = (): string => {
+    if (productType === '挤出') return 'extrusion';
+    if (productType === '板材') return 'sheet_metal';
+    if (productType === '压铸') {
+      return materialCategory === '锌合金' ? 'zinc_alloy' : 'die_casting';
+    }
+    if (productType === '注塑') return 'injection';
+    if (productType === '钢材') return 'steel_standard';
+    return 'sheet_metal';
+  };
+
+  const mapMaterialCategory = (): string => {
+    const map: Record<string, string> = {
+      '铝型材': '挤压铝型材', '铝板': '铝板', '冷轧板': '冷板SPCC',
+      '不锈钢': '不锈钢', '镀锌板': '冷板SPCC', '铝': '压铸铝ADC12',
+      '锌合金': '锌合金ZA-8', 'ABS': 'ABS', 'PP': 'PP', 'PC': 'PC',
+      'PA': 'PA', 'POM': 'POM', 'PMMA': 'PMMA',
+    };
+    return map[materialCategory] || materialCategory;
+  };
+
+  const parseProductSize = (size: string): { l: number; w: number; h: number } | null => {
+    if (!size || typeof size !== 'string') return null;
+    const cleaned = size.replace(/[×xX*]/g, ' ').trim();
+    const parts = cleaned.split(/\s+/).map(Number).filter(n => !isNaN(n) && n > 0);
+    if (parts.length >= 3) return { l: parts[0], w: parts[1], h: parts[2] };
+    if (parts.length === 2) return { l: parts[0], w: parts[1], h: 0 };
+    return null;
+  };
+
+  const mapSurfaceTreatment = (): { type: string; color?: string | null } | null => {
+    const surfaceMap: Record<string, string> = {
+      '喷砂氧化': '喷砂', '抛光氧化': '抛光/镀铬', '拉丝氧化': '拉丝',
+      '喷涂': '喷涂', '氧化': '氧化本色', '电镀': '镀锌/镀镍',
+      '除油': '除油',
+    };
+    // 使用合并后的统一表面处理
+    if (surfaceTreatment && surfaceTreatment !== '无') {
+      let mapped = surfaceMap[surfaceTreatment];
+      if (!mapped) return null;
+      if (surfaceTreatment === '氧化') {
+        if (surfaceColor && surfaceColor !== '本色') mapped = '氧化上色';
+        else mapped = '氧化本色';
+      }
+      return { type: mapped, color: surfaceColor || null };
+    }
+    return null;
+  };
+
+  const mapProcesses = (): Record<string, any> => {
+    const processMap: Record<string, string> = {
+      '冲压': '冲压', 'CNC加工': 'CNC加工', '车加工': '车加工',
+      '钻孔': '钻孔', '攻牙': '攻丝', '激光切割': '激光切割',
+      '折弯': '折弯', '抛光': '抛光', '除披锋': '去毛刺',
+    };
+    const secondaryOps: string[] = [];
+    let cutCount: number | undefined;
+    let stampingTonnage: string | undefined;
+    let stampingCount: number | undefined;
+    let holes: { count: number; diameter_range?: string } | undefined;
+    let tappedHoles: { count: number; size?: string } | undefined;
+    let cncTime: { minutes: number } | undefined;
+    let bendCount: number | undefined;
+
+    for (const proc of processes) {
+      if (proc.name === '锯切') {
+        cutCount = Number(proc.quantity) || 1;
+      } else if (proc.name === '冲压') {
+        secondaryOps.push('冲压');
+        if (proc.subParams?.tonnage) stampingTonnage = proc.subParams.tonnage;
+        stampingCount = Number(proc.quantity) || 1;
+      } else if (proc.name === '钻孔') {
+        secondaryOps.push('钻孔');
+        const hc = Number(proc.subParams?.hole_count ?? proc.quantity) || 0;
+        const dr = proc.subParams?.diameter_range || 'ø6~10';
+        if (hc > 0) holes = { count: hc, diameter_range: dr };
+      } else if (proc.name === '攻牙') {
+        secondaryOps.push('攻丝');
+        const hc = Number(proc.subParams?.hole_count ?? proc.quantity) || 0;
+        const sz = proc.subParams?.size || 'M5~M6';
+        if (hc > 0) tappedHoles = { count: hc, size: sz };
+      } else if (proc.name === 'CNC加工') {
+        secondaryOps.push('CNC加工');
+        const mins = Number(proc.subParams?.minutes ?? proc.quantity) || 0;
+        if (mins > 0) cncTime = { minutes: mins };
+      } else if (proc.name === '车加工') {
+        secondaryOps.push('车加工');
+        const mins = Number(proc.subParams?.minutes ?? proc.quantity) || 0;
+        if (mins > 0) cncTime = { minutes: (cncTime?.minutes || 0) + mins };
+      } else if (proc.name === '折弯') {
+        secondaryOps.push('折弯');
+        bendCount = Number(proc.quantity) || 1;
+      } else if (processMap[proc.name]) {
+        secondaryOps.push(processMap[proc.name]);
+      }
+    }
+
+    const result: Record<string, any> = { secondary_operations: secondaryOps };
+    if (cutCount !== undefined) result.cut_count = cutCount;
+    if (stampingTonnage) result.stamping_tonnage = stampingTonnage;
+    if (stampingCount !== undefined) result.stamping_count = stampingCount;
+    if (holes) result.holes = holes;
+    if (tappedHoles) result.tapped_holes = tappedHoles;
+    if (cncTime) result.cnc_time = cncTime;
+    if (bendCount !== undefined) result.bend_count = bendCount;
+    return result;
+  };
+
+  const calcWeightKg = (): number | undefined => {
+    if (productType === '挤出') {
+      // 挤出：始终用米重×长度计算型材消耗重量（净重用于计算利用率，不覆盖重量）
+      const meterWeight = fields.meterWeight as number;
+      const length = fields.length as number;
+      if (meterWeight && length) return (meterWeight * length) / 1000;
+    }
+    if (productType === '钢材') {
+      // 钢材：用米重×长度计算单件重量
+      const mw = fields.meterWeight as number;
+      const len = fields.length as number;
+      if (mw && len) return (mw * len) / 1000;
+    }
+    // 其他品类：用净重
+    const netWeight = fields.netWeight as number;
+    if (netWeight && netWeight > 0) return netWeight / 1000;
+    return undefined;
+  };
+
+  const buildDimensions = () => {
+    const parsed = parseProductSize(fields.productSize as string);
+    // 输入框存的是字符串，统一转 number（空串/NaN → undefined）
+    const num = (v: unknown): number | undefined => {
+      const n = typeof v === 'number' ? v : parseFloat(String(v));
+      return Number.isFinite(n) && n > 0 ? n : undefined;
+    };
+    if (productType === '挤出') {
+      const width = num(fields.width);
+      const height = num(fields.height);
+      const length = num(fields.length);
+      if (width || height || length || num(fields.thickness)) return {
+        length_mm: length || 0,
+        width_mm: width || 0,
+        height_mm: height || undefined,
+        standard_category: standardCategory || undefined,
+        wall_thickness_mm: num(fields.thickness),
+        diameter_mm: standardCategory === '铝圆棒' ? (width || undefined) : undefined,
+        hex_flat_mm: (standardCategory === '铝六角棒' || standardCategory === '铝六角管') ? (width || undefined) : undefined,
+        outer_diameter_mm: standardCategory === '铝圆管' ? (width || undefined) : undefined,
+        inner_diameter_mm: (standardCategory === '铝圆管' || standardCategory === '铝六角管') ? (height || undefined) : undefined,
+        perimeter_mm: num(fields.perimeter),
+        inner_perimeter_mm: num(fields.innerPerimeter),
+        num_cavities: parseInt(String(fields.num_cavities)) || 1,
+        die_type: (fields.die_type === 'flat' || fields.die_type === 'split') ? fields.die_type as 'flat' | 'split' : undefined,
+        meter_weight_kg_per_m: num(fields.meterWeight),
+        cross_section_area_mm2: num(fields.crossSectionArea),
+        net_weight_g: num(fields.netWeight),
+        die_steel_price: dieSteelPrice ? parseFloat(dieSteelPrice) : undefined,
+      };
+    }
+    if (productType === '板材') {
+      const thickness = fields.thickness as number;
+      const num = (v: unknown): number | undefined => {
+        const n = typeof v === 'number' ? v : parseFloat(String(v));
+        return Number.isFinite(n) && n > 0 ? n : undefined;
+      };
+      const bL = num(fields.length);
+      const bW = num(fields.width);
+      if (bL && bW) return { length_mm: bL, width_mm: bW, wall_thickness_mm: thickness || undefined };
+      // 兼容旧 productSize 字段
+      if (parsed) return { length_mm: parsed.l, width_mm: parsed.w, wall_thickness_mm: thickness || undefined };
+    }
+    if (productType === '压铸' || productType === '注塑') {
+      if (parsed) return { length_mm: parsed.l, width_mm: parsed.w, height_mm: parsed.h || undefined };
+    }
+    return undefined;
+  };
+
+  // ==================== Calculate ====================
+  const doCalculate = async () => {
+    // Check if all required dimension fields are filled
+    const cat = categoryConfig;
+    if (cat) {
+      const isStdMode = productType === '挤出';
+      let allFilled: boolean;
+      if (isStdMode) {
+        // 挤出模式：长度非必填（模具费只看截面，无长度也能算）
+        if (standardCategory === '异型材') {
+          // 异型材：宽度+高度必填，且米重或周长至少填一个
+          allFilled = !!(fields.width && fields.height && (fields.meterWeight || fields.perimeter));
+        } else if (standardCategory) {
+          // 标准件：该类别尺寸字段全部填齐（才能算理论米重）
+          const dimDefs = CATEGORY_DIM_FIELDS[standardCategory] || [];
+          const fieldMap: Record<string, string> = { diameter: 'width', hex: 'width', outer: 'width', inner: 'height' };
+          allFilled = dimDefs.every(df => {
+            const sk = fieldMap[df.key] || df.key;
+            const v = fields[sk];
+            return v !== '' && v !== undefined && v !== null && Number(v) > 0;
+          });
+        } else {
+          allFilled = false; // 还没选异型材/标准件类别
+        }
+      } else {
+        allFilled = cat.fields.filter(f => ['width', 'height', 'length', 'thickness', 'productSize'].includes(f)).every(f => {
+          const val = fields[f];
+          if (val === '' || val === undefined || val === null) return false;
+          // productSize 是复合字符串如 "100×200"，需要 parseProductSize 解析
+          if (f === 'productSize') return parseProductSize(String(val)) !== null;
+          return Number(val) > 0;
+        });
+      }
+      if (!allFilled) {
+        onResult?.(null);
+        return;
+      }
+    }
+
+    // ===== 钢材标准件：前端直接算（后端暂不支持） =====
+    if (productType === '钢材') {
+      const grade = (fields.materialGrade as string) || materialGrade || 'Q235';
+      const pricePerTon = STEEL_DEFAULT_PRICES[grade] || 3700;
+      const density = getSteelDensity(grade);
+      const mw = Number(fields.meterWeight) || 0;
+      const len = Number(fields.length) || 0;
+      const qty = Number(fields.quantity) || 1;
+      if (!mw || !len) { onResult?.(null); return; }
+
+      const weightPerPiece = (mw * len) / 1000; // kg
+      const totalWeight = weightPerPiece * qty;
+      const materialCost = totalWeight * pricePerTon / 1000;
+
+      // 锯切费：0.5元/刀（临时，后续费率确认后再调）
+      const cutCount = processes.some(p => p.name === '锯切') ? (Number((processes.find(p => p.name === '锯切') as any)?.quantity) || 1) : 0;
+      const processingCost = cutCount > 0 ? cutCount * qty * 0.5 : 0;
+
+      const subtotal = materialCost + processingCost;
+      const mgmtFee = subtotal * 0.13;
+      const unitPrice = Math.round((subtotal + mgmtFee) * 100) / 100;
+      const totalPrice = Math.round(unitPrice * qty * 100) / 100;
+
+      onResult?.({
+        quotation_id: `STEEL-${Date.now()}`,
+        material_cost: Math.round(materialCost * 100) / 100,
+        processing_cost: processingCost,
+        surface_treatment_cost: 0,
+        secondary_operations_cost: 0,
+        packaging_cost: 0,
+        transport_cost: 0,
+        management_fee: Math.round(mgmtFee * 100) / 100,
+        unit_price: unitPrice,
+        unit_price_ex_tax: unitPrice,
+        unit_price_in_tax: Math.round(unitPrice * 1.13 * 100) / 100,
+        total_price: totalPrice,
+        weight_per_piece_kg: Math.round(weightPerPiece * 1000) / 1000,
+        breakdown: {
+          material: { formula: `${weightPerPiece.toFixed(2)}kg×${pricePerTon}元/吨×${qty}件`, detail: `材料费: ${grade} ${pricePerTon}元/吨 × ${weightPerPiece.toFixed(2)}kg/件 × ${qty}件 = ${Math.round(materialCost)}元` },
+          ...(cutCount > 0 ? { processing: { formula: `${cutCount}刀×${qty}件×0.5元`, detail: `锯切: ${cutCount}×${qty}×0.5 = ${processingCost}元` } } : {}),
+          management: { formula: `管理费13%`, detail: `管理费: (${Math.round(materialCost)}+${processingCost})×13% = ${Math.round(mgmtFee)}元` },
+        },
+        aluminum_index: 0,
+        notes: [`${grade}圆钢参考价 ${pricePerTon}元/吨（2026-09-10 上海）`, '加工费率待确认，当前仅含材料费+锯切'],
+        mold_cost: 0,
+        mold_spec: '',
+        min_order_qty: 1,
+        min_order_weight_kg: 0,
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const surfaceTreatmentPayload = mapSurfaceTreatment();
+      const processInfo = mapProcesses();
+
+      // ---- Normal (single) mode ----
+      const weightKg = calcWeightKg();
+      const dimensions = buildDimensions();
+      const payload: Record<string, any> = {
+        product_type: mapProductType(),
+        material: { category: mapMaterialCategory(), grade: materialGrade || (productType === '板材' ? '5052' : undefined) },
+        quantity: (fields.quantity as number) || 1,
+      };
+      if (productName) payload.product_name = productName;
+      if (productCode) payload.product_code = productCode;
+      if (useExistingMold === true) payload.use_existing_mold = true;
+      if (dimensions) {
+        if (productType === '挤出') (dimensions as any).material_size_type = materialSizeType;
+        payload.dimensions = dimensions;
+      }
+      if (weightKg !== undefined) payload.weight_per_piece_kg = weightKg;
+      if (surfaceTreatmentPayload) payload.surface_treatment = surfaceTreatmentPayload;
+      if (processInfo.secondary_operations.length > 0 || processInfo.cut_count !== undefined) {
+        payload.process = processInfo;
+      }
+      const mySeq = ++calcReqSeq.current;
+      const res = await fetch('/api/v1/quote/calculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      // 已有更新的请求发出 → 本次结果过期，丢弃，避免旧中间态覆盖新结果
+      if (mySeq !== calcReqSeq.current) { setLoading(false); return; }
+      if (res.ok) {
+        const data = await res.json();
+        if (mySeq !== calcReqSeq.current) { setLoading(false); return; }
+        if (data.success) {
+          const result: PricingResult = {
+            quotation_id: data.quotation_id || '',
+            material_cost: data.material_cost || 0,
+            processing_cost: data.processing_cost || 0,
+            surface_treatment_cost: data.surface_treatment_cost || 0,
+            secondary_operations_cost: data.secondary_operations_cost || 0,
+            packaging_cost: data.packaging_cost || 0,
+            transport_cost: data.transport_cost || 0,
+            management_fee: data.management_fee || 0,
+            unit_price: data.unit_price_ex_tax || data.unit_price || 0,
+            unit_price_ex_tax: data.unit_price_ex_tax || data.unit_price || 0,
+            unit_price_in_tax: data.unit_price_in_tax || 0,
+            total_price: data.total_price || 0,
+            weight_per_piece_kg: data.weight_per_piece_kg || 0,
+            material_utilization_rate: data.material_utilization_rate,
+            breakdown: data.breakdown || {},
+            aluminum_index: data.aluminum_index || 0,
+            notes: data.notes || [],
+            mold_cost: data.mold_cost || 0,
+            mold_spec: data.mold_spec || '',
+            min_order_qty: data.min_order_qty || 0,
+            min_order_weight_kg: data.min_order_weight_kg || 0,
+          };
+          onResult?.(result);
+          reportRecognitionFeedback();
+          if (onCalculate) {
+            onCalculate({
+              productType, materialCategory, standardCategory,
+              quantity: (fields.quantity as number) || 1,
+              width: fields.width as number, height: fields.height as number,
+              length: fields.length as number, thickness: fields.thickness as number,
+              productSize: (fields.productSize as string) || ((fields.length ? String(fields.length) : '') + (fields.width ? '×' + fields.width : '')),
+              meterWeight: fields.meterWeight as number, netWeight: fields.netWeight as number,
+              materialSurfaceTreatment, materialColor, processes,
+              productSurfaceTreatment, productColor,
+              surfaceTreatment, surfaceColor,
+              // 材质牌号（挤出铝型材默认 6063-T5 在出单侧兜底）
+              materialGrade: materialGrade || undefined,
+              // 选中现有模具：带出产品管理中的模具编号/名称/规格/表面处理，出单直接使用
+              moldNumber: useExistingMold === true && selectedMold ? (selectedMold.mold_number || '') : '',
+              moldProductName: useExistingMold === true && selectedMold ? (standardCategory === '异型材' ? realMoldProductName(selectedMold.product_name) : '') : '',
+              moldCrossSection: useExistingMold === true && selectedMold ? (selectedMold.cross_section_mm || '') : '',
+              moldSurface: useExistingMold === true && selectedMold && Array.isArray(selectedMold.surface_treatments)
+                ? (selectedMold.surface_treatments.map((x: string) => String(x || '').trim()).filter((x: string) => x && x !== '素材' && x !== '无').join('、'))
+                : '',
+            });
+          }
+          setLoading(false);
+          return;
+        }
+      }
+      onResult?.(null);
+    } catch (error) {
+      console.error('报价计算失败:', error);
+      onResult?.(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+  // 每次渲染同步最新的 doCalculate 到 ref，供防抖定时器调用
+  doCalculateRef.current = doCalculate;
+
+  // ==================== File Upload ====================
+  // 图片扩展名 — 触发AI识别
+  const AI_RECOG_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf', '.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t', '.zip', '.rar', '.7z', '.tar', '.gz'];
+  // CAD扩展名 — 本地解析或转发
+  const CAD_EXTS = ['.dxf', '.dwg', '.step', '.stp', '.igs'];
+
+  const isValidFile = (file: File): boolean => {
+    const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+    return ALLOWED_EXTENSIONS.includes(ext);
+  };
+
+  // 切换到指定产品（从 recogProducts 数组中加载）
+  const switchToProduct = (idx: number) => {
+    if (idx < 0 || idx >= recogProducts.length) return;
+    setSelectedProductIdx(idx);
+    setRecogResult(recogProducts[idx]);
+    applyRecogToForm(recogProducts[idx]);
+  };
+
+  const applyRecogToForm = (d: Record<string, any>) => {
+    // 如果当前是板材tab，强制覆盖AI可能返回的错误product_type
+    if (productType === '板材') {
+      d.product_type = d.product_type || 'stamping';
+      d.material_category = d.material_category || '铝板';
+    }
+    // 产品类型映射：当前已是板材时，不因AI返回的product_type切换tab
+    if (d.product_type && productType !== '板材') {
+      const ptMap: Record<string,string> = {
+        extrusion: '挤出', stamping: '板材', sheet_metal: '板材', die_casting: '压铸',
+        zinc_alloy: '压铸', cnc: '挤出', injection: '注塑',
+      };
+      const mapped = ptMap[String(d.product_type).toLowerCase()] || ptMap[d.product_type];
+      if (mapped && PRODUCT_TYPES[mapped]) setProductType(mapped);
+    }
+
+    // 型材细分类别（必须在填字段之前处理：resetProfileState 会清空截面字段）
+    const VALID_CATS = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管', '铝方管', '异型材'];
+    const stdAlias: Record<string,string> = {
+      '铝方': '铝方/扁棒', '扁棒': '铝方/扁棒', '铝棒': '铝圆棒', '圆棒': '铝圆棒',
+      '方管': '铝方管', '圆管': '铝圆管', '六角棒': '铝六角棒', '六角管': '铝六角管',
+    };
+    let resolvedCat = '';
+    if (d.profile_category) {
+      resolvedCat = VALID_CATS.includes(d.profile_category)
+        ? d.profile_category
+        : (stdAlias[d.profile_category] || '');
+    }
+    if (resolvedCat) {
+      // 先清空旧类别状态（含截面字段），稍后再统一填值
+      setMoldMatches([]);
+      setSelectedMoldId(null);
+      setUseExistingMold(null);
+      setMaterialCategory(resolvedCat === '异型材' ? '异型材' : '标准件');
+      setStandardCategory(resolvedCat);
+    } else if (d.material_category) {
+      // 归一化：挤出铝型材类 → 异型材；板材/压铸等保持各自key
+      // 但如果当前是板材tab，不要因为材料含"铝"就跳到异型材
+      const mc = String(d.material_category);
+      if (productType === '板材') {
+        // 板材模式下，直接用material_category作为板材的细分类
+        const catMap: Record<string,string> = {
+          '铝板': '铝板', '铝合金': '铝板', '铝': '铝板',
+          '不锈钢': '不锈钢', '冷轧板': '冷轧板', '冷板': '冷轧板', '镀锌板': '镀锌板',
+        };
+        const mapped = catMap[mc] || mc;
+        if (mapped) setMaterialCategory(mapped);
+      } else if (/铝合金|铝型材|^铝$|挤压|挤出/.test(mc)) {
+        setMaterialCategory('异型材');
+        setStandardCategory('异型材');
+      } else {
+        const catMap: Record<string,string> = {
+          '不锈钢': '不锈钢', '冷轧板': '冷轧板', '冷板': '冷轧板', '镀锌板': '镀锌板',
+          '压铸铝': '压铸铝', '锌合金': '锌合金', '塑胶': '塑胶',
+          'ABS': 'ABS', 'PP': 'PP', 'PC': 'PC',
+        };
+        const mapped = catMap[mc] || mc;
+        setMaterialCategory(mapped);
+      }
+    }
+
+    if (d.product_code) setProductCode(d.product_code);
+    if (d.product_name) setProductName(d.product_name);
+
+    // 字段统一最后填，避免被类别切换的 reset 清掉
+    // toNum: 兼容AI返回的字符串数字（如 "28.5" → 28.5）
+    const toNum = (v: unknown): number | null => {
+      if (typeof v === 'number' && !isNaN(v)) return v;
+      if (typeof v === 'string' && v.trim() !== '') { const n = parseFloat(v); return isNaN(n) ? null : n; }
+      return null;
+    };
+    setFields(prev => {
+      const next = { ...prev };
+      const w = toNum(d.width); if (w !== null) next.width = w;
+      const h = toNum(d.height); if (h !== null) next.height = h;
+      const l = toNum(d.length); if (l !== null) next.length = l;
+      const p = toNum(d.perimeter); if (p !== null) next.perimeter = p;
+      const ip = toNum(d.inner_perimeter); if (ip !== null) next.innerPerimeter = ip;
+      const nc = toNum(d.num_cavities); if (nc !== null) next.num_cavities = nc;
+      // 模具类型兼容英文/中文/中空描述
+      const dt = String(d.die_type || '').toLowerCase();
+      if (d.die_type === 'flat' || dt === 'flat' || d.die_type === '平模' || d.die_type === '实心') next.die_type = 'flat';
+      else if (d.die_type === 'split' || dt === 'split' || d.die_type === '分流模' || d.die_type === '中空' || d.die_type === '空心') next.die_type = 'split';
+      // 按内腔数兜底：有内腔=分流模，实心=平模
+      if (nc !== null && !next.die_type) {
+        next.die_type = nc >= 1 ? 'split' : 'flat';
+      }
+      const mw = toNum(d.meter_weight); if (mw !== null) next.meterWeight = mw;
+      const qty = toNum(d.quantity); if (qty !== null) next.quantity = qty;
+      const wt = toNum(d.wall_thickness) ?? toNum(d.thickness); if (wt !== null) next.thickness = wt;
+      // 板材专用：展开尺寸 → length + width 独立字段
+      const sheetL = toNum(d.unfold_length) ?? toNum(d.sheet_length);
+      const sheetW = toNum(d.unfold_width) ?? toNum(d.sheet_width);
+      if (sheetL !== null) next.length = Math.round(sheetL);
+      if (sheetW !== null) next.width = Math.round(sheetW);
+      // 标准件专属尺寸（前端 width/height 复用槽位：圆棒直径、六角对边、圆管外径→width；内径→height）
+      const dAny = d as Record<string, unknown>;
+      const num = (v: unknown) => toNum(v) ?? (toNum(v) !== null && (toNum(v) as number) > 0 ? toNum(v) : null);
+      const diam = num(dAny.diameter) ?? num(dAny.diameter_mm);
+      const hexFlat = num(dAny.hex_flat) ?? num(dAny.hex_flat_mm) ?? num(dAny.hex) ?? num(dAny.hex_flat_distance);
+      const outerD = num(dAny.outer_diameter) ?? num(dAny.outer_diameter_mm) ?? num(dAny.outer) ?? num(dAny.outer_dia);
+      const innerD = num(dAny.inner_diameter) ?? num(dAny.inner_diameter_mm) ?? num(dAny.inner) ?? num(dAny.inner_dia);
+      if (resolvedCat === '铝圆棒' && diam) next.width = diam;
+      if ((resolvedCat === '铝六角棒' || resolvedCat === '铝六角管') && hexFlat) next.width = hexFlat;
+      if (resolvedCat === '铝圆管' && outerD) next.width = outerD;
+      if ((resolvedCat === '铝圆管' || resolvedCat === '铝六角管') && innerD) next.height = innerD;
+      return next;
+    });
+    if (d.material_grade) setMaterialGrade(d.material_grade);
+    if (d.surface_treatment && d.surface_treatment !== '无') {
+      // 归一化到表单表面处理选项
+      const st = String(d.surface_treatment);
+      const stMap: Record<string,string> = {
+        '阳极氧化': '氧化', '氧化本色': '氧化', '本色氧化': '氧化', '硬质氧化': '氧化',
+        '喷砂': '喷砂氧化', '喷砂阳极氧化': '喷砂氧化',
+        '抛光': '抛光氧化', '抛光阳极氧化': '抛光氧化',
+        '拉丝': '拉丝氧化', '拉丝阳极氧化': '拉丝氧化',
+        '喷粉': '喷涂', '粉末喷涂': '喷涂', '喷漆': '喷涂',
+      };
+      const mappedSt = stMap[st] || (['氧化','喷砂氧化','抛光氧化','拉丝氧化','喷涂'].includes(st) ? st : '');
+      if (mappedSt) {
+        setMaterialSurfaceTreatment(mappedSt);
+        setProductSurfaceTreatment(mappedSt);
+      }
+    }
+    // 工序：支持字符串格式 "锯切,冲压(3次)" 和 数组格式 ["激光切割","折弯"]
+    if (d.processes && d.processes !== '无') {
+      let procs: ProcessSelection[] = [];
+      if (Array.isArray(d.processes)) {
+        // 板材API返回数组格式 或 3D CAD传入的对象数组
+        procs = d.processes.map((p: any) => {
+          if (typeof p === 'string') return { name: p.trim() };
+          return { name: p.name, quantity: p.quantity, subParams: p.subParams };
+        }).filter((p: ProcessSelection) => p.name);
+      } else if (typeof d.processes === 'string') {
+        procs = d.processes.split(/[,，、]/).map((p: string) => {
+          const m = p.trim().match(/^(.+?)(?:\((\d+)(分钟|次|mm|个)?\))?$/);
+          if (m) return { name: m[1], quantity: m[2] ? parseInt(m[2]) : undefined };
+          return { name: p.trim() };
+        }).filter((p: ProcessSelection) => p.name);
+      }
+      if (procs.length > 0) setProcesses(procs);
+    }
+    // 二次加工工序：从 process.secondary_operations 读取
+    const secOps = d.process?.secondary_operations || d.secondary_operations;
+    if (secOps && Array.isArray(secOps) && secOps.length > 0) {
+      const secProcs = secOps.map((op: any) => ({
+        name: op.name || op,
+        quantity: op.quantity,
+      })).filter((p: ProcessSelection) => p.name);
+      if (secProcs.length > 0) {
+        setProcesses(prev => {
+          const existingNames = new Set(prev.map(p => p.name));
+          const newProcs = secProcs.filter(p => !existingNames.has(p.name));
+          return newProcs.length > 0 ? [...prev, ...newProcs] : prev;
+        });
+      }
+    }
+    // 备注/说明
+    if (d.notes) setFileRemark(prev => prev ? prev + '; ' + d.notes : d.notes);
+    // 板材专用：将孔数/折弯数等信息写入备注
+    if (productType === '板材' || d.sheet_length || d.sheet_width || d.unfold_length) {
+      const sheetNotes: string[] = [];
+      if (d.unfold_detail) sheetNotes.push(d.unfold_detail);
+      if (d.hole_count) sheetNotes.push('孔数: ' + d.hole_count);
+      if (d.bend_count) sheetNotes.push('折弯数: ' + d.bend_count);
+      if (d.theoretical_weight_kg) sheetNotes.push('单件理论重量: ' + d.theoretical_weight_kg + 'kg');
+      if (sheetNotes.length > 0) setFileRemark(prev => prev ? prev + '; ' + sheetNotes.join(', ') : sheetNotes.join(', '));
+    }
+    setAiSynced(true);
+    setTimeout(() => setAiSynced(false), 2500);
+  };
+
+  // PDF文件在浏览器端用pdf.js转为PNG，再发给AI识别
+  const convertPdfToPng = async (pdfFile: File): Promise<File> => {
+    // 动态加载pdf.js（CDN，禁用Worker避免CORS）
+    if (!(window as any).pdfjsLib) {
+      await new Promise<void>((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+        s.onload = () => {
+          (window as any).pdfjsLib = (window as any).pdfjsLib || (window as any).pdfjs;
+          (window as any).pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+          resolve();
+        };
+        s.onerror = () => reject(new Error('pdf.js加载失败'));
+        document.head.appendChild(s);
+      });
+    }
+    const pdfjsLib = (window as any).pdfjsLib;
+    const arrayBuffer = await pdfFile.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer, disableWorker: true }).promise;
+    const page = await pdf.getPage(1);
+    const scale = 200 / 72;
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, viewport.width, viewport.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    return new Promise<File>((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(new File([blob], pdfFile.name.replace(/\.pdf$/i, '.png'), { type: 'image/png' }));
+        } else {
+          reject(new Error('PDF转图片失败'));
+        }
+      }, 'image/png');
+    });
+  };
+
+  const processToProductType: Record<string, string> = {
+    '挤压铝型材': '挤出', '板材': '板材', '铝板': '板材',
+    '锌合金压铸': '压铸', '铝合金压铸': '压铸', '注塑': '注塑',
+  };
+  const recognizeFile = async (file: File) => {
+    const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+    // ===== 登录检查 =====
+    if (!user) {
+      setPendingFile(file);
+      setShowLoginModal(true);
+      return;
+    }
+    // ===== 额度检查 =====
+    if (quota && quota.remaining <= 0) {
+      setPendingFile(file);
+      setShowQuotaModal(true);
+      return;
+    }
+    if (!AI_RECOG_EXTS.includes(ext)) return; // 3D CAD走原有解析流程
+
+    // ===== 自动工艺分类 =====
+    const classifyFd = new FormData();
+    classifyFd.append('file', file);
+    try {
+      setRecogError('正在识别工艺类型...');
+      const classifyResp = await fetch('/api/classify', { method: 'POST', body: classifyFd });
+      console.log('[自动分类] API响应状态:', classifyResp.status);
+      if (classifyResp.ok) {
+        const classifyResult = await classifyResp.json();
+        console.log('[自动分类] API返回数据:', classifyResult);
+        const processType = classifyResult.process_type || classifyResult.processType || classifyResult.process;
+        const confidence = classifyResult.confidence || 0;
+        
+        // 映射 API 返回的工艺类型到前端 productType (processToProductType 已在外层定义)
+        
+        if (processType && processToProductType[processType]) {
+          const newProductType = processToProductType[processType];
+          setProductType(newProductType);
+          console.log(`[自动分类] ${processType} (置信度${(confidence*100).toFixed(0)}%) → ${newProductType}`);
+        }
+      }
+    } catch (classifyErr) {
+      console.warn('[自动分类] 失败，继续使用当前品类', classifyErr);
+    }
+    setRecogError(null);
+
+    setRecognizing(true);
+    setRecogError(null);
+    setRecogResult(null);
+    setRecogProducts([]);
+    setSelectedProductIdx(0);
+    try {
+      let fileToSend = file;
+      if (file.name.toLowerCase().endsWith('.pdf')) {
+        setRecogError('PDF正在转为图片识别...');
+        fileToSend = await convertPdfToPng(file);
+        setRecogError(null);
+      }
+      // ===== DXF 图纸解析：走 drawing_parser 服务 =====
+      if (file.name.toLowerCase().endsWith('.dxf')) {
+        setRecogError('DXF正在解析...');
+        const dxfFd = new FormData();
+        dxfFd.append('file', file);
+        const dxfResp = await fetch('/api/drawing-parse', { method: 'POST', body: dxfFd });
+        const dxfJson = await dxfResp.json();
+        setRecogError(null);
+        if (!dxfResp.ok || !dxfJson.parse_success) {
+          setRecogError(dxfJson.error || dxfJson.parse_errors || 'DXF解析失败');
+          return;
+        }
+        // 从 dimensions 计算展开尺寸
+        const dims = dxfJson.drawing_dimensions || [];
+        const hDims = dims.filter((d: any) => d.direction === '水平').map((d: any) => d.measurement_mm);
+        const vDims = dims.filter((d: any) => d.direction === '垂直').map((d: any) => d.measurement_mm);
+        // 展开长 = 水平最大 + 垂直outlier(折弯延伸) - BD(≈板厚)
+        // 展开宽 = 垂直最大
+        const maxH = hDims.length ? Math.max(...hDims) : 0;
+        const maxV = vDims.length ? Math.max(...vDims) : 0;
+        // 主体高度：出现>=2次的最大垂直DIM
+        const vCount: Record<number, number> = {};
+        vDims.forEach((v: number) => { const k = Math.round(v * 10); vCount[k] = (vCount[k] || 0) + 1; });
+        const bodyH = Math.max(...Object.entries(vCount).filter(([, c]) => c >= 2).map(([k]) => Number(k) / 10), 0);
+        // 折弯延伸 = 非主体高度的垂直DIM
+        const bendExt = vDims.filter((v: number) => Math.abs(v - bodyH) > bodyH * 0.3 && Math.abs(v - maxV) < 1);
+        const bendVal = bendExt.length ? Math.max(...bendExt) : 0;
+        const unfoldL = maxH > 0 ? Math.round((maxH + bendVal) * 100) / 100 : maxH;
+        const unfoldW = maxV;
+        // 孔信息
+        const holes = dxfJson.hole_groups || [];
+        const totalHoles = dxfJson.hole_count || holes.reduce((s: number, h: any) => s + h.count, 0);
+        const holeDesc = holes.map((h: any) => `Ø${h.diameter_mm}×${h.count}`).join(' + ');
+        // 构造兼容格式
+        const recogData: Record<string, any> = {
+          confidence: 0.95,
+          product_type: productType === '板材' ? 'stamping' : productType,
+          material_category: '铝板',
+          unfold_length: unfoldL,
+          unfold_width: unfoldW,
+          hole_count: totalHoles,
+          thickness: null, // 暂不自动填板厚
+          notes: `DXF解析 | 展开${unfoldL}×${unfoldW}mm | 孔: ${holeDesc || '无'} | ⚠️仅用于报价估算，不可作为开模依据`,
+        };
+        setRecogResult(recogData);
+        checkQuota();
+        setRecognitionId("dxf_" + Date.now());
+        applyRecogToForm(recogData);
+        return;
+      }
+      // ===== ZIP 压缩包：解压后遍历所有图纸文件 =====
+      const isZip = ['.zip', '.rar', '.7z', '.tar', '.gz'].includes(ext);
+      if (isZip) {
+        setRecogError('压缩包正在解压...');
+        const zipFd = new FormData();
+        zipFd.append('file', file);
+        const zipResp = await fetch('/api/extract', { method: 'POST', body: zipFd });
+        const zipJson = await zipResp.json();
+        if (!zipResp.ok || !zipJson.success) {
+          setRecogError(zipJson.error || '压缩包解压失败');
+          return;
+        }
+        const files = zipJson.files || [];
+        if (files.length === 0) {
+          setRecogError('压缩包中没有可识别的文件');
+          return;
+        }
+        // 找到所有支持的图纸文件
+        const DRAWABLE_EXTS = ['.stp', '.step', '.igs', '.iges', '.x_t', '.dwg', '.dxf', '.pdf'];
+        const targetFiles = files.filter((f: any) => DRAWABLE_EXTS.includes('.' + f.name.split('.').pop()?.toLowerCase()));
+        if (targetFiles.length === 0) {
+          setRecogError('压缩包中没有支持的图纸格式(STP/DXF/DWG/PDF)');
+          return;
+        }
+        setRecogError(`解压成功，共 ${targetFiles.length} 个文件，正在逐个识别...`);
+        // 逐个解析所有文件，构建多产品数组
+        const allProducts: Record<string, any>[] = [];
+        for (let fi = 0; fi < targetFiles.length; fi++) {
+          const targetFile = targetFiles[fi];
+          setRecogError(`正在识别 ${fi + 1}/${targetFiles.length}: ${targetFile.name}...`);
+          if (fi === 0) {
+            const clsFd = new FormData();
+            clsFd.append('file_id', targetFile.file_id);
+            const clsResp = await fetch('/api/classify', { method: 'POST', body: clsFd });
+            if (clsResp.ok) {
+              const classifyData = await clsResp.json();
+              const mapped = processToProductType[classifyData.process_type_cn];
+              if (mapped && PRODUCT_TYPES[mapped] && mapped !== productType) {
+                skipCategoryResetRef.current = true;
+                setProductType(mapped);
+              }
+            }
+          }
+          const parseFd = new FormData();
+          parseFd.append('file_id', targetFile.file_id);
+          const parseResp = await fetch('/api/drawing-parse', {
+            method: 'POST',
+            body: parseFd,
+            headers: { 'x-file-name': encodeURIComponent(targetFile.name) }
+          });
+          const parseJson = await parseResp.json();
+          if (!parseResp.ok || !parseJson.parse_success) {
+            allProducts.push({
+              confidence: 0,
+              product_type: productType,
+              product_code: '',
+              notes: `解析失败: ${targetFile.name} - ${parseJson.error || '未知错误'}`,
+              _fileName: targetFile.name,
+              _failed: true,
+            });
+            continue;
+          }
+          const recogData: Record<string, any> = {
+            confidence: 0.9,
+            product_type: productType,
+            product_code: parseJson.product_code || '',
+            surface_treatment: parseJson.surface_treatment || '',
+            material_grade: parseJson.material_grade || '',
+            width: parseJson.section_width_mm,
+            height: parseJson.section_height_mm,
+            perimeter: parseJson.outer_perimeter_mm,
+            inner_perimeter: parseJson.inner_perimeter_mm,
+            meter_weight: parseJson.weight_kg_per_m,
+            wall_thickness: parseJson.wall_thickness_mm,
+            crossSectionArea: parseJson.section_area_mm2,
+            die_type: parseJson.die_type,
+            num_cavities: parseJson.is_hollow ? 1 : 0,
+            material_category: parseJson.material_grade || '',
+            length: parseJson.extrusion_length_mm,
+            process: parseJson.process || null,
+            secondary_operations: parseJson.secondary_operations || null,
+            notes: `压缩包解析: ${targetFile.name} | ⚠️仅用于报价估算，不可作为开模依据`,
+            _fileName: targetFile.name,
+          };
+          allProducts.push(recogData);
+        }
+        setRecogError(null);
+        setRecogProducts(allProducts);
+        setSelectedProductIdx(0);
+        setRecogResult(allProducts[0]);
+        checkQuota();
+        setRecognitionId("zip_" + Date.now());
+        applyRecogToForm(allProducts[0]);
+        setTimeout(() => { skipCategoryResetRef.current = false; }, 100);
+        return;
+      }
+
+      // ===== 3D CAD 图纸解析：走 drawing_parser 服务 =====
+      const is3DCAD = ['.stp', '.step', '.igs', '.iges', '.x_t', '.dwg'].includes(ext);
+      if (is3DCAD) {
+        setRecogError('3D 模型正在解析...');
+        const cadFd = new FormData();
+        cadFd.append('file', file);
+        const cadResp = await fetch('/api/drawing-parse', { method: 'POST', body: cadFd });
+        const cadJson = await cadResp.json();
+        setRecogError(null);
+        if (!cadResp.ok || !cadJson.parse_success) {
+          setRecogError(cadJson.error || cadJson.parse_errors || '3D 模型解析失败');
+          return;
+        }
+        // 从解析结果提取参数，映射到表单字段名（/api/parse/stp 返回的字段在顶层）
+        // 构建 CNC 深加工工序（带 subParams 确保表单输入框有值）
+        const recogData: Record<string, any> = {
+          confidence: 0.9,
+          product_type: productType,
+          product_code: cadJson.product_code || '',
+          surface_treatment: cadJson.surface_treatment || '',
+          material_grade: cadJson.material_grade || '',
+          width: cadJson.section_width_mm,
+          height: cadJson.section_height_mm,
+          perimeter: cadJson.outer_perimeter_mm,
+          inner_perimeter: cadJson.inner_perimeter_mm,
+          meter_weight: cadJson.weight_kg_per_m,
+          wall_thickness: cadJson.wall_thickness_mm,
+          crossSectionArea: cadJson.section_area_mm2,
+          die_type: cadJson.die_type,
+          num_cavities: cadJson.is_hollow ? 1 : 0,
+          material_category: cadJson.material_grade || '',
+          length: cadJson.extrusion_length_mm,
+          process: cadJson.process || null,
+          secondary_operations: cadJson.secondary_operations || null,
+          notes: `3D 模型解析 | ⚠️仅用于报价估算，不可作为开模依据`,
+        };
+        setRecogResult(recogData);
+        checkQuota();
+        setRecognitionId("cad_" + Date.now());
+        applyRecogToForm(recogData);
+        setTimeout(() => { skipCategoryResetRef.current = false; }, 100);
+        // 调用完整性检查，获取需要用户确认的问题
+        const checkFd = new FormData();
+        checkFd.append('file', file);
+        try {
+          const checkResp = await fetch('/api/check', { method: 'POST', body: checkFd });
+          if (checkResp.ok) {
+            const checkData = await checkResp.json();
+            if (checkData.success && checkData.questions && checkData.questions.length > 0) {
+              setCheckQuestions(checkData.questions);
+              setCheckAnswers({});
+              setShowCheckDialog(true);
+            }
+          }
+        } catch(e) { /* 检查失败不影响主流程 */ }
+        return;
+      }
+      const fd = new FormData();
+      fd.append('file', fileToSend);
+      // 根据产品类型路由到不同的识别API：板材用独立API
+      const apiEndpoint = productType === '板材' ? '/api/recognize-sheet' : '/api/recognize-drawing';
+      const resp = await fetch(apiEndpoint + '?userId=' + user!.id, { method: 'POST', body: fd });
+      const json = await resp.json();
+      if (resp.status === 429 || json.quotaExceeded) {
+        checkQuota();
+        setShowQuotaModal(true);
+        return;
+      }
+      if (resp.status === 401) {
+        setShowLoginModal(true);
+        return;
+      }
+      if (!resp.ok || !json.success) {
+        setRecogError(json.error || '识别失败');
+        return;
+      }
+      const d = json.data || {};
+      setRecogResult(d);
+      checkQuota(); // 刷新额度
+      // 识别ID用于后续反馈追踪（优先用服务端日志ID）
+      setRecognitionId(json.recognition_id || ("rec_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8)));
+      if (json.autoFill && d.confidence >= 0.75) {
+        applyRecogToForm(d);
+        setTimeout(() => { skipCategoryResetRef.current = false; }, 100);
+      }
+    } catch (e: any) {
+      setRecogError(e?.message || '网络错误');
+    } finally {
+      setRecognizing(false);
+    }
+  };
+
+  const handleFileDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file && isValidFile(file)) {
+      setUploadedFile(file);
+      recognizeFile(file);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && isValidFile(file)) {
+      setUploadedFile(file);
+      recognizeFile(file);
+    }
+  };
+
+  const removeFile = () => {
+    setUploadedFile(null);
+    setRecogResult(null);
+    setRecogProducts([]);
+    setSelectedProductIdx(0);
+    setRecogError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // ==================== Paste Support ====================
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            const ext = '.' + file.name.split('.').pop()?.toLowerCase() || '.png';
+            if (ALLOWED_EXTENSIONS.includes(ext) || ext === '.png') {
+              // 给粘贴的文件一个默认名
+              const namedFile = new File([file], `pasted_${Date.now()}.png`, { type: file.type });
+              setUploadedFile(namedFile);
+              recognizeFile(namedFile);
+            }
+          }
+          break;
+        }
+      }
+    };
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, []);
+
+
+  const requestDeepQuote = async () => {
+    if (!uploadedFile || deepQuoteLoading) return;
+    setDeepQuoteLoading(true);
+    setRecogError('正在进行深度识别，请稍候（可能需要30-60秒）...');
+    try {
+      let fileToSend = uploadedFile;
+      // PDF需要先在前端转为PNG
+      if (uploadedFile.name.toLowerCase().endsWith('.pdf')) {
+        setRecogError('PDF正在转为图片识别，请稍候...');
+        fileToSend = await convertPdfToPng(uploadedFile);
+      }
+      const fd = new FormData();
+      fd.append('file', fileToSend);
+      fd.append('remark', fileRemark || (recogResult?.handoff_reason as string) || '');
+      const resp = await fetch('/api/forward-cad', { method: 'POST', body: fd });
+      const text = await resp.text();
+      let result: any;
+      try { result = JSON.parse(text); } catch { result = { success: false, message: '服务器返回异常: ' + text.substring(0, 200) }; }
+      if (result.success && result.autoFill && result.data) {
+        applyRecogToForm(result.data);
+        setRecogResult(result.data);
+        setRecogError(null);
+        setUploadedFile(null);
+      } else {
+        setRecogError(result.message || result.error || '深度识别完成，已提交工程师人工报价');
+      }
+    } catch (e: any) {
+      setRecogError('深度报价提交失败: ' + (e?.message || '网络错误'));
+    } finally {
+      setDeepQuoteLoading(false);
+    }
+  };
+
+  // ==================== Derived state ====================
+  const productSurfaceOpts = getProductSurfaceOptions();
+  const materialColorOpts = getMaterialColorOptions();
+  const productColorOpts = getProductColorOptions();
+  const showMaterialSurface = !!(categoryConfig?.materialSurfaceTreatment && categoryConfig.materialSurfaceTreatment.length > 0);
+  const showProductSurface = productType !== '注塑' && productSurfaceOpts.length > 0;
+
+  // Field rendering with two-column grid
+  const renderFields = () => {
+    if (!categoryConfig) return null;
+    const fieldOrder = ['thickness', 'length', 'width', 'height', 'perimeter', 'num_cavities', 'die_type', 'meterWeight', 'crossSectionArea', 'productSize', 'quantity', 'netWeight'];
+    let visibleFields = fieldOrder.filter(f => categoryConfig.fields.includes(f));
+    // In standard mode, hide num_cavities, die_type, width, height, perimeter
+    // (these are handled by structured dimension inputs + mold matching)
+    if (productType === '挤出') {
+      visibleFields = visibleFields.filter(f =>
+        f !== 'num_cavities' && f !== 'die_type' &&
+        f !== 'width' && f !== 'height' && f !== 'perimeter'
+      );
+    }
+
+
+    // Group into pairs for two-column layout
+    const pairs: string[][] = [];
+    for (let i = 0; i < visibleFields.length; i += 2) {
+      pairs.push(visibleFields.slice(i, i + 2));
+    }
+
+    return (
+      <div className="space-y-2">
+        {pairs.map((pair, pi) => (
+          <div key={pi} className={`grid ${pair.length === 2 ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
+            {pair.map(fieldKey => {
+              if (fieldKey === 'productSize') {
+                return (
+                  <div key={fieldKey}>
+                    <label className="block text-[12px] text-gray-500 mb-1">{getFieldLabel(productType, fieldKey)}</label>
+                    <input
+                      type="text"
+                      placeholder={productType === '板材' ? '如 500×300' : '如 100×50×30'}
+                      value={(fields[fieldKey] as string) || ''}
+                      onChange={e => setFields(prev => ({ ...prev, [fieldKey]: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+                    />
+                  </div>
+                );
+              }
+              // num_cavities 用 select 渲染
+              if (fieldKey === 'num_cavities') {
+                const cavVal = fields[fieldKey] ?? '';
+                const cavLabel = !cavVal ? '' : fields.die_type === 'split' ? '分流模' : '平模';
+                return (
+                  <div key={fieldKey}>
+                    <label className="block text-[12px] text-gray-500 mb-1">
+                      {getFieldLabel(productType, fieldKey)}
+                      <span className="ml-1 text-[11px] text-blue-500">({cavLabel})</span>
+                    </label>
+                    <select
+                      value={cavVal}
+                      onChange={e => {
+                        const raw = e.target.value;
+                        const val = raw ? (parseInt(raw) || 1) : '';
+                        setFields(prev => ({
+                          ...prev,
+                          [fieldKey]: val,
+                          die_type: val === '' ? '' : (val <= 1 ? 'flat' : 'split'),
+                        }));
+                      }}
+                      className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+                    >
+                      {['', '1', '2', '3', '4'].map(opt => (
+                        opt === '' ? <option key="empty" value="">请选择</option> :
+                        <option key={opt} value={opt}>{opt}{fields.die_type === 'split' ? ' (分流模)' : fields.die_type === 'flat' ? ' (平模)' : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              }
+              // die_type 用 select 渲染
+              if (fieldKey === 'die_type') {
+                const dtVal = fields[fieldKey] as string;
+                return (
+                  <div key={fieldKey}>
+                    <label className="block text-[12px] text-gray-500 mb-1">{getFieldLabel(productType, fieldKey)}</label>
+                    <select
+                      value={dtVal || ''}
+                      onChange={e => {
+                        const val = e.target.value;
+                        if (val === 'flat' || val === 'split') {
+                          setFields(prev => ({
+                            ...prev,
+                            [fieldKey]: val,
+                            num_cavities: val === 'flat' ? 1 : 2,
+                          }));
+                        } else {
+                          setFields(prev => ({
+                            ...prev,
+                            [fieldKey]: '',
+                            num_cavities: '',
+                          }));
+                        }
+                      }}
+                      className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+                    >
+                      <option value="">请选择</option>
+                      <option value="flat">平模</option>
+                      <option value="split">分流模</option>
+                    </select>
+                  </div>
+                );
+              }
+              // Length field with "+" button: save this length as one quote-pool entry (same mold group)
+              if (fieldKey === 'length' && productType === '挤出') {
+                const lengthVal = parseFloat(fields.length as string) || 0;
+                const mwVal = parseFloat(fields.meterWeight as string) || 0;
+                const calcWeight = lengthVal > 0 && mwVal > 0 ? Math.round(mwVal * lengthVal / 1000 * 1000) / 1000 : 0;
+                const canAdd = lengthVal > 0 && calcWeight > 0;
+                return (
+                  <div key={fieldKey}>
+                    <label className="block text-[12px] text-gray-500 mb-1">
+                      {getFieldLabel(productType, fieldKey)}
+                      <span className="ml-1 text-[11px] text-blue-400">点＋把当前长度存入报价池（同副模具只算一次模具费）</span>
+                    </label>
+                    <div className="flex gap-1">
+                      <input
+                        type="number"
+                        min={0}
+                        value={(fields[fieldKey] as number | string) ?? ''}
+                        onChange={e => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setFields(prev => ({ ...prev, [fieldKey]: val }));
+                          }}
+                        className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+                      />
+                      <button
+                        type="button"
+                        disabled={!canAdd || !onSaveVariant}
+                        onClick={async () => {
+                          if (!onSaveVariant) return;
+                          const ok = await onSaveVariant();
+                          if (ok) {
+                            setFields(prev => ({ ...prev, length: '' }));
+                            setVariantSavedTick(true);
+                            setTimeout(() => setVariantSavedTick(false), 2000);
+                          }
+                        }}
+                        className={`shrink-0 rounded-lg px-3 text-sm font-bold transition-all min-h-[36px] ${
+                          variantSavedTick
+                            ? 'bg-emerald-500 text-white shadow-sm'
+                            : canAdd && onSaveVariant
+                            ? 'bg-blue-500 text-white hover:bg-blue-600 shadow-sm'
+                            : 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                        }`}
+                        title="把当前长度保存进报价池"
+                      >
+                        {variantSavedTick ? '✓已存' : '+'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div key={fieldKey}>
+                  <label className="block text-[12px] text-gray-500 mb-1">{getFieldLabel(productType, fieldKey)}</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={(fields[fieldKey] as number | string) ?? ''}
+                    onChange={e => {
+                        const raw = e.target.value;
+                        const val = parseFloat(raw) || 0;
+                        setFields(prev => ({ ...prev, [fieldKey]: raw }));
+                        if (fieldKey === 'meterWeight') {
+                          setMeterWeightManual(val > 0);
+                          if (val > 0) { setQuantityManual(false); setAreaManual(false); }
+                        }
+                        if (fieldKey === 'crossSectionArea') {
+                          setAreaManual(val > 0);
+                          if (val > 0) { setMeterWeightManual(false); setQuantityManual(false); }
+                        }
+                        if (fieldKey === 'quantity') {
+                          setQuantityManual(true);
+                        }
+                        if (fieldKey === 'width' || fieldKey === 'height') {
+                          setPerimeterManual(false);
+                          setMeterWeightManual(false);
+                          setQuantityManual(false);
+                        }
+                        if (fieldKey === 'perimeter') {
+                          setPerimeterManual(val > 0);
+                        }
+                      }}
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+                  />
+                </div>
+              );
+            })}
+          </div>
+        ))}
+        {/* 板材：长×宽×厚自动算单件理论重量 */}
+        {productType === '板材' && (() => {
+          const bL = parseFloat(fields.length as string) || 0;
+          const bW = parseFloat(fields.width as string) || 0;
+          const t = Number(fields.thickness) || 0;
+          // 兼容旧 productSize
+          const parsed = (bL <= 0 || bW <= 0) ? parseProductSize(fields.productSize as string) : null;
+          const l = bL > 0 ? bL : (parsed?.l || 0);
+          const w = bW > 0 ? bW : (parsed?.w || 0);
+          const wg = (l > 0 && w > 0) ? calcSheetWeightG(materialCategory, l, w, t) : null;
+          if (wg === null) return null;
+          const densityTxt = materialCategory === '铝板' ? '2.7' : materialCategory === '不锈钢' ? '7.93' : '7.85';
+          return (
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-100 px-2.5 py-1.5 text-[12px] text-blue-700">
+              <span className="font-semibold">单件理论重量</span>
+              <span className="font-mono font-semibold text-blue-800">{wg} g</span>
+              <span className="text-blue-400">（{l}×{w}×{t}mm × {densityTxt}g/cm³ 自动计算，直接用于报价）</span>
+            </div>
+          );
+        })()}
+      </div>
+    );
+  };
+
+  const inputBaseClass = "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]";
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+
+        {/* ---- 模具组工具条：点「新建报价」=开一副新模具 ---- */}
+        <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-blue-50/70 border border-blue-100">
+          <div className="text-[12px] text-blue-700 leading-snug">
+            当前为<b>同一副模具</b>：改长度后点长度框旁的<b>＋</b>存入报价池，出单时模具费只算一次。
+          </div>
+          <button
+            type="button"
+            onClick={onNewQuote}
+            className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-blue-300 text-blue-700 text-xs font-semibold hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm"
+            title="清空表单，开始一副新模具的报价"
+          >
+            <span className="text-sm leading-none">＋</span> 新建报价
+          </button>
+        </div>
+
+        {/* AI synced indicator */}
+        {aiSynced && (
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium animate-pulse">
+            <Sparkles className="w-3.5 h-3.5" />
+            AI 已自动填入参数
+          </div>
+        )}
+
+        {/* ---- 产品名称 & 编号 ---- */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[12px] text-gray-500 mb-1">产品名称</label>
+              <input
+                type="text"
+                placeholder="输入产品名称"
+                value={productName}
+                onChange={e => setProductName(e.target.value)}
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+              />
+            </div>
+            <div>
+              <label className="block text-[12px] text-gray-500 mb-1">产品编号</label>
+              <input
+                type="text"
+                placeholder="输入产品编号"
+                value={productCode}
+                onChange={e => setProductCode(e.target.value)}
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ---- 产品类型 Tab栏 ---- */}
+        <div className="border-b border-gray-200">
+          <div className="flex gap-0">
+            {Object.entries(PRODUCT_TYPES).map(([key, cfg]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => handleProductTypeChange(key)}
+                className={`relative px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
+                  productType === key
+                    ? 'text-blue-600'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <span className="text-base">{cfg.icon}</span>
+                  {cfg.label}
+                  {key === '注塑' && (
+                    <span className="ml-0.5 px-1 py-0.5 rounded bg-amber-100 text-amber-600 text-[10px] font-normal leading-none">待开发</span>
+                  )}
+                </span>
+                {productType === key && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-t-full" />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ---- 材料类别 ---- */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+          <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">材料类别</label>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(productConfig?.materialCategories || {}).map(([key, cfg]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => handleMaterialCategoryChange(key)}
+                className={`px-2.5 py-1 rounded-lg border text-xs transition-all duration-200 ${
+                  materialCategory === key
+                    ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {cfg.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ---- 铝板牌号选择（仅板材·铝板；默认5052） ---- */}
+        {productType === '板材' && materialCategory === '铝板' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+            <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+              铝板牌号 <span className="normal-case text-gray-400">（铝锭价+牌号加价，元/吨）</span>
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {([
+                { g: '1060', label: '1060 纯铝', add: '+1000' },
+                { g: '3003', label: '3003 防锈', add: '+2000' },
+                { g: '5052', label: '5052 镁铝', add: '+3000' },
+                { g: '5083', label: '5083 海洋级', add: '+3000' },
+                { g: '7075', label: '7075 航空铝', add: '+4000' },
+              ] as const).map(opt => (
+                <button
+                  key={opt.g}
+                  type="button"
+                  onClick={() => setMaterialGrade(opt.g)}
+                  className={`px-2.5 py-1 rounded-lg border text-xs transition-all duration-200 ${
+                    (materialGrade || '5052') === opt.g
+                      ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
+                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {opt.label} <span className="opacity-60">{opt.add}</span>
+                </button>
+              ))}
+            </div>
+            <div className="mt-1.5 text-[11px] text-gray-400">默认 5052；整板规格 2440×1220mm，按展开尺寸排版算材料费</div>
+          </div>
+        )}
+
+        {/* ---- 标准件种类选择 (仅挤出·标准件；异型材唯一分类无需再点) ---- */}
+        {productType === '挤出' && materialCategory === '标准件' && (() => {
+          const STD_PARTS = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管', '铝方管'];
+          const visibleCats = standardCategories.filter(c => STD_PARTS.includes(c.key));
+          if (visibleCats.length === 0) return null;
+          return (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+              <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+                标准件种类
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {visibleCats.map(cat => (
+                  <button
+                    key={cat.key}
+                    type="button"
+                    onClick={() => { setStandardCategory(cat.key); resetProfileState(); setMeterWeightManual(false); setAreaManual(false); setPerimeterManual(false); setFields(prev => ({ ...prev, die_type: ['铝圆管','铝六角管','铝方管'].includes(cat.key) ? 'split' : 'flat' })); }}
+                    className={`px-2.5 py-1.5 rounded-lg border text-xs transition-all duration-200 ${
+                      standardCategory === cat.key
+                        ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
+                        : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {cat.label}
+                    <span className="ml-1 text-[11px] opacity-60">({cat.count})</span>
+                    <span className={`ml-1 text-[11px] ${cat.mold_type === '分流模' ? 'text-red-400' : 'text-gray-400'}`}>
+                      {cat.mold_type}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ---- 钢材标准件种类选择 ---- */}
+        {productType === '钢材' && (() => {
+          const STEEL_CATS = ['圆钢', '方钢', '六角钢', '角钢', '圆钢管', '方管', '槽钢', '工字钢'];
+          return (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+              <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+                钢材截面
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {STEEL_CATS.map(cat => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => { setStandardCategory(cat); setMeterWeightManual(false); setFields(prev => ({ ...prev, width: '', height: '', thickness: '' })); }}
+                    className={`px-2.5 py-1.5 rounded-lg border text-xs transition-all duration-200 ${
+                      standardCategory === cat
+                        ? 'bg-orange-50 border-orange-300 text-orange-700 font-medium'
+                        : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+              {/* 材质选择 */}
+              <div className="mt-2">
+                <label className="block text-[12px] font-semibold text-gray-500 mb-1">材质</label>
+                <select
+                  className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none"
+                  defaultValue=""
+                  onChange={(e) => {
+                    const mat = e.target.value;
+                    if (!mat) return;
+                    setMaterialCategory('钢标准件');
+                    // 更新密度用于米重计算
+                    setFields(prev => ({ ...prev, materialGrade: mat }));
+                  }}
+                >
+                  <option value="" disabled>-- 选择材质 --</option>
+                  <option value="Q235">Q235（普通碳钢，7.85）</option>
+                  <option value="45#">45#钢（中碳钢，7.85）</option>
+                  <option value="40Cr">40Cr（合金钢，7.85）</option>
+                  <option value="304">304不锈钢（7.93）</option>
+                  <option value="316">316不锈钢（7.93）</option>
+                  <option value="黄铜H59">黄铜H59（8.5）</option>
+                </select>
+              </div>
+                            {/* 规格选择下拉 - 选规格自动填尺寸和米重 */}
+              {standardCategory && STEEL_STANDARD_SPECS && (() => {
+                const prefix = standardCategory === '圆钢管' ? '圆管-' : 
+                               standardCategory === '方管' ? '方管-' :
+                               standardCategory + '-';
+                const specs = Object.entries(STEEL_STANDARD_SPECS).filter(([k]) => k.startsWith(prefix));
+                if (specs.length === 0) return null;
+                return (
+                  <div className="mt-3">
+                    <label className="block text-[12px] font-semibold text-gray-500 mb-1">选择规格（自动填尺寸+米重）</label>
+                    <select
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none"
+                      defaultValue=""
+                      onChange={(e) => {
+                        const key = e.target.value;
+                        if (!key) return;
+                        const spec = STEEL_STANDARD_SPECS[key];
+                        if (!spec) return;
+                        setMeterWeightManual(false);
+                        setFields(prev => ({
+                          ...prev,
+                          diameter: spec.dims.diameter ?? '',
+                          hex: spec.dims.hex ?? '',
+                          width: spec.dims.width ?? '',
+                          height: spec.dims.height ?? '',
+                          thickness: spec.dims.thickness ?? '',
+                          meterWeight: spec.weight,
+                        }));
+                      }}
+                    >
+                      <option value="" disabled>-- 选择国标规格 --</option>
+                      {specs.map(([k, v]) => (
+                        <option key={k} value={k}>{v.label}（{v.weight} kg/m）</option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })()}
+            </div>
+          );
+        })()}
+
+        {/* ---- 异型材模具类型选择 (仅挤出·异型材，上移直接选) ---- */}
+        {productType === '挤出' && materialCategory === '异型材' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+            <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+              模具类型（先选再填尺寸）
+            </label>
+            <div className="flex gap-2">
+              {([{ v: 'flat', label: '平模（实心）' }, { v: 'split', label: '分流模（中空）' }] as const).map(opt => (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() => { setFields(prev => ({ ...prev, die_type: opt.v })); setSelectedMoldId(null); setUseExistingMold(null); setSelectedMold(null); setMoldMatches([]); }}
+                  className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                    fields.die_type === opt.v
+                      ? opt.v === 'split'
+                        ? 'bg-red-50 border-red-300 text-red-600'
+                        : 'bg-blue-50 border-blue-300 text-blue-700'
+                      : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {!fields.die_type && (
+              <div className="mt-1.5 text-[12px] text-amber-500">请先选择模具类型，再填尺寸点搜索</div>
+            )}
+          </div>
+        )}
+
+        {/* ---- 尺寸输入 + 模具匹配 ---- */}
+        {productType === '挤出' && standardCategory && (() => {
+          const dimFields = CATEGORY_DIM_FIELDS[standardCategory];
+          if (!dimFields) return null;
+          return (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+              <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+                输入尺寸 · 填完点按钮匹配模具
+              </label>
+              <div className={`grid ${dimFields.length >= 3 ? 'grid-cols-3' : dimFields.length === 2 ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
+                {dimFields.map(df => {
+                  const fieldMap: Record<string, string> = { diameter: 'width', hex: 'width', outer: 'width', inner: 'height' };
+                  const stateKey = fieldMap[df.key] || df.key;
+                  return (
+                    <div key={df.key}>
+                      <label className="block text-[11px] text-gray-400 mb-0.5">{df.label}</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.1"
+                        placeholder={df.placeholder}
+                        value={(fields[stateKey] as number | string) ?? ''}
+                        onChange={e => {
+                          const raw = e.target.value;
+                          const val = parseFloat(raw) || 0;
+                          setFields(prev => ({ ...prev, [stateKey]: raw }));
+                          setSelectedMoldId(null);
+                          setUseExistingMold(null);
+                          setMoldMatches([]);
+                          setPerimeterManual(false);
+                          // 米重↔截面积 手动标记（触发自动互算）
+                          if (stateKey === 'meterWeight') {
+                            setMeterWeightManual(val > 0);
+                            if (val > 0) setAreaManual(false);
+                          } else if (stateKey === 'crossSectionArea') {
+                            setAreaManual(val > 0);
+                            if (val > 0) setMeterWeightManual(false);
+                          } else {
+                            setMeterWeightManual(false);
+                          }
+                        }}
+                        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 标准件理论米重（规则截面自动计算，无需库存） */}
+              {!CATEGORY_NEEDS_DIE_SELECTION.includes(standardCategory) && (() => {
+                const mw = calcStdMeterWeight(standardCategory, fields.width as number, fields.height as number, fields.thickness as number);
+                return mw !== null ? (
+                  <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-100 px-2.5 py-1.5 text-[12px] text-blue-700">
+                    <span className="font-semibold">理论米重</span>
+                    <span className="font-mono font-semibold text-blue-800">{mw} kg/m</span>
+                    <span className="text-blue-400">（按6063铝密度2.7g/cm³自动计算，直接用于报价）</span>
+                  </div>
+                ) : null;
+              })()}
+
+              {/* 模具匹配结果 */}
+              <button
+                type="button"
+                onClick={runMoldSearch}
+                disabled={moldMatchLoading || (CATEGORY_NEEDS_DIE_SELECTION.includes(standardCategory) && !fields.die_type)}
+                className="mt-2 w-full px-3 py-2 rounded-lg text-xs font-medium bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5"
+              >
+                {moldMatchLoading ? (<><span className="inline-block animate-spin">⟳</span> 正在匹配现有模具...</>) : (<>🔍 搜索现有模具</>)}
+              </button>
+
+              {!moldMatchLoading && moldMatches.length > 0 && !(selectedMoldId && useExistingMold) && (
+                <div className="mt-2 space-y-1.5">
+                  <div className="text-[12px] font-medium text-gray-600 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-green-500" />
+                    找到 {moldMatches.length} 个相近模具（公差≤15%）
+                  </div>
+                  <div className="max-h-40 overflow-y-auto space-y-1">
+                    {moldMatches.slice(0, 5).map(m => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedMoldId(m.id);
+                          setUseExistingMold(true);
+                          setSelectedMold(m);
+                          // 按产品管理带出：编号=模具编号，名称=产品名称
+                          if (m.mold_number) setProductCode(m.mold_number);
+                          if (standardCategory === '异型材' && realMoldProductName(m.product_name)) setProductName(realMoldProductName(m.product_name));
+                          // 注：表面处理不改表单选择（表面处理费按用户实际选择计算）；
+                          // 产品库登记的表面处理原文通过 selectedMold → moldSurface 带到报价单显示
+                          const dims = parseMoldDimensions(standardCategory, m.cross_section_mm);
+                          setFields(prev => ({
+                            ...prev,
+                            ...dims,
+                            die_type: m.mold_type === '分流模' ? 'split' : 'flat',
+                            perimeter: m.perimeter || prev.perimeter,
+                            meterWeight: m.weight_per_meter || prev.meterWeight,
+                            // 模具库带米重时，若截面积为空则自动反算（米重×1000/2.7）
+                            crossSectionArea: prev.crossSectionArea
+                              ? prev.crossSectionArea
+                              : (m.weight_per_meter
+                                  ? String(Math.round(parseFloat(m.weight_per_meter) * 1000 / 2.7 * 100) / 100)
+                                  : prev.crossSectionArea),
+                          }));
+                          setPerimeterManual(true);
+                          setMeterWeightManual(true);
+                          setAreaManual(false);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg border text-xs transition-all flex items-center justify-between ${
+                          selectedMoldId === m.id
+                            ? 'bg-green-50 border-green-300 text-green-700'
+                            : 'bg-white border-gray-200 text-gray-700 hover:bg-green-50/50 hover:border-green-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {/* 任务1：异型材显示模具编号，标准件无编号不显示 */}
+                          {standardCategory === '异型材' && m.mold_number && (
+                            <span className="shrink-0 px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-mono text-[11px] font-medium">{m.mold_number}</span>
+                          )}
+                          <span className="font-medium shrink-0">{m.cross_section_mm}</span>
+                          <span className="text-gray-400 shrink-0">·</span>
+                          <span className="text-gray-500 truncate">{m.weight_per_meter}kg/m</span>
+                          <span className={`shrink-0 px-1 py-0.5 rounded text-[10px] ${
+                            m.mold_type === '分流模' ? 'bg-red-50 text-red-500' : 'bg-gray-100 text-gray-500'
+                          }`}>{m.mold_type}</span>
+                        </div>
+                        <span className={`shrink-0 ml-1.5 font-bold ${
+                          m.match_score >= 95 ? 'text-green-600' : m.match_score >= 80 ? 'text-amber-600' : 'text-gray-400'
+                        }`}>{m.match_score}%</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* 已选模具提示 */}
+                  {selectedMoldId && useExistingMold && (() => {
+                    const sel = moldMatches.find((mm: any) => mm.id === selectedMoldId);
+                    return (
+                      <div className="mt-2 flex items-center justify-between px-2.5 py-1.5 bg-green-50 rounded-lg border border-green-200">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-green-600 text-xs">✓</span>
+                          {sel?.mold_number && (
+                            <span className="shrink-0 px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-mono text-[11px] font-medium">{sel.mold_number}</span>
+                          )}
+                          <span className="text-xs font-medium text-green-700 truncate">{sel?.cross_section_mm || '已选模具'}</span>
+                          <span className="text-[11px] text-gray-400">{sel?.weight_per_meter}kg/m</span>
+                        </div>
+                        <button type="button" onClick={() => { setSelectedMoldId(null); setUseExistingMold(null); setSelectedMold(null); }} className="text-[11px] text-blue-500 hover:text-blue-700 shrink-0 ml-2">更换</button>
+                      </div>
+                    );
+                  })()}
+
+                  {/* 选择：使用现有模具 or 开新模 */}
+                  {!(selectedMoldId && useExistingMold) && (
+                  <div className="flex gap-2 pt-1.5 border-t border-gray-100">
+                    <button
+                      type="button"
+                      onClick={() => setUseExistingMold(true)}
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${
+                        useExistingMold === true
+                          ? 'bg-green-50 border-green-300 text-green-700'
+                          : 'bg-white border-gray-200 text-gray-500 hover:border-green-200'
+                      }`}
+                    >
+                      ✓ 用现有模具（免模具费）
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setUseExistingMold(false); setSelectedMoldId(null); setSelectedMold(null); }}
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${
+                        useExistingMold === false
+                          ? 'bg-orange-50 border-orange-300 text-orange-700'
+                          : 'bg-white border-gray-200 text-gray-500 hover:border-orange-200'
+                      }`}
+                    >
+                      ✦ 开新模具
+                    </button>
+                  </div>
+                  )}
+                </div>
+              )}
+
+              {!moldMatchLoading && moldMatches.length === 0 && standardCategory && (fields.width || fields.height || fields.perimeter || fields.meterWeight) && (
+                <div className="mt-2 flex items-center justify-between bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                  <span className="text-[12px] text-orange-600">未找到相近现有模具</span>
+                  <button
+                    type="button"
+                    onClick={() => setUseExistingMold(false)}
+                    className={`px-2 py-1 rounded text-[12px] font-medium border transition-all ${
+                      useExistingMold === false
+                        ? 'bg-orange-500 border-orange-500 text-white'
+                        : 'bg-white border-orange-300 text-orange-600 hover:bg-orange-100'
+                    }`}
+                  >
+                    开新模具
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ---- 基本参数 ---- */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+          <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">基本参数</label>
+          {renderFields()}
+        </div>
+
+        {/* ---- 加工工艺 ---- */}
+        {categoryConfig && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+            <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">加工工艺（可多选）</label>
+            <div className="flex flex-wrap gap-1.5">
+              {categoryConfig.processes.map(proc => {
+                const isNone = proc.name === '无';
+                const isSelected = isNone ? processes.length === 0 : processes.some(p => p.name === proc.name);
+                const hasSubParams = !!PROCESS_SUB_PARAMS[proc.name];
+                const selectedProc = processes.find(p => p.name === proc.name);
+                const showQuantity = isSelected && proc.unit && !isNone && !hasSubParams;
+                const showStampingQty = isSelected && proc.name === '冲压';
+                return (
+                  <div key={proc.name} className="flex flex-col items-start">
+                    <button
+                      type="button"
+                      onClick={() => toggleProcess(proc.name)}
+                      className={`px-2.5 py-1 text-xs rounded-lg border transition-all duration-200 ${
+                        isSelected
+                          ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
+                          : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {proc.name}
+                    </button>
+                    {showQuantity && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="数量"
+                          value={selectedProc?.quantity ?? ''}
+                          onChange={e => updateProcessQuantity(proc.name, e.target.value)}
+                          className="w-16 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
+                        />
+                        <span className="text-[11px] text-gray-400">{proc.unit}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {/* Sub-parameter panels for selected processes */}
+            {processes.filter(p => PROCESS_SUB_PARAMS[p.name]).map(proc => {
+              const subDef = PROCESS_SUB_PARAMS[proc.name];
+              if (!subDef) return null;
+              return (
+                <div key={proc.name + '_params'} className="mt-2 p-2 bg-blue-50/50 rounded-lg border border-blue-100">
+                  <div className="text-[12px] font-medium text-blue-700 mb-1.5">{proc.name} 参数</div>
+                  <div className="flex flex-wrap gap-2">
+                    {proc.name === '冲压' && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-[11px] text-gray-500">冲次:</span>
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="次数"
+                          value={proc.quantity ?? ''}
+                          onChange={e => updateProcessQuantity(proc.name, e.target.value)}
+                          className="w-16 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
+                        />
+                        <span className="text-[11px] text-gray-400">次</span>
+                      </div>
+                    )}
+                    {subDef.map(param => (
+                      <div key={param.name} className="flex items-center gap-1">
+                        <span className="text-[11px] text-gray-500">{param.label}:</span>
+                        {param.type === 'select' && param.options ? (
+                          <select
+                            value={proc.subParams?.[param.name] ?? param.options[0]}
+                            onChange={e => updateSubParam(proc.name, param.name, e.target.value)}
+                            className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
+                          >
+                            {param.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                          </select>
+                        ) : (
+                          <input
+                            type="number"
+                            min={0}
+                            placeholder={param.label}
+                            value={proc.subParams?.[param.name] ?? ''}
+                            onChange={e => updateSubParam(proc.name, param.name, parseFloat(e.target.value) || '')}
+                            className="w-20 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ---- 表面处理（合并材料+产品，二选一） ---- */}
+        {(showMaterialSurface || showProductSurface) && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+            <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">表面处理</label>
+            <CustomSelect
+              value={surfaceTreatment}
+              options={getSurfaceTreatmentOptions().map(o => o.name)}
+              onChange={val => { setSurfaceTreatment(val); setSurfaceColor(''); }}
+            />
+            {getSurfaceColorOptions().length > 0 && (
+              <div className="mt-2">
+                <label className="block text-[12px] text-gray-500 mb-1">颜色</label>
+                <CustomSelect value={surfaceColor} options={getSurfaceColorOptions()} onChange={setSurfaceColor} />
+              </div>
+            )}
+            {/* 长料/小料切换 — 仅挤压铝型材显示 */}
+            {productType === '挤出' && surfaceTreatment && surfaceTreatment !== '无' && (
+              <div className="mt-2">
+                <label className="block text-[12px] text-gray-500 mb-1">材料规格</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMaterialSizeType('short')}
+                    className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-all ${
+                      materialSizeType === 'short'
+                        ? 'bg-blue-500 text-white shadow-sm'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    }`}
+                  >
+                    小料 (&lt;3000mm)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMaterialSizeType('long')}
+                    className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-all ${
+                      materialSizeType === 'long'
+                        ? 'bg-blue-500 text-white shadow-sm'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    }`}
+                  >
+                    长料 (≥3000mm)
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ---- 其他参数（挤出专用） ---- */}
+        {productType === '挤出' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+            <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">其他参数</label>
+            {/* 模具钢价输入框已隐藏，后端使用默认值 18000 元/吨 */}
+            <div style={{ display: 'none' }}>
+              <label className="block text-[12px] text-gray-500 mb-1">
+                模具钢价(元/吨)
+                <span className="ml-1 text-[11px] text-gray-400">选填，默认18000(H13均价)</span>
+              </label>
+              <input
+                type="number"
+                min={0}
+                placeholder="18000"
+                value={dieSteelPrice}
+                onChange={e => setDieSteelPrice(e.target.value)}
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+              />
+            </div>
+
+          </div>
+        )}
+
+        {/* ---- 图纸上传 ---- */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+          <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">图纸上传（可选）</label>
+          <div
+            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleFileDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={`relative border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all duration-200 ${
+              dragOver
+                ? 'border-blue-400 bg-blue-50'
+                : uploadedFile
+                  ? 'border-emerald-300 bg-emerald-50'
+                  : 'border-gray-200 bg-gray-50 hover:border-blue-300 hover:bg-blue-50/50'
+            }`}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ALLOWED_EXTENSIONS.join(',')}
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            {uploadedFile ? (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-left">
+                  <FileText className="w-5 h-5 text-emerald-500 shrink-0" />
+                  <div>
+                    <div className="text-sm font-medium text-gray-800 truncate max-w-[160px]">{uploadedFile.name}</div>
+                    <div className="text-[11px] text-gray-400">{(uploadedFile.size / 1024).toFixed(1)} KB</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); removeFile(); }}
+                  className="p-1 rounded-full hover:bg-gray-200 transition-colors"
+                >
+                  <X className="w-4 h-4 text-gray-400" />
+                </button>
+              </div>
+            ) : (
+              <div>
+                <Upload className={`w-6 h-6 mx-auto mb-1.5 ${dragOver ? 'text-blue-500' : 'text-gray-400'}`} />
+                <p className="text-xs text-gray-500">拖拽文件到此处，或<span className="text-blue-500 font-medium">点击上传</span></p>
+                <p className="text-[11px] text-gray-400 mt-1">支持 PDF、JPG、PNG、DXF、DWG、STP、STEP、IGS、X_T、ZIP、RAR、7Z 等，也可 Ctrl+V 粘贴图片</p>
+              </div>
+            )}
+          </div>
+          <input
+            type="text"
+            placeholder="备注说明（可选）"
+            value={fileRemark}
+            onChange={e => setFileRemark(e.target.value)}
+            className="w-full mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+          />
+
+          {/* 识别中 */}
+          {recognizing && (
+            <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 text-blue-600 text-xs">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              正在AI识别图纸参数...
+            </div>
+          )}
+
+          {/* 识别错误 */}
+          {recogError && (
+            <div className="mt-2 flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
+              <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-amber-700">{recogError}</div>
+                {uploadedFile && (
+                  <button
+                    type="button"
+                    onClick={requestDeepQuote}
+                    disabled={deepQuoteLoading}
+                    className="mt-1.5 inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[12px] font-medium hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {deepQuoteLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <User className="w-3 h-3" />}
+                    {deepQuoteLoading ? '深度识别中...' : '申请深度报价'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 多产品列表 */}
+          {recogProducts.length > 1 && (
+            <div className="mt-2 space-y-1.5">
+              <div className="text-[12px] font-semibold text-gray-700">共识别 {recogProducts.length} 个产品，点击切换：</div>
+              <div className="flex flex-wrap gap-1.5">
+                {recogProducts.map((p, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => switchToProduct(i)}
+                    className={`px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors border ${
+                      selectedProductIdx === i
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : p._failed
+                          ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
+                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    {p._failed ? '' : '✓'} {p._fileName || `产品${i + 1}`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 识别结果 */}
+          {recogResult && !recogError && (
+            <div className={`mt-2 rounded-lg border p-2.5 ${
+              recogResult.needs_human
+                ? 'bg-amber-50 border-amber-200'
+                : 'bg-emerald-50 border-emerald-200'
+            }`}>
+              <div className="flex items-center gap-1.5 mb-1.5">
+                {recogResult.needs_human ? (
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                )}
+                <span className={`text-[12px] font-semibold ${
+                  recogResult.needs_human ? 'text-amber-700' : 'text-emerald-700'
+                }`}>
+                  {recogResult.needs_human ? '识别不确定，请确认参数' : 'AI已自动填入参数'}
+                  {typeof recogResult.confidence === 'number' && (
+                    <span className="ml-1 opacity-70">（置信度{(recogResult.confidence*100).toFixed(0)}%）</span>
+                  )}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[12px] text-gray-600">
+                {recogResult.width != null && <div>宽: <b>{recogResult.width}mm</b></div>}
+                {recogResult.height != null && <div>高: <b>{recogResult.height}mm</b></div>}
+                {recogResult.wall_thickness != null && <div>壁厚: <b>{recogResult.wall_thickness}mm</b></div>}
+                {recogResult.length != null && <div>长: <b>{recogResult.length}mm</b></div>}
+                {recogResult.perimeter != null && <div>外周长: <b>{recogResult.perimeter}mm</b></div>}
+                {recogResult.inner_perimeter != null && <div>内周长: <b>{recogResult.inner_perimeter}mm</b></div>}
+                {recogResult.meter_weight != null && <div>米重: <b>{recogResult.meter_weight}kg/m</b></div>}
+                {recogResult.num_cavities != null && <div>面域: <b>{recogResult.num_cavities}</b></div>}
+                {recogResult.material_grade ? <div className="col-span-2">材质: <b>{recogResult.material_grade}</b></div> : <div className="col-span-2 text-amber-600">材质: 无法识别，请手动选择</div>}
+                {recogResult.surface_treatment ? <div className="col-span-2">表面处理: <b>{recogResult.surface_treatment}</b></div> : <div className="col-span-2 text-amber-600">表面处理: 无法识别，请手动选择</div>}
+                {recogResult.product_code && <div className="col-span-2">图号: <b>{recogResult.product_code}</b></div>}
+              </div>
+              {recogResult.handoff_reason && (
+                <div className="mt-1.5 text-[11px] text-amber-600">{recogResult.handoff_reason}</div>
+              )}
+              <div className="mt-2 flex gap-2">
+                {recogResult.needs_human && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => applyRecogToForm(recogResult)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-500 text-white text-[12px] font-medium hover:bg-emerald-600 transition-colors"
+                    >
+                      <CheckCircle2 className="w-3 h-3" />
+                      确认填入
+                    </button>
+                    <button
+                      type="button"
+                      onClick={requestDeepQuote}
+                      disabled={deepQuoteLoading}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[12px] font-medium hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {deepQuoteLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <User className="w-3 h-3" />}
+                      {deepQuoteLoading ? '深度识别中...' : '申请深度报价'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ===== AI确认对话框 ===== */}
+        {showCheckDialog && checkQuestions.length > 0 && (
+          <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50/80 p-4 space-y-3">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center">
+                <span className="text-white text-xs font-bold">AI</span>
+              </div>
+              <span className="text-sm font-semibold text-blue-800">需要确认以下信息</span>
+            </div>
+            {checkQuestions.map((q: any, idx: number) => (
+              <div key={idx} className="bg-white rounded-lg p-3 border border-blue-100">
+                <div className="text-sm text-gray-700 mb-2">{q.question}</div>
+                {q.input_type === 'select' && (
+                  <select
+                    className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    defaultValue={q.default || ''}
+                    onChange={(e) => {
+                      setCheckAnswers(prev => ({ ...prev, [q.field]: e.target.value }));
+                    }}
+                  >
+                    {q.options?.map((opt: string) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                )}
+                {q.input_type === 'number' && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      className="flex-1 text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      defaultValue={q.default ?? ''}
+                      placeholder={q.unit || ''}
+                      onChange={(e) => {
+                        setCheckAnswers(prev => ({ ...prev, [q.field]: Number(e.target.value) }));
+                      }}
+                    />
+                    {q.unit && <span className="text-xs text-gray-500">{q.unit}</span>}
+                  </div>
+                )}
+                {q.input_type === 'confirm' && (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className={`px-3 py-1 text-xs rounded-md border transition ${
+                        checkAnswers[q.field] === 'yes' || checkAnswers[q.field] === undefined
+                          ? 'bg-blue-500 text-white border-blue-500'
+                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                      }`}
+                      onClick={() => setCheckAnswers(prev => ({ ...prev, [q.field]: 'yes' }))}
+                    >
+                      ✓ 正确
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-3 py-1 text-xs rounded-md border transition ${
+                        checkAnswers[q.field] === 'no'
+                          ? 'bg-red-500 text-white border-red-500'
+                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                      }`}
+                      onClick={() => setCheckAnswers(prev => ({ ...prev, [q.field]: 'no' }))}
+                    >
+                      ✗ 需要修改
+                    </button>
+                  </div>
+                )}
+                {q.input_type === 'text' && (
+                  <input
+                    type="text"
+                    className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    defaultValue={q.default || ''}
+                    placeholder={q.label || ''}
+                    onChange={(e) => {
+                      setCheckAnswers(prev => ({ ...prev, [q.field]: e.target.value }));
+                    }}
+                  />
+                )}
+              </div>
+            ))}
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                className="flex-1 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition"
+                onClick={() => {
+                  // 将用户回答应用到表单
+                  const answers = { ...checkAnswers };
+                  // 填充默认值（用户未修改的）
+                  checkQuestions.forEach((q: any) => {
+                    if (answers[q.field] === undefined && q.default !== undefined) {
+                      answers[q.field] = q.default;
+                    }
+                  });
+                  // 应用确认类问题
+                  checkQuestions.forEach((q: any) => {
+                    if (q.input_type === 'confirm' && answers[q.field] === 'no') {
+                      // 用户否认了推荐值，清空该字段
+                      // 具体处理视字段而定
+                    }
+                  });
+                  // 映射到表单字段
+                  if (answers.material_grade) setMaterialGrade(answers.material_grade);
+                  if (answers.surface_treatment) {
+                    const stMap: Record<string,string> = {
+                      '阳极氧化': '氧化', '粉末喷涂': '喷涂', '氟碳喷涂': '喷涂', '木纹转印': '喷涂', '电镀': '无', '无': '无',
+                    };
+                    const mapped = stMap[answers.surface_treatment] || answers.surface_treatment;
+                    setProductSurfaceTreatment(mapped);
+                    setMaterialSurfaceTreatment(mapped);
+                  }
+                  if (answers.length_mm) {
+                    setFields(prev => ({ ...prev, length: answers.length_mm }));
+                  }
+                  setShowCheckDialog(false);
+                  setCheckQuestions([]);
+                }}
+              >
+                确认并填入
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition"
+                onClick={() => { setShowCheckDialog(false); setCheckQuestions([]); }}
+              >
+                跳过
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ===== 登录提示弹窗 ===== */}
+        {showLoginModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4">
+              <div className="text-center">
+                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <User className="w-6 h-6 text-blue-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">登录后使用图纸识别</h3>
+                <p className="text-sm text-gray-500 mt-2">注册即送 100 积分，图纸识别自动填入报价表</p>
+              </div>
+              <div className="flex gap-3">
+                <a href="/login" className="flex-1 text-center py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition">去登录</a>
+                <a href="/register" className="flex-1 text-center py-2.5 border border-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition">注册</a>
+              </div>
+              <button onClick={() => setShowLoginModal(false)} className="w-full text-center text-sm text-gray-400 hover:text-gray-600">取消</button>
+            </div>
+          </div>
+        )}
+
+        {/* ===== 额度超限弹窗 ===== */}
+        {showQuotaModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4">
+              <div className="text-center">
+                <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <AlertTriangle className="w-6 h-6 text-amber-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">积分不足</h3>
+                <p className="text-sm text-gray-500 mt-2">图纸识别每次消耗 10 积分。邀请好友注册，双方各得 100 积分</p>
+              </div>
+              <div className="space-y-3">
+                <button
+                  onClick={async () => {
+                    const link = await ensureReferralLink();
+                    if (!link) return;
+                    try {
+                      await navigator.clipboard.writeText(link);
+                    } catch {
+                      // 非 HTTPS 或旧浏览器兜底
+                      const ta = document.createElement('textarea');
+                      ta.value = link;
+                      ta.style.position = 'fixed';
+                      ta.style.opacity = '0';
+                      document.body.appendChild(ta);
+                      ta.select();
+                      try { document.execCommand('copy'); } catch { /* ignore */ }
+                      document.body.removeChild(ta);
+                    }
+                    setCopiedInvite(true);
+                    setTimeout(() => setCopiedInvite(false), 2000);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition"
+                >
+                  <Share2 className="w-4 h-4" />
+                  {copiedInvite ? '已复制，去发给好友吧' : '复制邀请链接'}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowQuotaModal(false);
+                    if (!uploadedFile) {
+                      setRecogError('请先上传图纸文件，再申请深度报价（工程师人工报价）');
+                      return;
+                    }
+                    requestDeepQuote();
+                  }}
+                  className="w-full text-center py-2.5 border border-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition"
+                >
+                  申请深度报价
+                </button>
+              </div>
+              <button onClick={() => setShowQuotaModal(false)} className="w-full text-center text-sm text-gray-400 hover:text-gray-600">关闭</button>
+            </div>
+          </div>
+        )}
+
+        {/* Loading indicator */}
+        {loading && (
+          <div className="flex items-center justify-center gap-2 py-2 text-xs text-blue-500">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            正在计算...
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+// ==================== Custom Select Component ====================
+
+function CustomSelect({ value, options, onChange }: { value: string; options: string[]; onChange: (val: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 text-left min-h-[36px]"
+      >
+        <span className={value ? 'text-gray-800' : 'text-gray-400'}>{value || '请选择'}</span>
+        <svg className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
+          {options.map(opt => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => { onChange(opt); setOpen(false); }}
+              className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 transition-colors ${
+                value === opt ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+              }`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
