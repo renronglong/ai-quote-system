@@ -56,10 +56,12 @@ export default function QuotePage() {
   const handleProductInfoChange = useCallback((info: { productName: string; productCode: string }) => {
     setProductInfo(info);
   }, []);
+  const [formKey, setFormKey] = useState(0);
   const handleNewQuote = useCallback(() => {
     setAiFormData(null);
     setPricingResult(null);
     setProductInfo({ productName: '', productCode: '' });
+    setFormKey(k => k + 1);
   }, []);
 
   // Login check
@@ -134,6 +136,7 @@ export default function QuotePage() {
           <div className="max-w-2xl mx-auto p-3">
             <OperationGuide />
             <QuoteForm
+              key={formKey}
               aiData={aiFormData}
               onResult={handleResult}
               onProductInfoChange={handleProductInfoChange}
