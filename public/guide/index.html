@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 智能报价系统 — 操作指南</title>
+<style>
+  :root {
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --primary-light: #eff6ff;
+    --gradient: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+    --bg: #f9fafb;
+    --card: #ffffff;
+    --border: #e5e7eb;
+    --text-primary: #111827;
+    --text-secondary: #4b5563;
+    --text-muted: #6b7280;
+    --text-light: #9ca3af;
+    --success: #059669;
+    --success-light: #ecfdf5;
+    --warning: #d97706;
+    --warning-light: #fffbeb;
+    --info: #0284c7;
+    --info-light: #f0f9ff;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.08), 0 2px 4px -1px rgba(0,0,0,0.04);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    color: var(--text-primary);
+    background: var(--bg);
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+  .header {
+    background: var(--gradient);
+    color: #fff;
+    padding: 48px 24px 40px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .header::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 30px;
+    background: var(--bg);
+    clip-path: ellipse(55% 100% at 50% 100%);
+  }
+  .header-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.15);
+    backdrop-filter: blur(10px);
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    margin-bottom: 16px;
+    border: 1px solid rgba(255,255,255,0.2);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .header h1 {
+    font-size: clamp(26px, 5vw, 38px);
+    font-weight: 800;
+    margin-bottom: 10px;
+    letter-spacing: -0.5px;
+  }
+  .header p {
+    font-size: 16px;
+    opacity: 0.9;
+    max-width: 560px;
+    margin: 0 auto;
+  }
+  .container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 32px 20px 60px;
+  }
+  .section { margin-bottom: 40px; }
+  .section-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-title .icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .section-subtitle {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+    padding-left: 42px;
+  }
+  .mode-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+  .mode-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 16px;
+    text-align: center;
+    box-shadow: var(--shadow);
+    transition: box-shadow 0.2s;
+    position: relative;
+  }
+  .mode-card:hover { box-shadow: var(--shadow-md); }
+  .mode-card .mode-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    margin: 0 auto 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+  }
+  .mode-card .mode-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .mode-card .mode-desc { font-size: 12px; color: var(--text-muted); }
+  .mode-card .mode-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+  }
+  .mode-card.engineer { border-color: #a7f3d0; }
+  .mode-card.engineer .mode-icon { background: var(--success-light); color: var(--success); }
+  .mode-card.engineer .mode-title { color: var(--success); }
+  .mode-card.engineer .mode-badge { background: var(--success-light); color: var(--success); border: 1px solid #a7f3d0; }
+  .mode-card.ai { border-color: #bfdbfe; }
+  .mode-card.ai .mode-icon { background: var(--primary-light); color: var(--primary); }
+  .mode-card.ai .mode-title { color: var(--primary); }
+  .mode-card.ai .mode-badge { background: var(--primary-light); color: var(--primary); border: 1px solid #bfdbfe; }
+  .step-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow);
+    transition: box-shadow 0.2s;
+  }
+  .step-card:hover { box-shadow: var(--shadow-md); }
+  .step-card details > summary { list-style: none; cursor: pointer; }
+  .step-card details > summary::-webkit-details-marker { display: none; }
+  .step-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px 20px;
+  }
+  .step-number {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .step-content { flex: 1; min-width: 0; }
+  .step-title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+  .step-desc { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+  .step-toggle {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: transform 0.2s;
+    color: var(--text-light);
+    font-size: 12px;
+  }
+  details[open] .step-toggle { transform: rotate(180deg); }
+  .step-body {
+    padding: 0 20px 18px;
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+  }
+  .step-body p {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    line-height: 1.7;
+  }
+  .field-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 14px;
+    background: var(--bg);
+    border-radius: var(--radius-sm);
+    margin-bottom: 8px;
+  }
+  .field-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    min-width: 72px;
+    flex-shrink: 0;
+  }
+  .field-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+  .field-example {
+    font-size: 12px;
+    color: var(--primary);
+    background: var(--primary-light);
+    padding: 2px 8px;
+    border-radius: 4px;
+    display: inline-block;
+    margin-top: 4px;
+  }
+  .tip-box {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 14px 16px;
+    border-radius: var(--radius-sm);
+    margin-top: 12px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .tip-box.info { background: var(--info-light); color: #0369a1; border: 1px solid #bae6fd; }
+  .tip-box.warning { background: var(--warning-light); color: #92400e; border: 1px solid #fde68a; }
+  .tip-box.success { background: var(--success-light); color: #065f46; border: 1px solid #a7f3d0; }
+  .tip-box .tip-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+  .annotation-box {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin: 16px 0;
+    position: relative;
+  }
+  .annotation-box .mock-ui {
+    background: var(--bg);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    position: relative;
+  }
+  .annotation-box .mock-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .annotation-box .mock-row:last-child { border-bottom: none; }
+  .annotation-box .mock-label {
+    font-size: 13px;
+    color: var(--text-muted);
+    min-width: 70px;
+  }
+  .annotation-box .mock-input {
+    flex: 1;
+    height: 32px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0 10px;
+    font-size: 13px;
+    color: var(--text-light);
+    display: flex;
+    align-items: center;
+  }
+  .annotation-box .mock-select {
+    flex: 1;
+    height: 32px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0 10px;
+    font-size: 13px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .annotation-box .arrow {
+    position: absolute;
+    color: #ef4444;
+    font-weight: 700;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .annotation-box .arrow::before {
+    content: '→';
+    font-size: 18px;
+    color: #ef4444;
+  }
+  .annotation-box .arrow-label {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    color: #dc2626;
+    white-space: nowrap;
+  }
+  .category-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin: 12px 0;
+  }
+  .category-item {
+    background: var(--primary-light);
+    border: 1px solid #bfdbfe;
+    border-radius: var(--radius-sm);
+    padding: 10px 8px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--primary-dark);
+  }
+  .treatment-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin: 12px 0;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .treatment-table th {
+    background: var(--primary-light);
+    color: var(--primary-dark);
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 12px;
+  }
+  .treatment-table td {
+    padding: 10px 12px;
+    border-top: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+  .treatment-table tr:nth-child(even) td { background: #fafbfc; }
+  .process-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 12px 0;
+  }
+  .process-tag {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .process-tag .check {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .faq-item {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  .faq-item details > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 14px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .faq-item details > summary::-webkit-details-marker { display: none; }
+  .faq-item .faq-arrow { font-size: 12px; color: var(--text-light); transition: transform 0.2s; }
+  .faq-item details[open] .faq-arrow { transform: rotate(180deg); }
+  .faq-item .faq-answer {
+    padding: 0 16px 14px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.7;
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+  }
+  .footer {
+    background: var(--card);
+    border-top: 1px solid var(--border);
+    padding: 32px 24px;
+    text-align: center;
+  }
+  .footer-title { font-size: 16px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
+  .footer-info { font-size: 13px; color: var(--text-muted); line-height: 1.8; }
+  .tips-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 16px;
+  }
+  .tip-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .tip-card .tip-icon { font-size: 16px; flex-shrink: 0; }
+  @media (max-width: 640px) {
+    .mode-cards { grid-template-columns: 1fr; }
+    .category-grid { grid-template-columns: repeat(2, 1fr); }
+    .tips-grid { grid-template-columns: 1fr; }
+    .container { padding: 24px 16px 40px; }
+  }
+  @media print {
+    .header { padding: 24px; }
+    .header::after { display: none; }
+    .step-card, .faq-item { break-inside: avoid; }
+    details[open] > summary ~ * { display: block !important; }
+  }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-badge">HELP CENTER</div>
+  <h1>AI 智能报价 · 操作指南</h1>
+  <p>两种报价方式，手把手教你快速上手</p>
+</header>
+
+<main class="container">
+
+  <section class="section">
+    <div class="mode-cards">
+      <div class="mode-card engineer">
+        <span class="mode-badge">推荐 · 最准确</span>
+        <div class="mode-icon">✍️</div>
+        <div class="mode-title">工程师手动填参</div>
+        <div class="mode-desc">工程师参照图纸，手动填写所需参数</div>
+      </div>
+      <div class="mode-card ai">
+        <span class="mode-badge">快捷 · 有误差</span>
+        <div class="mode-icon">🤖</div>
+        <div class="mode-title">AI 识别图纸</div>
+        <div class="mode-desc">上传图纸由 AI 自动处理参数</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 工程师手动填参（重点） -->
+  <section class="section">
+    <h2 class="section-title">
+      <span class="icon" style="background:#ecfdf5;color:#059669;">✍️</span>
+      工程师手动填参 — 详细步骤
+    </h2>
+    <p class="section-subtitle">工程师参照图纸，手动填写所需参数。这是最准确的方式。</p>
+
+    <div class="step-card">
+      <details>
+        <summary>
+          <div class="step-header">
+            <div class="step-number">1</div>
+            <div class="step-content">
+              <div class="step-title">选择产品类别</div>
+              <div class="step-desc">根据你要加工的产品类型选择对应类别</div>
+            </div>
+            <div class="step-toggle">▼</div>
+          </div>
+        </summary>
+        <div class="step-body">
+          <p>进入报价页面后，在表单顶部找到「产品类别」下拉框，选择你要加工的产品类型。不同类别对应不同的参数项。</p>
+          <div class="category-grid">
+            <div class="category-item">铝型材挤压</div>
+            <div class="category-item">板材/钣金</div>
+            <div class="category-item">压铸铝</div>
+            <div class="category-item">锌合金</div>
+            <div class="category-item">注塑</div>
+            <div class="category-item">钢材</div>
+          </div>
+          <div class="annotation-box">
+            <div class="mock-ui">
+              <div class="mock-row">
+                <span class="mock-label">产品类别</span>
+                <div class="mock-select">
+                  <span>铝型材挤压</span>
+                  <span style="color:#9ca3af;">▾</span>
+                </div>
+              </div>
+            </div>
+            <div class="arrow" style="right: 16px; top: 12px;">
+              <span class="arrow-label">点这里选择类别</span>
+            </div>
+          </div>
+          <div class="tip-box info">
+            <span class="tip-icon">💡</span>
+            <span>选择后，下方表单会自动显示该类别所需的参数字段，不同类别字段略有差异。</span>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="step-card">
+      <details>
+        <summary>
+          <div class="step-header">
+            <div class="step-number">2</div>
+            <div class="step-content">
+              <div class="step-title">填写截面尺寸</div>
+              <div class="step-desc">参照图纸，输入产品的宽、高、长度等关键尺寸</div>
+            </div>
+            <div class="step-toggle">▼</div>
+          </div>
+        </summary>
+        <div class="step-body">
+          <p>根据图纸上的标注，在对应输入框中填写尺寸参数。所有尺寸单位默认为毫米（mm），长度为米（m）。</p>
+          <div class="annotation-box">
+            <div class="mock-ui">
+              <div class="mock-row">
+                <span class="mock-label">宽度</span>
+                <div class="mock-input">单位：mm</div>
+              </div>
+              <div class="mock-row">
+                <span class="mock-label">高度</span>
+                <div class="mock-input">单位：mm</div>
+              </div>
+              <div class="mock-row">
+                <span class="mock-label">长度</span>
+                <div class="mock-input">单位：m</div>
+              </div>
+            </div>
+            <div class="arrow" style="left: 80px; top: 10px;">
+              <span class="arrow-label">参照图纸输入数值</span>
+            </div>
+          </div>
+          <div class="field-row">
+            <span class="field-label">宽度</span>
+            <span class="field-desc">截面横向尺寸，单位 mm</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">高度</span>
+            <span class="field-desc">截面纵向尺寸，单位 mm</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">长度</span>
+            <span class="field-desc">产品总长度，单位 m</span>
+          </div>
+          <div class="tip-box warning">
+            <span class="tip-icon">⚠️</span>
+            <span>请仔细核对图纸上的尺寸标注，确保填写正确。尺寸填写时注意单位，系统不会自动换算。</span>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="step-card">
+      <details>
+        <summary>
+          <div class="step-header">
+            <div class="step-number">3</div>
+            <div class="step-content">
+              <div class="step-title">填写材质与数量</div>
+              <div class="step-desc">根据图纸要求选择材料牌号，填写加工数量</div>
+            </div>
+            <div class="step-toggle">▼</div>
+          </div>
+        </summary>
+        <div class="step-body">
+          <p>根据图纸上标注的材质要求，选择对应的材料牌号。数量按实际订单填写。</p>
+          <div class="annotation-box">
+            <div class="mock-ui">
+              <div class="mock-row">
+                <span class="mock-label">材质牌号</span>
+                <div class="mock-select">
+                  <span>6063-T5</span>
+                  <span style="color:#9ca3af;">▾</span>
+                </div>
+              </div>
+              <div class="mock-row">
+                <span class="mock-label">数量</span>
+                <div class="mock-input">单位：件/根</div>
+              </div>
+              <div class="mock-row">
+                <span class="mock-label">产品名称</span>
+                <div class="mock-input">选填，方便后续管理</div>
+              </div>
+            </div>
+            <div class="arrow" style="left: 80px; top: 10px;">
+              <span class="arrow-label">下拉选择材质</span>
+            </div>
+          </div>
+          <div class="field-row">
+            <span class="field-label">材质牌号</span>
+            <span class="field-desc">根据图纸要求选择，如 6063-T5、ADC12、SUS304 等</span>
+            <span class="field-example">例：6063-T5</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">数量</span>
+            <span class="field-desc">按订单实际数量填写</span>
+            <span class="field-example">例：500</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">产品名称</span>
+            <span class="field-desc">选填，填写后方便在「报价历史」中搜索管理</span>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="step-card">
+      <details>
+        <summary>
+          <div class="step-header">
+            <div class="step-number">4</div>
+            <div class="step-content">
+              <div class="step-title">选择表面处理</div>
+              <div class="step-desc">根据图纸或客户要求选择表面处理工艺</div>
+            </div>
+            <div class="step-toggle">▼</div>
+          </div>
+        </summary>
+        <div class="step-body">
+          <p>根据图纸上的表面处理要求或客户指定，选择对应的工艺。</p>
+          <table class="treatment-table">
+            <thead>
+              <tr><th>处理方式</th><th>说明</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>无处理</td><td>不做表面处理</td></tr>
+              <tr><td>阳极氧化</td><td>常见铝材处理方式，耐腐蚀</td></tr>
+              <tr><td>电泳</td><td>表面均匀，适合外观件</td></tr>
+              <tr><td>喷涂</td><td>可指定颜色，附着力强</td></tr>
+            </tbody>
+          </table>
+          <div class="annotation-box">
+            <div class="mock-ui">
+              <div class="mock-row">
+                <span class="mock-label">表面处理</span>
+                <div class="mock-select">
+                  <span>阳极氧化</span>
+                  <span style="color:#9ca3af;">▾</span>
+                </div>
+              </div>
+            </div>
+            <div class="arrow" style="right: 16px; top: 12px;">
+              <span class="arrow-label">点击下拉选择</span>
+            </div>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="step-card">
+      <details>
+        <summary>
+          <div class="step-header">
+            <div class="step-number">5</div>
+            <div class="step-content">
+              <div class="step-title">勾选二次加工</div>
+              <div class="step-desc">根据图纸要求勾选额外的加工工序</div>
+            </div>
+            <div class="step-toggle">▼</div>
+          </div>
+        </summary>
+        <div class="step-body">
+          <p>根据图纸上标注的二次加工要求，勾选对应的工序。不需要的不勾选即可。</p>
+          <div class="process-tags">
+            <div class="process-tag"><span class="check">☐</span> CNC 加工</div>
+            <div class="process-tag"><span class="check">☐</span> 攻牙</div>
+            <div class="process-tag"><span class="check">☐</span> 折弯</div>
+            <div class="process-tag"><span class="check">☐</span> 切割</div>
+            <div class="process-tag"><span class="check">☐</span> 钻孔</div>
+            <div class="process-tag"><span class="check">☐</span> 抛光</div>
+          </div>
+          <div class="annotation-box">
+            <div class="mock-ui">
+              <div class="mock-row">
+                <span class="mock-label">二次加工</span>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <span style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:4px 10px;font-size:12px;color:#2563eb;">✓ CNC</span>
+                  <span style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:4px 10px;font-size:12px;color:#2563eb;">✓ 攻牙</span>
+                  <span style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:4px 10px;font-size:12px;color:#9ca3af;">☐ 折弯</span>
+                  <span style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:4px 10px;font-size:12px;color:#9ca3af;">☐ 切割</span>
+                </div>
+              </div>
+            </div>
+            <div class="arrow" style="left: 80px; bottom: 10px;">
+              <span class="arrow-label">根据图纸勾选工序</span>
+            </div>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="step-card">
+      <details>
+        <summary>
+          <div class="step-header">
+            <div class="step-number">6</div>
+            <div class="step-content">
+              <div class="step-title">确认并保存报价</div>
+              <div class="step-desc">核对参数无误后保存，支持导出 PDF</div>
+            </div>
+            <div class="step-toggle">▼</div>
+          </div>
+        </summary>
+        <div class="step-body">
+          <p>所有参数填写完成后，系统会自动计算报价。核对无误后点击「保存」，报价单会自动编号存档。</p>
+          <div class="annotation-box">
+            <div class="mock-ui">
+              <div class="mock-row">
+                <span class="mock-label">操作</span>
+                <div style="display:flex;gap:10px;">
+                  <span style="background:#2563eb;color:#fff;border-radius:6px;padding:6px 16px;font-size:13px;font-weight:500;">保存报价单</span>
+                  <span style="background:#fff;color:#2563eb;border:1px solid #2563eb;border-radius:6px;padding:6px 16px;font-size:13px;">导出 PDF</span>
+                </div>
+              </div>
+            </div>
+            <div class="arrow" style="left: 80px; top: 10px;">
+              <span class="arrow-label">核对后点击保存</span>
+            </div>
+          </div>
+          <div class="tip-box success">
+            <span class="tip-icon">✅</span>
+            <span>报价单保存后可在「报价历史」中随时查看、修改和重新导出 PDF 发送给客户。</span>
+          </div>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- AI 识别图纸 -->
+  <section class="section">
+    <h2 class="section-title">
+      <span class="icon" style="background:#eff6ff;color:#2563eb;">🤖</span>
+      AI 识别图纸（可选）
+    </h2>
+    <p class="section-subtitle">上传图纸由 AI 自动处理参数，快捷但存在识别误差，建议核对后再保存。</p>
+
+    <div class="step-card">
+      <details>
+        <summary>
+          <div class="step-header">
+            <div class="step-number" style="background:#2563eb;">A</div>
+            <div class="step-content">
+              <div class="step-title">上传图纸文件</div>
+              <div class="step-desc">支持 PDF、PNG、JPG、STEP、DXF、DWG 及 ZIP 批量上传</div>
+            </div>
+            <div class="step-toggle">▼</div>
+          </div>
+        </summary>
+        <div class="step-body">
+          <p>将图纸文件拖拽到上传区域，或点击选择文件。ZIP 压缩包会自动解压并逐个识别。</p>
+          <div class="tip-box info">
+            <span class="tip-icon">💡</span>
+            <span>支持 PDF、PNG、JPG、STEP/STP、DXF、DWG 等格式。图纸越清晰，识别越准确。</span>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="step-card">
+      <details>
+        <summary>
+          <div class="step-header">
+            <div class="step-number" style="background:#2563eb;">B</div>
+            <div class="step-content">
+              <div class="step-title">AI 识别 + 核对参数</div>
+              <div class="step-desc">AI 自动识别参数，请务必核对后再使用</div>
+            </div>
+            <div class="step-toggle">▼</div>
+          </div>
+        </summary>
+        <div class="step-body">
+          <p>AI 识别完成后，结果以产品卡片形式展示。由于图纸复杂度，<strong>AI 识别可能存在误差</strong>，请务必核对关键参数：</p>
+          <div class="field-row">
+            <span class="field-label">尺寸</span>
+            <span class="field-desc">宽、高、长度等是否与图纸一致</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">材质</span>
+            <span class="field-desc">是否正确识别了材质牌号</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">表面处理</span>
+            <span class="field-desc">是否符合图纸或客户要求</span>
+          </div>
+          <div class="tip-box warning">
+            <span class="tip-icon">⚠️</span>
+            <span>AI 识别结果仅供参考，存在误差风险。建议工程师核对参数后再保存报价，或直接使用手动填参方式获得更准确的结果。</span>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="step-card">
+      <details>
+        <summary>
+          <div class="step-header">
+            <div class="step-number" style="background:#2563eb;">C</div>
+            <div class="step-content">
+              <div class="step-title">确认并保存</div>
+              <div class="step-desc">核对无误后保存报价单</div>
+            </div>
+            <div class="step-toggle">▼</div>
+          </div>
+        </summary>
+        <div class="step-body">
+          <p>参数确认无误后，点击「保存」即可。保存后可在「报价历史」中随时查看和导出 PDF。</p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- 使用提示 -->
+  <section class="section">
+    <h2 class="section-title">
+      <span class="icon" style="background:#ecfdf5;color:#059669;">💡</span>
+      使用提示
+    </h2>
+    <div class="tips-grid">
+      <div class="tip-card">
+        <span class="tip-icon">✅</span>
+        <span><strong>推荐手动填参</strong>：工程师参照图纸填写，结果最准确</span>
+      </div>
+      <div class="tip-card">
+        <span class="tip-icon">⚠️</span>
+        <span><strong>AI 识别有误差</strong>：识别结果仅供参考，务必核对后再使用</span>
+      </div>
+      <div class="tip-card">
+        <span class="tip-icon">📐</span>
+        <span>图纸越清晰，AI 识别越准确，建议用 CAD 原始导出文件</span>
+      </div>
+      <div class="tip-card">
+        <span class="tip-icon">📦</span>
+        <span>ZIP 包可包含多个产品图纸，系统自动逐个识别</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section">
+    <h2 class="section-title">
+      <span class="icon" style="background:#f0f9ff;color:#0284c7;">💬</span>
+      常见问题
+    </h2>
+    <div class="faq-item">
+      <details>
+        <summary>哪种方式更准确？<span class="faq-arrow">▼</span></summary>
+        <div class="faq-answer">工程师参照图纸手动填参最准确。AI 识别图纸虽然快捷，但存在识别误差，建议核对参数后再使用。</div>
+      </details>
+    </div>
+    <div class="faq-item">
+      <details>
+        <summary>AI 识别不准怎么办？<span class="faq-arrow">▼</span></summary>
+        <div class="faq-answer">AI 识别后可直接在页面上修改参数，纠正尺寸、材质、数量等，修改后报价会自动更新。如果误差较大，建议改用手动填参方式。</div>
+      </details>
+    </div>
+    <div class="faq-item">
+      <details>
+        <summary>支持哪些文件格式？<span class="faq-arrow">▼</span></summary>
+        <div class="faq-answer">支持 PDF、PNG、JPG 图片格式，STEP/STP 3D 模型文件，以及 DXF、DWG CAD 图纸，也支持 ZIP 压缩包批量上传。</div>
+      </details>
+    </div>
+    <div class="faq-item">
+      <details>
+        <summary>报价单能重新下载吗？<span class="faq-arrow">▼</span></summary>
+        <div class="faq-answer">可以。保存后的报价单可在「报价历史」中随时查看、修改和重新导出 PDF。</div>
+      </details>
+    </div>
+    <div class="faq-item">
+      <details>
+        <summary>可以在手机上使用吗？<span class="faq-arrow">▼</span></summary>
+        <div class="faq-answer">可以。gyparts.cn 已做移动端适配，手机浏览器访问即可使用。</div>
+      </details>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="footer-title">还有问题？联系我们</div>
+  <div class="footer-info">
+    服务热线：18929979760（周一至周五 8:30-18:00）<br>
+    微信咨询：18929979760<br>
+    地址：佛山市南海区里水镇
+  </div>
+</footer>
+
+<script>
+  (function() {
+    document.querySelectorAll('details').forEach(function(detail) {
+      detail.addEventListener('toggle', function() {
+        if (this.open) {
+          var body = this.querySelector('.step-body, .faq-answer');
+          if (body) {
+            body.style.opacity = '0';
+            body.style.transform = 'translateY(-4px)';
+            requestAnimationFrame(function() {
+              body.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+              body.style.opacity = '1';
+              body.style.transform = 'translateY(0)';
+            });
+          }
+        }
+      });
+    });
+  })();
+</script>
+
+</body>
+</html>
