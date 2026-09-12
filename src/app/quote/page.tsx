@@ -56,6 +56,11 @@ export default function QuotePage() {
   const handleProductInfoChange = useCallback((info: { productName: string; productCode: string }) => {
     setProductInfo(info);
   }, []);
+  const handleNewQuote = useCallback(() => {
+    setAiFormData(null);
+    setPricingResult(null);
+    setProductInfo({ productName: '', productCode: '' });
+  }, []);
 
   // Login check
   useEffect(() => {
@@ -132,6 +137,7 @@ export default function QuotePage() {
               aiData={aiFormData}
               onResult={handleResult}
               onProductInfoChange={handleProductInfoChange}
+              onNewQuote={handleNewQuote}
             />
           </div>
         </div>
