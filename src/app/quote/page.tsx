@@ -92,7 +92,7 @@ export default function QuotePage() {
               </div>
               <div className="flex items-baseline gap-1.5">
                 <span className="text-base font-bold text-gray-800">报价计算器</span>
-                <span className="hidden sm:inline text-[10px] text-gray-400">gyparts.cn</span>
+                <span className="hidden sm:inline text-[10px] text-gray-400">gyparts.cn <span className="text-[9px] text-blue-400">v1.9.3</span></span>
               </div>
             </div>
 
