@@ -1756,6 +1756,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const p = toNum(d.perimeter); if (p !== null) next.perimeter = p;
       const ip = toNum(d.inner_perimeter); if (ip !== null) next.innerPerimeter = ip;
       const nc = toNum(d.num_cavities); if (nc !== null) next.num_cavities = nc;
+      const csa = toNum(d.crossSectionArea); if (csa !== null) next.crossSectionArea = csa;
       // 模具类型兼容英文/中文/中空描述
       const dt = String(d.die_type || '').toLowerCase();
       if (d.die_type === 'flat' || dt === 'flat' || d.die_type === '平模' || d.die_type === '实心') next.die_type = 'flat';
@@ -3298,6 +3299,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 {recogResult.perimeter != null && <div>外周长: <b>{recogResult.perimeter}mm</b></div>}
                 {recogResult.inner_perimeter != null && <div>内周长: <b>{recogResult.inner_perimeter}mm</b></div>}
                 {recogResult.meter_weight != null && <div>米重: <b>{recogResult.meter_weight}kg/m</b></div>}
+                {recogResult.crossSectionArea != null && <div>截面积: <b>{recogResult.crossSectionArea}mm²</b></div>}
                 {recogResult.num_cavities != null && <div>面域: <b>{recogResult.num_cavities}</b></div>}
                 {recogResult.material_grade ? <div className="col-span-2">材质: <b>{recogResult.material_grade}</b></div> : <div className="col-span-2 text-amber-600">材质: 无法识别，请手动选择</div>}
                 {recogResult.surface_treatment ? <div className="col-span-2">表面处理: <b>{recogResult.surface_treatment}</b></div> : <div className="col-span-2 text-amber-600">表面处理: 无法识别，请手动选择</div>}
