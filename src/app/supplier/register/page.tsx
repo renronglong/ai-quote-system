@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
@@ -9,13 +9,26 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/components/AppLayout';
-import { Building2, Loader2, AlertCircle } from 'lucide-react';
+import { Building2, Loader2, AlertCircle, Lock } from 'lucide-react';
+
+const STORAGE_KEY = 'supplier_register_form';
+
+function saveFormData(form: any) {
+  try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(form)); } catch {}
+}
+function loadFormData(): any {
+  try { return JSON.parse(sessionStorage.getItem(STORAGE_KEY) || 'null'); } catch { return null; }
+}
+function clearFormData() {
+  try { sessionStorage.removeItem(STORAGE_KEY); } catch {}
+}
 
 export default function SupplierRegisterPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [pendingSubmit, setPendingSubmit] = useState(false);
   const [form, setForm] = useState({
     company_name: '',
     contact_name: '',
@@ -24,52 +37,48 @@ export default function SupplierRegisterPage() {
     business_license: '',
   });
 
+  // Load saved form data from session (for post-login restore)
   useEffect(() => {
-    if (!authLoading && !user) {
-      router.replace('/login?redirect=/supplier/register');
+    const saved = loadFormData();
+    if (saved) {
+      setForm(prev => ({ ...prev, ...saved }));
     }
-    if (user) {
-      // 联系电话默认填登录手机号；联系人姓名不预填（无姓名字段，company_name 是公司名不能用作人名）
-      setForm(prev => ({ ...prev, phone: prev.phone || user.phone || '' }));
+  }, []);
+
+  // Auto-fill phone from logged-in user, but don't redirect if not logged in
+  useEffect(() => {
+    if (user && !form.phone) {
+      setForm(prev => ({ ...prev, phone: user.phone || prev.phone }));
     }
-  }, [user, authLoading, router]);
+  }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
-
-    if (!form.company_name.trim()) {
-      setError('请输入公司名称');
-      return;
-    }
-    if (!form.contact_name.trim()) {
-      setError('请输入联系人姓名');
-      return;
-    }
-    if (!form.phone.trim()) {
-      setError('请输入联系电话');
-      return;
-    }
-
-    setLoading(true);
     setError('');
 
+    if (!form.company_name.trim()) { setError('请输入公司名称'); return; }
+    if (!form.contact_name.trim()) { setError('请输入联系人姓名'); return; }
+    if (!form.phone.trim()) { setError('请输入联系电话'); return; }
+
+    // If not logged in, save form and redirect to login
+    if (!user) {
+      saveFormData(form);
+      setPendingSubmit(true);
+      router.push('/login?redirect=/supplier/register');
+      return;
+    }
+
+    // Submit the form
+    setLoading(true);
     try {
       const res = await fetch('/api/supplier/profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: user.id,
-          ...form,
-        }),
+        body: JSON.stringify({ user_id: user.id, ...form }),
       });
-
       const json = await res.json();
-      if (!res.ok) {
-        setError(json.error || '提交失败');
-        return;
-      }
-
+      if (!res.ok) { setError(json.error || '提交失败'); return; }
+      clearFormData();
       router.push('/supplier/dashboard');
     } catch (err: any) {
       setError(err.message || '网络错误');
@@ -77,16 +86,6 @@ export default function SupplierRegisterPage() {
       setLoading(false);
     }
   };
-
-  if (authLoading) {
-    return (
-      <AppLayout>
-        <div className="min-h-[60vh] flex items-center justify-center">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-        </div>
-      </AppLayout>
-    );
-  }
 
   return (
     <AppLayout>
@@ -97,8 +96,16 @@ export default function SupplierRegisterPage() {
             <Building2 className="w-8 h-8 text-blue-600" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">供应商入驻</h1>
-          <p className="text-gray-500 mt-2">完善您的供应商信息，开始管理产品报价</p>
+          <p className="text-gray-500 mt-2">填写企业信息，免费入驻 gyparts.cn 供应商平台</p>
         </div>
+
+        {/* 未登录提示 */}
+        {!authLoading && !user && (
+          <div className="mb-6 flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+            <Lock className="w-4 h-4 shrink-0" />
+            <span>提交入驻需要登录账号，填完表单后点击提交会自动跳转登录</span>
+          </div>
+        )}
 
         <Card>
           <CardHeader>
@@ -113,7 +120,6 @@ export default function SupplierRegisterPage() {
                   {error}
                 </div>
               )}
-
               <div className="space-y-2">
                 <Label htmlFor="company_name">公司名称 *</Label>
                 <Input
@@ -123,7 +129,6 @@ export default function SupplierRegisterPage() {
                   onChange={(e) => setForm({ ...form, company_name: e.target.value })}
                 />
               </div>
-
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="contact_name">联系人 *</Label>
@@ -144,7 +149,6 @@ export default function SupplierRegisterPage() {
                   />
                 </div>
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="address">公司地址</Label>
                 <Textarea
@@ -155,7 +159,6 @@ export default function SupplierRegisterPage() {
                   rows={2}
                 />
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="business_license">营业执照号</Label>
                 <Input
@@ -165,11 +168,15 @@ export default function SupplierRegisterPage() {
                   onChange={(e) => setForm({ ...form, business_license: e.target.value })}
                 />
               </div>
-
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {loading ? '提交中...' : '提交入驻'}
+                {loading ? '提交中...' : !user ? '填写后提交入驻' : '提交入驻'}
               </Button>
+              {!user && (
+                <p className="text-center text-xs text-gray-400">
+                  已有账号？<button type="button" onClick={() => { saveFormData(form); router.push('/login?redirect=/supplier/register'); }} className="text-blue-500 hover:underline">立即登录</button>
+                </p>
+              )}
             </form>
           </CardContent>
         </Card>
