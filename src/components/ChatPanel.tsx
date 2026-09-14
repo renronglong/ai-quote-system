@@ -1120,7 +1120,7 @@ interface ChatPanelProps {
     packaging?: string;
     secondaryProcessing?: string[];
   }) => void;
-  onPricingResult?: (result: PricingResult) => void;
+  onPricingResult?: (result: PricingResult | null) => void;
 }
 
 export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelProps) {
