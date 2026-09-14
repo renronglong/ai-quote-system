@@ -288,7 +288,7 @@ export default function QuotePage() {
       {/* 顶部栏 */}
       <header className="shrink-0 bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-[1600px] mx-auto px-4 lg:px-6">
-          <div className="relative flex items-center justify-between h-12">
+          <div className="flex flex-wrap items-center gap-3 py-2">
             <Link href="/" className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
                 <Factory className="w-4 h-4 text-white" />
@@ -299,12 +299,12 @@ export default function QuotePage() {
               </div>
             </Link>
 
-            {/* 中间：全站统一导航（桌面端，任意页面可互跳） */}
-            <div className="hidden md:block absolute left-1/2 -translate-x-1/2">
+            {/* 全站统一导航 */}
+            <div className="flex items-center gap-1 flex-wrap">
               <TopNavLinks />
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 ml-auto flex-wrap">
               {user && (
                 <SavedQuotesPanel
                   userId={user.id}
