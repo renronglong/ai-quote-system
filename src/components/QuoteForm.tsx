@@ -2074,7 +2074,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             meter_weight: parseJson.weight_kg_per_m,
             wall_thickness: parseJson.wall_thickness_mm,
             crossSectionArea: parseJson.section_area_mm2,
-            die_type: parseJson.die_type || parseJson.mold_type,
+            die_type: (() => {
+              const raw = String(parseJson.die_type || parseJson.mold_type || '').toLowerCase();
+              if (['split', '分流模', '中空', '空心'].some(v => raw.includes(v))) return 'split';
+              if (['flat', '平模', '实心'].some(v => raw.includes(v))) return 'flat';
+              return parseJson.die_type || parseJson.mold_type || '';
+            })(),
             num_cavities: parseJson.is_hollow ? 1 : 0,
             material_category: parseJson.material_grade || '',
             length: parseJson.extrusion_length_mm,
@@ -3418,36 +3423,74 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 type="button"
                 className="flex-1 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition"
                 onClick={() => {
-                  // 将用户回答应用到表单
-                  const answers = { ...checkAnswers };
-                  // 填充默认值（用户未修改的）
+                  // 解析 confirm 类型：正确→使用推荐值，不正确→跳过
+                  const resolved: Record<string, any> = {};
                   checkQuestions.forEach((q: any) => {
-                    if (answers[q.field] === undefined && q.default !== undefined) {
-                      answers[q.field] = q.default;
+                    const ans = checkAnswers[q.field];
+                    if (q.input_type === 'confirm') {
+                      if (ans !== 'no' && q.default !== undefined) {
+                        resolved[q.field] = q.default;
+                      }
+                    } else if (ans !== undefined) {
+                      resolved[q.field] = ans;
+                    } else if (q.default !== undefined) {
+                      resolved[q.field] = q.default;
                     }
                   });
-                  // 应用确认类问题
-                  checkQuestions.forEach((q: any) => {
-                    if (q.input_type === 'confirm' && answers[q.field] === 'no') {
-                      // 用户否认了推荐值，清空该字段
-                      // 具体处理视字段而定
-                    }
-                  });
-                  // 映射到表单字段
-                  if (answers.material_grade) setMaterialGrade(answers.material_grade);
-                  if (answers.surface_treatment) {
+                  // 材质牌号
+                  if (resolved.material_grade) setMaterialGrade(resolved.material_grade);
+                  // 表面处理
+                  if (resolved.surface_treatment) {
                     const stMap: Record<string,string> = {
                       '阳极氧化': '氧化', '粉末喷涂': '喷涂', '氟碳喷涂': '喷涂', '木纹转印': '喷涂', '电镀': '无', '无': '无',
                     };
-                    const mapped = stMap[answers.surface_treatment] || answers.surface_treatment;
+                    const mapped = stMap[resolved.surface_treatment] || resolved.surface_treatment;
                     setProductSurfaceTreatment(mapped);
                     setMaterialSurfaceTreatment(mapped);
                   }
-                  if (answers.length_mm) {
-                    setFields(prev => ({ ...prev, length: answers.length_mm }));
+                  // 长度
+                  if (resolved.length_mm) {
+                    setFields(prev => ({ ...prev, length: resolved.length_mm }));
                   }
+                  // 工序：将确认的工序加入 processes
+                  if (resolved.processes) {
+                    const procsToAdd: string[] = Array.isArray(resolved.processes) ? resolved.processes : [resolved.processes];
+                    const processNames: Record<string, string> = {
+                      'cnc': 'CNC加工', 'cnc加工': 'CNC加工', '冲压': '冲压', '钻孔': '钻孔',
+                      '攻牙': '攻牙', '折弯': '折弯', '激光切割': '激光切割', '抛光': '抛光',
+                    };
+                    setProcesses(prev => {
+                      const existingNames = new Set(prev.map(p => p.name));
+                      const newProcs: { name: string; quantity?: number }[] = [];
+                      procsToAdd.forEach((p: string) => {
+                        const name = processNames[String(p).toLowerCase()] || String(p);
+                        if (!existingNames.has(name)) {
+                          newProcs.push({ name });
+                          existingNames.add(name);
+                        }
+                      });
+                      return newProcs.length > 0 ? [...prev, ...newProcs] : prev;
+                    });
+                  }
+                  // 单个工序字段（如 process_cnc → CNC加工）
+                  Object.keys(resolved).forEach(key => {
+                    if (key.startsWith('process_') && resolved[key]) {
+                      const procNameMap: Record<string, string> = {
+                        'process_cnc': 'CNC加工', 'process_stamping': '冲压', 'process_drilling': '钻孔',
+                        'process_tapping': '攻牙', 'process_bending': '折弯', 'process_laser': '激光切割',
+                        'process_polishing': '抛光',
+                      };
+                      const procName = procNameMap[key] || key.replace('process_', '');
+                      setProcesses(prev => {
+                        if (prev.some(p => p.name === procName)) return prev;
+                        return [...prev, { name: procName }];
+                      });
+                    }
+                  });
                   setShowCheckDialog(false);
                   setCheckQuestions([]);
+                  // 触发重新报价
+                  setTimeout(() => triggerCalculate(), 100);
                 }}
               >
                 确认并填入
