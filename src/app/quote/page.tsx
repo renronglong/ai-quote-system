@@ -748,54 +748,8 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         </div>
       )}
 
-      {/* 单价大卡片 */}
+      {/* 总价卡片 */}
       <div className="rounded-2xl bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 border border-emerald-200/60 p-4 shadow-sm">
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-1.5">
-            <Package className="w-3.5 h-3.5 text-emerald-600" />
-            <span className="text-base font-bold text-emerald-600">未税单价</span>
-          </div>
-          {!isPlaceholder && (
-            internal ? (
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-slate-600">¥</span>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={manualUnitPrice ?? displayUnit}
-                onChange={(e) => {
-                  const v = parseFloat(e.target.value);
-                  if (!isNaN(v) && v >= 0) onManualUnitPriceChange(v);
-                }}
-                className={`w-20 text-right border rounded px-1.5 py-0.5 focus:outline-none focus:border-emerald-400 ${compact ? 'text-sm' : 'text-base'} font-bold text-emerald-700 ${manualUnitPrice !== null ? 'border-amber-300 bg-amber-50' : 'border-emerald-200 bg-white/50'}`}
-              />
-              <span className={`text-sm ${isPlaceholder ? 'text-gray-300' : 'text-emerald-500'}`}>/件</span>
-              {manualUnitPrice !== null && (
-                <button onClick={() => onManualUnitPriceChange(null)} className="text-xs text-slate-600 hover:text-red-500 ml-0.5" title="恢复计算值">✕</button>
-              )}
-            </div>
-            ) : (
-              <div className="flex items-baseline gap-0.5">
-                <span className={`font-bold text-emerald-700 ${compact ? 'text-2xl' : 'text-3xl'}`}>¥{fmtPrice(displayUnit)}</span>
-                <span className="text-sm text-emerald-500">/件</span>
-              </div>
-            )
-          )}
-        </div>
-        {isPlaceholder && (
-          <div className={`font-bold text-gray-300 ${compact ? 'text-2xl' : 'text-4xl'}`}>¥--</div>
-        )}
-        {internal && hasProductDiscount && !isPlaceholder && (
-          <div className="text-sm text-red-500 mt-0.5">
-            基准 ¥{fmtPrice(baseUnitPrice)}{manualUnitPrice !== null ? ` → 手动 ¥${fmtPrice(manualUnitPrice)}` : ''} · {productDiscount > 100 ? `加价${productDiscount - 100}%` : `${productDiscount}%折`}
-          </div>
-        )}
-        {internal && !hasProductDiscount && manualUnitPrice !== null && !isPlaceholder && (
-          <div className="text-sm text-amber-600 mt-0.5">
-            手动调整：计算值 ¥{fmtPrice(baseUnitPrice)} → ¥{fmtPrice(manualUnitPrice)}
-          </div>
-        )}
         {/* 含税单价 */}
         {!isPlaceholder && p.unit_price_in_tax && p.unit_price_in_tax > 0 && (
           <div className="mt-1 flex items-baseline gap-1.5">
@@ -1007,14 +961,6 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
           ))}
         </div>
 
-        <div className="border-t-2 border-dashed border-gray-200" />
-
-        <div className="flex justify-between items-center px-3 py-2 bg-emerald-50/50">
-          <span className="text-base font-bold text-slate-600">单价合计</span>
-          <span className={`text-base font-bold ${isPlaceholder ? 'text-gray-300' : 'text-emerald-600'}`}>
-            {isPlaceholder ? '--' : `¥${fmtPrice(displayUnit)}`}
-          </span>
-        </div>
       </div>
 
       {/* 辅助信息（仅内部账号可见） */}
