@@ -632,7 +632,7 @@ export default function QuotePage() {
           <div className="absolute bottom-16 right-0 w-[380px] h-[500px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
             <ChatPanel
               onFormUpdate={handleFormUpdate}
-              onPricingResult={handleResult}
+              onPricingResult={(result) => handleResult(result as any)}
             />
           </div>
         )}
