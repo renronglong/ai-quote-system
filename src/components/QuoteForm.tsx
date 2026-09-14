@@ -1836,8 +1836,34 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         });
       }
     }
+    // CNC 加工：直接从 STP/CAD 解析结果自动添加
+    const cncHoles = d.cnc_holes || d.process?.cnc_holes;
+    const cncTotalHoles = d.cnc_total_holes || d.process?.cnc_total_holes || 0;
+    const machiningTime = d.machining_time_min || d.process?.machining_time_min;
+    if ((cncHoles && Array.isArray(cncHoles) && cncHoles.length > 0) || cncTotalHoles > 0) {
+      setProcesses(prev => {
+        const existingNames = new Set(prev.map(p => p.name));
+        const newProcs = [];
+        if (!existingNames.has('CNC加工')) {
+          const cncProc: any = { name: 'CNC加工' };
+          if (machiningTime) cncProc.subParams = { minutes: machiningTime };
+          else if (cncTotalHoles > 0) cncProc.quantity = cncTotalHoles;
+          newProcs.push(cncProc);
+        }
+        if (!existingNames.has('钻孔') && cncTotalHoles > 0) {
+          newProcs.push({ name: '钻孔', quantity: cncTotalHoles, subParams: { hole_count: cncTotalHoles } });
+        }
+        return newProcs.length > 0 ? [...prev, ...newProcs] : prev;
+      });
+    }
     // 备注/说明
     if (d.notes) setFileRemark(prev => prev ? prev + '; ' + d.notes : d.notes);
+    // CNC 孔信息写入备注
+    if (cncTotalHoles > 0 && Array.isArray(cncHoles)) {
+      const holeDetails = cncHoles.map((h: any) => `Φ${h.diameter}×${h.depth}mm ×${h.count}(${h.direction}向)`).join('、');
+      const cncNote = `CNC加工: 共${cncTotalHoles}孔 (${holeDetails})`;
+      setFileRemark(prev => prev ? prev + '; ' + cncNote : cncNote);
+    }
     // 板材专用：将孔数/折弯数等信息写入备注
     if (productType === '板材' || d.sheet_length || d.sheet_width || d.unfold_length) {
       const sheetNotes: string[] = [];
