@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import QuoteForm, { PricingResult } from '@/components/QuoteForm';
 import DrawingRecognition from '@/components/DrawingRecognition';
-import OperationGuide from '@/components/OperationGuide';
 import {
   TrendingUp,
   Loader2,
@@ -405,7 +404,6 @@ export default function QuotePage() {
         {/* 第二栏：参数设置 */}
         <div className="overflow-y-auto overflow-x-hidden min-w-0 bg-gray-50 rounded-xl border border-gray-200">
           <div className="p-4 space-y-4">
-            <OperationGuide />
             <div className="bg-white rounded-xl border border-gray-200 p-4">
               <QuoteForm
                 key={formNonce}

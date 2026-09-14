@@ -2094,21 +2094,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           </button>
         </div>
 
-        {/* ---- 模具组工具条：点「新建报价」=开一副新模具 ---- */}
-        <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-blue-50/70 border border-blue-100">
-          <div className="text-[12px] text-blue-700 leading-snug">
-            当前为<b>同一副模具</b>：改长度后点长度框旁的<b>＋</b>存入报价池，出单时模具费只算一次。
-          </div>
-          <button
-            type="button"
-            onClick={onNewQuote}
-            className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-blue-300 text-blue-700 text-xs font-semibold hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm"
-            title="清空表单，开始一副新模具的报价"
-          >
-            <span className="text-sm leading-none">＋</span> 新建报价
-          </button>
-        </div>
-
         {/* AI synced indicator */}
         {aiSynced && (
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium animate-pulse">
