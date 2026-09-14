@@ -764,7 +764,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
           </div>
         )}
         <div className="mt-1.5 flex items-baseline gap-1">
-          <span className="text-sm text-slate-600">总价</span>
+          <span className="text-sm text-slate-600">未税总价</span>
           <span className={`font-bold ${isPlaceholder ? 'text-gray-300' : 'text-gray-800'} ${compact ? 'text-lg' : 'text-2xl'}`}>
             {isPlaceholder ? '¥--' : `¥${fmtPrice((displayUnit * ((p as any).quantity || 1)))}`}
           </span>
@@ -981,18 +981,6 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
             <span className={`text-sm font-semibold ${(p.material_utilization_rate * 100) >= 80 ? 'text-emerald-600' : (p.material_utilization_rate * 100) >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
               {(p.material_utilization_rate * 100).toFixed(1)}%
             </span>
-          </div>
-        )}
-        {aluminumPrice && (
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-slate-600">铝锭基价</span>
-            <span className="text-sm font-medium text-gray-600">¥{aluminumPrice.price.toLocaleString()}/吨</span>
-          </div>
-        )}
-        {!isPlaceholder && p.aluminum_index > 0 && (
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-slate-600">计价铝锭价</span>
-            <span className="text-sm font-medium text-gray-600">¥{p.aluminum_index.toLocaleString()}/吨</span>
           </div>
         )}
       </div>
