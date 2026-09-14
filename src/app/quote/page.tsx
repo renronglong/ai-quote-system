@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import QuoteForm, { PricingResult } from '@/components/QuoteForm';
+import DrawingRecognition from '@/components/DrawingRecognition';
 import OperationGuide from '@/components/OperationGuide';
 import {
   TrendingUp,
@@ -62,6 +63,28 @@ export default function QuotePage() {
   const router = useRouter();
   const [aluminumPrice, setAluminumPrice] = useState<AluminumPrice | null>(null);
   const [aiFormData, setAiFormData] = useState<AiFormUpdate | null>(null);
+  const [drawingRecogData, setDrawingRecogData] = useState<any>(null);
+  const drawingRecogCounter = useRef(0);
+  const handleDrawingData = useCallback((data: any) => {
+    drawingRecogCounter.current += 1;
+    setDrawingRecogData({ ...data, _v: drawingRecogCounter.current });
+    // Also pass through aiFormData for backward compatibility
+    if (data && data.recogData) {
+      const rd = data.recogData;
+      const mapped: AiFormUpdate = {};
+      if (rd.product_type) mapped.productType = rd.product_type;
+      if (rd.material_category) mapped.materialCategory = rd.material_category;
+      if (rd.material_grade) mapped.materialGrade = rd.material_grade;
+      if (rd.surface_treatment) mapped.surfaceTreatment = rd.surface_treatment;
+      if (rd.quantity) mapped.quantity = rd.quantity;
+      if (rd.width) mapped.width = rd.width;
+      if (rd.height) mapped.height = rd.height;
+      if (rd.length) mapped.length = rd.length;
+      if (rd.wall_thickness) mapped.wallThickness = rd.wall_thickness;
+      if (rd.standardCategory) mapped.standardCategory = rd.standardCategory;
+      setAiFormData({ ...mapped, _v: drawingRecogCounter.current } as AiFormUpdate);
+    }
+  }, []);
   const [pricingResult, setPricingResult] = useState<PricingResult | null>(null);
   const [productInfo, setProductInfo] = useState<{ productName: string; productCode: string }>({ productName: '', productCode: '' });
   const [resultExpanded, setResultExpanded] = useState(true);
@@ -366,9 +389,18 @@ export default function QuotePage() {
         </div>
       )}
 
-      {/* 主内容区 - 三栏布局 */}
-      <main className="flex-1 min-h-0 overflow-hidden hidden lg:grid" style={{ gridTemplateColumns: guideCollapsed ? '520px 1fr' : '520px 1fr 280px', gap: '16px', padding: '16px' }}>
-        {/* 左栏：参数设置 */}
+      {/* 主内容区 - 四栏布局 */}
+      <main className="flex-1 min-h-0 overflow-hidden hidden lg:grid" style={{ gridTemplateColumns: guideCollapsed ? '340px minmax(440px, 520px) 360px' : '340px minmax(440px, 520px) 360px 300px', gap: '16px', padding: '16px' }}>
+        {/* 第一栏：图纸识别 */}
+        <div className="overflow-y-auto overflow-x-hidden min-w-0 rounded-xl border border-gray-200 bg-white">
+          <DrawingRecognition
+            onDrawingData={handleDrawingData}
+            user={user}
+            aiData={drawingRecogData}
+          />
+        </div>
+
+        {/* 第二栏：参数设置 */}
         <div className="overflow-y-auto overflow-x-hidden min-w-0 bg-gray-50 rounded-xl border border-gray-200">
           <div className="p-4 space-y-4">
             <OperationGuide />
@@ -383,6 +415,7 @@ export default function QuotePage() {
                 onSaveVariant={handleSaveVariant}
                 onNewQuote={handleNewQuote}
                 onCalculate={handleParamsUpdate}
+                onDrawingData={handleDrawingData}
               />
             </div>
           </div>
