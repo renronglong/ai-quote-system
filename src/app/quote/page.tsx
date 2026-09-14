@@ -1005,20 +1005,6 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
               </div>
             </div>
           ))}
-          {/* 模具费（一次性，独立显示） */}
-          {moldFee > 0 && !hideMoldFeeForUser && (
-            <div className="flex justify-between items-center px-3 py-2 bg-blue-50/30">
-              <span className="text-sm text-blue-600 font-medium">模具费（一次性）</span>
-              <div className="text-right">
-                <span className="text-sm font-semibold text-blue-700">
-                  {hasMoldDiscount ? `¥${fmtPrice(discountedMold)}` : `¥${fmtPrice(moldFee)}`}
-                </span>
-                {hasMoldDiscount && (
-                  <div className="text-xs text-slate-600 line-through">¥{fmtPrice(moldFee)}</div>
-                )}
-              </div>
-            </div>
-          )}
         </div>
 
         <div className="border-t-2 border-dashed border-gray-200" />
