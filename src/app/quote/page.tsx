@@ -394,7 +394,7 @@ export default function QuotePage() {
       )}
 
       {/* 主内容区 - 四栏布局 */}
-      <main className="flex-1 min-h-0 overflow-x-auto hidden lg:grid" style={{ gridTemplateColumns: guideCollapsed ? '340px minmax(700px, 780px) 360px' : '340px minmax(700px, 780px) 360px 300px', gap: '16px', padding: '16px', minWidth: guideCollapsed ? '1400px' : '1700px' }}>
+      <main className="flex-1 min-h-0 overflow-x-auto grid" style={{ gridTemplateColumns: guideCollapsed ? '340px minmax(700px, 780px) 360px' : '340px minmax(700px, 780px) 360px 300px', gap: '16px', padding: '16px', minWidth: guideCollapsed ? '1400px' : '1700px' }}>
         {/* 第一栏：图纸识别 */}
         <div className="overflow-y-auto overflow-x-hidden min-w-0 rounded-xl border border-gray-200 bg-white">
           <DrawingRecognition
@@ -583,7 +583,7 @@ export default function QuotePage() {
       </main>
 
       {/* 移动端底部结果区 */}
-      <div className="lg:hidden shrink-0 border-t border-gray-200 bg-white">
+      <div className="hidden shrink-0 border-t border-gray-200 bg-white">
         <button
           onClick={() => setResultExpanded(!resultExpanded)}
           className="w-full flex items-center justify-between px-4 py-2.5 bg-white border-b border-gray-100"
