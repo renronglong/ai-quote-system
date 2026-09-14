@@ -291,8 +291,8 @@ export default function QuotePage() {
                 <Factory className="w-4 h-4 text-white" />
               </div>
               <div className="flex items-baseline gap-1.5">
-                <span className="text-base font-bold text-gray-800"><span className="text-blue-600">碧利制造</span> <span className="text-gray-400">·</span> AI报价系统</span>
-                <span className="hidden sm:inline text-[11px] text-gray-400">gyparts.cn <span className="text-[10px] text-blue-400">v2.0.0</span></span>
+                <span className="text-base font-bold text-gray-800"><span className="text-blue-600">碧利制造</span> <span className="text-slate-600">·</span> AI报价系统</span>
+                <span className="hidden sm:inline text-xs text-slate-600">gyparts.cn <span className="text-[11px] text-blue-400">v2.0.0</span></span>
               </div>
             </Link>
 
@@ -308,41 +308,41 @@ export default function QuotePage() {
                   user={user}
                   onEditQuote={handleEditQuote}
                   trigger={
-                    <button className="hidden sm:flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors">
+                    <button className="hidden sm:flex items-center gap-1 px-2 py-1 text-sm rounded-md bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors">
                       <History className="w-3.5 h-3.5" />
                       已保存
                     </button>
                   }
                 />
               )}
-              <button onClick={() => router.push('/supplier')} className="hidden sm:flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 transition-colors">
+              <button onClick={() => router.push('/supplier')} className="hidden sm:flex items-center gap-1 px-2 py-1 text-sm rounded-md bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 transition-colors">
                 <Store className="w-3.5 h-3.5" />
                 供应商
               </button>
               {aluminumPrice && (
                 <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-50 border border-gray-200">
                   <TrendingUp className="w-3 h-3 text-orange-500" />
-                  <span className="text-[11px] text-gray-500">铝锭</span>
-                  <span className="text-xs font-bold text-gray-800">¥{aluminumPrice.price.toLocaleString()}</span>
-                  <span className={`text-[11px] font-medium ${aluminumPrice.change >= 0 ? 'text-red-500' : 'text-green-500'}`}>
+                  <span className="text-xs text-slate-600">铝锭</span>
+                  <span className="text-sm font-bold text-gray-800">¥{aluminumPrice.price.toLocaleString()}</span>
+                  <span className={`text-xs font-medium ${aluminumPrice.change >= 0 ? 'text-red-500' : 'text-green-500'}`}>
                     {aluminumPrice.change >= 0 ? '↑' : '↓'}{Math.abs(aluminumPrice.changePercent).toFixed(2)}%
                   </span>
                 </div>
               )}
               {authLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                <Loader2 className="w-4 h-4 animate-spin text-slate-600" />
               ) : user ? (
                 <div className="flex items-center gap-2">
-                  <button onClick={() => router.push('/profile')} className="hidden sm:flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors" title="公司资料">
+                  <button onClick={() => router.push('/profile')} className="hidden sm:flex items-center gap-1 px-2 py-1 text-sm rounded-md bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors" title="公司资料">
                     <Settings className="w-3.5 h-3.5" />
                     <span className="max-w-[100px] truncate">{user.company_name || '公司资料'}</span>
                   </button>
-                  <button onClick={() => signOut()} className="flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-gray-200 text-gray-500 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-colors">
+                  <button onClick={() => signOut()} className="flex items-center gap-1 px-2 py-1 text-sm rounded-md border border-gray-200 text-slate-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-colors">
                     <LogOut className="w-3 h-3" />退出
                   </button>
                 </div>
               ) : (
-                <button onClick={() => router.push('/login?redirect=/quote')} className="px-2.5 py-1 text-xs rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors">
+                <button onClick={() => router.push('/login?redirect=/quote')} className="px-2.5 py-1 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors">
                   登录
                 </button>
               )}
@@ -378,14 +378,14 @@ export default function QuotePage() {
                 <User className="w-6 h-6 text-blue-600" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900">登录后生成报价单</h3>
-              <p className="text-sm text-gray-500 mt-2 leading-relaxed">正式报价单需包含您的公司名称与联系方式，登录后可自动生成 PDF 并保存报价记录</p>
-              <p className="text-xs text-blue-600 mt-2">注册即送 100 积分，还能用图纸 AI 识别自动填尺寸</p>
+              <p className="text-sm text-slate-600 mt-2 leading-relaxed">正式报价单需包含您的公司名称与联系方式，登录后可自动生成 PDF 并保存报价记录</p>
+              <p className="text-sm text-blue-600 mt-2">注册即送 100 积分，还能用图纸 AI 识别自动填尺寸</p>
             </div>
             <div className="flex gap-3">
               <a href="/login?redirect=/quote" className="flex-1 text-center py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition">去登录</a>
               <a href="/register?redirect=/quote" className="flex-1 text-center py-2.5 border border-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition">注册</a>
             </div>
-            <button onClick={() => setShowExportLogin(false)} className="w-full text-center text-sm text-gray-400 hover:text-gray-600">取消</button>
+            <button onClick={() => setShowExportLogin(false)} className="w-full text-center text-sm text-slate-600 hover:text-gray-600">取消</button>
           </div>
         </div>
       )}
@@ -459,10 +459,10 @@ export default function QuotePage() {
             <div className="p-4">
                 {/* 标题行 */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-                  <span className="text-sm font-semibold text-gray-700">💡 报价指南</span>
+                  <span className="text-base font-bold text-gray-700">💡 报价指南</span>
                   <button
                     onClick={() => setGuideCollapsed(true)}
-                    className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                    className="text-sm text-slate-600 hover:text-gray-600 transition-colors"
                     title="收起指南"
                   >
                     收起 ✕
@@ -481,7 +481,7 @@ export default function QuotePage() {
                     </div>
                     <div className="pt-0.5">
                       <p className="text-sm font-medium text-emerald-700">上传图纸</p>
-                      <p className="text-xs text-gray-400 mt-0.5">拖拽或点击上传 STP/PDF/图片</p>
+                      <p className="text-sm text-slate-600 mt-0.5">拖拽或点击上传 STP/PDF/图片</p>
                     </div>
                   </div>
 
@@ -492,14 +492,14 @@ export default function QuotePage() {
                         {pricingResult !== null ? (
                           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                         ) : (
-                          <span className="text-xs font-bold text-blue-600">2</span>
+                          <span className="text-sm font-bold text-blue-600">2</span>
                         )}
                       </div>
                       <div className={`w-0.5 h-8 mt-1 ${pricingResult !== null ? 'bg-emerald-200' : 'bg-gray-200'}`} />
                     </div>
                     <div className={`pt-0.5 rounded-lg px-2 py-1 -ml-2 ${pricingResult !== null ? '' : 'bg-blue-50'}`}>
                       <p className={`text-sm font-medium ${pricingResult !== null ? 'text-emerald-700' : 'text-blue-700'}`}>确认参数</p>
-                      <p className="text-xs text-gray-400 mt-0.5">核对AI识别的尺寸、材质</p>
+                      <p className="text-sm text-slate-600 mt-0.5">核对AI识别的尺寸、材质</p>
                     </div>
                   </div>
 
@@ -510,14 +510,14 @@ export default function QuotePage() {
                         {pricingResult !== null ? (
                           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                         ) : (
-                          <span className="text-xs font-bold text-gray-400">3</span>
+                          <span className="text-sm font-bold text-slate-600">3</span>
                         )}
                       </div>
                       <div className={`w-0.5 h-8 mt-1 ${pricingResult !== null ? 'bg-emerald-200' : 'bg-gray-200'}`} />
                     </div>
                     <div className="pt-0.5">
-                      <p className={`text-sm font-medium ${pricingResult !== null ? 'text-emerald-700' : 'text-gray-400'}`}>选择工艺</p>
-                      <p className="text-xs text-gray-400 mt-0.5">勾选加工方式和表面处理</p>
+                      <p className={`text-sm font-medium ${pricingResult !== null ? 'text-emerald-700' : 'text-slate-600'}`}>选择工艺</p>
+                      <p className="text-sm text-slate-600 mt-0.5">勾选加工方式和表面处理</p>
                     </div>
                   </div>
 
@@ -526,38 +526,38 @@ export default function QuotePage() {
                     <div className="flex flex-col items-center">
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center ${pricingResult !== null ? 'bg-blue-100' : 'bg-gray-100'}`}>
                         {pricingResult !== null ? (
-                          <span className="text-xs font-bold text-blue-600">4</span>
+                          <span className="text-sm font-bold text-blue-600">4</span>
                         ) : (
-                          <span className="text-xs font-bold text-gray-400">4</span>
+                          <span className="text-sm font-bold text-slate-600">4</span>
                         )}
                       </div>
                     </div>
                     <div className={`pt-0.5 rounded-lg px-2 py-1 -ml-2 ${pricingResult !== null ? 'bg-blue-50' : ''}`}>
-                      <p className={`text-sm font-medium ${pricingResult !== null ? 'text-blue-700' : 'text-gray-400'}`}>导出报价单</p>
-                      <p className="text-xs text-gray-400 mt-0.5">生成PDF或Excel报价单</p>
+                      <p className={`text-sm font-medium ${pricingResult !== null ? 'text-blue-700' : 'text-slate-600'}`}>导出报价单</p>
+                      <p className="text-sm text-slate-600 mt-0.5">生成PDF或Excel报价单</p>
                     </div>
                   </div>
                 </div>
 
                 {/* 底部快捷提示 */}
                 <div className="border-t border-gray-100 px-4 py-3 space-y-2">
-                  <p className="text-xs font-medium text-gray-500">快捷提示</p>
+                  <p className="text-sm font-medium text-slate-600">快捷提示</p>
                   <div className="space-y-1.5">
                     <div className="flex items-start gap-2">
                       <span className="w-1 h-1 rounded-full bg-blue-400 mt-1.5 shrink-0" />
-                      <span className="text-[11px] text-gray-500">上传图纸后AI自动识别参数</span>
+                      <span className="text-xs text-slate-600">上传图纸后AI自动识别参数</span>
                     </div>
                     <div className="flex items-start gap-2">
                       <span className="w-1 h-1 rounded-full bg-orange-400 mt-1.5 shrink-0" />
-                      <span className="text-[11px] text-gray-500">橙色边框字段需手动确认</span>
+                      <span className="text-xs text-slate-600">橙色边框字段需手动确认</span>
                     </div>
                     <div className="flex items-start gap-2">
                       <span className="w-1 h-1 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
-                      <span className="text-[11px] text-gray-500">绿点标记为自动识别字段</span>
+                      <span className="text-xs text-slate-600">绿点标记为自动识别字段</span>
                     </div>
                     <div className="flex items-start gap-2">
                       <span className="w-1 h-1 rounded-full bg-gray-400 mt-1.5 shrink-0" />
-                      <span className="text-[11px] text-gray-500">模具费为一次性费用</span>
+                      <span className="text-xs text-slate-600">模具费为一次性费用</span>
                     </div>
                   </div>
                 </div>
@@ -573,7 +573,7 @@ export default function QuotePage() {
               className="bg-white border border-gray-200 rounded-l-lg px-1.5 py-3 shadow-sm hover:bg-gray-50 transition-colors"
               title="展开报价指南"
             >
-              <span className="text-xs text-gray-500">💡</span>
+              <span className="text-sm text-slate-600">💡</span>
             </button>
           </div>
         )}
@@ -585,10 +585,10 @@ export default function QuotePage() {
           onClick={() => setResultExpanded(!resultExpanded)}
           className="w-full flex items-center justify-between px-4 py-2.5 bg-white border-b border-gray-100"
         >
-          <span className="text-sm font-medium text-gray-700">
+          <span className="text-base font-bold text-gray-700">
             {pricingResult ? `¥${fmtPrice(finalUnit)}/件` : '报价结果'}
           </span>
-          {resultExpanded ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronUp className="w-4 h-4 text-gray-400" />}
+          {resultExpanded ? <ChevronDown className="w-4 h-4 text-slate-600" /> : <ChevronUp className="w-4 h-4 text-slate-600" />}
         </button>
         {resultExpanded && (
           <div className="p-4 max-h-[40vh] overflow-y-auto">
@@ -701,14 +701,14 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         <div className="rounded-xl bg-white border border-gray-200 shadow-sm px-3 py-2.5">
           {productName && (
             <div className="flex items-baseline gap-2">
-              <span className="text-[12px] text-gray-400 shrink-0">名称</span>
+              <span className="text-sm text-slate-600 shrink-0">名称</span>
               <span className="text-sm font-semibold text-gray-800 truncate">{productName}</span>
             </div>
           )}
           {productCode && (
             <div className="flex items-baseline gap-2 mt-0.5">
-              <span className="text-[12px] text-gray-400 shrink-0">编号</span>
-              <span className="text-xs font-medium text-gray-500 font-mono">{productCode}</span>
+              <span className="text-sm text-slate-600 shrink-0">编号</span>
+              <span className="text-sm font-medium text-slate-600 font-mono">{productCode}</span>
             </div>
           )}
         </div>
@@ -719,12 +719,12 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-1.5">
             <Package className="w-3.5 h-3.5 text-emerald-600" />
-            <span className="text-[12px] font-medium text-emerald-600 uppercase tracking-wide">未税单价</span>
+            <span className="text-base font-bold text-emerald-600">未税单价</span>
           </div>
           {!isPlaceholder && (
             internal ? (
             <div className="flex items-center gap-1">
-              <span className="text-[11px] text-gray-400">¥</span>
+              <span className="text-xs text-slate-600">¥</span>
               <input
                 type="number"
                 step="0.01"
@@ -738,13 +738,13 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
               />
               <span className={`text-sm ${isPlaceholder ? 'text-gray-300' : 'text-emerald-500'}`}>/件</span>
               {manualUnitPrice !== null && (
-                <button onClick={() => onManualUnitPriceChange(null)} className="text-[11px] text-gray-400 hover:text-red-500 ml-0.5" title="恢复计算值">✕</button>
+                <button onClick={() => onManualUnitPriceChange(null)} className="text-xs text-slate-600 hover:text-red-500 ml-0.5" title="恢复计算值">✕</button>
               )}
             </div>
             ) : (
               <div className="flex items-baseline gap-0.5">
                 <span className={`font-bold text-emerald-700 ${compact ? 'text-2xl' : 'text-3xl'}`}>¥{fmtPrice(displayUnit)}</span>
-                <span className="text-xs text-emerald-500">/件</span>
+                <span className="text-sm text-emerald-500">/件</span>
               </div>
             )
           )}
@@ -753,30 +753,30 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
           <div className={`font-bold text-gray-300 ${compact ? 'text-2xl' : 'text-4xl'}`}>¥--</div>
         )}
         {internal && hasProductDiscount && !isPlaceholder && (
-          <div className="text-[12px] text-red-500 mt-0.5">
+          <div className="text-sm text-red-500 mt-0.5">
             基准 ¥{fmtPrice(baseUnitPrice)}{manualUnitPrice !== null ? ` → 手动 ¥${fmtPrice(manualUnitPrice)}` : ''} · {productDiscount > 100 ? `加价${productDiscount - 100}%` : `${productDiscount}%折`}
           </div>
         )}
         {internal && !hasProductDiscount && manualUnitPrice !== null && !isPlaceholder && (
-          <div className="text-[12px] text-amber-600 mt-0.5">
+          <div className="text-sm text-amber-600 mt-0.5">
             手动调整：计算值 ¥{fmtPrice(baseUnitPrice)} → ¥{fmtPrice(manualUnitPrice)}
           </div>
         )}
         {/* 含税单价 */}
         {!isPlaceholder && p.unit_price_in_tax && p.unit_price_in_tax > 0 && (
           <div className="mt-1 flex items-baseline gap-1.5">
-            <span className="text-[11px] text-gray-400">含税单价</span>
+            <span className="text-xs text-slate-600">含税单价</span>
             <span className="text-sm font-semibold text-gray-600">
               ¥{fmtPrice(manualUnitPrice
                 ? manualUnitPrice * (p.unit_price_in_tax / (p.unit_price_ex_tax || p.unit_price || 1))
                 : p.unit_price_in_tax
               )}/件
             </span>
-            <span className="text-[11px] text-gray-300">（含13%增值税）</span>
+            <span className="text-xs text-gray-300">（含13%增值税）</span>
           </div>
         )}
         <div className="mt-1.5 flex items-baseline gap-1">
-          <span className="text-xs text-gray-500">总价</span>
+          <span className="text-sm text-slate-600">总价</span>
           <span className={`font-bold ${isPlaceholder ? 'text-gray-300' : 'text-gray-800'} ${compact ? 'text-lg' : 'text-2xl'}`}>
             {isPlaceholder ? '¥--' : `¥${fmtPrice((displayUnit * ((p as any).quantity || 1)))}`}
           </span>
@@ -786,13 +786,13 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
           <div className="mt-2">
             {p.mold_spec && (
               <div className="flex justify-end">
-                <span className="inline-block text-[11px] text-gray-500 bg-gray-100 rounded px-1.5 py-0.5 font-mono">{p.mold_spec}</span>
+                <span className="inline-block text-xs text-slate-600 bg-gray-100 rounded px-1.5 py-0.5 font-mono">{p.mold_spec}</span>
               </div>
             )}
             {internal ? (
             <div className="mt-1 flex items-center gap-1.5">
-              <span className="text-[12px] text-gray-500">模具费(一次性)</span>
-              <span className="text-[11px] text-gray-400">¥</span>
+              <span className="text-sm text-slate-600">模具费(一次性)</span>
+              <span className="text-xs text-slate-600">¥</span>
               <input
                 type="number"
                 step="1"
@@ -802,18 +802,18 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
                   const v = parseFloat(e.target.value);
                   if (!isNaN(v) && v >= 0) onManualMoldFeeChange(v);
                 }}
-                className={`w-20 text-right text-xs border rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-400 font-semibold text-blue-700 ${manualMoldFee !== null ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white/50'}`}
+                className={`w-20 text-right text-sm border rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-400 font-semibold text-blue-700 ${manualMoldFee !== null ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white/50'}`}
               />
               {hasMoldDiscount && (
-                <span className="text-[11px] text-amber-600">→ 折后 ¥{fmtPrice(discountedMold)}（{moldDiscount}%）</span>
+                <span className="text-xs text-amber-600">→ 折后 ¥{fmtPrice(discountedMold)}（{moldDiscount}%）</span>
               )}
               {manualMoldFee !== null && (
-                <button onClick={() => onManualMoldFeeChange(null)} className="text-[11px] text-gray-400 hover:text-red-500" title="恢复计算值">✕</button>
+                <button onClick={() => onManualMoldFeeChange(null)} className="text-xs text-slate-600 hover:text-red-500" title="恢复计算值">✕</button>
               )}
             </div>
             ) : (
             <div className="mt-0.5 flex items-baseline gap-1">
-              <span className="text-[12px] text-gray-500">模具费(一次性)</span>
+              <span className="text-sm text-slate-600">模具费(一次性)</span>
               <span className="text-sm font-semibold text-blue-700">¥{fmtPrice(discountedMold)}</span>
             </div>
             )}
@@ -823,7 +823,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         {!isPlaceholder && minOrderQty > 0 && (
           internal ? (
           <div className="mt-2 flex items-center gap-1.5 pt-2 border-t border-emerald-200/40">
-            <span className="text-[12px] text-gray-500">最小起订量</span>
+            <span className="text-sm text-slate-600">最小起订量</span>
             <input
               type="number"
               step="1"
@@ -833,17 +833,17 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
                 const v = parseInt(e.target.value);
                 if (!isNaN(v) && v >= 1) onManualMinOrderQtyChange(v);
               }}
-              className={`w-20 text-right text-xs border rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-400 font-semibold text-gray-700 ${manualMinOrderQty !== null ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white/50'}`}
+              className={`w-20 text-right text-sm border rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-400 font-semibold text-gray-700 ${manualMinOrderQty !== null ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white/50'}`}
             />
-            <span className="text-[11px] text-gray-400">件</span>
+            <span className="text-xs text-slate-600">件</span>
             {manualMinOrderQty !== null && (
-              <button onClick={() => onManualMinOrderQtyChange(null)} className="text-[11px] text-gray-400 hover:text-red-500" title="恢复计算值">✕</button>
+              <button onClick={() => onManualMinOrderQtyChange(null)} className="text-xs text-slate-600 hover:text-red-500" title="恢复计算值">✕</button>
             )}
           </div>
           ) : (
           <div className="mt-2 pt-2 border-t border-emerald-200/40 flex items-baseline gap-1">
-            <span className="text-[12px] text-gray-500">最小起订量</span>
-            <span className="text-sm font-semibold text-gray-700">{manualMinOrderQty ?? minOrderQty} 件{(p as any).min_order_weight_kg ? <span className="text-[11px] text-gray-400 font-normal ml-1">约{(p as any).min_order_weight_kg}kg</span> : null}</span>
+            <span className="text-sm text-slate-600">最小起订量</span>
+            <span className="text-sm font-semibold text-gray-700">{manualMinOrderQty ?? minOrderQty} 件{(p as any).min_order_weight_kg ? <span className="text-xs text-slate-600 font-normal ml-1">约{(p as any).min_order_weight_kg}kg</span> : null}</span>
           </div>
           )
         )}
@@ -854,12 +854,12 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         <div className="rounded-xl bg-white border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-3 py-2 bg-amber-50 border-b border-amber-100 flex items-center gap-1.5">
             <Percent className="w-3.5 h-3.5 text-amber-600" />
-            <span className="text-[12px] font-semibold text-amber-700 uppercase tracking-wide">折扣调整</span>
+            <span className="text-sm font-semibold text-amber-700 uppercase tracking-wide">折扣调整</span>
           </div>
           <div className="divide-y divide-gray-100">
             {/* 产品折扣 */}
             <div className="flex items-center justify-between px-3 py-2.5">
-              <span className="text-xs text-gray-600">产品价调整</span>
+              <span className="text-sm text-gray-600">产品价调整</span>
               <div className="flex items-center gap-2">
                 <input
                   type="range"
@@ -879,15 +879,15 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
                     const v = Number(e.target.value);
                     if (v >= 50 && v <= 200) onProductDiscountChange(v);
                   }}
-                  className="w-14 text-xs text-right border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-amber-400"
+                  className="w-14 text-sm text-right border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-amber-400"
                 />
-                <span className="text-[11px] text-gray-400 w-8">{productDiscount > 100 ? '加价' : '%折'}</span>
+                <span className="text-xs text-slate-600 w-8">{productDiscount > 100 ? '加价' : '%折'}</span>
               </div>
             </div>
             {/* 模具费折扣 */}
             {moldFee > 0 && (
               <div className="flex items-center justify-between px-3 py-2.5">
-                <span className="text-xs text-gray-600">模具费调整</span>
+                <span className="text-sm text-gray-600">模具费调整</span>
                 <div className="flex items-center gap-2">
                   <input
                     type="range"
@@ -907,9 +907,9 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
                       const v = Number(e.target.value);
                       if (v >= 50 && v <= 200) onMoldDiscountChange(v);
                     }}
-                    className="w-14 text-xs text-right border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-amber-400"
+                    className="w-14 text-sm text-right border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-amber-400"
                   />
-                  <span className="text-[11px] text-gray-400 w-8">{moldDiscount > 100 ? '加价' : '%折'}</span>
+                  <span className="text-xs text-slate-600 w-8">{moldDiscount > 100 ? '加价' : '%折'}</span>
                 </div>
               </div>
             )}
@@ -933,7 +933,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
               saveSuccess
                 ? 'bg-emerald-500 text-white'
                 : saving
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  ? 'bg-gray-100 text-slate-600 cursor-not-allowed'
                   : 'bg-white border border-gray-200 text-gray-700 hover:border-blue-300 hover:text-blue-600'
             }`}
           >
@@ -951,18 +951,18 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
       {/* 费用明细（仅内部账号可见） */}
       <div className="rounded-xl bg-white border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
-          <span className="text-[12px] font-semibold text-gray-500 uppercase tracking-wide">费用明细</span>
+          <span className="text-base font-bold text-slate-600 uppercase tracking-wide">费用明细</span>
         </div>
         <div className="divide-y divide-gray-100">
           {breakdownItems.map((item, idx) => (
             <div key={item.key} className={`flex justify-between items-center px-3 py-2 ${idx % 2 === 1 ? 'bg-gray-50/50' : ''}`}>
-              <span className="text-xs text-gray-500">{item.label}</span>
+              <span className="text-sm text-slate-600">{item.label}</span>
               <div className="text-right">
                 <span className={`text-sm font-semibold ${isPlaceholder ? 'text-gray-300' : 'text-gray-800'}`}>
                   {isPlaceholder ? '--' : `¥${fmtPrice(item.value)}`}
                 </span>
                 {!isPlaceholder && p.breakdown?.[item.key] && (
-                  <div className="text-[11px] text-gray-400 leading-tight">
+                  <div className="text-xs text-slate-600 leading-tight">
                     {p.breakdown[item.key].formula && (
                       <span className="italic">{p.breakdown[item.key].formula}</span>
                     )}
@@ -974,13 +974,13 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
           {/* 模具费（一次性，独立显示） */}
           {moldFee > 0 && !hideMoldFeeForUser && (
             <div className="flex justify-between items-center px-3 py-2 bg-blue-50/30">
-              <span className="text-xs text-blue-600 font-medium">模具费（一次性）</span>
+              <span className="text-sm text-blue-600 font-medium">模具费（一次性）</span>
               <div className="text-right">
                 <span className="text-sm font-semibold text-blue-700">
                   {hasMoldDiscount ? `¥${fmtPrice(discountedMold)}` : `¥${fmtPrice(moldFee)}`}
                 </span>
                 {hasMoldDiscount && (
-                  <div className="text-[11px] text-gray-400 line-through">¥{fmtPrice(moldFee)}</div>
+                  <div className="text-xs text-slate-600 line-through">¥{fmtPrice(moldFee)}</div>
                 )}
               </div>
             </div>
@@ -990,7 +990,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         <div className="border-t-2 border-dashed border-gray-200" />
 
         <div className="flex justify-between items-center px-3 py-2 bg-emerald-50/50">
-          <span className="text-xs font-medium text-gray-600">单价合计</span>
+          <span className="text-base font-bold text-slate-600">单价合计</span>
           <span className={`text-base font-bold ${isPlaceholder ? 'text-gray-300' : 'text-emerald-600'}`}>
             {isPlaceholder ? '--' : `¥${fmtPrice(displayUnit)}`}
           </span>
@@ -1001,8 +1001,8 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
       <div className="rounded-xl bg-gray-50 border border-gray-100 p-3 space-y-1.5">
         {(!isPlaceholder && p.weight_per_piece_kg > 0) && (
           <div className="flex justify-between items-center">
-            <span className="text-[12px] text-gray-400">单件型材消耗</span>
-            <span className="text-xs font-medium text-gray-600">
+            <span className="text-sm text-slate-600">单件型材消耗</span>
+            <span className="text-sm font-medium text-gray-600">
               {p.weight_per_piece_kg >= 1
                 ? `${p.weight_per_piece_kg.toFixed(3)} kg`
                 : `${(p.weight_per_piece_kg * 1000).toFixed(1)} g`}
@@ -1011,22 +1011,22 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         )}
         {(!isPlaceholder && p.material_utilization_rate != null && p.material_utilization_rate > 0) && (
           <div className="flex justify-between items-center">
-            <span className="text-[12px] text-gray-400">材料利用率</span>
-            <span className={`text-xs font-semibold ${(p.material_utilization_rate * 100) >= 80 ? 'text-emerald-600' : (p.material_utilization_rate * 100) >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
+            <span className="text-sm text-slate-600">材料利用率</span>
+            <span className={`text-sm font-semibold ${(p.material_utilization_rate * 100) >= 80 ? 'text-emerald-600' : (p.material_utilization_rate * 100) >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
               {(p.material_utilization_rate * 100).toFixed(1)}%
             </span>
           </div>
         )}
         {aluminumPrice && (
           <div className="flex justify-between items-center">
-            <span className="text-[12px] text-gray-400">铝锭基价</span>
-            <span className="text-xs font-medium text-gray-600">¥{aluminumPrice.price.toLocaleString()}/吨</span>
+            <span className="text-sm text-slate-600">铝锭基价</span>
+            <span className="text-sm font-medium text-gray-600">¥{aluminumPrice.price.toLocaleString()}/吨</span>
           </div>
         )}
         {!isPlaceholder && p.aluminum_index > 0 && (
           <div className="flex justify-between items-center">
-            <span className="text-[12px] text-gray-400">计价铝锭价</span>
-            <span className="text-xs font-medium text-gray-600">¥{p.aluminum_index.toLocaleString()}/吨</span>
+            <span className="text-sm text-slate-600">计价铝锭价</span>
+            <span className="text-sm font-medium text-gray-600">¥{p.aluminum_index.toLocaleString()}/吨</span>
           </div>
         )}
       </div>
@@ -1035,7 +1035,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
       {!isPlaceholder && user?.is_admin && p.notes && p.notes.length > 0 && (
         <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
           {p.notes.map((note: string, i: number) => (
-            <div key={i} className="flex items-start gap-1.5 text-xs text-amber-700">
+            <div key={i} className="flex items-start gap-1.5 text-sm text-amber-700">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
               <span>{note}</span>
             </div>
@@ -1045,7 +1045,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
 
       {isPlaceholder && (
         <div className="flex items-center justify-center py-3">
-          <p className="text-xs text-gray-300">请填写参数，系统将自动计算报价</p>
+          <p className="text-sm text-gray-300">请填写参数，系统将自动计算报价</p>
         </div>
       )}
     </div>

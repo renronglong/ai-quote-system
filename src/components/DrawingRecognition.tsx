@@ -483,13 +483,13 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
 
   return (
     <div style={{ overflow: 'auto', padding: 16, background: '#fff', borderRadius: 12, border: '1px solid #e8ecf1', height: '100%' }}>
-      <div style={{ fontSize: 14, fontWeight: 700, color: '#1a1a2e', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ width: 28, height: 28, borderRadius: 8, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>📎</span>
         图纸识别
       </div>
       {/* ---- 图纸上传 ---- */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-        <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">图纸上传（可选）</label>
+        <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wide">图纸上传（可选）</label>
         <div
           onDragOver={e => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
@@ -516,7 +516,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                 <FileText className="w-5 h-5 text-emerald-500 shrink-0" />
                 <div>
                   <div className="text-sm font-medium text-gray-800 truncate max-w-[160px]">{uploadedFile.name}</div>
-                  <div className="text-[11px] text-gray-400">{(uploadedFile.size / 1024).toFixed(1)} KB</div>
+                  <div className="text-xs text-slate-600">{(uploadedFile.size / 1024).toFixed(1)} KB</div>
                 </div>
               </div>
               <button
@@ -524,14 +524,14 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                 onClick={e => { e.stopPropagation(); removeFile(); }}
                 className="p-1 rounded-full hover:bg-gray-200 transition-colors"
               >
-                <X className="w-4 h-4 text-gray-400" />
+                <X className="w-4 h-4 text-slate-600" />
               </button>
             </div>
           ) : (
             <div>
-              <Upload className={`w-6 h-6 mx-auto mb-1.5 ${dragOver ? 'text-blue-500' : 'text-gray-400'}`} />
-              <p className="text-xs text-gray-500">拖拽文件到此处，或<span className="text-blue-500 font-medium">点击上传</span></p>
-              <p className="text-[11px] text-gray-400 mt-1">支持 PDF、JPG、PNG、DXF、DWG、STP、STEP、IGS、X_T、ZIP、RAR、7Z 等，也可 Ctrl+V 粘贴图片</p>
+              <Upload className={`w-6 h-6 mx-auto mb-1.5 ${dragOver ? 'text-blue-500' : 'text-slate-600'}`} />
+              <p className="text-sm text-slate-600">拖拽文件到此处，或<span className="text-blue-500 font-medium">点击上传</span></p>
+              <p className="text-xs text-slate-600 mt-1">支持 PDF、JPG、PNG、DXF、DWG、STP、STEP、IGS、X_T、ZIP、RAR、7Z 等，也可 Ctrl+V 粘贴图片</p>
             </div>
           )}
         </div>
@@ -545,7 +545,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
 
         {/* 识别中 */}
         {recognizing && (
-          <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 text-blue-600 text-xs">
+          <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 text-blue-600 text-sm">
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
             正在AI识别图纸参数...
           </div>
@@ -556,13 +556,13 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
           <div className="mt-2 flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
             <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
-              <div className="text-xs text-amber-700">{recogError}</div>
+              <div className="text-sm text-amber-700">{recogError}</div>
               {uploadedFile && (
                 <button
                   type="button"
                   onClick={requestDeepQuote}
                   disabled={deepQuoteLoading}
-                  className="mt-1.5 inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[12px] font-medium hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="mt-1.5 inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {deepQuoteLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <User className="w-3 h-3" />}
                   {deepQuoteLoading ? '深度识别中...' : '申请深度报价'}
@@ -575,14 +575,14 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         {/* 多产品列表 */}
         {recogProducts.length > 1 && (
           <div className="mt-2 space-y-1.5">
-            <div className="text-[12px] font-semibold text-gray-700">共识别 {recogProducts.length} 个产品，点击切换：</div>
+            <div className="text-sm font-semibold text-gray-700">共识别 {recogProducts.length} 个产品，点击切换：</div>
             <div className="flex flex-wrap gap-1.5">
               {recogProducts.map((p, i) => (
                 <button
                   key={i}
                   type="button"
                   onClick={() => switchToProduct(i)}
-                  className={`px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors border ${
+                  className={`px-2.5 py-1 rounded-md text-sm font-semibold transition-colors border ${
                     selectedProductIdx === i
                       ? 'bg-blue-600 text-white border-blue-600'
                       : p._failed
@@ -610,7 +610,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
               ) : (
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
               )}
-              <span className={`text-[12px] font-semibold ${
+              <span className={`text-sm font-semibold ${
                 recogResult.needs_human ? 'text-amber-700' : 'text-emerald-700'
               }`}>
                 {recogResult.needs_human ? '识别不确定，请确认参数' : 'AI已自动填入参数'}
@@ -619,7 +619,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                 )}
               </span>
             </div>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[12px] text-gray-600">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-sm text-gray-600">
               {recogResult.width != null && <div>宽: <b>{recogResult.width}mm</b></div>}
               {recogResult.height != null && <div>高: <b>{recogResult.height}mm</b></div>}
               {recogResult.wall_thickness != null && <div>壁厚: <b>{recogResult.wall_thickness}mm</b></div>}
@@ -633,7 +633,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
               {recogResult.product_code && <div className="col-span-2">图号: <b>{recogResult.product_code}</b></div>}
             </div>
             {recogResult.handoff_reason && (
-              <div className="mt-1.5 text-[11px] text-amber-600">{recogResult.handoff_reason}</div>
+              <div className="mt-1.5 text-xs text-amber-600">{recogResult.handoff_reason}</div>
             )}
             <div className="mt-2 flex gap-2">
               {recogResult.needs_human && (
@@ -641,7 +641,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                   <button
                     type="button"
                     onClick={() => onDrawingData({ recogData: recogResult })}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-500 text-white text-[12px] font-medium hover:bg-emerald-600 transition-colors"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-500 text-white text-sm font-medium hover:bg-emerald-600 transition-colors"
                   >
                     <CheckCircle2 className="w-3 h-3" />
                     确认填入
@@ -650,7 +650,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                     type="button"
                     onClick={requestDeepQuote}
                     disabled={deepQuoteLoading}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[12px] font-medium hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {deepQuoteLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <User className="w-3 h-3" />}
                     {deepQuoteLoading ? '深度识别中...' : '申请深度报价'}
@@ -666,7 +666,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50/80 p-4 space-y-3">
           <div className="flex items-center gap-2 mb-2">
             <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center">
-              <span className="text-white text-xs font-bold">AI</span>
+              <span className="text-white text-sm font-bold">AI</span>
             </div>
             <span className="text-sm font-semibold text-blue-800">需要确认以下信息</span>
           </div>
@@ -697,14 +697,14 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                       setCheckAnswers(prev => ({ ...prev, [q.field]: Number(e.target.value) }));
                     }}
                   />
-                  {q.unit && <span className="text-xs text-gray-500">{q.unit}</span>}
+                  {q.unit && <span className="text-sm text-slate-600">{q.unit}</span>}
                 </div>
               )}
               {q.input_type === 'confirm' && (
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    className={`px-3 py-1 text-xs rounded-md border transition ${
+                    className={`px-3 py-1 text-sm rounded-md border transition ${
                       checkAnswers[q.field] === 'yes' || checkAnswers[q.field] === undefined
                         ? 'bg-blue-500 text-white border-blue-500'
                         : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
@@ -715,7 +715,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                   </button>
                   <button
                     type="button"
-                    className={`px-3 py-1 text-xs rounded-md border transition ${
+                    className={`px-3 py-1 text-sm rounded-md border transition ${
                       checkAnswers[q.field] === 'no'
                         ? 'bg-red-500 text-white border-red-500'
                         : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
@@ -786,13 +786,13 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                 <User className="w-6 h-6 text-blue-600" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900">登录后使用图纸识别</h3>
-              <p className="text-sm text-gray-500 mt-2">注册即送 100 积分，图纸识别自动填入报价表</p>
+              <p className="text-sm text-slate-600 mt-2">注册即送 100 积分，图纸识别自动填入报价表</p>
             </div>
             <div className="flex gap-3">
               <a href="/login" className="flex-1 text-center py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition">去登录</a>
               <a href="/register" className="flex-1 text-center py-2.5 border border-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition">注册</a>
             </div>
-            <button onClick={() => setShowLoginModal(false)} className="w-full text-center text-sm text-gray-400 hover:text-gray-600">取消</button>
+            <button onClick={() => setShowLoginModal(false)} className="w-full text-center text-sm text-slate-600 hover:text-gray-600">取消</button>
           </div>
         </div>
       )}
@@ -805,7 +805,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                 <AlertTriangle className="w-6 h-6 text-amber-600" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900">积分不足</h3>
-              <p className="text-sm text-gray-500 mt-2">图纸识别每次消耗 10 积分。邀请好友注册，双方各得 100 积分</p>
+              <p className="text-sm text-slate-600 mt-2">图纸识别每次消耗 10 积分。邀请好友注册，双方各得 100 积分</p>
             </div>
             <div className="space-y-3">
               <button
@@ -846,7 +846,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                 申请深度报价
               </button>
             </div>
-            <button onClick={() => setShowQuotaModal(false)} className="w-full text-center text-sm text-gray-400 hover:text-gray-600">关闭</button>
+            <button onClick={() => setShowQuotaModal(false)} className="w-full text-center text-sm text-slate-600 hover:text-gray-600">关闭</button>
           </div>
         </div>
       )}

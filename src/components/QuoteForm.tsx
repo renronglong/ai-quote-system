@@ -1881,7 +1881,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               if (fieldKey === 'productSize') {
                 return (
                   <div key={fieldKey}>
-                    <label className="block text-[12px] text-gray-500 mb-1">{getFieldLabel(productType, fieldKey)}</label>
+                    <label className="block text-sm text-slate-600 mb-1">{getFieldLabel(productType, fieldKey)}</label>
                     <input
                       type="text"
                       placeholder={productType === '板材' ? '如 500×300' : '如 100×50×30'}
@@ -1898,9 +1898,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 const cavLabel = !cavVal ? '' : fields.die_type === 'split' ? '分流模' : '平模';
                 return (
                   <div key={fieldKey}>
-                    <label className="block text-[12px] text-gray-500 mb-1">
+                    <label className="block text-sm text-slate-600 mb-1">
                       {getFieldLabel(productType, fieldKey)}
-                      <span className="ml-1 text-[11px] text-blue-500">({cavLabel})</span>
+                      <span className="ml-1 text-xs text-blue-500">({cavLabel})</span>
                     </label>
                     <select
                       value={cavVal}
@@ -1928,7 +1928,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 const dtVal = fields[fieldKey] as string;
                 return (
                   <div key={fieldKey}>
-                    <label className="block text-[12px] text-gray-500 mb-1">{getFieldLabel(productType, fieldKey)}</label>
+                    <label className="block text-sm text-slate-600 mb-1">{getFieldLabel(productType, fieldKey)}</label>
                     <select
                       value={dtVal || ''}
                       onChange={e => {
@@ -1964,9 +1964,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 const canAdd = lengthVal > 0 && calcWeight > 0;
                 return (
                   <div key={fieldKey}>
-                    <label className="block text-[12px] text-gray-500 mb-1">
+                    <label className="block text-sm text-slate-600 mb-1">
                       {getFieldLabel(productType, fieldKey)}
-                      <span className="ml-1 text-[11px] text-blue-400">点＋把当前长度存入报价池（同副模具只算一次模具费）</span>
+                      <span className="ml-1 text-xs text-blue-400">点＋把当前长度存入报价池（同副模具只算一次模具费）</span>
                     </label>
                     <div className="flex gap-1">
                       <input
@@ -2008,7 +2008,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               }
               return (
                 <div key={fieldKey}>
-                  <label className="block text-[12px] text-gray-500 mb-1">{getFieldLabel(productType, fieldKey)}</label>
+                  <label className="block text-sm text-slate-600 mb-1">{getFieldLabel(productType, fieldKey)}</label>
                   <input
                     type="number"
                     min={0}
@@ -2057,7 +2057,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           if (wg === null) return null;
           const densityTxt = materialCategory === '铝板' ? '2.7' : materialCategory === '不锈钢' ? '7.93' : '7.85';
           return (
-            <div className="mt-1 flex flex-wrap items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-100 px-2.5 py-1.5 text-[12px] text-blue-700">
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-100 px-2.5 py-1.5 text-sm text-blue-700">
               <span className="font-semibold">单件理论重量</span>
               <span className="font-mono font-semibold text-blue-800">{wg} g</span>
               <span className="text-blue-400">（{l}×{w}×{t}mm × {densityTxt}g/cm³ 自动计算，直接用于报价）</span>
@@ -2074,20 +2074,20 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     <div className="h-full">
       {/* ===== CENTER COLUMN: 参数设置 ===== */}
       <div style={{ overflow: 'auto', padding: '16px 20px', background: '#fff', borderRadius: 12, border: '1px solid #e8ecf1' }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: '#1a1a2e', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ width: 28, height: 28, borderRadius: 8, background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>⚙️</span>
           参数设置
         </div>
 
         {/* ---- 模具组工具条：点「新建报价」=开一副新模具 ---- */}
         <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-blue-50/70 border border-blue-100">
-          <div className="text-[12px] text-blue-700 leading-snug">
+          <div className="text-sm text-blue-700 leading-snug">
             当前为<b>同一副模具</b>：改长度后点长度框旁的<b>＋</b>存入报价池，出单时模具费只算一次。
           </div>
           <button
             type="button"
             onClick={onNewQuote}
-            className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-blue-300 text-blue-700 text-xs font-semibold hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm"
+            className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-blue-300 text-blue-700 text-sm font-semibold hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm"
             title="清空表单，开始一副新模具的报价"
           >
             <span className="text-sm leading-none">＋</span> 新建报价
@@ -2096,7 +2096,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
         {/* AI synced indicator */}
         {aiSynced && (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium animate-pulse">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm font-medium animate-pulse">
             <Sparkles className="w-3.5 h-3.5" />
             AI 已自动填入参数
           </div>
@@ -2106,7 +2106,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[12px] text-gray-500 mb-1">产品名称</label>
+              <label className="block text-sm text-slate-600 mb-1">产品名称</label>
               <input
                 type="text"
                 placeholder="输入产品名称"
@@ -2116,7 +2116,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               />
             </div>
             <div>
-              <label className="block text-[12px] text-gray-500 mb-1">产品编号</label>
+              <label className="block text-sm text-slate-600 mb-1">产品编号</label>
               <input
                 type="text"
                 placeholder="输入产品编号"
@@ -2136,17 +2136,17 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 key={key}
                 type="button"
                 onClick={() => handleProductTypeChange(key)}
-                className={`relative px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
+                className={`relative px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
                   productType === key
                     ? 'text-blue-600'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    : 'text-slate-600 hover:text-gray-700 hover:bg-gray-50'
                 }`}
               >
                 <span className="flex items-center gap-1.5">
                   <span className="text-base">{cfg.icon}</span>
                   {cfg.label}
                   {key === '注塑' && (
-                    <span className="ml-0.5 px-1 py-0.5 rounded bg-amber-100 text-amber-600 text-[10px] font-normal leading-none">待开发</span>
+                    <span className="ml-0.5 px-1 py-0.5 rounded bg-amber-100 text-amber-600 text-[11px] font-normal leading-none">待开发</span>
                   )}
                 </span>
                 {productType === key && (
@@ -2159,16 +2159,16 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
         {/* ---- 材料类别 ---- */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-          <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">材料类别</label>
+          <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wide">材料类别</label>
           <div className="flex flex-wrap gap-1.5">
             {Object.entries(productConfig?.materialCategories || {}).map(([key, cfg]) => (
               <button
                 key={key}
                 type="button"
                 onClick={() => handleMaterialCategoryChange(key)}
-                className={`px-2.5 py-1 rounded-lg border text-xs transition-all duration-200 ${
+                className={`px-2.5 py-1 rounded-lg border text-sm transition-all duration-200 ${
                   materialCategory === key
-                    ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
+                    ? 'bg-blue-50 border-blue-300 text-blue-700 font-semibold'
                     : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
                 }`}
               >
@@ -2181,8 +2181,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         {/* ---- 铝板牌号选择（仅板材·铝板；默认5052） ---- */}
         {productType === '板材' && materialCategory === '铝板' && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-            <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
-              铝板牌号 <span className="normal-case text-gray-400">（铝锭价+牌号加价，元/吨）</span>
+            <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wide">
+              铝板牌号 <span className="normal-case text-slate-600">（铝锭价+牌号加价，元/吨）</span>
             </label>
             <div className="flex flex-wrap gap-1.5">
               {([
@@ -2196,9 +2196,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   key={opt.g}
                   type="button"
                   onClick={() => setMaterialGrade(opt.g)}
-                  className={`px-2.5 py-1 rounded-lg border text-xs transition-all duration-200 ${
+                  className={`px-2.5 py-1 rounded-lg border text-sm transition-all duration-200 ${
                     (materialGrade || '5052') === opt.g
-                      ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
+                      ? 'bg-blue-50 border-blue-300 text-blue-700 font-semibold'
                       : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
                   }`}
                 >
@@ -2206,7 +2206,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 </button>
               ))}
             </div>
-            <div className="mt-1.5 text-[11px] text-gray-400">默认 5052；整板规格 2440×1220mm，按展开尺寸排版算材料费</div>
+            <div className="mt-1.5 text-xs text-slate-600">默认 5052；整板规格 2440×1220mm，按展开尺寸排版算材料费</div>
           </div>
         )}
 
@@ -2217,7 +2217,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           if (visibleCats.length === 0) return null;
           return (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-              <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+              <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wide">
                 标准件种类
               </label>
               <div className="flex flex-wrap gap-1.5">
@@ -2226,15 +2226,15 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     key={cat.key}
                     type="button"
                     onClick={() => { setStandardCategory(cat.key); resetProfileState(); setMeterWeightManual(false); setAreaManual(false); setPerimeterManual(false); setFields(prev => ({ ...prev, die_type: ['铝圆管','铝六角管','铝方管'].includes(cat.key) ? 'split' : 'flat' })); }}
-                    className={`px-2.5 py-1.5 rounded-lg border text-xs transition-all duration-200 ${
+                    className={`px-2.5 py-1.5 rounded-lg border text-sm transition-all duration-200 ${
                       standardCategory === cat.key
-                        ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
+                        ? 'bg-blue-50 border-blue-300 text-blue-700 font-semibold'
                         : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
                     }`}
                   >
                     {cat.label}
-                    <span className="ml-1 text-[11px] opacity-60">({cat.count})</span>
-                    <span className={`ml-1 text-[11px] ${cat.mold_type === '分流模' ? 'text-red-400' : 'text-gray-400'}`}>
+                    <span className="ml-1 text-xs opacity-60">({cat.count})</span>
+                    <span className={`ml-1 text-xs ${cat.mold_type === '分流模' ? 'text-red-400' : 'text-slate-600'}`}>
                       {cat.mold_type}
                     </span>
                   </button>
@@ -2249,7 +2249,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           const STEEL_CATS = ['圆钢', '方钢', '六角钢', '角钢', '圆钢管', '方管', '槽钢', '工字钢'];
           return (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-              <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+              <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wide">
                 钢材截面
               </label>
               <div className="flex flex-wrap gap-1.5">
@@ -2258,9 +2258,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     key={cat}
                     type="button"
                     onClick={() => { setStandardCategory(cat); setMeterWeightManual(false); setFields(prev => ({ ...prev, width: '', height: '', thickness: '' })); }}
-                    className={`px-2.5 py-1.5 rounded-lg border text-xs transition-all duration-200 ${
+                    className={`px-2.5 py-1.5 rounded-lg border text-sm transition-all duration-200 ${
                       standardCategory === cat
-                        ? 'bg-orange-50 border-orange-300 text-orange-700 font-medium'
+                        ? 'bg-orange-50 border-orange-300 text-orange-700 font-semibold'
                         : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
                     }`}
                   >
@@ -2270,7 +2270,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               </div>
               {/* 材质选择 */}
               <div className="mt-2">
-                <label className="block text-[12px] font-semibold text-gray-500 mb-1">材质</label>
+                <label className="block text-sm font-semibold text-slate-600 mb-1">材质</label>
                 <select
                   className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none"
                   defaultValue=""
@@ -2300,7 +2300,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 if (specs.length === 0) return null;
                 return (
                   <div className="mt-3">
-                    <label className="block text-[12px] font-semibold text-gray-500 mb-1">选择规格（自动填尺寸+米重）</label>
+                    <label className="block text-sm font-semibold text-slate-600 mb-1">选择规格（自动填尺寸+米重）</label>
                     <select
                       className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none"
                       defaultValue=""
@@ -2336,7 +2336,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         {/* ---- 异型材模具类型选择 (仅挤出·异型材，上移直接选) ---- */}
         {productType === '挤出' && materialCategory === '异型材' && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-            <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+            <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wide">
               模具类型（先选再填尺寸）
             </label>
             <div className="flex gap-2">
@@ -2345,12 +2345,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   key={opt.v}
                   type="button"
                   onClick={() => { setFields(prev => ({ ...prev, die_type: opt.v })); setSelectedMoldId(null); setUseExistingMold(null); setSelectedMold(null); setMoldMatches([]); }}
-                  className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                  className={`flex-1 px-2 py-1.5 rounded-lg text-sm font-semibold border transition-all ${
                     fields.die_type === opt.v
                       ? opt.v === 'split'
                         ? 'bg-red-50 border-red-300 text-red-600'
                         : 'bg-blue-50 border-blue-300 text-blue-700'
-                      : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                      : 'bg-white border-gray-200 text-slate-600 hover:border-gray-300'
                   }`}
                 >
                   {opt.label}
@@ -2358,7 +2358,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               ))}
             </div>
             {!fields.die_type && (
-              <div className="mt-1.5 text-[12px] text-amber-500">请先选择模具类型，再填尺寸点搜索</div>
+              <div className="mt-1.5 text-sm text-amber-500">请先选择模具类型，再填尺寸点搜索</div>
             )}
           </div>
         )}
@@ -2369,7 +2369,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           if (!dimFields) return null;
           return (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-              <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+              <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wide">
                 输入尺寸 · 填完点按钮匹配模具
               </label>
               <div className={`grid ${dimFields.length >= 3 ? 'grid-cols-3' : dimFields.length === 2 ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
@@ -2378,7 +2378,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   const stateKey = fieldMap[df.key] || df.key;
                   return (
                     <div key={df.key}>
-                      <label className="block text-[11px] text-gray-400 mb-0.5">{df.label}</label>
+                      <label className="block text-xs text-slate-600 mb-0.5">{df.label}</label>
                       <input
                         type="number"
                         min={0}
@@ -2415,7 +2415,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               {!CATEGORY_NEEDS_DIE_SELECTION.includes(standardCategory) && (() => {
                 const mw = calcStdMeterWeight(standardCategory, fields.width as number, fields.height as number, fields.thickness as number);
                 return mw !== null ? (
-                  <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-100 px-2.5 py-1.5 text-[12px] text-blue-700">
+                  <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-100 px-2.5 py-1.5 text-sm text-blue-700">
                     <span className="font-semibold">理论米重</span>
                     <span className="font-mono font-semibold text-blue-800">{mw} kg/m</span>
                     <span className="text-blue-400">（按6063铝密度2.7g/cm³自动计算，直接用于报价）</span>
@@ -2428,14 +2428,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 type="button"
                 onClick={runMoldSearch}
                 disabled={moldMatchLoading || (CATEGORY_NEEDS_DIE_SELECTION.includes(standardCategory) && !fields.die_type)}
-                className="mt-2 w-full px-3 py-2 rounded-lg text-xs font-medium bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5"
+                className="mt-2 w-full px-3 py-2 rounded-lg text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700 disabled:bg-gray-200 disabled:text-slate-600 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5"
               >
                 {moldMatchLoading ? (<><span className="inline-block animate-spin">⟳</span> 正在匹配现有模具...</>) : (<>🔍 搜索现有模具</>)}
               </button>
 
               {!moldMatchLoading && moldMatches.length > 0 && !(selectedMoldId && useExistingMold) && (
                 <div className="mt-2 space-y-1.5">
-                  <div className="text-[12px] font-medium text-gray-600 flex items-center gap-1">
+                  <div className="text-sm font-medium text-gray-600 flex items-center gap-1">
                     <CheckCircle2 className="w-3 h-3 text-green-500" />
                     找到 {moldMatches.length} 个相近模具（公差≤15%）
                   </div>
@@ -2471,7 +2471,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                           setMeterWeightManual(true);
                           setAreaManual(false);
                         }}
-                        className={`w-full text-left px-2.5 py-1.5 rounded-lg border text-xs transition-all flex items-center justify-between ${
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg border text-sm transition-all flex items-center justify-between ${
                           selectedMoldId === m.id
                             ? 'bg-green-50 border-green-300 text-green-700'
                             : 'bg-white border-gray-200 text-gray-700 hover:bg-green-50/50 hover:border-green-200'
@@ -2480,17 +2480,17 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                         <div className="flex items-center gap-2 min-w-0">
                           {/* 任务1：异型材显示模具编号，标准件无编号不显示 */}
                           {standardCategory === '异型材' && m.mold_number && (
-                            <span className="shrink-0 px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-mono text-[11px] font-medium">{m.mold_number}</span>
+                            <span className="shrink-0 px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-mono text-xs font-medium">{m.mold_number}</span>
                           )}
                           <span className="font-medium shrink-0">{m.cross_section_mm}</span>
-                          <span className="text-gray-400 shrink-0">·</span>
-                          <span className="text-gray-500 truncate">{m.weight_per_meter}kg/m</span>
-                          <span className={`shrink-0 px-1 py-0.5 rounded text-[10px] ${
-                            m.mold_type === '分流模' ? 'bg-red-50 text-red-500' : 'bg-gray-100 text-gray-500'
+                          <span className="text-slate-600 shrink-0">·</span>
+                          <span className="text-slate-600 truncate">{m.weight_per_meter}kg/m</span>
+                          <span className={`shrink-0 px-1 py-0.5 rounded text-[11px] ${
+                            m.mold_type === '分流模' ? 'bg-red-50 text-red-500' : 'bg-gray-100 text-slate-600'
                           }`}>{m.mold_type}</span>
                         </div>
                         <span className={`shrink-0 ml-1.5 font-bold ${
-                          m.match_score >= 95 ? 'text-green-600' : m.match_score >= 80 ? 'text-amber-600' : 'text-gray-400'
+                          m.match_score >= 95 ? 'text-green-600' : m.match_score >= 80 ? 'text-amber-600' : 'text-slate-600'
                         }`}>{m.match_score}%</span>
                       </button>
                     ))}
@@ -2502,14 +2502,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     return (
                       <div className="mt-2 flex items-center justify-between px-2.5 py-1.5 bg-green-50 rounded-lg border border-green-200">
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-green-600 text-xs">✓</span>
+                          <span className="text-green-600 text-sm">✓</span>
                           {sel?.mold_number && (
-                            <span className="shrink-0 px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-mono text-[11px] font-medium">{sel.mold_number}</span>
+                            <span className="shrink-0 px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-mono text-xs font-medium">{sel.mold_number}</span>
                           )}
-                          <span className="text-xs font-medium text-green-700 truncate">{sel?.cross_section_mm || '已选模具'}</span>
-                          <span className="text-[11px] text-gray-400">{sel?.weight_per_meter}kg/m</span>
+                          <span className="text-sm font-medium text-green-700 truncate">{sel?.cross_section_mm || '已选模具'}</span>
+                          <span className="text-xs text-slate-600">{sel?.weight_per_meter}kg/m</span>
                         </div>
-                        <button type="button" onClick={() => { setSelectedMoldId(null); setUseExistingMold(null); setSelectedMold(null); }} className="text-[11px] text-blue-500 hover:text-blue-700 shrink-0 ml-2">更换</button>
+                        <button type="button" onClick={() => { setSelectedMoldId(null); setUseExistingMold(null); setSelectedMold(null); }} className="text-xs text-blue-500 hover:text-blue-700 shrink-0 ml-2">更换</button>
                       </div>
                     );
                   })()}
@@ -2520,10 +2520,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     <button
                       type="button"
                       onClick={() => setUseExistingMold(true)}
-                      className={`flex-1 px-2 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-sm font-semibold border transition-all ${
                         useExistingMold === true
                           ? 'bg-green-50 border-green-300 text-green-700'
-                          : 'bg-white border-gray-200 text-gray-500 hover:border-green-200'
+                          : 'bg-white border-gray-200 text-slate-600 hover:border-green-200'
                       }`}
                     >
                       ✓ 用现有模具（免模具费）
@@ -2531,10 +2531,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     <button
                       type="button"
                       onClick={() => { setUseExistingMold(false); setSelectedMoldId(null); setSelectedMold(null); }}
-                      className={`flex-1 px-2 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-sm font-semibold border transition-all ${
                         useExistingMold === false
                           ? 'bg-orange-50 border-orange-300 text-orange-700'
-                          : 'bg-white border-gray-200 text-gray-500 hover:border-orange-200'
+                          : 'bg-white border-gray-200 text-slate-600 hover:border-orange-200'
                       }`}
                     >
                       ✦ 开新模具
@@ -2546,11 +2546,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
               {!moldMatchLoading && moldMatches.length === 0 && standardCategory && (fields.width || fields.height || fields.perimeter || fields.meterWeight) && (
                 <div className="mt-2 flex items-center justify-between bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
-                  <span className="text-[12px] text-orange-600">未找到相近现有模具</span>
+                  <span className="text-sm text-orange-600">未找到相近现有模具</span>
                   <button
                     type="button"
                     onClick={() => setUseExistingMold(false)}
-                    className={`px-2 py-1 rounded text-[12px] font-medium border transition-all ${
+                    className={`px-2 py-1 rounded text-sm font-semibold border transition-all ${
                       useExistingMold === false
                         ? 'bg-orange-500 border-orange-500 text-white'
                         : 'bg-white border-orange-300 text-orange-600 hover:bg-orange-100'
@@ -2566,21 +2566,21 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
         {/* ---- 基本参数 ---- */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-          <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">基本参数</label>
+          <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wide">基本参数</label>
           {renderFields()}
         </div>
 
         {/* ---- 加工工艺（合并工艺+表面处理+参数） ---- */}
         {categoryConfig && (
           <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.06)', border: '1px solid #f3f4f6', padding: 12 }}>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>加工工艺</label>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>加工工艺</label>
 
             {/* === 上半部分：3列 grid === */}
             <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 0.6fr', gap: 16 }}>
 
               {/* 左列 - 工艺选择 */}
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 8 }}>工艺选择</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#2563eb', marginBottom: 8 }}>工艺选择</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {categoryConfig.processes.map(proc => {
                     const isNone = proc.name === '无';
@@ -2592,12 +2592,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                         onClick={() => toggleProcess(proc.name)}
                         style={{
                           padding: '6px 10px',
-                          fontSize: 13,
+                          fontSize: 14,
                           borderRadius: 20,
                           border: isSelected ? '1px solid #2563eb' : '1px solid #d1d5db',
                           background: isSelected ? '#eff6ff' : '#fff',
                           color: isSelected ? '#2563eb' : '#475569',
-                          fontWeight: isSelected ? 600 : 400,
+                          fontWeight: 600,
                           cursor: 'pointer',
                           textAlign: 'left',
                           transition: 'all 0.2s',
@@ -2614,7 +2614,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               {/* 中列 - 表面处理 */}
               {(showMaterialSurface || showProductSurface) && (
                 <div style={{ borderLeft: '1px solid #e5e7eb', paddingLeft: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 8 }}>表面处理</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#2563eb', marginBottom: 8 }}>表面处理</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {getSurfaceTreatmentOptions().map(o => {
                       const isSelected = surfaceTreatment === o.name;
@@ -2625,12 +2625,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                           onClick={() => { setSurfaceTreatment(o.name); setSurfaceColor(''); }}
                           style={{
                             padding: '6px 10px',
-                            fontSize: 13,
+                            fontSize: 14,
                             borderRadius: 20,
                             border: isSelected ? '1px solid #2563eb' : '1px solid #d1d5db',
                             background: isSelected ? '#eff6ff' : '#fff',
                             color: isSelected ? '#2563eb' : '#475569',
-                            fontWeight: isSelected ? 600 : 400,
+                            fontWeight: 600,
                             cursor: 'pointer',
                             textAlign: 'left',
                             transition: 'all 0.2s',
@@ -2647,11 +2647,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
               {/* 右列 - 参数（长度+数量） */}
               <div style={{ borderLeft: '1px solid #e5e7eb', paddingLeft: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 8 }}>参数</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#2563eb', marginBottom: 8 }}>参数</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {fields.length !== undefined && (
                     <div>
-                      <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>长度(mm)</div>
+                      <div style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>长度(mm)</div>
                       <input
                         type="number"
                         min={0}
@@ -2664,7 +2664,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                           border: '1px solid #e2e8f0',
                           background: '#f8fafc',
                           padding: '6px 8px',
-                          fontSize: 13,
+                          fontSize: 14,
                           color: '#1f2937',
                           outline: 'none',
                           minHeight: 32,
@@ -2675,7 +2675,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   )}
                   {fields.quantity !== undefined && (
                     <div>
-                      <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>数量</div>
+                      <div style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>数量</div>
                       <input
                         type="number"
                         min={0}
@@ -2688,7 +2688,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                           border: '1px solid #e2e8f0',
                           background: '#f8fafc',
                           padding: '6px 8px',
-                          fontSize: 13,
+                          fontSize: 14,
                           color: '#1f2937',
                           outline: 'none',
                           minHeight: 32,
@@ -2715,17 +2715,17 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     const subDef = PROCESS_SUB_PARAMS['CNC加工'];
                     return (
                       <div key="cnc_card" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>CNC加工</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>CNC加工</div>
                         {subDef?.map(param => (
                           <div key={param.name} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                            <span style={{ fontSize: 11, color: '#6b7280' }}>{param.label}:</span>
+                            <span style={{ fontSize: 12, color: '#475569' }}>{param.label}:</span>
                             <input
                               type="number"
                               min={0}
                               placeholder={param.label}
                               value={proc?.subParams?.[param.name] ?? ''}
                               onChange={e => updateSubParam('CNC加工', param.name, parseFloat(e.target.value) || '')}
-                              style={{ flex: 1, borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 12, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
+                              style={{ flex: 1, borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 13, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
                             />
                           </div>
                         ))}
@@ -2739,15 +2739,15 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     const subDef = PROCESS_SUB_PARAMS['钻孔'];
                     return (
                       <div key="drill_card" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>钻孔</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>钻孔</div>
                         {subDef?.map(param => (
                           <div key={param.name} style={{ marginBottom: 4 }}>
-                            <span style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 2 }}>{param.label}</span>
+                            <span style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 2 }}>{param.label}</span>
                             {param.type === 'select' && param.options ? (
                               <select
                                 value={proc?.subParams?.[param.name] ?? param.options[0]}
                                 onChange={e => updateSubParam('钻孔', param.name, e.target.value)}
-                                style={{ width: '100%', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 12, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
+                                style={{ width: '100%', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 13, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
                               >
                                 {param.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                               </select>
@@ -2758,7 +2758,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                                 placeholder={param.label}
                                 value={proc?.subParams?.[param.name] ?? ''}
                                 onChange={e => updateSubParam('钻孔', param.name, parseFloat(e.target.value) || '')}
-                                style={{ width: '100%', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 12, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
+                                style={{ width: '100%', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 13, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
                               />
                             )}
                           </div>
@@ -2773,15 +2773,15 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     const subDef = PROCESS_SUB_PARAMS['攻牙'];
                     return (
                       <div key="tap_card" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>攻牙</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>攻牙</div>
                         {subDef?.map(param => (
                           <div key={param.name} style={{ marginBottom: 4 }}>
-                            <span style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 2 }}>{param.label}</span>
+                            <span style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 2 }}>{param.label}</span>
                             {param.type === 'select' && param.options ? (
                               <select
                                 value={proc?.subParams?.[param.name] ?? param.options[0]}
                                 onChange={e => updateSubParam('攻牙', param.name, e.target.value)}
-                                style={{ width: '100%', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 12, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
+                                style={{ width: '100%', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 13, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
                               >
                                 {param.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                               </select>
@@ -2792,7 +2792,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                                 placeholder={param.label}
                                 value={proc?.subParams?.[param.name] ?? ''}
                                 onChange={e => updateSubParam('攻牙', param.name, parseFloat(e.target.value) || '')}
-                                style={{ width: '100%', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 12, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
+                                style={{ width: '100%', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 13, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
                               />
                             )}
                           </div>
@@ -2807,29 +2807,29 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     const subDef = PROCESS_SUB_PARAMS['冲压'];
                     return (
                       <div key="stamp_card" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>冲压</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>冲压</div>
                         {/* 冲次 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                          <span style={{ fontSize: 11, color: '#6b7280' }}>冲次:</span>
+                          <span style={{ fontSize: 12, color: '#475569' }}>冲次:</span>
                           <input
                             type="number"
                             min={0}
                             placeholder="次数"
                             value={proc?.quantity ?? ''}
                             onChange={e => updateProcessQuantity('冲压', e.target.value)}
-                            style={{ flex: 1, borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 12, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
+                            style={{ flex: 1, borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 13, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
                           />
-                          <span style={{ fontSize: 11, color: '#9ca3af' }}>次</span>
+                          <span style={{ fontSize: 12, color: '#475569' }}>次</span>
                         </div>
                         {/* 吨位 */}
                         {subDef?.map(param => (
                           <div key={param.name} style={{ marginBottom: 4 }}>
-                            <span style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 2 }}>{param.label}</span>
+                            <span style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 2 }}>{param.label}</span>
                             {param.type === 'select' && param.options ? (
                               <select
                                 value={proc?.subParams?.[param.name] ?? param.options[0]}
                                 onChange={e => updateSubParam('冲压', param.name, e.target.value)}
-                                style={{ width: '100%', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 12, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
+                                style={{ width: '100%', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 13, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
                               >
                                 {param.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                               </select>
@@ -2840,7 +2840,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                                 placeholder={param.label}
                                 value={proc?.subParams?.[param.name] ?? ''}
                                 onChange={e => updateSubParam('冲压', param.name, parseFloat(e.target.value) || '')}
-                                style={{ width: '100%', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 12, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
+                                style={{ width: '100%', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 13, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
                               />
                             )}
                           </div>
@@ -2855,17 +2855,17 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     const subDef = PROCESS_SUB_PARAMS['车加工'];
                     return (
                       <div key="turning_card" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>车加工</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>车加工</div>
                         {subDef?.map(param => (
                           <div key={param.name} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                            <span style={{ fontSize: 11, color: '#6b7280' }}>{param.label}:</span>
+                            <span style={{ fontSize: 12, color: '#475569' }}>{param.label}:</span>
                             <input
                               type="number"
                               min={0}
                               placeholder={param.label}
                               value={proc?.subParams?.[param.name] ?? ''}
                               onChange={e => updateSubParam('车加工', param.name, parseFloat(e.target.value) || '')}
-                              style={{ flex: 1, borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 12, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
+                              style={{ flex: 1, borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 13, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
                             />
                           </div>
                         ))}
@@ -2876,7 +2876,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   {/* 颜色选择卡片 */}
                   {surfaceTreatment && surfaceTreatment !== '无' && getSurfaceColorOptions().length > 0 && (
                     <div key="color_card" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>颜色选择</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>颜色选择</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         {getSurfaceColorOptions().map(colorName => {
                           const isSel = surfaceColor === colorName;
@@ -2887,7 +2887,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                               onClick={() => setSurfaceColor(colorName)}
                               style={{
                                 padding: '4px 8px',
-                                fontSize: 12,
+                                fontSize: 13,
                                 borderRadius: 16,
                                 border: isSel ? '1px solid #2563eb' : '1px solid #d1d5db',
                                 background: isSel ? '#eff6ff' : '#fff',
@@ -2909,14 +2909,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   {/* 材料规格卡片（挤出专用） */}
                   {productType === '挤出' && surfaceTreatment && surfaceTreatment !== '无' && (
                     <div key="material_card" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>材料规格</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>材料规格</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         <button
                           type="button"
                           onClick={() => setMaterialSizeType('short')}
                           style={{
                             padding: '5px 8px',
-                            fontSize: 12,
+                            fontSize: 13,
                             borderRadius: 16,
                             border: materialSizeType === 'short' ? '1px solid #2563eb' : '1px solid #d1d5db',
                             background: materialSizeType === 'short' ? '#eff6ff' : '#fff',
@@ -2934,7 +2934,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                           onClick={() => setMaterialSizeType('long')}
                           style={{
                             padding: '5px 8px',
-                            fontSize: 12,
+                            fontSize: 13,
                             borderRadius: 16,
                             border: materialSizeType === 'long' ? '1px solid #2563eb' : '1px solid #d1d5db',
                             background: materialSizeType === 'long' ? '#eff6ff' : '#fff',
@@ -2957,9 +2957,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             {/* 隐藏的模具钢价输入（挤出专用，后端使用默认值 18000 元/吨） */}
             {productType === '挤出' && (
               <div style={{ display: 'none' }}>
-                <label style={{ display: 'block', fontSize: 12, color: '#6b7280', marginBottom: 4 }}>
+                <label style={{ display: 'block', fontSize: 13, color: '#475569', marginBottom: 4 }}>
                   模具钢价(元/吨)
-                  <span style={{ marginLeft: 4, fontSize: 11, color: '#9ca3af' }}>选填，默认18000(H13均价)</span>
+                  <span style={{ marginLeft: 4, fontSize: 12, color: '#475569' }}>选填，默认18000(H13均价)</span>
                 </label>
                 <input
                   type="number"
@@ -2987,7 +2987,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
         {/* Loading indicator */}
         {loading && (
-          <div className="flex items-center justify-center gap-2 py-2 text-xs text-blue-500">
+          <div className="flex items-center justify-center gap-2 py-2 text-sm text-blue-500">
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
             正在计算...
           </div>
@@ -3018,8 +3018,8 @@ function CustomSelect({ value, options, onChange }: { value: string; options: st
         onClick={() => setOpen(!open)}
         className="w-full flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 text-left min-h-[36px]"
       >
-        <span className={value ? 'text-gray-800' : 'text-gray-400'}>{value || '请选择'}</span>
-        <svg className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <span className={value ? 'text-gray-800' : 'text-slate-600'}>{value || '请选择'}</span>
+        <svg className={`w-4 h-4 text-slate-600 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
@@ -3031,7 +3031,7 @@ function CustomSelect({ value, options, onChange }: { value: string; options: st
               type="button"
               onClick={() => { onChange(opt); setOpen(false); }}
               className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 transition-colors ${
-                value === opt ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+                value === opt ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700'
               }`}
             >
               {opt}
