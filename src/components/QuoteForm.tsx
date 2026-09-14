@@ -2129,7 +2129,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           meter_weight: cadJson.weight_kg_per_m,
           wall_thickness: cadJson.wall_thickness_mm,
           crossSectionArea: cadJson.section_area_mm2,
-          die_type: cadJson.die_type || cadJson.mold_type,
+          die_type: (() => {
+            const raw = String(cadJson.die_type || cadJson.mold_type || '').toLowerCase();
+            if (['split', '分流模', '中空', '空心'].some(v => raw.includes(v))) return 'split';
+            if (['flat', '平模', '实心'].some(v => raw.includes(v))) return 'flat';
+            return cadJson.die_type || cadJson.mold_type || '';
+          })(),
           num_cavities: cadJson.is_hollow ? 1 : 0,
           material_category: cadJson.material_grade || '',
           length: cadJson.extrusion_length_mm,
