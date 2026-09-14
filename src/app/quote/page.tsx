@@ -367,9 +367,9 @@ export default function QuotePage() {
       )}
 
       {/* 主内容区 - 三栏布局 */}
-      <main className="flex-1 min-h-0 overflow-hidden hidden lg:grid" style={{ gridTemplateColumns: guideCollapsed ? '480px 1fr' : '480px 1fr 280px', gap: '16px', padding: '16px' }}>
+      <main className="flex-1 min-h-0 overflow-hidden hidden lg:grid" style={{ gridTemplateColumns: guideCollapsed ? '520px 1fr' : '520px 1fr 280px', gap: '16px', padding: '16px' }}>
         {/* 左栏：参数设置 */}
-        <div className="overflow-y-auto overflow-x-hidden bg-gray-50 rounded-xl border border-gray-200">
+        <div className="overflow-y-auto overflow-x-hidden min-w-0 bg-gray-50 rounded-xl border border-gray-200">
           <div className="p-4 space-y-4">
             <OperationGuide />
             <div className="bg-white rounded-xl border border-gray-200 p-4">
