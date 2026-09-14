@@ -33,10 +33,12 @@ interface AiFormUpdate {
   productType?: string;
   materialCategory?: string;
   materialGrade?: string;
+  standardCategory?: string;
   quantity?: number;
   length?: number;
   width?: number;
   height?: number;
+  wallThickness?: number;
   surfaceTreatment?: string;
   packaging?: string;
   secondaryProcessing?: string[];
