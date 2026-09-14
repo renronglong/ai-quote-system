@@ -1,3 +1,4 @@
+import { getAluminumPrice } from '@/lib/pricing/aluminum-price';
 import { NextRequest } from 'next/server';
 
 // ============================================================
@@ -6,8 +7,6 @@ import { NextRequest } from 'next/server';
 // 支持四种产品类型: sheet_metal | die_casting | zinc_alloy | injection
 // ============================================================
 
-// ---- 默认铝锭价（元/吨），获取失败时降级使用 ----
-const DEFAULT_ALUMINUM_PRICE = 23530;
 
 // ---- 默认不锈钢基准价（元/吨），获取失败时降级 ----
 const DEFAULT_STEEL_304_PRICE = 14500;
@@ -17,6 +16,10 @@ const DEFAULT_HOT_ROLL_PRICE = 3800;
 
 // ---- 默认模具钢价（元/吨），H13均价约18000 ----
 const DEFAULT_DIE_STEEL_PRICE = 18000;
+
+// ---- 模具钢密度（吨/m³），H13工具钢约7.85 ----
+const DIE_STEEL_DENSITY = 7.85;
+const DIE_MATERIAL_WASTE_FACTOR = 1.2; // 材料损耗系数（20%）
 
 // ---- CORS 头，允许 Coze Bot 及任意来源调用 ----
 const CORS_HEADERS = {
@@ -45,11 +48,18 @@ interface QuoteRequest {
     width_mm: number;
     height_mm?: number;
     wall_thickness_mm?: number;
+    standard_category?: string;  // 挤出标准件小类：铝圆棒/铝方/扁棒/铝六角棒/角铝/铝圆管/铝六角管/铝方管
+    diameter_mm?: number;        // 铝圆棒直径
+    hex_flat_mm?: number;        // 铝六角棒/铝六角管对边距
+    outer_diameter_mm?: number;  // 铝圆管外径
+    inner_diameter_mm?: number;  // 铝圆管/铝六角管内径
     cross_section_area_mm2?: number; // 截面积 mm²（挤压铝型材）
-    perimeter_mm?: number;    // 产品周长(mm)
-    num_cavities?: number;    // 面域数（1=平模，>=2=分流模）
+    material_size_type?: 'long' | 'short'; // 长料(≥3000mm) / 小料(<3000mm)
+    perimeter_mm?: number;    // 产品外周长(mm)
+    inner_perimeter_mm?: number; // 内孔周长之和(mm)，中空分流模用于模具费精算
+    num_dies?: number;    // 公头数（0=平模，≥1=分流模）
     die_type?: 'flat' | 'split'; // 模具类型：平模/分流模
-    meter_weight_g_per_m?: number; // 用户手动输入的米重(g/m)
+    meter_weight_kg_per_m?: number; // 用户手动输入的米重(kg/m)
     net_weight_g?: number; // 产品净重(g)，用于计算材料利用率
     die_steel_price?: number; // 模具钢价(元/吨)，可选，默认18000
   };
@@ -70,10 +80,12 @@ interface QuoteRequest {
     stamping_tonnage?: string;   // 冲压吨位（如 '<=35T', '45T', '200T双轴' 等）
     stamping_count?: number;     // 冲次数量
     cnc_time?: { minutes: number }; // CNC/车加工时间
+    bend_count?: number;    // 折弯刀数（钣金）
   } | null;
   aluminum_price_override?: number; // 铝锭价覆盖值（元/吨）
   weight_per_piece_kg?: number;     // 单件重量，不填则根据体积×密度估算
   mold_cost?: number;               // 模具费（元），可选
+  use_existing_mold?: boolean;          // 使用已有模具（模具费为0）
   product_name?: string;            // 产品名称（可选，用于保存报价记录）
   product_code?: string;            // 产品编号（可选，用于保存报价记录）
 }
@@ -90,6 +102,10 @@ interface QuoteResponse {
   transport_cost?: number;
   management_fee?: number;
   unit_price?: number;
+  unit_price_ex_tax?: number;
+  unit_price_in_tax?: number;
+  total_ex_tax?: number;
+  total_in_tax?: number;
   total_price?: number;
   weight_per_piece_kg?: number;
   breakdown?: Record<string, { formula: string; detail: string }>;
@@ -102,6 +118,8 @@ interface QuoteResponse {
   product_name?: string;
   product_code?: string;
   error?: string;
+  mold_cost?: number;              // 模具费（元），一次性，不计入单件价
+  mold_spec?: string;              // 模具规格，如 Φ297×230 分流模
 }
 
 // ============================================================
@@ -141,7 +159,7 @@ const DEFAULT_PRICING_RULES: PricingRules = {
       price_formula: '热卷期货价 × 1.05',
     },
     '不锈钢': {
-      density: 7.85,
+      density: 7.93,
       grades: {
         '304': { ratio: 1.0 },
         '201': { ratio: 0.5 },
@@ -169,7 +187,7 @@ const DEFAULT_PRICING_RULES: PricingRules = {
   process_rates: {
     '冲压吨位费率': {
       rates: {
-        '<=35T': 0.10, '45T': 0.24, '60T': 0.30, '80T': 0.40,
+        '≤35T': 0.10, '45T': 0.24, '60T': 0.30, '80T': 0.40,
         '110T': 0.50, '160T': 0.60, '200T': 1.00, '200T双轴': 1.20, '250T双轴': 1.80,
       },
     },
@@ -253,6 +271,23 @@ const DEFAULT_PRICING_RULES: PricingRules = {
 function r2(n: number): number {
   return Math.round(n * 100) / 100;
 }
+/** 安全地四舍五入到三位小数（米重等小数值） */
+function r3(n: number): number {
+  return Math.round(n * 1000) / 1000;
+}
+/** 保留左边3位有效数字（如 1.234→1.23, 12.34→12.3, 1234→1230） */
+function r3sig(n: number): number {
+  if (n <= 0) return 0;
+  if (n < 0.001) return n; // 太小的数不处理
+  const digits = Math.floor(Math.log10(n));
+  if (digits < 0) {
+    // 小于1的数，如 0.1234 → 保留3位有效数字
+    const unit = Math.pow(10, -digits - 1 + 3);
+    return Math.round(n * unit) / unit;
+  }
+  const unit = Math.pow(10, digits - 2); // 保留3位有效数字
+  return Math.round(n / unit) * unit;
+}
 
 /** 生成报价单号: Q-YYYYMMDD-XXX */
 function generateQuotationId(): string {
@@ -287,55 +322,6 @@ function getBatchCoefficient(qty: number, rules: PricingRules): number {
 // 铝锭价获取 — 优先从 lvdingjia.com 抓取，失败则降级
 // ============================================================
 
-async function fetchAluminumPrice(): Promise<number> {
-  // 数据源1：大沥铝材网 dynamic 页面
-  try {
-    const res = await fetch('https://www.lvdingjia.com/dynamic', {
-      signal: AbortSignal.timeout(8000),
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
-      },
-    });
-    if (res.ok) {
-      const text = await res.text();
-      // 匹配 "南海铝锭XXXXX" 格式
-      const match = text.match(/南海铝锭[^\d]*(\d{5})/);
-      if (match) {
-        const price = parseInt(match[1]);
-        if (price > 10000 && price < 50000) return price;
-      }
-      // 备用匹配
-      const match2 = text.match(/\d{2}月\d{2}日南海铝锭(\d{5})/);
-      if (match2) {
-        const price = parseInt(match2[1]);
-        if (price > 10000 && price < 50000) return price;
-      }
-    }
-  } catch { /* 降级到下一数据源 */ }
-
-  // 数据源2：主页面
-  try {
-    const res = await fetch('https://www.lvdingjia.com/price/nanhai/', {
-      signal: AbortSignal.timeout(8000),
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html,application/json,*/*',
-      },
-    });
-    if (res.ok) {
-      const text = await res.text();
-      const avgMatch = text.match(/南海铝锭[\s\S]*?均价[▼\s]*(\d{4,6})/);
-      if (avgMatch) {
-        const price = parseInt(avgMatch[1]);
-        if (price > 10000 && price < 50000) return price;
-      }
-    }
-  } catch { /* 降级到默认值 */ }
-
-  // 全部失败，返回默认值
-  return DEFAULT_ALUMINUM_PRICE;
-}
 
 // ============================================================
 // 加载报价规则 — 优先从 Supabase Storage 读取
@@ -370,7 +356,7 @@ function calcSheetMaterialCost(
   dimensions: NonNullable<QuoteRequest['dimensions']>,
   aluminumPrice: number,
   rules: PricingRules,
-): { cost: number; weight: number; formula: string; detail: string; utilizationRate?: number } {
+): { cost: number; weight: number; rawWeight: number; formula: string; detail: string; utilizationRate?: number } {
   const { length_mm, width_mm } = dimensions;
   // 板材厚度优先使用 wall_thickness_mm，其次 height_mm（兼容旧格式）
   const t = dimensions.wall_thickness_mm || dimensions.height_mm || 2;
@@ -397,13 +383,13 @@ function calcSheetMaterialCost(
     pricePerTon = aluminumPrice * (1 + premium / 1000);
     formulaStr = '铝锭价 × (1 + 牌号加价/1000) × 密度 × 体积';
     detailStr = `${aluminumPrice} × (1 + ${premium}/1000) = ${r2(pricePerTon)} 元/吨`;
-  } else if (category === '冷板SPCC' || category === '冷板' || category === '冷轧板') {
+  } else if (category === '冷板SPCC' || category === '冷板' || category === '冷轧板' || category === '镀锌板') {
     density = matRule['冷板SPCC']?.density || 7.85;
     pricePerTon = DEFAULT_HOT_ROLL_PRICE * 1.05;
     formulaStr = '热卷期货价 × 1.05 × 密度 × 体积';
     detailStr = `${DEFAULT_HOT_ROLL_PRICE} × 1.05 = ${r2(pricePerTon)} 元/吨`;
   } else if (category === '不锈钢') {
-    density = matRule['不锈钢']?.density || 7.85;
+    density = matRule['不锈钢']?.density || 7.93; // 不锈钢7.93 g/cm³（304约7.93）
     const grades = matRule['不锈钢']?.grades || {};
     let ratio = 1.0;
     for (const [key, val] of Object.entries(grades)) {
@@ -419,19 +405,29 @@ function calcSheetMaterialCost(
 
   // 体积（cm³）→ 重量（kg）= 体积cm³ × 密度 / 1000
   const volumeCm3 = (length_mm * width_mm * t) / 1000; // mm³ → cm³
-  const weightKg = volumeCm3 * density / 1000; // cm³ × g/cm³ / 1000 = kg
-  const materialCost = weightKg * pricePerTon / 1000; // kg × (元/吨) / 1000 = 元
+  const weightKg = volumeCm3 * density / 1000; // cm³ × g/cm³ / 1000 = kg（单件净重，用于包装/运输/表面处理）
 
-  // 排版计算（简化：按面积排版）
-  const partArea = length_mm * width_mm;
-  const sheetArea = sheetSize.length_mm * sheetSize.width_mm;
-  const nestingQty = Math.max(1, Math.floor(sheetArea / partArea));
+  // 材料费 = 整张板材价格 ÷ 排版数量（按展开外形矩形排版，含废料利用率）
+  // 整张板体积 cm³ = 2440×1220×t / 1000
+  const sheetVolumeCm3 = (sheetSize.length_mm * sheetSize.width_mm * t) / 1000;
+  const sheetWeightKg = sheetVolumeCm3 * density / 1000;
+  const sheetPrice = sheetWeightKg * pricePerTon / 1000; // kg × (元/吨) / 1000 = 元
 
-  detailStr += ` | 单件重量: ${r2(weightKg)}kg, 排版: ${nestingQty}件/张`;
+  // 排版：板材 2440×1220 两个方向都试，取能排下的最大件数（单件外形矩形 + 10mm 割缝/边距）
+  const gap = 10;
+  const partL = length_mm + gap, partW = width_mm + gap;
+  const n1 = Math.floor(sheetSize.length_mm / partL) * Math.floor(sheetSize.width_mm / partW);
+  const n2 = Math.floor(sheetSize.length_mm / partW) * Math.floor(sheetSize.width_mm / partL);
+  const nestingQty = Math.max(1, n1, n2);
+  const materialCost = sheetPrice / nestingQty;
+
+  const netMaterialCost = weightKg * pricePerTon / 1000; // 净重材料参考价（展示用）
+  detailStr += ` | 整张${sheetSize.length_mm}×${sheetSize.width_mm}×${t}mm = ${r2(sheetWeightKg)}kg → 整板${r2(sheetPrice)}元；展开件${length_mm}×${width_mm}排版 ${nestingQty}件/张 → 单件材料费 ${r2(materialCost)}元（净重参考 ${r2(netMaterialCost)}元，单件 ${r2(weightKg)}kg）`;
 
   return {
     cost: r2(materialCost),
     weight: r2(weightKg),
+    rawWeight: weightKg,
     formula: formulaStr,
     detail: detailStr,
   };
@@ -445,7 +441,7 @@ function calcVolumetricMaterialCost(
   volumeCm3: number,
   aluminumPrice: number,
   rules: PricingRules,
-): { cost: number; weight: number; formula: string; detail: string; utilizationRate?: number } {
+): { cost: number; weight: number; rawWeight: number; formula: string; detail: string; utilizationRate?: number } {
   const matRule = rules.material_prices;
   let density = 2.7;
   let pricePerKg = 0;
@@ -477,12 +473,162 @@ function calcVolumetricMaterialCost(
   const weightKg = volumeCm3 * density / 1000;
   const cost = weightKg * pricePerKg;
 
-  return { cost: r2(cost), weight: r2(weightKg), formula: formulaStr, detail: detailStr };
+  return { cost: r2(cost), weight: r2(weightKg), rawWeight: weightKg, formula: formulaStr, detail: detailStr };
 }
 
 // ============================================================
 // 铝型材材料费计算
 // ============================================================
+
+// ============================================================
+// 标准件理论米重（规则截面，按6063铝密度2.7g/cm³计算）
+// ============================================================
+const AL_DENSITY_G_CM3 = 2.7;
+
+/**
+ * 按标准件类别与截面尺寸计算理论米重(kg/m)。
+ * 截面积单位mm²，米重 = 截面积mm² × 2.7 / 1000
+ * 返回 { weight, formula }；尺寸不足返回 null
+ */
+function calcStandardMeterWeight(
+  dims: NonNullable<QuoteRequest['dimensions']>,
+): { weight: number; formula: string; area: number } | null {
+  const cat = dims.standard_category;
+  const w = dims.width_mm || 0;
+  const h = dims.height_mm || 0;
+  const t = dims.wall_thickness_mm || 0;
+  const d = dims.diameter_mm || 0;
+  const s = dims.hex_flat_mm || 0;   // 六角对边距
+  const od = dims.outer_diameter_mm || 0;
+  const id = dims.inner_diameter_mm || 0;
+
+  let area = 0;   // 截面积 mm²
+  let formula = '';
+
+  switch (cat) {
+    case '铝圆棒': {
+      if (!(d > 0)) return null;
+      area = Math.PI * d * d / 4;
+      formula = `圆棒 Ø${d}mm：π×${d}²/4 = ${area.toFixed(2)}mm²`;
+      break;
+    }
+    case '铝方/扁棒': {
+      if (!(w > 0 && h > 0)) return null;
+      area = w * h;
+      formula = `方/扁棒 ${w}×${h}mm：${w}×${h} = ${area.toFixed(2)}mm²`;
+      break;
+    }
+    case '铝六角棒': {
+      if (!(s > 0)) return null;
+      // 对边距S，面积 = (√3/2) × S² ≈ 0.866 × S²
+      area = 0.866 * s * s;  // 正六边形面积 = 3√3/2 × S² ≈ 2.598×S²
+      formula = `六角棒 对边距${s}mm：2.598×${s}² = ${area.toFixed(2)}mm²`;
+      break;
+    }
+    case '角铝': {
+      if (!(w > 0 && h > 0 && t > 0)) return null;
+      area = t * (w + h - t);
+      formula = `角铝 ${w}×${h}×${t}mm：${t}×(${w}+${h}-${t}) = ${area.toFixed(2)}mm²`;
+      break;
+    }
+    case '铝圆管': {
+      if (!(od > 0 && id >= 0 && od > id)) {
+        // 只有外径没内径时按实心圆棒算
+        if (od > 0 && !(id > 0)) { area = Math.PI * od * od / 4; formula = `圆棒 Ø${od}mm（未填内径按实心）：${area.toFixed(2)}mm²`; break; }
+        return null;
+      }
+      area = Math.PI * (od * od - id * id) / 4;
+      formula = `圆管 Ø${od}/Ø${id}mm：π×(${od}²-${id}²)/4 = ${area.toFixed(2)}mm²`;
+      break;
+    }
+    case '铝六角管': {
+      if (!(s > 0 && id >= 0)) return null;
+      // 六角管外六角内圆孔
+      // 对边距S，面积 = (√3/2) × S² ≈ 0.866 × S²
+      const outer = 0.866 * s * s;
+      const inner = id > 0 ? Math.PI * id * id / 4 : 0;
+      area = outer - inner;
+      formula = `六角管 对边距${s}/内Ø${id || 0}mm：0.866×${s}²${id > 0 ? `-π×${id}²/4` : ''} = ${area.toFixed(2)}mm²`;
+      break;
+    }
+    case '铝方管': {
+      if (!(w > 0 && h > 0 && t > 0)) return null;
+      if (!(w > 2 * t && h > 2 * t)) return null;
+      area = w * h - (w - 2 * t) * (h - 2 * t);
+      formula = `方管 ${w}×${h}×${t}mm：${w}×${h}-${(w - 2 * t).toFixed(1)}×${(h - 2 * t).toFixed(1)} = ${area.toFixed(2)}mm²`;
+      break;
+    }
+    default:
+      return null;
+  }
+
+  if (!(area > 0)) return null;
+  const weight = area * AL_DENSITY_G_CM3 / 1000;
+  return { weight, formula, area };
+}
+
+/**
+ * 按标准件类别与截面尺寸计算外周长/内孔周长(mm)，用于模具费兜底。
+ * 中空管材(圆管/六角管/方管)=分流模，外周长+内孔周长均参与加工费。
+ * 字段槽位与 calcStandardMeterWeight 一致：diameter/hex/outer→width，inner→height
+ */
+// 请求参数归一化：前端 input 可能以字符串提交数字字段，统一转为数值（空串/非法→undefined）
+function num(v: unknown): number | undefined {
+  if (v === null || v === undefined || v === '') return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+function normalizeDims<T extends Record<string, unknown>>(raw: T): T {
+  const numericKeys = ['length_mm','width_mm','height_mm','wall_thickness_mm','diameter_mm','hex_flat_mm',
+    'outer_diameter_mm','inner_diameter_mm','cross_section_area_mm2','perimeter_mm','inner_perimeter_mm',
+    'num_dies','meter_weight_kg_per_m','net_weight_g','die_steel_price'];
+  const out: Record<string, unknown> = { ...raw };
+  for (const k of numericKeys) {
+    if (k in out) {
+      const nv = num(out[k]);
+      if (nv === undefined) delete out[k];
+      else out[k] = nv;
+    }
+  }
+  return out as T;
+}
+
+function calcStandardPerimeters(
+  dims: NonNullable<QuoteRequest['dimensions']>,
+): { outer: number; inner: number } | null {
+  const cat = dims.standard_category;
+  if (!cat) return null;
+  const w = dims.width_mm || 0;
+  const h = dims.height_mm || 0;
+  const t = dims.wall_thickness_mm || 0;
+  const d = dims.diameter_mm || 0;
+  const sHex = dims.hex_flat_mm || 0;
+  const od = dims.outer_diameter_mm || 0;
+  const id = dims.inner_diameter_mm || 0;
+
+  switch (cat) {
+    case '铝圆棒': return d > 0 ? { outer: Math.PI * d, inner: 0 } : null;
+    case '铝方/扁棒': return (w > 0 && h > 0) ? { outer: 2 * (w + h), inner: 0 } : null;
+    case '铝六角棒': return sHex > 0 ? { outer: 6 * sHex / Math.sqrt(3), inner: 0 } : null; // 正六边形边长=S/√3
+    case '角铝': return (w > 0 && h > 0) ? { outer: 2 * (w + h), inner: 0 } : null;
+    case '铝圆管': {
+      const o = od || d;
+      if (!(o > 0)) return null;
+      return { outer: Math.PI * o, inner: id > 0 ? Math.PI * id : 0 };
+    }
+    case '铝六角管': {
+      if (!(sHex > 0)) return null;
+      return { outer: 6 * sHex / Math.sqrt(3), inner: id > 0 ? Math.PI * id : 0 };
+    }
+    case '铝方管': {
+      if (!(w > 0 && h > 0 && t > 0)) return null;
+      const innerW = w - 2 * t;
+      const innerH = h - 2 * t;
+      return { outer: 2 * (w + h), inner: (innerW > 0 && innerH > 0) ? 2 * (innerW + innerH) : 0 };
+    }
+    default: return null;
+  }
+}
 
 /**
  * 计算铝型材材料费
@@ -495,7 +641,7 @@ function calcExtrusionMaterialCost(
   aluminumPrice: number,
   rules: PricingRules,
   weightOverride?: number,
-): { cost: number; weight: number; formula: string; detail: string; utilizationRate?: number } {
+): { cost: number; weight: number; rawWeight: number; formula: string; detail: string; utilizationRate?: number } {
   const matRule = rules.material_prices['挤压铝型材'] || {};
   const extrusionFeePerTon = matRule.extrusion_fee_per_ton || 3000;
   
@@ -507,14 +653,24 @@ function calcExtrusionMaterialCost(
   let formulaStr: string;
   let detailStr: string;
   
-  // 材料费 = 产品米重(g/m) × (长度mm + 5mm) / 1000 → 得到kg
-  const meterWeight = dimensions.meter_weight_g_per_m || 0;
-  const lengthMm = dimensions.length_mm || 1000;
-  
+  // 材料费 = 产品米重(kg/m) × (长度mm + 5mm) / 1000 → 得到kg
+  let meterWeight = dimensions.meter_weight_kg_per_m || 0;
+  const lengthMm = dimensions.length_mm || 0;  // 未填长度不再默认1000
+
+  // 标准件（棒/管/角铝/方管等规则截面）：无米重时按几何尺寸自动算理论米重
+  let stdWeightInfo: { weight: number; formula: string } | null = null;
+  if (!(meterWeight > 0)) {
+    stdWeightInfo = calcStandardMeterWeight(dimensions);
+    if (stdWeightInfo) meterWeight = stdWeightInfo.weight;
+  }
+
   if (meterWeight > 0 && lengthMm > 0) {
-    weightKg = meterWeight * (lengthMm + 5) / 1000000;
-    formulaStr = '米重 × (长度+5) / 1000000';
-    detailStr = `${meterWeight}g/m × (${lengthMm}mm + 5mm) ÷ 1000000 = ${r2(weightKg)}kg`;
+    weightKg = meterWeight * (lengthMm + 5) / 1000;
+    formulaStr = '米重(kg/m) × (长度+5) / 1000';
+    detailStr = `${r3(meterWeight)}kg/m × (${lengthMm}mm + 5mm) ÷ 1000 = ${r2(weightKg)}kg`;
+    if (stdWeightInfo) {
+      detailStr += ` | 理论米重: ${stdWeightInfo.formula} × 2.7g/cm³ ÷ 1000 = ${r3(meterWeight)}kg/m`;
+    }
   } else if (weightOverride && weightOverride > 0) {
     weightKg = weightOverride;
     formulaStr = '用户提供重量';
@@ -530,7 +686,7 @@ function calcExtrusionMaterialCost(
     } else {
       weightKg = 0;
       formulaStr = '缺少参数';
-      detailStr = '需提供米重或截面积';
+      detailStr = meterWeight > 0 ? '需填入长度才能计算材料费' : '需提供米重或截面积';
     }
   }
   
@@ -550,6 +706,7 @@ function calcExtrusionMaterialCost(
   return {
     cost: r2(cost),
     weight: r2(weightKg),
+    rawWeight: weightKg, // 未舍入的原始重量，用于精确计算MOQ
     formula: formulaStr,
     detail: detailStr,
     utilizationRate,
@@ -565,7 +722,7 @@ function calcExtrusion(
   aluminumPrice: number,
   rules: PricingRules,
 ): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number } {
-  const dims = req.dimensions || { length_mm: 1000, width_mm: 50, height_mm: 25 };
+  const dims = normalizeDims(req.dimensions || { length_mm: 1000, width_mm: 50, height_mm: 25 });
   const notes: string[] = [];
   const breakdown: Record<string, { formula: string; detail: string }> = {};
   
@@ -577,24 +734,32 @@ function calcExtrusion(
   
 
   // 取整工具：按数量级向上进位（如 350→400, 35→40, 3500→4000）
+  // 保留左边两位有效数字，后面补零
   const ceilByMagnitude = (n: number): number => {
     if (n <= 0) return 0;
     if (n <= 10) return Math.ceil(n);
+    if (n <= 100) return Math.ceil(n / 10) * 10; // 11-100: 保留一位小数（十位）
+    // 100+: 保留左边两位有效数字
     const digits = Math.floor(Math.log10(n));
-    const unit = Math.pow(10, digits - 1);
+    const unit = Math.pow(10, digits - 1); // 保留两位有效数字
     return Math.ceil(n / unit) * unit;
   };
-  // 取整工具：按数量级四舍五入（如 350→400, 340→300, 3500→4000）
+  // 取整工具：保留左边两位有效数字，后面补零（如 999→1000, 6840→6800, 12345→12000）
   const roundByMagnitude = (n: number): number => {
     if (n <= 0) return 0;
     if (n <= 10) return Math.round(n);
+    if (n <= 100) return Math.round(n / 10) * 10; // 11-100: 保留一位小数（十位）
+    // 100+: 保留左边两位有效数字
     const digits = Math.floor(Math.log10(n));
-    const unit = Math.pow(10, digits - 1);
+    const unit = Math.pow(10, digits - 1); // 保留两位有效数字
     return Math.round(n / unit) * unit;
   };
 
   // 2. 模具费（挤压模具，单独列出）
   let moldCost = 0;
+  let moldSpec = ''; // 模具规格，如 Φ297×230 分流模
+  let finalDieDiameter = 0; // 最终选定的模具直径（用于起订量分档）
+  let minOrderWeightKg = 300; // 最低起订重量(kg)，按模具规格分档
   if (req.mold_cost && req.mold_cost > 0) {
     moldCost = req.mold_cost;
     notes.push(`挤压模具费: ${moldCost}元（用户指定，一次性，不计入单件价格）`);
@@ -612,27 +777,29 @@ function calcExtrusion(
     const STANDARD_THICKNESS = [90, 110, 120, 130, 160, 190, 230, 260, 360];
 
     // 安全米重上限表：key="Φ×H" → 上限值(kg/m)
+    // 安全米重上限表：key="Φ×H" → 上限值(kg/m)，已按实际生产经验上调一倍
     const SAFE_METER_WEIGHT_LIMITS: Record<string, number> = {
-      '139x55': 1.03, '139x65': 1.20, '139x90': 1.71, '139x110': 1.71,
-      '158x60': 1.33, '158x65': 1.55, '158x120': 2.21, '158x130': 2.21,
-      '178x60': 1.75, '178x130': 2.92,
-      '198x130': 3.46, '198x160': 3.46,
-      '218x160': 4.24,
-      '248x160': 5.37, '248x190': 5.37,
-      '278x190': 6.88, '278x230': 6.88,
-      '297x190': 7.71, '297x230': 7.71, '297x260': 7.71,
-      '338x190': 9.84, '338x230': 9.84, '338x260': 9.84,
-      '397x230': 13.33, '397x260': 13.33, '397x360': 13.33,
+      '139x55': 2.4, '139x65': 3.42, '139x90': 4.42, '139x110': 4.42,
+      '158x120': 5.84, '158x130': 5.84,
+      '178x130': 6.92,
+      '198x130': 8.48, '198x160': 8.48,
+      '218x160': 10.74,
+      '248x160': 13.76, '248x190': 13.76,
+      '278x190': 15.42, '278x230': 15.42,
+      '297x190': 19.68, '297x230': 19.68, '297x260': 19.68,
+      '338x190': 26.66, '338x230': 26.66, '338x260': 26.66,
+      '397x230': 32, '397x260': 32, '397x360': 32,
     };
 
     // 每个规格的最大米重上限（=最厚档位的值）
     const MAX_METER_WEIGHT_BY_SIZE: Record<number, number> = {
-      139: 1.71, 158: 2.21, 178: 2.92, 198: 3.46, 218: 4.24,
-      248: 5.37, 278: 6.88, 297: 7.71, 338: 9.84, 397: 13.33,
+      139: 4.42, 158: 5.84, 178: 6.92, 198: 8.48, 218: 10.74,
+      248: 13.76, 278: 15.42, 297: 19.68, 338: 26.66, 397: 32,
     };
 
-    // 管理费率（按厚度H递减，保底15%封顶35%）
-    function getManagementRate(H: number): number {
+    // 管理费率（Φ139和Φ158统一35%，其余按厚度H递减，保底15%封顶35%）
+    function getManagementRate(H: number, dieDia?: number): number {
+      if (dieDia === 139 || dieDia === 158) return 0.35;
       if (H <= 60) return 0.35;
       if (H <= 130) return 0.25;
       if (H <= 190) return 0.18;
@@ -642,14 +809,36 @@ function calcExtrusion(
     // 步骤1：对角线 → 模具直径
     const W = dims.width_mm || 50;
     const H_dim = dims.height_mm || 25;
-    const diagonal = Math.sqrt(W * W + H_dim * H_dim);
+    // 按标准件类型计算外接圆直径（对角线）
+    const cat = dims.standard_category;
+    let diagonal: number;
+    if (cat === '铝圆管') {
+      // 圆管外接圆 = 外径
+      diagonal = dims.outer_diameter_mm || W;
+    } else if (cat === '铝圆棒') {
+      // 圆棒外接圆 = 直径
+      diagonal = dims.diameter_mm || W;
+    } else if (cat === '铝六角棒' || cat === '铝六角管') {
+      // 六角外接圆 = 对边 / sin(60°) = 对边 × 2/√3
+      const hexFlat = dims.hex_flat_mm || W;
+      diagonal = hexFlat / Math.sin(Math.PI / 3);
+    } else {
+      // 方/扁棒、角铝、方管、异型材：矩形对角线
+      diagonal = Math.sqrt(W * W + H_dim * H_dim);
+    }
     let phiDiag = diagonal * 1.1 + 80;
     let dieDiameter = STANDARD_DIE_SIZES.find(s => s >= phiDiag) || STANDARD_DIE_SIZES[STANDARD_DIE_SIZES.length - 1];
     if (phiDiag <= 140) dieDiameter = 139;
 
     // 步骤2：模具类型确定 → 基础厚度
-    // 优先使用用户手动选择的 die_type，没有则根据 num_cavities 自动推断
-    const numCavities = dims.num_cavities || 1;
+    // 优先使用用户手动选择的 die_type，没有则根据 num_dies 自动推断
+    const numCavities = dims.num_dies || 1;
+    // 公头数量系数：1公头×1.0，2公头×1.2，3公头×1.5，4公头及以上×1.8
+    let cavityMultiplier = 1.0;
+    if (numCavities >= 4) cavityMultiplier = 1.8;
+    else if (numCavities === 3) cavityMultiplier = 1.5;
+    else if (numCavities === 2) cavityMultiplier = 1.2;
+    else cavityMultiplier = 1.0;
     let dieTypeKey: 'flat' | 'split';
     if (dims.die_type) {
       // 向后兼容：旧版传入 pseudo 按分流模处理
@@ -657,17 +846,40 @@ function calcExtrusion(
     } else {
       dieTypeKey = numCavities <= 1 ? 'flat' : 'split';
     }
+    // 标准件：模具类型是截面几何固有属性（中空管材=分流模），以类别为准强制修正，
+    // 不依赖库存 num_dies 是否录入（铝方管等0库存类别曾被误判为平模）
+    // 注意：异型材是用户自选模具类型（平模/分流模按钮），绝不能被类别覆盖
+    const STD_GEOMETRY_CATS = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管', '铝方管'];
+    if (dims.standard_category && STD_GEOMETRY_CATS.includes(dims.standard_category)) {
+      const hollowCats = ['铝圆管', '铝六角管', '铝方管'];
+      dieTypeKey = hollowCats.includes(dims.standard_category) ? 'split' : 'flat';
+    }
     const isFlatDie = dieTypeKey === 'flat';
+    const stdPerimeters = dims.standard_category ? calcStandardPerimeters(dims) : null;
     let dieThickness: number;
     let finalPerimeter = 0; // 用于加工费计算
 
     if (isFlatDie) {
       dieThickness = 60; // 平模固定H=60
-      finalPerimeter = 2 * (W + H_dim); // 平模使用基础矩形周长
+      // 平模优先使用用户输入的周长
+      if (dims.perimeter_mm && dims.perimeter_mm > 0) {
+        finalPerimeter = dims.perimeter_mm;
+      } else if (stdPerimeters?.outer) {
+        finalPerimeter = stdPerimeters.outer; // 标准件几何周长兜底
+      } else {
+        finalPerimeter = 2 * (W + H_dim); // 未提供时使用矩形周长
+      }
+      // 周长合理性钳制：实心件外周长不应超过外接矩形周长的5倍（异型翅片上限），
+      // 防止误填/识图异常值（如把mm当0.1mm、把面积当周长）导致模具费离谱
+      const flatMaxPerimeter = 2 * (W + H_dim) * 5;
+      if (finalPerimeter > flatMaxPerimeter) {
+        notes.push(`周长${Math.round(finalPerimeter)}mm明显超出${W}×${H_dim}截面合理范围（上限约${Math.round(flatMaxPerimeter)}mm），已按矩形轮廓${Math.round(2*(W+H_dim))}mm计算模具费，请核对图纸标注`);
+        finalPerimeter = 2 * (W + H_dim);
+      }
     } else {
       // 分流模/假整体模：判断异型复杂度
       const straightPerimeter = 2 * (W + H_dim);
-      const actualPerimeter = dims.perimeter_mm || straightPerimeter;
+      const actualPerimeter = dims.perimeter_mm || stdPerimeters?.outer || straightPerimeter;
       finalPerimeter = actualPerimeter; // 保存周长用于加工费计算
       const complexityRatio = actualPerimeter / straightPerimeter;
 
@@ -705,12 +917,15 @@ function calcExtrusion(
       }
     }
     // 步骤3：米重负载校验
-    // 优先使用用户手动输入的米重(g/m转kg/m)，否则用公式计算
-    const meterWeightKgPerM = dims.meter_weight_g_per_m
-      ? dims.meter_weight_g_per_m / 1000
-      : (dims.cross_section_area_mm2
-        ? dims.cross_section_area_mm2 * 2.7 / 1000
-        : (W * H_dim * 2.7 / 1000));
+    // 优先使用用户手动输入的米重(kg/m)，否则用公式计算
+    const stdMw = calcStandardMeterWeight(dims);
+    const meterWeightKgPerM = dims.meter_weight_kg_per_m
+      ? dims.meter_weight_kg_per_m
+      : (stdMw
+        ? stdMw.weight
+        : (dims.cross_section_area_mm2
+          ? dims.cross_section_area_mm2 * 2.7 / 1000
+          : (W * H_dim * 2.7 / 1000)));
 
     const limitKey = `${dieDiameter}x${dieThickness}`;
     let safeLimit = SAFE_METER_WEIGHT_LIMITS[limitKey];
@@ -744,123 +959,269 @@ function calcExtrusion(
 
     // 步骤4：计算模具费（加入周长影响，支持实时模具钢价）
     const dieSteelPrice = dims.die_steel_price || DEFAULT_DIE_STEEL_PRICE;
-    const materialFee = dieSteelPrice * dieDiameter * dieDiameter * dieThickness / 1000000000;
-    const baseProcessingFee = 0.035 * dieDiameter * dieThickness;
-    const perimeterFee = 0.1 * finalPerimeter; // 周长越大加工越复杂，费用越高
-    const processingFee = baseProcessingFee + perimeterFee;
-    const mgmtRate = getManagementRate(dieThickness);
+    const materialFee = dieSteelPrice * DIE_STEEL_DENSITY * DIE_MATERIAL_WASTE_FACTOR * (dieDiameter / 2) * (dieDiameter / 2) * Math.PI * dieThickness / 1000000000;
+    const baseProcessingFee = 0.028 * dieDiameter * dieThickness;
+    let perimeterFee: number;
+    let processingFee: number;
+    // 分流模加工总周长 = 外周长 + 内孔周长（AI识别提供inner_perimeter_mm时用实际值；
+    // 标准件用几何内周长；异型材未提供时按矩形管壁厚2mm估算内轮廓，不再用外周长×2高估）
+    let innerPerimeterForFee = 0;
+    if (!isFlatDie) {
+      if (dims.inner_perimeter_mm && dims.inner_perimeter_mm > 0) {
+        innerPerimeterForFee = dims.inner_perimeter_mm;
+      } else if (stdPerimeters?.inner) {
+        innerPerimeterForFee = stdPerimeters.inner;
+      } else {
+        // 异型材：按外接矩形内缩2mm壁厚估算内孔周长
+        const estInnerW = Math.max(W - 4, W * 0.8);
+        const estInnerH = Math.max(H_dim - 4, H_dim * 0.8);
+        innerPerimeterForFee = 2 * (estInnerW + estInnerH);
+      }
+      // 内周长合理性钳制：不得大于外周长
+      if (innerPerimeterForFee > finalPerimeter) innerPerimeterForFee = finalPerimeter;
+    }
+    if (isFlatDie) {
+      // 平模：加工费 = 基础加工 + 外周长×厚度×系数
+      const processingArea = finalPerimeter * dieThickness;
+      perimeterFee = 0.0035 * processingArea;
+      processingFee = baseProcessingFee + perimeterFee;
+    } else {
+      // 分流模：加工费 = 基础加工 + (外周长+内孔周长)×厚度×系数
+      perimeterFee = 0.0035 * (finalPerimeter + innerPerimeterForFee) * dieThickness;
+      processingFee = baseProcessingFee + perimeterFee;
+    }
+    const mgmtRate = getManagementRate(dieThickness, dieDiameter);
     moldCost = roundByMagnitude((materialFee + processingFee) * (1 + mgmtRate));
+    // 所有挤压模具统一加价100元
+    const preSurcharge = moldCost;
+    moldCost = moldCost + 100;
 
     const dieTypeMap: Record<string, string> = { flat: '平模', split: '分流模' };
     const dieType = dieTypeMap[dieTypeKey] || '分流模';
-    notes.push(`模具规格: Φ${dieDiameter}×${dieThickness} ${dieType}`);
+    moldSpec = `Φ${dieDiameter}×${dieThickness} ${dieType}`;
+    // 使用已有模具时，模具费为0
+    if (req.use_existing_mold) {
+      moldCost = 0;
+      notes.push('使用已有模具，模具费为0元');
+    }
+    finalDieDiameter = dieDiameter;
     notes.push(`模具钢价: ${dieSteelPrice}元/吨${dims.die_steel_price ? '（用户指定）' : '（默认H13均价）'}`);
-    notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + ${Math.round(baseProcessingFee)}基础加工 + ${Math.round(perimeterFee)}周长加工) × ${(mgmtRate*100).toFixed(0)}%管理费`);
+    if (isFlatDie) {
+      notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + (${Math.round(baseProcessingFee)}基础 + ${Math.round(perimeterFee)}周长×厚度加工) × ${(mgmtRate*100).toFixed(0)}%管理费)`);
+    } else {
+      notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + (${Math.round(baseProcessingFee)}基础 + ${Math.round(perimeterFee)}(外周长${Math.round(finalPerimeter)}+内周长${Math.round(innerPerimeterForFee)})×厚度加工) × ${(mgmtRate*100).toFixed(0)}%管理费)`);
+    }
+    notes.push(`模具统一加价+100元: ${preSurcharge}→${moldCost}元`);
     notes.push(`模具费一次性，不计入单件价格`);
 
     breakdown['mold'] = {
-      formula: `(材料费: 钢价×Φ²×H/10⁹ + 基础加工费0.035×Φ×H + 周长加工费0.1×周长) × (1+管理费率)`,
-      detail: `模具钢价${dieSteelPrice}元/吨 | Φ${dieDiameter}×${dieThickness}${dieType}: 材料费${dieSteelPrice}×${dieDiameter}²×${dieThickness}/10⁹=${Math.round(materialFee)} + 基础加工${Math.round(baseProcessingFee)} + 周长加工${Math.round(perimeterFee)} → ×${(1+mgmtRate).toFixed(2)} = ${moldCost}元`,
+      formula: `(材料费: 钢价×密度7.85×损耗1.2×πR²×H/10⁹ + (基础加工费0.028×Φ×H + 周长加工费0.0035×周长×2×厚度(分流模)或周长×厚度(平模)) × (1+管理费率)`,
+      detail: `模具钢价${dieSteelPrice}元/吨(密度7.85,损耗1.2) | Φ${dieDiameter}×${dieThickness}${dieType} | ${numCavities}公头(系数×${cavityMultiplier}): 材料费${dieSteelPrice}×7.85×1.2×π×(${dieDiameter}/2)²×${dieThickness}/10⁹=${Math.round(materialFee)} + 加工费(${Math.round(baseProcessingFee)}基础+${Math.round(perimeterFee)}周长)×${cavityMultiplier}=${Math.round((baseProcessingFee + perimeterFee) * cavityMultiplier)} → ×${(1+mgmtRate).toFixed(2)} = ${moldCost}元`,
     };
   }
 
   
-  // 3. 挤压铝型材加工费（按重量计算，1000元/吨 = 1元/kg）
-  // 挤压加工费已包含在材料单价中，此处仅计算二次加工（锯切、去毛刺等）
-  const EXTRUSION_PROCESSING_RATE_PER_KG = 1.0; // 1000元/吨 = 1元/kg
-  const processingCost = r2(mat.weight * EXTRUSION_PROCESSING_RATE_PER_KG);
-  accumulated += processingCost;
-  breakdown['processing'] = {
-    formula: '重量 × 1000元/吨',
-    detail: `${r2(mat.weight)}kg × 1元/kg = ${processingCost}元`,
-  };
-  
-  const stampingSurcharge = 0;
-  
-  // 3.2 表面处理费（复用板材逻辑）
+  // ===== 长/小料判定 =====
+  // 三种场景：
+  //  A. 物理长料（length >= 3000mm）：仅材料费+表面处理费，跳过所有加工/包装/管销
+  //  B. 短件长料氧化（length < 3000 但用户选"长料"）：表面处理走长料费率，锯切/CNC/冲压等加工费、包装、管销利润照算
+  //  C. 小料（length < 3000 且用户选"小料"，默认）：表面处理走小料费率，加工费、包装、管销利润照算
+  const productLengthMm = dims.length_mm || 0;
+  const userPickedLong = dims.material_size_type === 'long';
+  const isPhysicalLong = productLengthMm >= 3000;
+  const isShortLongOxidation = !isPhysicalLong && userPickedLong;
+  const isLongMaterial = isPhysicalLong || userPickedLong;
+
+  let stampingSurchargePerPass = 0;
+  let totalSecondaryCost = 0;
+  const secondaryDetails: string[] = [];
+  const secondaryFormulaParts: string[] = [];
   let surfaceCost = 0;
-  if (req.surface_treatment?.type) {
-    const st = calcSurfaceTreatmentCost(req.surface_treatment.type, '铝板', mat.weight, stampingSurcharge, rules);
-    surfaceCost = st.cost;
-    accumulated += surfaceCost;
-    breakdown['surface'] = { formula: st.formula, detail: st.detail };
-  }
-  
-  // 3.3 CNC二次加工费（复用板材逻辑）
-  let secondaryCost = 0;
-  
-  // 3.3.1 冲压加工费（按吨位费率 × 冲次数量）
-  if (req.process?.stamping_tonnage && req.process?.stamping_count) {
-    const tonnageRates = rules.process_rates?.['冲压吨位费率']?.rates || {};
-    const tonnage = req.process.stamping_tonnage;
-    const count = req.process.stamping_count || 1;
-    const rate = tonnageRates[tonnage] || 0.3;
-    const stampingCost = r2(rate * count);
-    secondaryCost += stampingCost;
+  let packagingCost = 0;
+  let transportCost = 0;
+  let managementFee = 0;
+  let profitFee = 0;
 
-  }
-  
-  if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules);
-    secondaryCost += sec.cost;
-    accumulated += secondaryCost;
-    const detailParts: string[] = [];
-    if (req.process.stamping_tonnage && req.process.stamping_count) {
-      const tonnageRates = rules.process_rates?.['冲压吨位费率']?.rates || {};
-      const rate = tonnageRates[req.process.stamping_tonnage] || 0.3;
-      detailParts.push(`冲压(${req.process.stamping_tonnage}): ${req.process.stamping_count}次×${rate}元/次`);
+  // 冲压附加费（仅体积附加，与是否选冲压工序无关，仅用于表面处理费计算）
+  const dimVolMm3 = (dims.length_mm || 0) * (dims.width_mm || 0) * (dims.height_mm || 0);
+  const stampingSurcharge = dimVolMm3 * 0.00000003;
+
+  const applySurfaceCost = (long: boolean) => {
+    if (!req.surface_treatment?.type) return;
+    const treatmentType = req.surface_treatment.type;
+    const weightKg = mat.weight;
+    let base = 0, weightCoeff = 0, stampingCoeff = 0;
+    if (long) {
+      switch (treatmentType) {
+        case '氧化本色': base = 0; stampingCoeff = 2; weightCoeff = 2; break;
+        case '氧化上色': base = 0; stampingCoeff = 3; weightCoeff = 5; break;
+        case '喷涂': base = 0; stampingCoeff = 2; weightCoeff = 2; break;
+        case '喷砂': base = 0; stampingCoeff = 2; weightCoeff = 1; break;
+        case '拉丝': base = 0; stampingCoeff = 3; weightCoeff = 2; break;
+        default: base = 0; stampingCoeff = 2; weightCoeff = 2;
+      }
+    } else {
+      switch (treatmentType) {
+        case '氧化本色': base = 0.2; stampingCoeff = 2; weightCoeff = 2; break;
+        case '氧化上色': base = 0.3; stampingCoeff = 3; weightCoeff = 3; break;
+        case '喷涂': base = 0.2; stampingCoeff = 2; weightCoeff = 2; break;
+        case '喷砂': base = 0.2; stampingCoeff = 2; weightCoeff = 1; break;
+        case '拉丝': base = 0.2; stampingCoeff = 3; weightCoeff = 3; break;
+        default: base = 0.2; stampingCoeff = 2; weightCoeff = 2;
+      }
     }
-    if (sec.detail && sec.detail !== '无二次加工') detailParts.push(sec.detail);
-    const formulaParts: string[] = [];
-    if (req.process.stamping_tonnage && req.process.stamping_count) formulaParts.push('冲压吨位费率×冲次');
-    formulaParts.push(sec.formula);
-    breakdown['secondary'] = {
-      formula: formulaParts.join(' + '),
-      detail: detailParts.length > 0 ? detailParts.join('; ') : sec.detail,
+    const stampingPart = r2(stampingSurcharge * stampingCoeff);
+    let oxidationExtra = 0;
+    // 小料氧化：额外加材料费的10%
+    if (!long && treatmentType.startsWith('氧化')) {
+      oxidationExtra = r2(mat.cost * 0.1);
+    }
+    surfaceCost = r2(base + stampingPart + weightKg * weightCoeff + oxidationExtra);
+    const label = long ? '长料' : '小料';
+    const extra = long ? '' : '（含小料附加费）';
+    const parts: string[] = [];
+    if (base > 0) parts.push(`${base}${extra}`);
+    if (stampingCoeff > 0) parts.push(`冲压附加费${r2(stampingSurcharge)}×${stampingCoeff}`);
+    parts.push(`重量×${weightCoeff}`);
+    if (oxidationExtra > 0) parts.push(`材料费×10%(${oxidationExtra})`);
+    breakdown['surface'] = {
+      formula: parts.join(' + '),
+      detail: `[${label}] ${base}${extra} + ${r2(stampingSurcharge)}×${stampingCoeff} + ${r2(weightKg)}×${weightCoeff}${oxidationExtra > 0 ? ' + 材料费' + mat.cost + '×10%=' + oxidationExtra : ''} = ${r2(surfaceCost)}元`,
     };
+    accumulated += surfaceCost;
+  };
+
+  if (isPhysicalLong) {
+    applySurfaceCost(true);
+    breakdown['secondary'] = { formula: '无', detail: '长料(≥3m)不另计加工费' };
+    notes.push('长料(≥3m)：仅材料费+表面处理费，不含加工/包装/运输/管销利润');
+  } else {
+    const useLongRate = isShortLongOxidation;
+
+    if (req.process?.stamping_tonnage) {
+      const tonnageRates = rules.process_rates?.['冲压吨位费率']?.rates || {};
+      const tonnage = req.process.stamping_tonnage.replace('<=', '≤');
+      const rate = tonnageRates[tonnage] || 0.3;
+      const count = req.process.stamping_count || 1;
+
+      const lengthMm = dims.length_mm || 0;
+      const widthMm = dims.width_mm || 0;
+      const heightMm = dims.height_mm || 0;
+      const maxDim = Math.max(lengthMm, widthMm, heightMm);
+      const lengthSurcharge = maxDim > 100 ? Math.floor((maxDim - 1) / 100) * 0.01 : 0;
+      const volumeMm3 = lengthMm * widthMm * heightMm;
+      const volumeSurcharge = volumeMm3 * 0.00000003;
+      stampingSurchargePerPass = lengthSurcharge + volumeSurcharge;
+
+      const actualRate = tonnage === '≤35T' ? rate : rate * 2;
+      const stampingFeePerPass = r2((actualRate + lengthSurcharge + volumeSurcharge) * 1.03);
+      accumulated += stampingFeePerPass * count;
+      totalSecondaryCost += accumulated - mat.cost;
+
+      const lengthPart = lengthSurcharge > 0 ? ` + 长度附加${lengthSurcharge}` : '';
+      const volumePart = volumeSurcharge > 0 ? ` + 体积附加${r2(volumeSurcharge)}` : '';
+      secondaryDetails.push(`冲压(${req.process.stamping_tonnage}): ${count}次 × ${stampingFeePerPass}元/次 = ${r2(stampingFeePerPass * count)}元`);
+      secondaryFormulaParts.push(`冲压×${count}`);
+    }
+
+    applySurfaceCost(useLongRate);
+
+    if (req.process) {
+      const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions || {});
+      if (sec.cost > 0 && sec.detail && sec.detail !== '无二次加工') {
+        const opsCount = countSecondaryOps(req.process);
+        const perOpCostWithLoss = r2((sec.cost / opsCount) * 1.03);
+        accumulated += perOpCostWithLoss * opsCount;
+        totalSecondaryCost += perOpCostWithLoss * opsCount;
+        secondaryDetails.push(sec.detail);
+        secondaryFormulaParts.push(sec.formula);
+      }
+    }
+
+    if (productLengthMm > 0) {
+      const sawCost = r2(mat.cost * 0.1 * 1.03);
+      accumulated += sawCost;
+      totalSecondaryCost += sawCost;
+      secondaryDetails.push(`锯切(默认,长度<3m): 材料费${mat.cost}元 × 10% = ${sawCost}元`);
+      secondaryFormulaParts.push('锯切(材料×10%)');
+      breakdown['sawing'] = {
+        formula: '材料费 × 10%（长度<3m默认锯切）',
+        detail: `${mat.cost} × 10% = ${sawCost}元`,
+      };
+    }
+
+    breakdown['secondary'] = {
+      formula: secondaryFormulaParts.length > 0 ? secondaryFormulaParts.join(' + ') : '无',
+      detail: secondaryDetails.length > 0 ? secondaryDetails.join('; ') : '无二次加工',
+    };
+
+    packagingCost = r2(mat.weight * 0.5);
+    transportCost = r2(mat.weight * 0.5);
+    accumulated += packagingCost + transportCost;
+    breakdown['packaging'] = { formula: '重量 × 0.5', detail: `${mat.weight}kg × 0.5 = ${packagingCost}元` };
+    breakdown['transport'] = { formula: '重量 × 0.5', detail: `${mat.weight}kg × 0.5 = ${transportCost}元` };
+
+    profitFee = r2(accumulated * 0.05);
+    accumulated += profitFee;
+    managementFee = 0;
+    breakdown['management_profit'] = {
+      formula: '合计 × 5%(利润)',
+      detail: `利润: ${profitFee}元`,
+    };
+
+    if (isShortLongOxidation) {
+      notes.push('短件长料氧化：表面处理按长料费率（整根氧化后再锯切加工），其余费用按小料流程');
+    }
   }
-  
-  // 3.4 锯切下料费（已包含在挤压加工费1000元/吨中，不单独计费）
-  
-  // 3.5 包装 + 运输（复用板材逻辑）
-  const packagingCost = r2(mat.weight * 0.5);
-  const transportCost = r2(mat.weight * 0.5);
-  accumulated += packagingCost + transportCost;
-  breakdown['packaging'] = { formula: '重量 × 0.5', detail: `${mat.weight}kg × 0.5 = ${packagingCost}元` };
-  breakdown['transport'] = { formula: '重量 × 0.5', detail: `${mat.weight}kg × 0.5 = ${transportCost}元` };
-  
-  // 4. 管销费 + 利润
-  const managementFee = r2(accumulated * 0.03);
-  const profitFee = r2(accumulated * 0.05);
-  accumulated += managementFee + profitFee;
-  breakdown['management_profit'] = {
-    formula: '合计 × 3%(管销) + 合计 × 5%(利润)',
-    detail: `管销费: ${managementFee}元, 利润: ${profitFee}元`,
+
+  const preTaxPrice = accumulated;
+  const taxRate = isLongMaterial ? 0.09 : 0.13;
+  const taxFee = r2(preTaxPrice * taxRate);
+  const unitPrice = r3sig(preTaxPrice + taxFee);
+  breakdown['tax'] = {
+    formula: isLongMaterial ? '总价 × 9%(长料税)' : '总价 × 13%(小料税)',
+    detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
   };
   
-  const unitPrice = r2(accumulated);
+  // 使用未舍入的原始重量计算MOQ，避免精度丢失导致MOQ为0
+  const rawWeight = mat.rawWeight || mat.weight;
   
-  // 最小起订量：按300kg最低起订重量换算件数，按数量级向上进位
-  const minOrderWeightKg = 300;
-  const minOrderQtyRaw = mat.weight > 0 ? Math.ceil(minOrderWeightKg / mat.weight) : 0;
+  // 最小起订量：按模具规格分档最低起订重量换算件数，按数量级向上进位
+  // Φ397及以上→1000kg，Φ338→500kg，其余（含无模具/小模具）→300kg
+  if (finalDieDiameter >= 397) minOrderWeightKg = 1000;
+  else if (finalDieDiameter >= 338) minOrderWeightKg = 500;
+  else minOrderWeightKg = 300;
+  const minOrderQtyRaw = rawWeight > 0 ? Math.ceil(minOrderWeightKg / rawWeight) : 0;
   const minOrderQty = ceilByMagnitude(minOrderQtyRaw);
-  notes.push(`最小起订量: ${minOrderQty}件（按${minOrderWeightKg}kg换算，向上取整）`);
+  if (minOrderQty > 0) {
+    notes.push(`最小起订量: ${minOrderQty}件（按${minOrderWeightKg}kg换算，向上取整）`);
+  }
+  if (productLengthMm === 0 && moldCost > 0) {
+    notes.push('未输入型材长度：模具费可独立核算；材料费/加工费/单件价请填入长度后自动计算');
+  }
   
   return {
     costs: {
       material_cost: mat.cost,
-      processing_cost: processingCost,
+      processing_cost: 0, // 挤压加工费已含在材料单价中
       surface_treatment_cost: r2(surfaceCost),
-      secondary_operations_cost: r2(secondaryCost),
+      secondary_operations_cost: r2(totalSecondaryCost),
       packaging_cost: packagingCost,
       transport_cost: transportCost,
       management_fee: r2(managementFee + profitFee),
       unit_price: unitPrice,
+      unit_price_ex_tax: r2(preTaxPrice),
+      unit_price_in_tax: unitPrice,
+      total_ex_tax: r2(preTaxPrice),
+      total_in_tax: unitPrice,
       weight_per_piece_kg: mat.weight,
       min_order_qty: minOrderQty,
+      min_order_weight_kg: minOrderWeightKg,
+      mold_cost: req.use_existing_mold ? 0 : moldCost,
+      mold_spec: moldSpec,
     },
     breakdown,
-    weight: mat.weight,
+    weight: rawWeight, // 返回未舍入的重量，用于后续总重计算
     notes,
     utilizationRate: mat.utilizationRate,
   };
@@ -1046,47 +1407,69 @@ function calcSurfaceTreatmentCost(
 // ============================================================
 
 /**
+ * 统计二次加工的工序数量（钻孔/攻丝/铣槽/去毛刺/CNC 各算1道）
+ */
+function countSecondaryOps(
+  process: NonNullable<QuoteRequest['process']>,
+): number {
+  let count = 0;
+  if (process.holes && process.holes.count > 0) count++;
+  if (process.tapped_holes && process.tapped_holes.count > 0) count++;
+  if (process.slots && process.slots.count > 0) count++;
+  const ops = process.secondary_operations || [];
+  if (ops.includes('去毛刺')) count++;
+  if (process.cnc_time && process.cnc_time.minutes > 0) count++;
+  return count || (ops.length > 0 ? 1 : 0);
+}
+
+/**
  * 计算二次加工费（钻孔、攻丝、铣槽、去毛刺等）
  */
 function calcSecondaryOperationsCost(
   process: NonNullable<QuoteRequest['process']>,
   rules: PricingRules,
+  materialCost = 0,
+  dims: { length_mm?: number; width_mm?: number; height_mm?: number } = {},
 ): { cost: number; formula: string; detail: string } {
   let totalCost = 0;
   const details: string[] = [];
+  const formulaParts: string[] = [];
   const cncRates = rules.cnc_rates || {};
 
-  // 钻孔费
+  // 钻孔费（按≤35T冲压公式：基数0.10 + 长度附加 + 体积附加）
   if (process.holes && process.holes.count > 0) {
-    const holeRates = cncRates['钻孔'] || {};
-    const range = process.holes.diameter_range || 'ø6~10mm';
-    // 匹配费率
-    let rate = midOfRange(holeRates['ø6~10mm'] || [0.5, 0.8]);
-    for (const [key, val] of Object.entries(holeRates)) {
-      if (range.includes(key.replace('ø', '').split('~')[0]) || key.includes(range)) {
-        rate = midOfRange(val as number[]);
-        break;
-      }
-    }
-    const holeCost = process.holes.count * rate;
+    const baseRate = 0.10;
+    const lengthMm = dims.length_mm || 0;
+    const widthMm = dims.width_mm || 0;
+    const heightMm = dims.height_mm || 0;
+    const maxDim = Math.max(lengthMm, widthMm, heightMm);
+    const lengthSurcharge = maxDim > 100 ? Math.floor((maxDim - 1) / 100) * 0.01 : 0;
+    const volumeMm3 = lengthMm * widthMm * heightMm;
+    const volumeSurcharge = volumeMm3 * 0.00000003;
+    const feePerHole = r2(baseRate + lengthSurcharge + volumeSurcharge);
+    const holeCost = r2(process.holes.count * feePerHole);
     totalCost += holeCost;
-    details.push(`钻孔: ${process.holes.count}孔 × ${rate}元 = ${r2(holeCost)}元`);
+    const lp = lengthSurcharge > 0 ? ` + 长度${lengthSurcharge}` : '';
+    const vp = volumeSurcharge > 0 ? ` + 体积${r2(volumeSurcharge)}` : '';
+    details.push(`钻孔: ${process.holes.count}孔 × ${feePerHole}元/孔 = ${holeCost}元`);
   }
 
-  // 攻丝费
+  // 攻丝费（按≤35T冲压公式：基数0.10 + 长度附加 + 体积附加）
   if (process.tapped_holes && process.tapped_holes.count > 0) {
-    const tapRates = cncRates['攻丝'] || {};
-    const size = process.tapped_holes.size || 'M5~M6';
-    let rate = midOfRange(tapRates['M5~M6'] || [0.5, 0.8]);
-    for (const [key, val] of Object.entries(tapRates)) {
-      if (size.includes(key) || key.includes(size)) {
-        rate = midOfRange(val as number[]);
-        break;
-      }
-    }
-    const tapCost = process.tapped_holes.count * rate;
+    const baseRate = 0.10;
+    const lengthMm = dims.length_mm || 0;
+    const widthMm = dims.width_mm || 0;
+    const heightMm = dims.height_mm || 0;
+    const maxDim = Math.max(lengthMm, widthMm, heightMm);
+    const lengthSurcharge = maxDim > 100 ? Math.floor((maxDim - 1) / 100) * 0.01 : 0;
+    const volumeMm3 = lengthMm * widthMm * heightMm;
+    const volumeSurcharge = volumeMm3 * 0.00000003;
+    const feePerHole = r2(baseRate + lengthSurcharge + volumeSurcharge);
+    const tapCost = r2(process.tapped_holes.count * feePerHole);
     totalCost += tapCost;
-    details.push(`攻丝: ${process.tapped_holes.count}孔 × ${rate}元 = ${r2(tapCost)}元`);
+    const lp = lengthSurcharge > 0 ? ` + 长度${lengthSurcharge}` : '';
+    const vp = volumeSurcharge > 0 ? ` + 体积${r2(volumeSurcharge)}` : '';
+    details.push(`攻丝: ${process.tapped_holes.count}孔 × ${feePerHole}元/孔 = ${tapCost}元`);
   }
 
   // 铣槽费
@@ -1111,12 +1494,17 @@ function calcSecondaryOperationsCost(
     details.push(`去毛刺: ${rate}元/件`);
   }
 
-  // CNC/车加工时间费（按分钟计费，0.5元/分钟）
+  // 折弯费在板材主引擎中按工序累计（×1.03×1.03），此处不重复计
+
+  // CNC/车加工：时间费 1元/分钟 + 材料费的10%（2026-08-30 龙哥规则）
   if (process.cnc_time && process.cnc_time.minutes > 0) {
-    const CNC_RATE_PER_MIN = 0.5; // 元/分钟
-    const cncCost = r2(process.cnc_time.minutes * CNC_RATE_PER_MIN);
-    totalCost += cncCost;
-    details.push(`CNC/车加工: ${process.cnc_time.minutes}分钟 × ${CNC_RATE_PER_MIN}元/分 = ${cncCost}元`);
+    const CNC_RATE_PER_MIN = 1; // 元/分钟
+    const timeCost = r2(process.cnc_time.minutes * CNC_RATE_PER_MIN);
+    const cncSurcharge = materialCost > 0 ? r2(materialCost * 0.1) : 0;
+    const cncTotal = r2(timeCost + cncSurcharge);
+    totalCost += cncTotal;
+    details.push(`CNC/车加工: ${process.cnc_time.minutes}分钟×1元/分=${timeCost}元${cncSurcharge > 0 ? ` + 材料费×10%=${cncSurcharge}元` : ''} = ${cncTotal}元`);
+    formulaParts.push(cncSurcharge > 0 ? 'CNC/车加工(工时+材料×10%)' : 'CNC/车加工(工时)');
   }
 
   if (details.length === 0) {
@@ -1125,7 +1513,7 @@ function calcSecondaryOperationsCost(
 
   return {
     cost: r2(totalCost),
-    formula: '各项二次加工费之和',
+    formula: formulaParts.length > 0 ? formulaParts.join(' + ') : '各项二次加工费之和',
     detail: details.join('; '),
   };
 }
@@ -1139,7 +1527,7 @@ function calcSheetMetal(
   aluminumPrice: number,
   rules: PricingRules,
 ): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number } {
-  const dims = req.dimensions!;
+  const dims = normalizeDims(req.dimensions!);
   // 板材体积：优先使用请求中的值，否则用 长×宽×壁厚 估算（注意是壁厚不是高度）
   const volumeCm3 = req.volume_cm3 || (dims.length_mm * dims.width_mm * (dims.wall_thickness_mm || dims.height_mm || 2)) / 1000;
   const notes: string[] = [];
@@ -1150,13 +1538,43 @@ function calcSheetMetal(
   breakdown['material'] = { formula: mat.formula, detail: mat.detail };
 
   // 2. 加工费
-  const proc = calcSheetProcessingFee(dims, volumeCm3, req.material.category, rules);
+  // 钣金件落料：若工序含激光切割 → 按切割周长×板厚×材料费率(铝板4/冷板1.5/不锈钢2.5 元/米)；
+  // 否则按冲压吨位规则（冲床落料）
+  const opsList = req.process?.secondary_operations || [];
+  const hasLaser = opsList.includes('激光切割');
+  const t = dims.wall_thickness_mm || dims.height_mm || 2;
+  const cutPerimeter = 2 * (dims.length_mm + dims.width_mm); // 展开外形周长 mm
+  let proc: { cost: number; formula: string; detail: string; sizeSurcharge: number; volumeSurcharge: number };
+  if (hasLaser) {
+    const cat = req.material.category;
+    const ratePerMeterPerMm = cat.includes('铝') ? 4 : cat.includes('不锈钢') ? 2.5 : 1.5; // 元/米/mm板厚
+    const cutLengthM = cutPerimeter / 1000;
+    const laserCost = r2(cutLengthM * t * ratePerMeterPerMm);
+    // 穿孔费 0.1元/孔（外形起割点1个 + 内孔 holes+tapped_holes）
+    const pierceCount = 1 + (req.process?.holes?.count || 0) + (req.process?.tapped_holes?.count || 0);
+    const pierceCost = r2(pierceCount * 0.1);
+    const totalLaser = r2(laserCost + pierceCost);
+    proc = {
+      cost: totalLaser,
+      formula: '激光切割：切割长度×板厚×费率 + 穿孔0.1元/孔',
+      detail: `周长${cutPerimeter}mm=${r2(cutLengthM)}m × ${t}mm厚 × ${ratePerMeterPerMm}元 = ${laserCost}元；穿孔${pierceCount}个×0.1=${pierceCost}元；合计${totalLaser}元`,
+      sizeSurcharge: 0, volumeSurcharge: 0,
+    };
+  } else {
+    proc = calcSheetProcessingFee(dims, volumeCm3, req.material.category, rules);
+  }
   breakdown['processing'] = { formula: proc.formula, detail: proc.detail };
 
   // 3. 工序累计（每道工序: 累计 = (前面累计 + 加工费) × 1.03(损耗) × 1.03(管销)）
-  // 简化：假设只有1道冲压工序
   let accumulated = mat.cost;
   accumulated = (accumulated + proc.cost) * 1.03 * 1.03;
+  // 折弯作为独立工序再累计一道（0.2元/刀）
+  const bendCount = (req.process as any)?.bend_count || 0;
+  if (bendCount > 0) {
+    const bendCost = r2(bendCount * 0.2);
+    accumulated = (accumulated + bendCost) * 1.03 * 1.03;
+    breakdown['bending'] = { formula: '折弯 0.2元/刀', detail: `${bendCount}刀 × 0.2 = ${bendCost}元（已×1.03×1.03计入累计）` };
+  }
 
   // 冲压附加费 = 尺寸附加 + 体积附加（不含吨位基数）
   const stampingSurcharge = proc.sizeSurcharge + proc.volumeSurcharge;
@@ -1173,7 +1591,7 @@ function calcSheetMetal(
   // 5. 二次加工费
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules);
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions || {});
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
@@ -1196,7 +1614,14 @@ function calcSheetMetal(
     detail: `管销费已包含在工序累计中: ≈${managementFee}元`,
   };
 
-  const unitPrice = r2(accumulated);
+  const preTaxPrice = accumulated;
+  const taxRate = 0.13;
+  const taxFee = r2(preTaxPrice * taxRate);
+  const unitPrice = r3sig(preTaxPrice + taxFee);
+  breakdown['tax'] = {
+    formula: '总价 × 13%',
+    detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
+  };
 
   return {
     costs: {
@@ -1208,6 +1633,10 @@ function calcSheetMetal(
       transport_cost: transportCost,
       management_fee: managementFee,
       unit_price: unitPrice,
+      unit_price_ex_tax: r2(preTaxPrice),
+      unit_price_in_tax: unitPrice,
+      total_ex_tax: r2(preTaxPrice),
+      total_in_tax: unitPrice,
       weight_per_piece_kg: mat.weight,
     },
     breakdown,
@@ -1262,7 +1691,7 @@ function calcDieCasting(
   // 5. 二次加工费
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules);
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions || {});
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
@@ -1279,7 +1708,14 @@ function calcDieCasting(
   breakdown['transport'] = { formula: '重量 × 0.5', detail: `${mat.weight}kg × 0.5 = ${transportCost}元` };
 
   const managementFee = r2((mat.cost + proc.cost) * 0.03);
-  const unitPrice = r2(accumulated);
+  const preTaxPrice = accumulated;
+  const taxRate = 0.13;
+  const taxFee = r2(preTaxPrice * taxRate);
+  const unitPrice = r3sig(preTaxPrice + taxFee);
+  breakdown['tax'] = {
+    formula: '总价 × 13%',
+    detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
+  };
 
   return {
     costs: {
@@ -1291,7 +1727,12 @@ function calcDieCasting(
       transport_cost: transportCost,
       management_fee: managementFee,
       unit_price: unitPrice,
+      unit_price_ex_tax: r2(preTaxPrice),
+      unit_price_in_tax: unitPrice,
+      total_ex_tax: r2(preTaxPrice),
+      total_in_tax: unitPrice,
       weight_per_piece_kg: mat.weight,
+      mold_cost: moldTotal,
     },
     breakdown,
     weight: mat.weight,
@@ -1345,7 +1786,7 @@ function calcZincAlloy(
   // 5. 二次加工费
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules);
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions || {});
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
@@ -1362,7 +1803,14 @@ function calcZincAlloy(
   breakdown['transport'] = { formula: '重量 × 0.5', detail: `${mat.weight}kg × 0.5 = ${transportCost}元` };
 
   const managementFee = r2((mat.cost + proc.cost) * 0.03);
-  const unitPrice = r2(accumulated);
+  const preTaxPrice = accumulated;
+  const taxRate = 0.13;
+  const taxFee = r2(preTaxPrice * taxRate);
+  const unitPrice = r3sig(preTaxPrice + taxFee);
+  breakdown['tax'] = {
+    formula: '总价 × 13%',
+    detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
+  };
 
   return {
     costs: {
@@ -1374,7 +1822,12 @@ function calcZincAlloy(
       transport_cost: transportCost,
       management_fee: managementFee,
       unit_price: unitPrice,
+      unit_price_ex_tax: r2(preTaxPrice),
+      unit_price_in_tax: unitPrice,
+      total_ex_tax: r2(preTaxPrice),
+      total_in_tax: unitPrice,
       weight_per_piece_kg: mat.weight,
+      mold_cost: moldTotal,
     },
     breakdown,
     weight: mat.weight,
@@ -1430,7 +1883,7 @@ function calcInjection(
   // 5. 二次加工费
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules);
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions || {});
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
@@ -1447,7 +1900,14 @@ function calcInjection(
   breakdown['transport'] = { formula: '重量 × 0.5', detail: `${mat.weight}kg × 0.5 = ${transportCost}元` };
 
   const managementFee = r2((mat.cost + proc.cost) * 0.03);
-  const unitPrice = r2(accumulated);
+  const preTaxPrice = accumulated;
+  const taxRate = 0.13;
+  const taxFee = r2(preTaxPrice * taxRate);
+  const unitPrice = r3sig(preTaxPrice + taxFee);
+  breakdown['tax'] = {
+    formula: '总价 × 13%',
+    detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
+  };
 
   return {
     costs: {
@@ -1459,7 +1919,12 @@ function calcInjection(
       transport_cost: transportCost,
       management_fee: managementFee,
       unit_price: unitPrice,
+      unit_price_ex_tax: r2(preTaxPrice),
+      unit_price_in_tax: unitPrice,
+      total_ex_tax: r2(preTaxPrice),
+      total_in_tax: unitPrice,
       weight_per_piece_kg: mat.weight,
+      mold_cost: moldTotal,
     },
     breakdown,
     weight: mat.weight,
@@ -1543,7 +2008,7 @@ export async function POST(request: NextRequest) {
 
     // 2. 并行加载：铝锭价 + 报价规则
     const [aluminumPrice, rules] = await Promise.all([
-      body.aluminum_price_override ? Promise.resolve(body.aluminum_price_override) : fetchAluminumPrice(),
+      body.aluminum_price_override ? Promise.resolve(body.aluminum_price_override) : getAluminumPrice(23530).then(r => r.price),
       loadPricingRules(),
     ]);
 
@@ -1576,10 +2041,16 @@ export async function POST(request: NextRequest) {
     // 4. 计算总价
     const unitPrice = result.costs.unit_price || 0;
     const totalPrice = r2(unitPrice * body.quantity);
+    const exTaxUnit = result.costs.unit_price_ex_tax || unitPrice;
+    const inTaxUnit = result.costs.unit_price_in_tax || unitPrice;
+    result.costs.unit_price_ex_tax = exTaxUnit;
+    result.costs.unit_price_in_tax = inTaxUnit;
+    result.costs.total_ex_tax = r2(exTaxUnit * body.quantity);
+    result.costs.total_in_tax = r2(inTaxUnit * body.quantity);
 
-    // 5. 最低订单量检查（最低 300kg）
+    // 5. 最低订单量检查（按模具规格分档：300/500/1000kg）
     const totalWeight = result.weight * body.quantity;
-    const minOrderWeight = 300;
+    const minOrderWeight = result.costs.min_order_weight_kg || 300;
     const minOrderMet = totalWeight >= minOrderWeight;
     if (!minOrderMet) {
       result.notes.push(`订单总重量 ${r2(totalWeight)}kg 未达到最低起订量 ${minOrderWeight}kg`);
@@ -1647,7 +2118,7 @@ export async function GET(request: NextRequest) {
 
     // 2. 并行加载：铝锭价 + 报价规则
     const [aluminumPrice, rules] = await Promise.all([
-      body.aluminum_price_override ? Promise.resolve(body.aluminum_price_override) : fetchAluminumPrice(),
+      body.aluminum_price_override ? Promise.resolve(body.aluminum_price_override) : getAluminumPrice(23530).then(r => r.price),
       loadPricingRules(),
     ]);
 
@@ -1680,10 +2151,16 @@ export async function GET(request: NextRequest) {
     // 4. 计算总价
     const unitPrice = result.costs.unit_price || 0;
     const totalPrice = r2(unitPrice * body.quantity);
+    const exTaxUnit = result.costs.unit_price_ex_tax || unitPrice;
+    const inTaxUnit = result.costs.unit_price_in_tax || unitPrice;
+    result.costs.unit_price_ex_tax = exTaxUnit;
+    result.costs.unit_price_in_tax = inTaxUnit;
+    result.costs.total_ex_tax = r2(exTaxUnit * body.quantity);
+    result.costs.total_in_tax = r2(inTaxUnit * body.quantity);
 
-    // 5. 最低订单量检查（最低 300kg）
+    // 5. 最低订单量检查（按模具规格分档：300/500/1000kg）
     const totalWeight = result.weight * body.quantity;
-    const minOrderWeight = 300;
+    const minOrderWeight = result.costs.min_order_weight_kg || 300;
     const minOrderMet = totalWeight >= minOrderWeight;
     if (!minOrderMet) {
       result.notes.push(`订单总重量 ${r2(totalWeight)}kg 未达到最低起订量 ${minOrderWeight}kg`);
@@ -1719,3 +2196,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+

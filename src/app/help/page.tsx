@@ -230,7 +230,7 @@ export default function HelpPage() {
           </div>
           <h1 className="text-3xl sm:text-4xl font-bold mb-3">使用帮助 / 常见问题</h1>
           <p className="text-blue-100 text-base sm:text-lg max-w-2xl">
-            欢迎使用工品报价平台！下面有详细的使用教程，手把手教你怎么用。遇到问题直接看 FAQ 或联系我们。
+            欢迎使用碧利制造平台！下面有详细的使用教程，手把手教你怎么用。遇到问题直接看 FAQ 或联系我们。
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Link href="/">
@@ -842,8 +842,8 @@ export default function HelpPage() {
                 <div className="text-center p-4 bg-gray-50 rounded-lg">
                   <MapPin className="w-6 h-6 text-orange-500 mx-auto mb-2" />
                   <p className="text-xs text-gray-500 mb-1">公司地址</p>
-                  <p className="text-xs font-medium text-gray-800">江西省萍乡市上栗县</p>
-                  <p className="text-xs text-gray-400 mt-1">长平乡佛溪村</p>
+                  <p className="text-xs font-medium text-gray-800">佛山市南海区</p>
+                  <p className="text-xs text-gray-400 mt-1">松岗镇厦边村</p>
                 </div>
               </div>
               <div className="mt-4 text-center">
@@ -861,7 +861,7 @@ export default function HelpPage() {
         {/* ── 底部 ── */}
         <div className="text-center pt-6 pb-8">
           <p className="text-xs text-gray-400">
-            工品报价 · AI 智能报价平台 &nbsp;|&nbsp; <Link href="/" className="hover:text-blue-500">gyparts.cn</Link>
+            碧利制造 · AI 智能报价平台 &nbsp;|&nbsp; <Link href="/" className="hover:text-blue-500">gyparts.cn</Link>
           </p>
         </div>
       </div>

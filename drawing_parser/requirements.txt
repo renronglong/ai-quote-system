@@ -1,0 +1,19 @@
+# drawing_parser 依赖
+# ==================
+
+# 核心解析
+ezdxf>=1.1.0
+pdfplumber>=0.9.0
+pymupdf>=1.23.0
+Pillow>=10.0.0
+numpy>=1.24.0
+
+# Web 服务
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+websockets>=12.0
+
+# 可选（增强）
+# open3d          # 3D 模型可视化
+# trimesh         # 网格分析

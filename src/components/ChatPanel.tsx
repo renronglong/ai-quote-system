@@ -1135,7 +1135,7 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
     {
       id: '1',
       role: 'assistant',
-      content: '您好！我是工品报价AI助手 [v2.1.2026-07-16]，专注解决铝型材、五金加工厂人工报价慢、成本核算不准、工序漏算的问题。\n\n**您可以直接：**\n•  上传 DWG/DXF/PDF/图片 → 自动识别尺寸、材质、工艺\n• 💬 描述产品需求 → 联动实时铝价，核算全工序成本\n• 📄 上传 Excel BOM → 批量生成多款产品报价\n•  一键导出带工厂抬头的 PDF 正式报价单\n\n请问您今天需要核算什么产品的报价？',
+      content: '您好！我是碧利制造AI助手 [v2.1.2026-07-16]，专注解决铝型材、五金加工厂人工报价慢、成本核算不准、工序漏算的问题。\n\n**您可以直接：**\n•  上传 DWG/DXF/PDF/图片 → 自动识别尺寸、材质、工艺\n• 💬 描述产品需求 → 联动实时铝价，核算全工序成本\n• 📄 上传 Excel BOM → 批量生成多款产品报价\n•  一键导出带工厂抬头的 PDF 正式报价单\n\n请问您今天需要核算什么产品的报价？',
       timestamp: new Date(),
     },
   ];
@@ -1174,6 +1174,8 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
   const [cozeFileIdsBatch, setCozeFileIdsBatch] = useState<string[]>([]); // 批量文件ID（用于压缩包多文件）
   const [extractedText, setExtractedText] = useState<string | null>(null);
   const [uploadedFileInfo, setUploadedFileInfo] = useState<{name: string, url: string | null, type: string, size: number} | null>(null);
+  const [moldMatches, setMoldMatches] = useState<Array<{id:string;mold_number:string|null;product_name:string|null;cross_section_mm:string|null;weight_per_meter:number|null;perimeter:number|null;similarity:number;score:number;dim_score:number;weight_score:number;image_similarity:number;cross_section_image_url:string|null}>>([]);
+  const [moldMatchLoading, setMoldMatchLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1317,12 +1319,13 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
     // 设置文件类型为图片
     setUploadedFileType('image');
     
-    // 显示预览
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setUploadedImage(e.target?.result as string);
-    };
-    reader.readAsDataURL(file);
+    // 读取为base64（Promise包装）
+    const imageBase64: string = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve((e.target?.result as string) || '');
+      reader.readAsDataURL(file);
+    });
+    setUploadedImage(imageBase64);
     
     // 上传到服务器（同时存储到Supabase供工单查看）
     const formData = new FormData();
@@ -1345,6 +1348,29 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
           size: data.fileSize || file.size,
         });
         console.log('图片上传成功, cozeFileId:', data.cozeFileId, 'url:', data.url);
+        
+        // 触发模具匹配
+        const base64Data = imageBase64;
+        if (base64Data && base64Data.startsWith('data:image')) {
+          setMoldMatchLoading(true);
+          setMoldMatches([]);
+          try {
+            const matchRes = await fetch('/api/mold-match', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image: base64Data }),
+            });
+            const matchData = await matchRes.json();
+            if (matchData.success) {
+              setMoldMatches(matchData.matches || []);
+              console.log('模具匹配结果:', matchData.matches?.length || 0, '条');
+            }
+          } catch (err) {
+            console.error('模具匹配失败:', err);
+          } finally {
+            setMoldMatchLoading(false);
+          }
+        }
       } else {
         alert('图片上传失败: ' + (data.error || '未知错误'));
       }
@@ -2268,6 +2294,36 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
           if (Object.keys(formUpdate).length > 0) {
             console.log('[ChatPanel] 从结构化参数同步到左侧表单:', formUpdate);
             onFormUpdate(formUpdate as Parameters<NonNullable<typeof onFormUpdate>>[0]);
+
+            // 触发模具参数匹配（提取到参数后）
+            // 截面尺寸固定为 宽×高（矩形）或 ø（圆形）
+            const fw = formUpdate.width as number | undefined;
+            const fh = formUpdate.height as number | undefined;
+            const hasDims = fw || fh;
+            if (hasDims) {
+              const crossSectionParts: string[] = [];
+              if (fw) crossSectionParts.push(String(fw));
+              if (fh) crossSectionParts.push(String(fh));
+              const moldParams = {
+                cross_section_mm: crossSectionParts.join('×'),
+                weight_per_meter: null as number | null,
+                perimeter: null as number | null,
+              };
+              setMoldMatchLoading(true);
+              setMoldMatches([]);
+              fetch('/api/mold-match', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  image: uploadedImage || undefined,
+                  params: moldParams,
+                }),
+              }).then(r => r.json()).then(d => {
+                if (d.success) {
+                  setMoldMatches((d.matches || []).map((m: any) => ({ ...m, similarity: m.score })));
+                }
+              }).catch(() => {}).finally(() => setMoldMatchLoading(false));
+            }
           }
         }
 
@@ -2505,6 +2561,70 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
               <X className="w-3 h-3 text-white" />
             </button>
           </div>
+        </div>
+      )}
+      
+      {/* 模具匹配结果 */}
+      {(moldMatchLoading || moldMatches.length > 0) && (
+        <div className="px-4 py-2 border-t bg-blue-50 shrink-0">
+          <div className="flex items-center gap-2 mb-2">
+            {moldMatchLoading ? (
+              <>
+                <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full" />
+                <span className="text-sm text-blue-700 font-medium">正在匹配已有模具...</span>
+              </>
+            ) : (
+              <>
+                <span className="text-sm text-blue-700 font-medium">🔍 找到 {moldMatches.length} 个匹配模具</span>
+                <button onClick={() => setMoldMatches([])} className="ml-auto text-xs text-blue-500 hover:text-blue-700">收起</button>
+              </>
+            )}
+          </div>
+          {!moldMatchLoading && moldMatches.length > 0 && (
+            <div className="flex gap-3 overflow-x-auto pb-1">
+              {moldMatches.map((m) => (
+                <div key={m.id} className="shrink-0 w-[150px] bg-white rounded-lg border border-blue-200 p-2 hover:shadow-md transition-shadow">
+                  {m.cross_section_image_url && (
+                    <img src={m.cross_section_image_url} alt={m.mold_number || ''} className="w-full h-[72px] object-contain rounded bg-gray-50 mb-1" />
+                  )}
+                  <div className="text-xs font-mono text-gray-800 font-medium truncate">{m.mold_number || '无编号'}</div>
+                  <div className="text-xs text-gray-500 truncate">{m.product_name || '-'}</div>
+                  <div className="text-[12px] text-gray-600 mt-0.5">{m.cross_section_mm || '-'}</div>
+                  <div className="mt-1.5 space-y-0.5">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[11px] text-gray-400 w-6 shrink-0">尺寸</span>
+                      <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full bg-blue-400" style={{width: `${m.dim_score}%`}} />
+                      </div>
+                      <span className="text-[11px] text-gray-500">{m.dim_score}%</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[11px] text-gray-400 w-6 shrink-0">米重</span>
+                      <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full bg-green-400" style={{width: `${m.weight_score}%`}} />
+                      </div>
+                      <span className="text-[11px] text-gray-500">{m.weight_score}%</span>
+                    </div>
+                    {m.image_similarity > 0 && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-[11px] text-gray-400 w-6 shrink-0">截面</span>
+                        <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full bg-orange-400" style={{width: `${m.image_similarity}%`}} />
+                        </div>
+                        <span className="text-[11px] text-gray-500">{m.image_similarity}%</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-1 pt-1 border-t border-gray-100">
+                    <span className="text-[11px] font-semibold text-blue-700">综合 {m.score}%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {!moldMatchLoading && moldMatches.length === 0 && uploadedImage && (
+            <p className="text-xs text-blue-500">未找到匹配的模具，可能是新产品</p>
+          )}
         </div>
       )}
       

@@ -23,6 +23,16 @@ export default function RegisterPage() {
   const [countdown, setCountdown] = useState(0);
   const [sending, setSending] = useState(false);
   const [step, setStep] = useState<'form' | 'verify'>('form');
+  // 邀请码
+  const [inviterCode, setInviterCode] = useState<string | null>(null);
+  // 同意服务协议与隐私政策
+  const [agreed, setAgreed] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    if (ref) setInviterCode(ref);
+  }, []);
   // TODO: 上线前删除测试账号相关逻辑
   const [devCode, setDevCode] = useState<string | null>(null);
 
@@ -83,6 +93,11 @@ export default function RegisterPage() {
     e.preventDefault();
     setError(null);
 
+    if (!agreed) {
+      setError('请先阅读并勾选同意《用户服务协议》和《隐私政策》');
+      return;
+    }
+
     if (!validatePhone(phone)) {
       setError('请输入正确的手机号');
       return;
@@ -123,7 +138,7 @@ export default function RegisterPage() {
       const response = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, password, verifyCode, email }),
+        body: JSON.stringify({ phone, password, verifyCode, email, referralCode: inviterCode }),
       });
 
       const data = await response.json();
@@ -175,6 +190,11 @@ export default function RegisterPage() {
           <CardHeader className="space-y-1 pb-4">
             <CardTitle className="text-xl text-center text-slate-800">用户注册</CardTitle>
             <CardDescription className="text-center">
+              {inviterCode && (
+                <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 text-sm mb-4">
+                  🎉 您通过好友邀请注册，双方各得 100 积分奖励！
+                </div>
+              )}
               {step === 'form' ? '输入手机号和密码创建账号' : '输入收到的验证码完成注册'}
             </CardDescription>
           </CardHeader>
@@ -330,7 +350,21 @@ export default function RegisterPage() {
             </div>
           </CardContent>
         </Card>
-        <p className="text-center text-xs text-slate-400 mt-6">注册即表示同意我们的服务条款和隐私政策</p>
+        <div className="mt-6 flex items-start justify-center gap-2 px-2">
+          <input
+            id="agreeTerms"
+            type="checkbox"
+            checked={agreed}
+            onChange={(e) => setAgreed(e.target.checked)}
+            className="mt-0.5 w-4 h-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+          />
+          <label htmlFor="agreeTerms" className="text-xs text-slate-500 leading-5 cursor-pointer">
+            我已阅读并同意
+            <Link href="/terms" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 hover:underline">《用户服务协议》</Link>
+            和
+            <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 hover:underline">《隐私政策》</Link>
+          </label>
+        </div>
       </div>
     </div>
   );

@@ -1756,6 +1756,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const p = toNum(d.perimeter); if (p !== null) next.perimeter = p;
       const ip = toNum(d.inner_perimeter); if (ip !== null) next.innerPerimeter = ip;
       const nc = toNum(d.num_cavities); if (nc !== null) next.num_cavities = nc;
+      const csa = toNum(d.crossSectionArea); if (csa !== null) next.crossSectionArea = csa;
       // 模具类型兼容英文/中文/中空描述
       const dt = String(d.die_type || '').toLowerCase();
       if (d.die_type === 'flat' || dt === 'flat' || d.die_type === '平模' || d.die_type === '实心') next.die_type = 'flat';
@@ -1835,8 +1836,34 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         });
       }
     }
+    // CNC 加工：直接从 STP/CAD 解析结果自动添加
+    const cncHoles = d.cnc_holes || d.process?.cnc_holes;
+    const cncTotalHoles = d.cnc_total_holes || d.process?.cnc_total_holes || 0;
+    const machiningTime = d.machining_time_min || d.process?.machining_time_min;
+    if ((cncHoles && Array.isArray(cncHoles) && cncHoles.length > 0) || cncTotalHoles > 0) {
+      setProcesses(prev => {
+        const existingNames = new Set(prev.map(p => p.name));
+        const newProcs = [];
+        if (!existingNames.has('CNC加工')) {
+          const cncProc: any = { name: 'CNC加工' };
+          if (machiningTime) cncProc.subParams = { minutes: machiningTime };
+          else if (cncTotalHoles > 0) cncProc.quantity = cncTotalHoles;
+          newProcs.push(cncProc);
+        }
+        if (!existingNames.has('钻孔') && cncTotalHoles > 0) {
+          newProcs.push({ name: '钻孔', quantity: cncTotalHoles, subParams: { hole_count: cncTotalHoles } });
+        }
+        return newProcs.length > 0 ? [...prev, ...newProcs] : prev;
+      });
+    }
     // 备注/说明
     if (d.notes) setFileRemark(prev => prev ? prev + '; ' + d.notes : d.notes);
+    // CNC 孔信息写入备注
+    if (cncTotalHoles > 0 && Array.isArray(cncHoles)) {
+      const holeDetails = cncHoles.map((h: any) => `Φ${h.diameter}×${h.depth}mm ×${h.count}(${h.direction}向)`).join('、');
+      const cncNote = `CNC加工: 共${cncTotalHoles}孔 (${holeDetails})`;
+      setFileRemark(prev => prev ? prev + '; ' + cncNote : cncNote);
+    }
     // 板材专用：将孔数/折弯数等信息写入备注
     if (productType === '板材' || d.sheet_length || d.sheet_width || d.unfold_length) {
       const sheetNotes: string[] = [];
@@ -2073,7 +2100,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             meter_weight: parseJson.weight_kg_per_m,
             wall_thickness: parseJson.wall_thickness_mm,
             crossSectionArea: parseJson.section_area_mm2,
-            die_type: parseJson.die_type,
+            die_type: (() => {
+              const raw = String(parseJson.die_type || parseJson.mold_type || '').toLowerCase();
+              if (['split', '分流模', '中空', '空心'].some(v => raw.includes(v))) return 'split';
+              if (['flat', '平模', '实心'].some(v => raw.includes(v))) return 'flat';
+              return parseJson.die_type || parseJson.mold_type || '';
+            })(),
             num_cavities: parseJson.is_hollow ? 1 : 0,
             material_category: parseJson.material_grade || '',
             length: parseJson.extrusion_length_mm,
@@ -2123,12 +2155,20 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           meter_weight: cadJson.weight_kg_per_m,
           wall_thickness: cadJson.wall_thickness_mm,
           crossSectionArea: cadJson.section_area_mm2,
-          die_type: cadJson.die_type,
+          die_type: (() => {
+            const raw = String(cadJson.die_type || cadJson.mold_type || '').toLowerCase();
+            if (['split', '分流模', '中空', '空心'].some(v => raw.includes(v))) return 'split';
+            if (['flat', '平模', '实心'].some(v => raw.includes(v))) return 'flat';
+            return cadJson.die_type || cadJson.mold_type || '';
+          })(),
           num_cavities: cadJson.is_hollow ? 1 : 0,
           material_category: cadJson.material_grade || '',
           length: cadJson.extrusion_length_mm,
           process: cadJson.process || null,
           secondary_operations: cadJson.secondary_operations || null,
+          cnc_holes: cadJson.cnc_holes || null,
+          cnc_total_holes: cadJson.cnc_total_holes || 0,
+          machining_time_min: cadJson.machining_time_min || null,
           notes: `3D 模型解析 | ⚠️仅用于报价估算，不可作为开模依据`,
         };
         setRecogResult(recogData);
@@ -2887,6 +2927,21 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         <div style={{ fontSize: 14, fontWeight: 700, color: '#1a1a2e', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ width: 28, height: 28, borderRadius: 8, background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>⚙️</span>
           参数设置
+        </div>
+
+        {/* ---- 模具组工具条：点「新建报价」=开一副新模具 ---- */}
+        <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-blue-50/70 border border-blue-100">
+          <div className="text-[12px] text-blue-700 leading-snug">
+            当前为<b>同一副模具</b>：改长度后点长度框旁的<b>＋</b>存入报价池，出单时模具费只算一次。
+          </div>
+          <button
+            type="button"
+            onClick={onNewQuote}
+            className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-blue-300 text-blue-700 text-xs font-semibold hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm"
+            title="清空表单，开始一副新模具的报价"
+          >
+            <span className="text-sm leading-none">＋</span> 新建报价
+          </button>
         </div>
 
         {/* ---- 模具组工具条：点「新建报价」=开一副新模具 ---- */}

@@ -13,6 +13,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { verifySmsCodeForSignup } from '@/lib/sms-middleware';
+import { changeCredits, SIGNUP_BONUS_CREDITS, REFERRAL_BONUS_CREDITS } from '@/lib/credits';
+import { hashPassword } from '@/lib/password';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jotgxnhueagbsvfeepic.supabase.co';
 const supabaseServiceKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -23,7 +25,7 @@ function validatePhone(phone: string): boolean {
 
 export async function POST(request: Request) {
   try {
-    const { phone, password, verifyCode, companyName, address, email } = await request.json();
+    const { phone, password, verifyCode, companyName, address, email, referralCode } = await request.json();
 
     // 1. 基础参数校验
     if (!validatePhone(phone)) {
@@ -79,13 +81,31 @@ export async function POST(request: Request) {
     // 3. 创建用户
     const insertData: Record<string, unknown> = {
       phone,
-      password,
+      password: hashPassword(password),
       created_at: new Date().toISOString(),
     };
 
     if (email && email.trim()) insertData.email = email.trim();
     if (companyName && companyName.trim()) insertData.company_name = companyName.trim();
     if (address && address.trim()) insertData.address = address.trim();
+
+    // 生成 8 位推荐码
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 8; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+    insertData.referral_code = code;
+
+    // 处理邀请关系
+    if (referralCode) {
+      const { data: inviter } = await supabase
+        .from('users')
+        .select('id')
+        .eq('referral_code', referralCode)
+        .maybeSingle();
+      if (inviter) {
+        insertData.invited_by = inviter.id;
+      }
+    }
 
     const { data, error } = await supabase
       .from('users')
@@ -96,6 +116,17 @@ export async function POST(request: Request) {
     if (error) {
       console.error('[Signup] 创建用户失败:', error);
       return NextResponse.json({ error: '注册失败，请稍后重试' }, { status: 500 });
+    }
+
+    // 注册赠送积分
+    try {
+      await changeCredits(supabase, data.id, SIGNUP_BONUS_CREDITS, 'recharge', '注册赠送积分');
+      if (insertData.invited_by) {
+        await changeCredits(supabase, data.id, REFERRAL_BONUS_CREDITS, 'recharge', '受邀注册奖励积分');
+        await changeCredits(supabase, insertData.invited_by as string, REFERRAL_BONUS_CREDITS, 'recharge', '邀请好友注册奖励积分');
+      }
+    } catch (creditErr) {
+      console.error('[Signup] 积分发放失败:', creditErr);
     }
 
     return NextResponse.json({ success: true, user: { id: data.id, phone: data.phone, email: data.email || '' } });

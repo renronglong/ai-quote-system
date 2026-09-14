@@ -11,6 +11,7 @@ import {
   Phone,
   MapPin,
   Building2,
+  Mail,
   Send,
   CheckCircle2,
   Clock,
@@ -56,16 +57,20 @@ export default function ContactPage() {
               </div>
               <div className="space-y-3">
                 <h2 className="font-semibold text-lg text-gray-900">
-                  上栗县碧利五金塑胶制品厂
+                  佛山市碧利莱照明有限公司
                 </h2>
                 <div className="space-y-2">
                   <div className="flex items-center gap-3 text-sm text-gray-600">
                     <Phone className="w-4 h-4 text-blue-500 flex-shrink-0" />
                     <span className="font-medium">18929979760</span>
                   </div>
+                  <div className="flex items-center gap-3 text-sm text-gray-600">
+                    <Mail className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                    <span className="font-medium">ryda8638@agent.qq.com</span>
+                  </div>
                   <div className="flex items-start gap-3 text-sm text-gray-600">
                     <MapPin className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
-                    <span>江西省萍乡市上栗县长平乡佛溪村下横冲21号</span>
+                    <span>佛山市南海区松岗镇厦边村</span>
                   </div>
                 </div>
               </div>

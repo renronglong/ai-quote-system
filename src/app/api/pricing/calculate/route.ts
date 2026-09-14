@@ -1,36 +1,8 @@
 import { NextResponse } from 'next/server';
 import { calculatePrice, calculatePriceFull } from '@/lib/pricing/engine';
+import { getAluminumPrice } from '@/lib/pricing/aluminum-price';
 import type { PricingInput, ExtrusionInput, FullPricingInput, AssemblyInput } from '@/lib/pricing/types';
 
-// 获取实时铝价（返回 元/吨）
-async function getAluminumPrice(): Promise<number> {
-  try {
-    const today = new Date();
-    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
-    const url = `http://www.lvdingjia.com/zhishu/${dateStr}.html`;
-
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
-      next: { revalidate: 3600 },
-    });
-
-    if (response.ok) {
-      const html = await response.text();
-      const match = html.match(/南海(?!灵通)[^<]*?(\d+)~(\d+)/);
-      if (match) {
-        const low = parseInt(match[1]);
-        const high = parseInt(match[2]);
-        return Math.round((low + high) / 2);
-      }
-    }
-  } catch (error) {
-    console.error('Failed to fetch aluminum price:', error);
-  }
-
-  return 23530; // 默认 23.53 元/kg × 1000
-}
 
 /**
  * 验证挤压铝型材必填参数（质稳 v4 公式）
@@ -126,7 +98,7 @@ export async function POST(request: Request) {
     }
 
     // 获取实时铝价（元/吨），用于没有显式传入铝价的情况
-    const aluminumPricePerTon = await getAluminumPrice();
+    const aluminumPricePerTon = (await getAluminumPrice(23530)).price;
 
     // 构造输入
     const input: FullPricingInput = {

@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useAuth, getAdminToken } from '@/lib/auth-context';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -98,6 +100,18 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.
 };
 
 export default function AdminTasksPage() {
+  const { user, loading: authLoading, isAdmin } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login?redirect=/admin/tasks');
+    } else if (!authLoading && user && !isAdmin) {
+      router.replace('/');
+    }
+  }, [authLoading, user, isAdmin, router]);
+
+
   const [tasks, setTasks] = useState<TaskWithProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -132,7 +146,9 @@ export default function AdminTasksPage() {
       }
       params.append('is_admin', 'true');
 
-      const response = await fetch(`/api/tasks?${params.toString()}`);
+      const response = await fetch(`/api/tasks?${params.toString()}`, {
+        headers: { 'x-admin-token': getAdminToken() || '' },
+      });
       const data = await response.json();
       if (data.success) {
         setTasks(data.data);
@@ -147,6 +163,11 @@ export default function AdminTasksPage() {
   useEffect(() => {
     loadTasks();
   }, [statusFilter, typeFilter]);
+
+  if (authLoading || !user) {
+    return <div className="flex items-center justify-center min-h-screen text-gray-400 text-sm">请先登录...</div>;
+  }
+
 
   const handleViewDetail = async (task: TaskWithProfile) => {
     try {
@@ -246,6 +267,10 @@ export default function AdminTasksPage() {
   
   const drawingTaskCount = tasks.filter(t => t.type === 'manual_quote').length;
   const pendingDrawingCount = tasks.filter(t => t.type === 'manual_quote' && t.status === 'pending').length;
+
+  if (!isAdmin) {
+    return <div className="flex items-center justify-center min-h-screen text-gray-400 text-sm">无管理员权限，正在跳转...</div>;
+  }
 
   return (
     <div className="space-y-6">

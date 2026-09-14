@@ -82,6 +82,8 @@ export default function LoginPage() {
         user: {
           id: data.user.id,
           email: null,
+          phone: data.user.phone,
+          is_admin: !!data.user.is_admin,
           app_metadata: {},
           user_metadata: {},
           aud: 'authenticated',
@@ -90,6 +92,13 @@ export default function LoginPage() {
       };
 
       localStorage.setItem('custom_session', JSON.stringify(mockSession));
+
+      // 管理员token存入sessionStorage（刷新不丢，关闭标签页失效）
+      if (data.admin_token) {
+        try { sessionStorage.setItem('admin_token', data.admin_token); } catch { /* ignore */ }
+      } else {
+        try { sessionStorage.removeItem('admin_token'); } catch { /* ignore */ }
+      }
 
       // 记住密码处理
       if (remember) {
@@ -216,7 +225,12 @@ export default function LoginPage() {
             </div>
           </CardContent>
         </Card>
-        <p className="text-center text-xs text-slate-400 mt-6">登录即表示同意我们的服务条款和隐私政策</p>
+        <p className="text-center text-xs text-slate-400 mt-6">
+          登录即表示同意
+          <Link href="/terms" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 hover:underline">《用户服务协议》</Link>
+          和
+          <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 hover:underline">《隐私政策》</Link>
+        </p>
       </div>
     </div>
   );

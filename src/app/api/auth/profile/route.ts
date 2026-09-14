@@ -1,13 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://br-lush-teal-829ebb2c.supabase2.aidap-global.cn-beijing.volces.com';
-const supabaseServiceKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.COZE_SUPABASE_URL || 'https://jotgxnhueagbsvfeepic.supabase.co';
+const supabaseServiceKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('user_id');
+    const userId = searchParams.get("user_id");
 
     if (!userId) {
       return NextResponse.json({ error: '缺少用户ID' }, { status: 400 });
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
 
     const { data: userData, error: userError } = await supabase
       .from('users')
-      .select('id, phone, company_name, address')
+      .select('id, phone, company_name, address, email')
       .eq('id', userId)
       .single();
 
@@ -31,18 +31,30 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: '用户不存在' }, { status: 404 });
     }
 
-    const { data: profileData } = await supabase
-      .from('user_profiles')
-      .select('*')
+    // 供方档案（联系人/业务电话等）存于 supplier_profiles，严格按 user_id 隔离
+    let profile: any = null;
+    const { data: spData } = await supabase
+      .from('supplier_profiles')
+      .select('company_name, contact_name, phone, address, business_license')
       .eq('user_id', userId)
       .maybeSingle();
+    if (spData) profile = spData;
+
+    // 合并：supplier_profiles 的公司资料优先，users 表兜底
+    const merged = {
+      company_name: profile?.company_name || userData.company_name || '',
+      contact_name: profile?.contact_name || '',
+      contact_phone: profile?.phone || '',
+      contact_email: userData.email || '',
+      address: profile?.address || userData.address || '',
+    };
 
     return NextResponse.json({
       success: true,
       data: {
         user: userData,
-        profile: profileData,
-        hasCompanyInfo: !!(userData.company_name || profileData?.company_name),
+        profile: merged,
+        hasCompanyInfo: !!(merged.company_name),
       },
     });
   } catch (err) {
@@ -68,7 +80,7 @@ export async function POST(request: NextRequest) {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // 更新 users 表
+    // 1. 更新 users 表（公司名、地址）
     const { error: userError } = await supabase
       .from('users')
       .update({
@@ -82,43 +94,50 @@ export async function POST(request: NextRequest) {
       throw new Error(`更新用户信息失败: ${userError.message}`);
     }
 
-    // 检查 user_profiles 是否存在
-    const { data: existingProfile } = await supabase
-      .from('user_profiles')
-      .select('id')
+    // 2. upsert supplier_profiles（联系人、业务电话、公司名、地址），严格按 user_id 隔离
+    const { data: existing } = await supabase
+      .from('supplier_profiles')
+      .select('id, user_id')
       .eq('user_id', user_id)
       .maybeSingle();
 
-    if (existingProfile) {
-      const { error: profileError } = await supabase
-        .from('user_profiles')
-        .update({
-          company_name: company_name || null,
-          contact_phone: contact_phone || null,
-          contact_email: contact_email || null,
-          description: contact_name ? `联系人：${contact_name}` : null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', user_id);
+    const spRow: Record<string, any> = {
+      company_name: company_name || null,
+      contact_name: contact_name || null,
+      phone: contact_phone || null,
+      address: address || null,
+      updated_at: new Date().toISOString(),
+    };
 
-      if (profileError) {
-        throw new Error(`更新用户档案失败: ${profileError.message}`);
+    if (existing) {
+      const { error: spErr } = await supabase
+        .from('supplier_profiles')
+        .update(spRow)
+        .eq('id', existing.id);
+      if (spErr) {
+        // 电话与其他账号档案冲突（phone 唯一约束）
+        if (spErr.code === '23505') {
+          return NextResponse.json(
+            { error: '该联系电话已被其他账号使用，请更换业务电话或用原账号登录' },
+            { status: 409 }
+          );
+        }
+        throw new Error(`更新供方档案失败: ${spErr.message}`);
       }
     } else {
-      const { error: profileError } = await supabase
-        .from('user_profiles')
-        .insert({
-          user_id,
-          username: `user_${user_id.slice(0, 8)}`,
-          company_name: company_name || null,
-          contact_phone: contact_phone || null,
-          contact_email: contact_email || null,
-          description: contact_name ? `联系人：${contact_name}` : null,
-          is_active: true,
-        });
-
-      if (profileError) {
-        throw new Error(`创建用户档案失败: ${profileError.message}`);
+      spRow.user_id = user_id;
+      spRow.created_at = new Date().toISOString();
+      const { error: spErr } = await supabase
+        .from('supplier_profiles')
+        .insert(spRow);
+      if (spErr) {
+        if (spErr.code === '23505') {
+          return NextResponse.json(
+            { error: '该联系电话已被其他账号使用，请更换业务电话或用原账号登录' },
+            { status: 409 }
+          );
+        }
+        throw new Error(`创建供方档案失败: ${spErr.message}`);
       }
     }
 
