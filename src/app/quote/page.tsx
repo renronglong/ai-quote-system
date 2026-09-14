@@ -23,10 +23,13 @@ import {
   User,
   LogOut,
   Settings,
+  MessageCircle,
+  X,
 } from 'lucide-react';
 import SavedQuotesPanel, { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
 import QuoteSheetDialog from '@/components/QuoteSheetDialog';
 import TopNavLinks from '@/components/TopNav';
+import ChatPanel from '@/components/ChatPanel';
 
 interface AiFormUpdate {
   productType?: string;
@@ -104,6 +107,7 @@ export default function QuotePage() {
   const [moldGroupId, setMoldGroupId] = useState<string>(() => 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)); // 当前模具组ID：同组报价共用一副模具
   const [formNonce, setFormNonce] = useState(0); // 新建报价时重挂载 QuoteForm 清空表单
   const [guideCollapsed, setGuideCollapsed] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const aiDataCounter = useRef(0);
 
   const handleFormUpdate = useCallback((data: AiFormUpdate) => {
@@ -621,6 +625,36 @@ export default function QuotePage() {
             />
           </div>
         )}
+      </div>
+
+      {/* ===== 浮动智能客服按钮 + 聊天面板 ===== */}
+      <div className="fixed bottom-6 right-6 z-50">
+        {/* 聊天面板 */}
+        {chatOpen && (
+          <div className="absolute bottom-16 right-0 w-[380px] h-[500px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
+            <ChatPanel
+              onFormUpdate={handleFormUpdate}
+              onPricingResult={handleResult}
+            />
+          </div>
+        )}
+
+        {/* 浮动按钮 */}
+        <button
+          onClick={() => setChatOpen(!chatOpen)}
+          className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-all duration-200 hover:scale-110 active:scale-95 ${
+            chatOpen
+              ? 'bg-gray-700 hover:bg-gray-800'
+              : 'bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'
+          }`}
+          title={chatOpen ? '关闭客服' : '智能客服'}
+        >
+          {chatOpen ? (
+            <X className="w-6 h-6 text-white" />
+          ) : (
+            <MessageCircle className="w-6 h-6 text-white" />
+          )}
+        </button>
       </div>
     </div>
   );
