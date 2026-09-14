@@ -79,6 +79,7 @@ export default function QuotePage() {
   const [editQuoteData, setEditQuoteData] = useState<Record<string, any> | null>(null);
   const [moldGroupId, setMoldGroupId] = useState<string>(() => 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)); // 当前模具组ID：同组报价共用一副模具
   const [formNonce, setFormNonce] = useState(0); // 新建报价时重挂载 QuoteForm 清空表单
+  const [guideCollapsed, setGuideCollapsed] = useState(false);
   const aiDataCounter = useRef(0);
 
   const handleFormUpdate = useCallback((data: AiFormUpdate) => {
@@ -266,8 +267,8 @@ export default function QuotePage() {
                 <Factory className="w-4 h-4 text-white" />
               </div>
               <div className="flex items-baseline gap-1.5">
-                <span className="text-base font-bold text-gray-800">报价计算器</span>
-                <span className="hidden sm:inline text-[11px] text-gray-400">gyparts.cn <span className="text-[10px] text-blue-400">v1.9.8</span></span>
+                <span className="text-base font-bold text-gray-800"><span className="text-blue-600">碧利制造</span> <span className="text-gray-400">·</span> AI报价系统</span>
+                <span className="hidden sm:inline text-[11px] text-gray-400">gyparts.cn <span className="text-[10px] text-blue-400">v1.9.9</span></span>
               </div>
             </Link>
 
@@ -365,30 +366,32 @@ export default function QuotePage() {
         </div>
       )}
 
-      {/* 主内容区 */}
-      <main className="flex-1 flex min-h-0 overflow-hidden">
-        {/* 左侧：参数输入区 */}
-        <div className="w-full lg:w-[58%] xl:w-[55%] overflow-y-auto bg-gray-50">
-          <div className="max-w-2xl mx-auto">
+      {/* 主内容区 - 三栏布局 */}
+      <main className="flex-1 min-h-0 overflow-hidden hidden lg:grid" style={{ gridTemplateColumns: guideCollapsed ? '380px 1fr' : '380px 1fr 280px', gap: '0px' }}>
+        {/* 左栏：参数设置 */}
+        <div className="overflow-y-auto bg-gray-50 border-r border-gray-200">
+          <div className="p-4 space-y-4">
             <OperationGuide />
-            <QuoteForm
-              key={formNonce}
-              aiData={aiFormData}
-              loadQuoteData={editQuoteData}
-              onResult={handleResult}
-              onProductInfoChange={handleProductInfoChange}
-              onMoldInfoChange={handleMoldInfoChange}
-              onSaveVariant={handleSaveVariant}
-              onNewQuote={handleNewQuote}
-              onCalculate={handleParamsUpdate}
-            />
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <QuoteForm
+                key={formNonce}
+                aiData={aiFormData}
+                loadQuoteData={editQuoteData}
+                onResult={handleResult}
+                onProductInfoChange={handleProductInfoChange}
+                onMoldInfoChange={handleMoldInfoChange}
+                onSaveVariant={handleSaveVariant}
+                onNewQuote={handleNewQuote}
+                onCalculate={handleParamsUpdate}
+              />
+            </div>
           </div>
         </div>
 
-        {/* 右侧：实时结果区 */}
-        <div className="hidden lg:flex lg:w-[42%] xl:w-[45%] flex-col border-l border-gray-200 bg-white">
-          <div className="flex-1 overflow-y-auto">
-            <div className="sticky top-0 p-5 space-y-4">
+        {/* 中栏：报价结果 */}
+        <div className="overflow-y-auto bg-gray-50">
+          <div className="p-4">
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
               <ResultPanel
                 pricingResult={pricingResult}
                 aluminumPrice={aluminumPrice}
@@ -415,10 +418,136 @@ export default function QuotePage() {
                 onManualMinOrderQtyChange={setManualMinOrderQty}
                 onExportPDF={exportQuotePDF}
               />
-
             </div>
           </div>
         </div>
+
+        {/* 右栏：报价指南 */}
+        {!guideCollapsed && (
+          <div className="overflow-y-auto bg-gray-50 border-l border-gray-200">
+            <div className="p-4">
+              <div className="bg-white rounded-xl border border-gray-200">
+                {/* 标题行 */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                  <span className="text-sm font-semibold text-gray-700">💡 报价指南</span>
+                  <button
+                    onClick={() => setGuideCollapsed(true)}
+                    className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                    title="收起指南"
+                  >
+                    收起 ✕
+                  </button>
+                </div>
+
+                {/* 步骤进度条 */}
+                <div className="p-4 space-y-0">
+                  {/* 步骤1: 上传图纸 - 始终完成 */}
+                  <div className="flex items-start gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      </div>
+                      <div className="w-0.5 h-8 bg-emerald-200 mt-1" />
+                    </div>
+                    <div className="pt-0.5">
+                      <p className="text-sm font-medium text-emerald-700">上传图纸</p>
+                      <p className="text-xs text-gray-400 mt-0.5">拖拽或点击上传 STP/PDF/图片</p>
+                    </div>
+                  </div>
+
+                  {/* 步骤2: 确认参数 */}
+                  <div className="flex items-start gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center ${pricingResult !== null ? 'bg-emerald-100' : 'bg-blue-100'}`}>
+                        {pricingResult !== null ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        ) : (
+                          <span className="text-xs font-bold text-blue-600">2</span>
+                        )}
+                      </div>
+                      <div className={`w-0.5 h-8 mt-1 ${pricingResult !== null ? 'bg-emerald-200' : 'bg-gray-200'}`} />
+                    </div>
+                    <div className={`pt-0.5 rounded-lg px-2 py-1 -ml-2 ${pricingResult !== null ? '' : 'bg-blue-50'}`}>
+                      <p className={`text-sm font-medium ${pricingResult !== null ? 'text-emerald-700' : 'text-blue-700'}`}>确认参数</p>
+                      <p className="text-xs text-gray-400 mt-0.5">核对AI识别的尺寸、材质</p>
+                    </div>
+                  </div>
+
+                  {/* 步骤3: 选择工艺 */}
+                  <div className="flex items-start gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center ${pricingResult !== null ? 'bg-emerald-100' : 'bg-gray-100'}`}>
+                        {pricingResult !== null ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        ) : (
+                          <span className="text-xs font-bold text-gray-400">3</span>
+                        )}
+                      </div>
+                      <div className={`w-0.5 h-8 mt-1 ${pricingResult !== null ? 'bg-emerald-200' : 'bg-gray-200'}`} />
+                    </div>
+                    <div className="pt-0.5">
+                      <p className={`text-sm font-medium ${pricingResult !== null ? 'text-emerald-700' : 'text-gray-400'}`}>选择工艺</p>
+                      <p className="text-xs text-gray-400 mt-0.5">勾选加工方式和表面处理</p>
+                    </div>
+                  </div>
+
+                  {/* 步骤4: 导出报价单 */}
+                  <div className="flex items-start gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center ${pricingResult !== null ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                        {pricingResult !== null ? (
+                          <span className="text-xs font-bold text-blue-600">4</span>
+                        ) : (
+                          <span className="text-xs font-bold text-gray-400">4</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className={`pt-0.5 rounded-lg px-2 py-1 -ml-2 ${pricingResult !== null ? 'bg-blue-50' : ''}`}>
+                      <p className={`text-sm font-medium ${pricingResult !== null ? 'text-blue-700' : 'text-gray-400'}`}>导出报价单</p>
+                      <p className="text-xs text-gray-400 mt-0.5">生成PDF或Excel报价单</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 底部快捷提示 */}
+                <div className="border-t border-gray-100 px-4 py-3 space-y-2">
+                  <p className="text-xs font-medium text-gray-500">快捷提示</p>
+                  <div className="space-y-1.5">
+                    <div className="flex items-start gap-2">
+                      <span className="w-1 h-1 rounded-full bg-blue-400 mt-1.5 shrink-0" />
+                      <span className="text-[11px] text-gray-500">上传图纸后AI自动识别参数</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="w-1 h-1 rounded-full bg-orange-400 mt-1.5 shrink-0" />
+                      <span className="text-[11px] text-gray-500">橙色边框字段需手动确认</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="w-1 h-1 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
+                      <span className="text-[11px] text-gray-500">绿点标记为自动识别字段</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="w-1 h-1 rounded-full bg-gray-400 mt-1.5 shrink-0" />
+                      <span className="text-[11px] text-gray-500">模具费为一次性费用</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 折叠时的展开按钮 - 固定在右栏位置 */}
+        {guideCollapsed && (
+          <div className="fixed right-0 top-1/2 -translate-y-1/2 z-10">
+            <button
+              onClick={() => setGuideCollapsed(false)}
+              className="bg-white border border-gray-200 rounded-l-lg px-1.5 py-3 shadow-sm hover:bg-gray-50 transition-colors"
+              title="展开报价指南"
+            >
+              <span className="text-xs text-gray-500">💡</span>
+            </button>
+          </div>
+        )}
       </main>
 
       {/* 移动端底部结果区 */}
@@ -761,11 +890,17 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
 
       {/* 操作按钮 */}
       {!isPlaceholder && onSave && (
-        <div className="flex gap-2">
+        <div className="space-y-2">
+          <button
+            onClick={onExportPDF}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-bold bg-gradient-to-r from-emerald-600 to-emerald-500 text-white hover:from-emerald-700 hover:to-emerald-600 transition-all shadow-sm"
+          >
+            <FileText className="w-4 h-4" /> 导出报价单
+          </button>
           <button
             onClick={onSave}
             disabled={saving || saveSuccess}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+            className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
               saveSuccess
                 ? 'bg-emerald-500 text-white'
                 : saving
@@ -780,12 +915,6 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
             ) : (
               <><Save className="w-4 h-4" /> 保存报价</>
             )}
-          </button>
-          <button
-            onClick={onExportPDF}
-            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition-all"
-          >
-            <FileText className="w-4 h-4" /> 导出报价单
           </button>
         </div>
       )}
