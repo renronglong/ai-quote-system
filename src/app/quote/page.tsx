@@ -84,7 +84,8 @@ export default function QuotePage() {
       if (rd.length) mapped.length = rd.length;
       if (rd.wall_thickness) mapped.wallThickness = rd.wall_thickness;
       if (rd.standardCategory) mapped.standardCategory = rd.standardCategory;
-      setAiFormData({ ...mapped, _v: drawingRecogCounter.current } as AiFormUpdate);
+      // 保留 snake_case 原始字段，让 QuoteForm.applyRecogToForm 能读取米重/截面积/外周长等
+      setAiFormData({ ...rd, ...mapped, _v: drawingRecogCounter.current } as AiFormUpdate);
     }
   }, []);
   const [pricingResult, setPricingResult] = useState<PricingResult | null>(null);
