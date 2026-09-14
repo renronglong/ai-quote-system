@@ -2499,8 +2499,395 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const inputBaseClass = "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]";
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+    <div className="h-full" style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 16 }}>
+      {/* ===== LEFT COLUMN: 图纸识别 ===== */}
+      <div style={{ overflow: 'auto', padding: 16, background: '#fff', borderRadius: 12, border: '1px solid #e8ecf1' }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#1a1a2e', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 28, height: 28, borderRadius: 8, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>📎</span>
+          图纸识别
+        </div>
+        {/* ---- 图纸上传 ---- */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+          <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">图纸上传（可选）</label>
+          <div
+            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleFileDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={`relative border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all duration-200 ${
+              dragOver
+                ? 'border-blue-400 bg-blue-50'
+                : uploadedFile
+                  ? 'border-emerald-300 bg-emerald-50'
+                  : 'border-gray-200 bg-gray-50 hover:border-blue-300 hover:bg-blue-50/50'
+            }`}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ALLOWED_EXTENSIONS.join(',')}
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            {uploadedFile ? (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-left">
+                  <FileText className="w-5 h-5 text-emerald-500 shrink-0" />
+                  <div>
+                    <div className="text-sm font-medium text-gray-800 truncate max-w-[160px]">{uploadedFile.name}</div>
+                    <div className="text-[11px] text-gray-400">{(uploadedFile.size / 1024).toFixed(1)} KB</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); removeFile(); }}
+                  className="p-1 rounded-full hover:bg-gray-200 transition-colors"
+                >
+                  <X className="w-4 h-4 text-gray-400" />
+                </button>
+              </div>
+            ) : (
+              <div>
+                <Upload className={`w-6 h-6 mx-auto mb-1.5 ${dragOver ? 'text-blue-500' : 'text-gray-400'}`} />
+                <p className="text-xs text-gray-500">拖拽文件到此处，或<span className="text-blue-500 font-medium">点击上传</span></p>
+                <p className="text-[11px] text-gray-400 mt-1">支持 PDF、JPG、PNG、DXF、DWG、STP、STEP、IGS、X_T、ZIP、RAR、7Z 等，也可 Ctrl+V 粘贴图片</p>
+              </div>
+            )}
+          </div>
+          <input
+            type="text"
+            placeholder="备注说明（可选）"
+            value={fileRemark}
+            onChange={e => setFileRemark(e.target.value)}
+            className="w-full mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+          />
+
+          {/* 识别中 */}
+          {recognizing && (
+            <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 text-blue-600 text-xs">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              正在AI识别图纸参数...
+            </div>
+          )}
+
+          {/* 识别错误 */}
+          {recogError && (
+            <div className="mt-2 flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
+              <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-amber-700">{recogError}</div>
+                {uploadedFile && (
+                  <button
+                    type="button"
+                    onClick={requestDeepQuote}
+                    disabled={deepQuoteLoading}
+                    className="mt-1.5 inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[12px] font-medium hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {deepQuoteLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <User className="w-3 h-3" />}
+                    {deepQuoteLoading ? '深度识别中...' : '申请深度报价'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 多产品列表 */}
+          {recogProducts.length > 1 && (
+            <div className="mt-2 space-y-1.5">
+              <div className="text-[12px] font-semibold text-gray-700">共识别 {recogProducts.length} 个产品，点击切换：</div>
+              <div className="flex flex-wrap gap-1.5">
+                {recogProducts.map((p, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => switchToProduct(i)}
+                    className={`px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors border ${
+                      selectedProductIdx === i
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : p._failed
+                          ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
+                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    {p._failed ? '' : '✓'} {p._fileName || `产品${i + 1}`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 识别结果 */}
+          {recogResult && !recogError && (
+            <div className={`mt-2 rounded-lg border p-2.5 ${
+              recogResult.needs_human
+                ? 'bg-amber-50 border-amber-200'
+                : 'bg-emerald-50 border-emerald-200'
+            }`}>
+              <div className="flex items-center gap-1.5 mb-1.5">
+                {recogResult.needs_human ? (
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                )}
+                <span className={`text-[12px] font-semibold ${
+                  recogResult.needs_human ? 'text-amber-700' : 'text-emerald-700'
+                }`}>
+                  {recogResult.needs_human ? '识别不确定，请确认参数' : 'AI已自动填入参数'}
+                  {typeof recogResult.confidence === 'number' && (
+                    <span className="ml-1 opacity-70">（置信度{(recogResult.confidence*100).toFixed(0)}%）</span>
+                  )}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[12px] text-gray-600">
+                {recogResult.width != null && <div>宽: <b>{recogResult.width}mm</b></div>}
+                {recogResult.height != null && <div>高: <b>{recogResult.height}mm</b></div>}
+                {recogResult.wall_thickness != null && <div>壁厚: <b>{recogResult.wall_thickness}mm</b></div>}
+                {recogResult.length != null && <div>长: <b>{recogResult.length}mm</b></div>}
+                {recogResult.perimeter != null && <div>外周长: <b>{recogResult.perimeter}mm</b></div>}
+                {recogResult.inner_perimeter != null && <div>内周长: <b>{recogResult.inner_perimeter}mm</b></div>}
+                {recogResult.meter_weight != null && <div>米重: <b>{recogResult.meter_weight}kg/m</b></div>}
+                {recogResult.num_cavities != null && <div>面域: <b>{recogResult.num_cavities}</b></div>}
+                {recogResult.material_grade ? <div className="col-span-2">材质: <b>{recogResult.material_grade}</b></div> : <div className="col-span-2 text-amber-600">材质: 无法识别，请手动选择</div>}
+                {recogResult.surface_treatment ? <div className="col-span-2">表面处理: <b>{recogResult.surface_treatment}</b></div> : <div className="col-span-2 text-amber-600">表面处理: 无法识别，请手动选择</div>}
+                {recogResult.product_code && <div className="col-span-2">图号: <b>{recogResult.product_code}</b></div>}
+              </div>
+              {recogResult.handoff_reason && (
+                <div className="mt-1.5 text-[11px] text-amber-600">{recogResult.handoff_reason}</div>
+              )}
+              <div className="mt-2 flex gap-2">
+                {recogResult.needs_human && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => applyRecogToForm(recogResult)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-500 text-white text-[12px] font-medium hover:bg-emerald-600 transition-colors"
+                    >
+                      <CheckCircle2 className="w-3 h-3" />
+                      确认填入
+                    </button>
+                    <button
+                      type="button"
+                      onClick={requestDeepQuote}
+                      disabled={deepQuoteLoading}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[12px] font-medium hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {deepQuoteLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <User className="w-3 h-3" />}
+                      {deepQuoteLoading ? '深度识别中...' : '申请深度报价'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+        {/* ===== AI确认对话框 ===== */}
+        {showCheckDialog && checkQuestions.length > 0 && (
+          <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50/80 p-4 space-y-3">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center">
+                <span className="text-white text-xs font-bold">AI</span>
+              </div>
+              <span className="text-sm font-semibold text-blue-800">需要确认以下信息</span>
+            </div>
+            {checkQuestions.map((q: any, idx: number) => (
+              <div key={idx} className="bg-white rounded-lg p-3 border border-blue-100">
+                <div className="text-sm text-gray-700 mb-2">{q.question}</div>
+                {q.input_type === 'select' && (
+                  <select
+                    className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    defaultValue={q.default || ''}
+                    onChange={(e) => {
+                      setCheckAnswers(prev => ({ ...prev, [q.field]: e.target.value }));
+                    }}
+                  >
+                    {q.options?.map((opt: string) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                )}
+                {q.input_type === 'number' && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      className="flex-1 text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      defaultValue={q.default ?? ''}
+                      placeholder={q.unit || ''}
+                      onChange={(e) => {
+                        setCheckAnswers(prev => ({ ...prev, [q.field]: Number(e.target.value) }));
+                      }}
+                    />
+                    {q.unit && <span className="text-xs text-gray-500">{q.unit}</span>}
+                  </div>
+                )}
+                {q.input_type === 'confirm' && (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className={`px-3 py-1 text-xs rounded-md border transition ${
+                        checkAnswers[q.field] === 'yes' || checkAnswers[q.field] === undefined
+                          ? 'bg-blue-500 text-white border-blue-500'
+                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                      }`}
+                      onClick={() => setCheckAnswers(prev => ({ ...prev, [q.field]: 'yes' }))}
+                    >
+                      ✓ 正确
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-3 py-1 text-xs rounded-md border transition ${
+                        checkAnswers[q.field] === 'no'
+                          ? 'bg-red-500 text-white border-red-500'
+                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                      }`}
+                      onClick={() => setCheckAnswers(prev => ({ ...prev, [q.field]: 'no' }))}
+                    >
+                      ✗ 需要修改
+                    </button>
+                  </div>
+                )}
+                {q.input_type === 'text' && (
+                  <input
+                    type="text"
+                    className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    defaultValue={q.default || ''}
+                    placeholder={q.label || ''}
+                    onChange={(e) => {
+                      setCheckAnswers(prev => ({ ...prev, [q.field]: e.target.value }));
+                    }}
+                  />
+                )}
+              </div>
+            ))}
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                className="flex-1 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition"
+                onClick={() => {
+                  // 将用户回答应用到表单
+                  const answers = { ...checkAnswers };
+                  // 填充默认值（用户未修改的）
+                  checkQuestions.forEach((q: any) => {
+                    if (answers[q.field] === undefined && q.default !== undefined) {
+                      answers[q.field] = q.default;
+                    }
+                  });
+                  // 应用确认类问题
+                  checkQuestions.forEach((q: any) => {
+                    if (q.input_type === 'confirm' && answers[q.field] === 'no') {
+                      // 用户否认了推荐值，清空该字段
+                      // 具体处理视字段而定
+                    }
+                  });
+                  // 映射到表单字段
+                  if (answers.material_grade) setMaterialGrade(answers.material_grade);
+                  if (answers.surface_treatment) {
+                    const stMap: Record<string,string> = {
+                      '阳极氧化': '氧化', '粉末喷涂': '喷涂', '氟碳喷涂': '喷涂', '木纹转印': '喷涂', '电镀': '无', '无': '无',
+                    };
+                    const mapped = stMap[answers.surface_treatment] || answers.surface_treatment;
+                    setProductSurfaceTreatment(mapped);
+                    setMaterialSurfaceTreatment(mapped);
+                  }
+                  if (answers.length_mm) {
+                    setFields(prev => ({ ...prev, length: answers.length_mm }));
+                  }
+                  setShowCheckDialog(false);
+                  setCheckQuestions([]);
+                }}
+              >
+                确认并填入
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition"
+                onClick={() => { setShowCheckDialog(false); setCheckQuestions([]); }}
+              >
+                跳过
+              </button>
+            </div>
+          </div>
+        )}
+        {/* ===== 登录提示弹窗 ===== */}
+        {showLoginModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4">
+              <div className="text-center">
+                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <User className="w-6 h-6 text-blue-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">登录后使用图纸识别</h3>
+                <p className="text-sm text-gray-500 mt-2">注册即送 100 积分，图纸识别自动填入报价表</p>
+              </div>
+              <div className="flex gap-3">
+                <a href="/login" className="flex-1 text-center py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition">去登录</a>
+                <a href="/register" className="flex-1 text-center py-2.5 border border-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition">注册</a>
+              </div>
+              <button onClick={() => setShowLoginModal(false)} className="w-full text-center text-sm text-gray-400 hover:text-gray-600">取消</button>
+            </div>
+          </div>
+        )}
+        {/* ===== 额度超限弹窗 ===== */}
+        {showQuotaModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4">
+              <div className="text-center">
+                <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <AlertTriangle className="w-6 h-6 text-amber-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">积分不足</h3>
+                <p className="text-sm text-gray-500 mt-2">图纸识别每次消耗 10 积分。邀请好友注册，双方各得 100 积分</p>
+              </div>
+              <div className="space-y-3">
+                <button
+                  onClick={async () => {
+                    const link = await ensureReferralLink();
+                    if (!link) return;
+                    try {
+                      await navigator.clipboard.writeText(link);
+                    } catch {
+                      // 非 HTTPS 或旧浏览器兜底
+                      const ta = document.createElement('textarea');
+                      ta.value = link;
+                      ta.style.position = 'fixed';
+                      ta.style.opacity = '0';
+                      document.body.appendChild(ta);
+                      ta.select();
+                      try { document.execCommand('copy'); } catch { /* ignore */ }
+                      document.body.removeChild(ta);
+                    }
+                    setCopiedInvite(true);
+                    setTimeout(() => setCopiedInvite(false), 2000);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition"
+                >
+                  <Share2 className="w-4 h-4" />
+                  {copiedInvite ? '已复制，去发给好友吧' : '复制邀请链接'}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowQuotaModal(false);
+                    if (!uploadedFile) {
+                      setRecogError('请先上传图纸文件，再申请深度报价（工程师人工报价）');
+                      return;
+                    }
+                    requestDeepQuote();
+                  }}
+                  className="w-full text-center py-2.5 border border-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition"
+                >
+                  申请深度报价
+                </button>
+              </div>
+              <button onClick={() => setShowQuotaModal(false)} className="w-full text-center text-sm text-gray-400 hover:text-gray-600">关闭</button>
+            </div>
+          </div>
+        )}
+      </div>
+      {/* ===== CENTER COLUMN: 参数设置 ===== */}
+      <div style={{ overflow: 'auto', padding: '16px 20px', background: '#fff', borderRadius: 12, border: '1px solid #e8ecf1' }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#1a1a2e', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 28, height: 28, borderRadius: 8, background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>⚙️</span>
+          参数设置
+        </div>
 
         {/* ---- 模具组工具条：点「新建报价」=开一副新模具 ---- */}
         <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-blue-50/70 border border-blue-100">
@@ -2993,547 +3380,418 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           {renderFields()}
         </div>
 
-        {/* ---- 加工工艺 ---- */}
+        {/* ---- 加工工艺（合并工艺+表面处理+参数） ---- */}
         {categoryConfig && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-            <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">加工工艺（可多选）</label>
-            <div className="flex flex-wrap gap-1.5">
-              {categoryConfig.processes.map(proc => {
-                const isNone = proc.name === '无';
-                const isSelected = isNone ? processes.length === 0 : processes.some(p => p.name === proc.name);
-                const hasSubParams = !!PROCESS_SUB_PARAMS[proc.name];
-                const selectedProc = processes.find(p => p.name === proc.name);
-                const showQuantity = isSelected && proc.unit && !isNone && !hasSubParams;
-                const showStampingQty = isSelected && proc.name === '冲压';
-                return (
-                  <div key={proc.name} className="flex flex-col items-start">
-                    <button
-                      type="button"
-                      onClick={() => toggleProcess(proc.name)}
-                      className={`px-2.5 py-1 text-xs rounded-lg border transition-all duration-200 ${
-                        isSelected
-                          ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
-                          : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      {proc.name}
-                    </button>
-                    {showQuantity && (
-                      <div className="flex items-center gap-1 mt-1">
-                        <input
-                          type="number"
-                          min={0}
-                          placeholder="数量"
-                          value={selectedProc?.quantity ?? ''}
-                          onChange={e => updateProcessQuantity(proc.name, e.target.value)}
-                          className="w-16 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
-                        />
-                        <span className="text-[11px] text-gray-400">{proc.unit}</span>
-                      </div>
-                    )}
+          <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.06)', border: '1px solid #f3f4f6', padding: 12 }}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>加工工艺</label>
+
+            {/* === 上半部分：3列 grid === */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 0.6fr', gap: 16 }}>
+
+              {/* 左列 - 工艺选择 */}
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 8 }}>工艺选择</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {categoryConfig.processes.map(proc => {
+                    const isNone = proc.name === '无';
+                    const isSelected = isNone ? processes.length === 0 : processes.some(p => p.name === proc.name);
+                    return (
+                      <button
+                        key={proc.name}
+                        type="button"
+                        onClick={() => toggleProcess(proc.name)}
+                        style={{
+                          padding: '6px 10px',
+                          fontSize: 13,
+                          borderRadius: 20,
+                          border: isSelected ? '1px solid #2563eb' : '1px solid #d1d5db',
+                          background: isSelected ? '#eff6ff' : '#fff',
+                          color: isSelected ? '#2563eb' : '#475569',
+                          fontWeight: isSelected ? 600 : 400,
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          transition: 'all 0.2s',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {proc.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 中列 - 表面处理 */}
+              {(showMaterialSurface || showProductSurface) && (
+                <div style={{ borderLeft: '1px solid #e5e7eb', paddingLeft: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 8 }}>表面处理</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {getSurfaceTreatmentOptions().map(o => {
+                      const isSelected = surfaceTreatment === o.name;
+                      return (
+                        <button
+                          key={o.name}
+                          type="button"
+                          onClick={() => { setSurfaceTreatment(o.name); setSurfaceColor(''); }}
+                          style={{
+                            padding: '6px 10px',
+                            fontSize: 13,
+                            borderRadius: 20,
+                            border: isSelected ? '1px solid #2563eb' : '1px solid #d1d5db',
+                            background: isSelected ? '#eff6ff' : '#fff',
+                            color: isSelected ? '#2563eb' : '#475569',
+                            fontWeight: isSelected ? 600 : 400,
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            transition: 'all 0.2s',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {o.name}
+                        </button>
+                      );
+                    })}
                   </div>
-                );
-              })}
+                </div>
+              )}
+
+              {/* 右列 - 参数（长度+数量） */}
+              <div style={{ borderLeft: '1px solid #e5e7eb', paddingLeft: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 8 }}>参数</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {fields.length !== undefined && (
+                    <div>
+                      <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>长度(mm)</div>
+                      <input
+                        type="number"
+                        min={0}
+                        placeholder="长度"
+                        value={fields.length}
+                        onChange={e => setFields(prev => ({ ...prev, length: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          borderRadius: 8,
+                          border: '1px solid #e2e8f0',
+                          background: '#f8fafc',
+                          padding: '6px 8px',
+                          fontSize: 13,
+                          color: '#1f2937',
+                          outline: 'none',
+                          minHeight: 32,
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                  )}
+                  {fields.quantity !== undefined && (
+                    <div>
+                      <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>数量</div>
+                      <input
+                        type="number"
+                        min={0}
+                        placeholder="数量"
+                        value={fields.quantity}
+                        onChange={e => setFields(prev => ({ ...prev, quantity: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          borderRadius: 8,
+                          border: '1px solid #e2e8f0',
+                          background: '#f8fafc',
+                          padding: '6px 8px',
+                          fontSize: 13,
+                          color: '#1f2937',
+                          outline: 'none',
+                          minHeight: 32,
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-            {/* Sub-parameter panels for selected processes */}
-            {processes.filter(p => PROCESS_SUB_PARAMS[p.name]).map(proc => {
-              const subDef = PROCESS_SUB_PARAMS[proc.name];
-              if (!subDef) return null;
+
+            {/* === 下半部分：4列 grid 子参数卡片 === */}
+            {(() => {
+              const hasAnySubCard = processes.some(p => PROCESS_SUB_PARAMS[p.name])
+                || (surfaceTreatment && surfaceTreatment !== '无' && getSurfaceColorOptions().length > 0)
+                || (productType === '挤出' && surfaceTreatment && surfaceTreatment !== '无');
+              if (!hasAnySubCard) return null;
               return (
-                <div key={proc.name + '_params'} className="mt-2 p-2 bg-blue-50/50 rounded-lg border border-blue-100">
-                  <div className="text-[12px] font-medium text-blue-700 mb-1.5">{proc.name} 参数</div>
-                  <div className="flex flex-wrap gap-2">
-                    {proc.name === '冲压' && (
-                      <div className="flex items-center gap-1">
-                        <span className="text-[11px] text-gray-500">冲次:</span>
-                        <input
-                          type="number"
-                          min={0}
-                          placeholder="次数"
-                          value={proc.quantity ?? ''}
-                          onChange={e => updateProcessQuantity(proc.name, e.target.value)}
-                          className="w-16 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
-                        />
-                        <span className="text-[11px] text-gray-400">次</span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginTop: 12 }}>
+                  {/* CNC加工卡片 */}
+                  {processes.some(p => p.name === 'CNC加工') && (() => {
+                    const proc = processes.find(p => p.name === 'CNC加工');
+                    const subDef = PROCESS_SUB_PARAMS['CNC加工'];
+                    return (
+                      <div key="cnc_card" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>CNC加工</div>
+                        {subDef?.map(param => (
+                          <div key={param.name} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                            <span style={{ fontSize: 11, color: '#6b7280' }}>{param.label}:</span>
+                            <input
+                              type="number"
+                              min={0}
+                              placeholder={param.label}
+                              value={proc?.subParams?.[param.name] ?? ''}
+                              onChange={e => updateSubParam('CNC加工', param.name, parseFloat(e.target.value) || '')}
+                              style={{ flex: 1, borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 12, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
+                            />
+                          </div>
+                        ))}
                       </div>
-                    )}
-                    {subDef.map(param => (
-                      <div key={param.name} className="flex items-center gap-1">
-                        <span className="text-[11px] text-gray-500">{param.label}:</span>
-                        {param.type === 'select' && param.options ? (
-                          <select
-                            value={proc.subParams?.[param.name] ?? param.options[0]}
-                            onChange={e => updateSubParam(proc.name, param.name, e.target.value)}
-                            className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
-                          >
-                            {param.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                          </select>
-                        ) : (
+                    );
+                  })()}
+
+                  {/* 钻孔卡片 */}
+                  {processes.some(p => p.name === '钻孔') && (() => {
+                    const proc = processes.find(p => p.name === '钻孔');
+                    const subDef = PROCESS_SUB_PARAMS['钻孔'];
+                    return (
+                      <div key="drill_card" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>钻孔</div>
+                        {subDef?.map(param => (
+                          <div key={param.name} style={{ marginBottom: 4 }}>
+                            <span style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 2 }}>{param.label}</span>
+                            {param.type === 'select' && param.options ? (
+                              <select
+                                value={proc?.subParams?.[param.name] ?? param.options[0]}
+                                onChange={e => updateSubParam('钻孔', param.name, e.target.value)}
+                                style={{ width: '100%', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 12, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
+                              >
+                                {param.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                              </select>
+                            ) : (
+                              <input
+                                type="number"
+                                min={0}
+                                placeholder={param.label}
+                                value={proc?.subParams?.[param.name] ?? ''}
+                                onChange={e => updateSubParam('钻孔', param.name, parseFloat(e.target.value) || '')}
+                                style={{ width: '100%', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 12, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
+                  {/* 攻牙卡片 */}
+                  {processes.some(p => p.name === '攻牙') && (() => {
+                    const proc = processes.find(p => p.name === '攻牙');
+                    const subDef = PROCESS_SUB_PARAMS['攻牙'];
+                    return (
+                      <div key="tap_card" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>攻牙</div>
+                        {subDef?.map(param => (
+                          <div key={param.name} style={{ marginBottom: 4 }}>
+                            <span style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 2 }}>{param.label}</span>
+                            {param.type === 'select' && param.options ? (
+                              <select
+                                value={proc?.subParams?.[param.name] ?? param.options[0]}
+                                onChange={e => updateSubParam('攻牙', param.name, e.target.value)}
+                                style={{ width: '100%', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 12, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
+                              >
+                                {param.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                              </select>
+                            ) : (
+                              <input
+                                type="number"
+                                min={0}
+                                placeholder={param.label}
+                                value={proc?.subParams?.[param.name] ?? ''}
+                                onChange={e => updateSubParam('攻牙', param.name, parseFloat(e.target.value) || '')}
+                                style={{ width: '100%', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 12, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
+                  {/* 冲压卡片 */}
+                  {processes.some(p => p.name === '冲压') && (() => {
+                    const proc = processes.find(p => p.name === '冲压');
+                    const subDef = PROCESS_SUB_PARAMS['冲压'];
+                    return (
+                      <div key="stamp_card" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>冲压</div>
+                        {/* 冲次 */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                          <span style={{ fontSize: 11, color: '#6b7280' }}>冲次:</span>
                           <input
                             type="number"
                             min={0}
-                            placeholder={param.label}
-                            value={proc.subParams?.[param.name] ?? ''}
-                            onChange={e => updateSubParam(proc.name, param.name, parseFloat(e.target.value) || '')}
-                            className="w-20 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 min-h-[28px]"
+                            placeholder="次数"
+                            value={proc?.quantity ?? ''}
+                            onChange={e => updateProcessQuantity('冲压', e.target.value)}
+                            style={{ flex: 1, borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 12, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
                           />
-                        )}
+                          <span style={{ fontSize: 11, color: '#9ca3af' }}>次</span>
+                        </div>
+                        {/* 吨位 */}
+                        {subDef?.map(param => (
+                          <div key={param.name} style={{ marginBottom: 4 }}>
+                            <span style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 2 }}>{param.label}</span>
+                            {param.type === 'select' && param.options ? (
+                              <select
+                                value={proc?.subParams?.[param.name] ?? param.options[0]}
+                                onChange={e => updateSubParam('冲压', param.name, e.target.value)}
+                                style={{ width: '100%', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 12, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
+                              >
+                                {param.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                              </select>
+                            ) : (
+                              <input
+                                type="number"
+                                min={0}
+                                placeholder={param.label}
+                                value={proc?.subParams?.[param.name] ?? ''}
+                                onChange={e => updateSubParam('冲压', param.name, parseFloat(e.target.value) || '')}
+                                style={{ width: '100%', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 12, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
+                              />
+                            )}
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })()}
+
+                  {/* 车加工卡片 */}
+                  {processes.some(p => p.name === '车加工') && (() => {
+                    const proc = processes.find(p => p.name === '车加工');
+                    const subDef = PROCESS_SUB_PARAMS['车加工'];
+                    return (
+                      <div key="turning_card" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>车加工</div>
+                        {subDef?.map(param => (
+                          <div key={param.name} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                            <span style={{ fontSize: 11, color: '#6b7280' }}>{param.label}:</span>
+                            <input
+                              type="number"
+                              min={0}
+                              placeholder={param.label}
+                              value={proc?.subParams?.[param.name] ?? ''}
+                              onChange={e => updateSubParam('车加工', param.name, parseFloat(e.target.value) || '')}
+                              style={{ flex: 1, borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 12, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
+                  {/* 颜色选择卡片 */}
+                  {surfaceTreatment && surfaceTreatment !== '无' && getSurfaceColorOptions().length > 0 && (
+                    <div key="color_card" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>颜色选择</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {getSurfaceColorOptions().map(colorName => {
+                          const isSel = surfaceColor === colorName;
+                          return (
+                            <button
+                              key={colorName}
+                              type="button"
+                              onClick={() => setSurfaceColor(colorName)}
+                              style={{
+                                padding: '4px 8px',
+                                fontSize: 12,
+                                borderRadius: 16,
+                                border: isSel ? '1px solid #2563eb' : '1px solid #d1d5db',
+                                background: isSel ? '#eff6ff' : '#fff',
+                                color: isSel ? '#2563eb' : '#475569',
+                                fontWeight: isSel ? 600 : 400,
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                                transition: 'all 0.2s',
+                              }}
+                            >
+                              {colorName}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 材料规格卡片（挤出专用） */}
+                  {productType === '挤出' && surfaceTreatment && surfaceTreatment !== '无' && (
+                    <div key="material_card" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>材料规格</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => setMaterialSizeType('short')}
+                          style={{
+                            padding: '5px 8px',
+                            fontSize: 12,
+                            borderRadius: 16,
+                            border: materialSizeType === 'short' ? '1px solid #2563eb' : '1px solid #d1d5db',
+                            background: materialSizeType === 'short' ? '#eff6ff' : '#fff',
+                            color: materialSizeType === 'short' ? '#2563eb' : '#475569',
+                            fontWeight: materialSizeType === 'short' ? 600 : 400,
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            transition: 'all 0.2s',
+                          }}
+                        >
+                          小料 (&lt;3000mm)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMaterialSizeType('long')}
+                          style={{
+                            padding: '5px 8px',
+                            fontSize: 12,
+                            borderRadius: 16,
+                            border: materialSizeType === 'long' ? '1px solid #2563eb' : '1px solid #d1d5db',
+                            background: materialSizeType === 'long' ? '#eff6ff' : '#fff',
+                            color: materialSizeType === 'long' ? '#2563eb' : '#475569',
+                            fontWeight: materialSizeType === 'long' ? 600 : 400,
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            transition: 'all 0.2s',
+                          }}
+                        >
+                          长料 (≥3000mm)
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
-            })}
-          </div>
-        )}
+            })()}
 
-        {/* ---- 表面处理（合并材料+产品，二选一） ---- */}
-        {(showMaterialSurface || showProductSurface) && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-            <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">表面处理</label>
-            <CustomSelect
-              value={surfaceTreatment}
-              options={getSurfaceTreatmentOptions().map(o => o.name)}
-              onChange={val => { setSurfaceTreatment(val); setSurfaceColor(''); }}
-            />
-            {getSurfaceColorOptions().length > 0 && (
-              <div className="mt-2">
-                <label className="block text-[12px] text-gray-500 mb-1">颜色</label>
-                <CustomSelect value={surfaceColor} options={getSurfaceColorOptions()} onChange={setSurfaceColor} />
-              </div>
-            )}
-            {/* 长料/小料切换 — 仅挤压铝型材显示 */}
-            {productType === '挤出' && surfaceTreatment && surfaceTreatment !== '无' && (
-              <div className="mt-2">
-                <label className="block text-[12px] text-gray-500 mb-1">材料规格</label>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setMaterialSizeType('short')}
-                    className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-all ${
-                      materialSizeType === 'short'
-                        ? 'bg-blue-500 text-white shadow-sm'
-                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                    }`}
-                  >
-                    小料 (&lt;3000mm)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMaterialSizeType('long')}
-                    className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-all ${
-                      materialSizeType === 'long'
-                        ? 'bg-blue-500 text-white shadow-sm'
-                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                    }`}
-                  >
-                    长料 (≥3000mm)
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ---- 其他参数（挤出专用） ---- */}
-        {productType === '挤出' && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-            <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">其他参数</label>
-            {/* 模具钢价输入框已隐藏，后端使用默认值 18000 元/吨 */}
-            <div style={{ display: 'none' }}>
-              <label className="block text-[12px] text-gray-500 mb-1">
-                模具钢价(元/吨)
-                <span className="ml-1 text-[11px] text-gray-400">选填，默认18000(H13均价)</span>
-              </label>
-              <input
-                type="number"
-                min={0}
-                placeholder="18000"
-                value={dieSteelPrice}
-                onChange={e => setDieSteelPrice(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
-              />
-            </div>
-
-          </div>
-        )}
-
-        {/* ---- 图纸上传 ---- */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-          <label className="block text-[12px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">图纸上传（可选）</label>
-          <div
-            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={handleFileDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`relative border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all duration-200 ${
-              dragOver
-                ? 'border-blue-400 bg-blue-50'
-                : uploadedFile
-                  ? 'border-emerald-300 bg-emerald-50'
-                  : 'border-gray-200 bg-gray-50 hover:border-blue-300 hover:bg-blue-50/50'
-            }`}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={ALLOWED_EXTENSIONS.join(',')}
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-            {uploadedFile ? (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-left">
-                  <FileText className="w-5 h-5 text-emerald-500 shrink-0" />
-                  <div>
-                    <div className="text-sm font-medium text-gray-800 truncate max-w-[160px]">{uploadedFile.name}</div>
-                    <div className="text-[11px] text-gray-400">{(uploadedFile.size / 1024).toFixed(1)} KB</div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={e => { e.stopPropagation(); removeFile(); }}
-                  className="p-1 rounded-full hover:bg-gray-200 transition-colors"
-                >
-                  <X className="w-4 h-4 text-gray-400" />
-                </button>
-              </div>
-            ) : (
-              <div>
-                <Upload className={`w-6 h-6 mx-auto mb-1.5 ${dragOver ? 'text-blue-500' : 'text-gray-400'}`} />
-                <p className="text-xs text-gray-500">拖拽文件到此处，或<span className="text-blue-500 font-medium">点击上传</span></p>
-                <p className="text-[11px] text-gray-400 mt-1">支持 PDF、JPG、PNG、DXF、DWG、STP、STEP、IGS、X_T、ZIP、RAR、7Z 等，也可 Ctrl+V 粘贴图片</p>
-              </div>
-            )}
-          </div>
-          <input
-            type="text"
-            placeholder="备注说明（可选）"
-            value={fileRemark}
-            onChange={e => setFileRemark(e.target.value)}
-            className="w-full mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
-          />
-
-          {/* 识别中 */}
-          {recognizing && (
-            <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 text-blue-600 text-xs">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              正在AI识别图纸参数...
-            </div>
-          )}
-
-          {/* 识别错误 */}
-          {recogError && (
-            <div className="mt-2 flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
-              <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-              <div className="flex-1 min-w-0">
-                <div className="text-xs text-amber-700">{recogError}</div>
-                {uploadedFile && (
-                  <button
-                    type="button"
-                    onClick={requestDeepQuote}
-                    disabled={deepQuoteLoading}
-                    className="mt-1.5 inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[12px] font-medium hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {deepQuoteLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <User className="w-3 h-3" />}
-                    {deepQuoteLoading ? '深度识别中...' : '申请深度报价'}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* 多产品列表 */}
-          {recogProducts.length > 1 && (
-            <div className="mt-2 space-y-1.5">
-              <div className="text-[12px] font-semibold text-gray-700">共识别 {recogProducts.length} 个产品，点击切换：</div>
-              <div className="flex flex-wrap gap-1.5">
-                {recogProducts.map((p, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => switchToProduct(i)}
-                    className={`px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors border ${
-                      selectedProductIdx === i
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : p._failed
-                          ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
-                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                    }`}
-                  >
-                    {p._failed ? '' : '✓'} {p._fileName || `产品${i + 1}`}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 识别结果 */}
-          {recogResult && !recogError && (
-            <div className={`mt-2 rounded-lg border p-2.5 ${
-              recogResult.needs_human
-                ? 'bg-amber-50 border-amber-200'
-                : 'bg-emerald-50 border-emerald-200'
-            }`}>
-              <div className="flex items-center gap-1.5 mb-1.5">
-                {recogResult.needs_human ? (
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                ) : (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                )}
-                <span className={`text-[12px] font-semibold ${
-                  recogResult.needs_human ? 'text-amber-700' : 'text-emerald-700'
-                }`}>
-                  {recogResult.needs_human ? '识别不确定，请确认参数' : 'AI已自动填入参数'}
-                  {typeof recogResult.confidence === 'number' && (
-                    <span className="ml-1 opacity-70">（置信度{(recogResult.confidence*100).toFixed(0)}%）</span>
-                  )}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[12px] text-gray-600">
-                {recogResult.width != null && <div>宽: <b>{recogResult.width}mm</b></div>}
-                {recogResult.height != null && <div>高: <b>{recogResult.height}mm</b></div>}
-                {recogResult.wall_thickness != null && <div>壁厚: <b>{recogResult.wall_thickness}mm</b></div>}
-                {recogResult.length != null && <div>长: <b>{recogResult.length}mm</b></div>}
-                {recogResult.perimeter != null && <div>外周长: <b>{recogResult.perimeter}mm</b></div>}
-                {recogResult.inner_perimeter != null && <div>内周长: <b>{recogResult.inner_perimeter}mm</b></div>}
-                {recogResult.meter_weight != null && <div>米重: <b>{recogResult.meter_weight}kg/m</b></div>}
-                {recogResult.num_cavities != null && <div>面域: <b>{recogResult.num_cavities}</b></div>}
-                {recogResult.material_grade ? <div className="col-span-2">材质: <b>{recogResult.material_grade}</b></div> : <div className="col-span-2 text-amber-600">材质: 无法识别，请手动选择</div>}
-                {recogResult.surface_treatment ? <div className="col-span-2">表面处理: <b>{recogResult.surface_treatment}</b></div> : <div className="col-span-2 text-amber-600">表面处理: 无法识别，请手动选择</div>}
-                {recogResult.product_code && <div className="col-span-2">图号: <b>{recogResult.product_code}</b></div>}
-              </div>
-              {recogResult.handoff_reason && (
-                <div className="mt-1.5 text-[11px] text-amber-600">{recogResult.handoff_reason}</div>
-              )}
-              <div className="mt-2 flex gap-2">
-                {recogResult.needs_human && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => applyRecogToForm(recogResult)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-500 text-white text-[12px] font-medium hover:bg-emerald-600 transition-colors"
-                    >
-                      <CheckCircle2 className="w-3 h-3" />
-                      确认填入
-                    </button>
-                    <button
-                      type="button"
-                      onClick={requestDeepQuote}
-                      disabled={deepQuoteLoading}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[12px] font-medium hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {deepQuoteLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <User className="w-3 h-3" />}
-                      {deepQuoteLoading ? '深度识别中...' : '申请深度报价'}
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* ===== AI确认对话框 ===== */}
-        {showCheckDialog && checkQuestions.length > 0 && (
-          <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50/80 p-4 space-y-3">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center">
-                <span className="text-white text-xs font-bold">AI</span>
-              </div>
-              <span className="text-sm font-semibold text-blue-800">需要确认以下信息</span>
-            </div>
-            {checkQuestions.map((q: any, idx: number) => (
-              <div key={idx} className="bg-white rounded-lg p-3 border border-blue-100">
-                <div className="text-sm text-gray-700 mb-2">{q.question}</div>
-                {q.input_type === 'select' && (
-                  <select
-                    className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    defaultValue={q.default || ''}
-                    onChange={(e) => {
-                      setCheckAnswers(prev => ({ ...prev, [q.field]: e.target.value }));
-                    }}
-                  >
-                    {q.options?.map((opt: string) => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
-                )}
-                {q.input_type === 'number' && (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      className="flex-1 text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                      defaultValue={q.default ?? ''}
-                      placeholder={q.unit || ''}
-                      onChange={(e) => {
-                        setCheckAnswers(prev => ({ ...prev, [q.field]: Number(e.target.value) }));
-                      }}
-                    />
-                    {q.unit && <span className="text-xs text-gray-500">{q.unit}</span>}
-                  </div>
-                )}
-                {q.input_type === 'confirm' && (
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      className={`px-3 py-1 text-xs rounded-md border transition ${
-                        checkAnswers[q.field] === 'yes' || checkAnswers[q.field] === undefined
-                          ? 'bg-blue-500 text-white border-blue-500'
-                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                      }`}
-                      onClick={() => setCheckAnswers(prev => ({ ...prev, [q.field]: 'yes' }))}
-                    >
-                      ✓ 正确
-                    </button>
-                    <button
-                      type="button"
-                      className={`px-3 py-1 text-xs rounded-md border transition ${
-                        checkAnswers[q.field] === 'no'
-                          ? 'bg-red-500 text-white border-red-500'
-                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                      }`}
-                      onClick={() => setCheckAnswers(prev => ({ ...prev, [q.field]: 'no' }))}
-                    >
-                      ✗ 需要修改
-                    </button>
-                  </div>
-                )}
-                {q.input_type === 'text' && (
-                  <input
-                    type="text"
-                    className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    defaultValue={q.default || ''}
-                    placeholder={q.label || ''}
-                    onChange={(e) => {
-                      setCheckAnswers(prev => ({ ...prev, [q.field]: e.target.value }));
-                    }}
-                  />
-                )}
-              </div>
-            ))}
-            <div className="flex gap-2 pt-1">
-              <button
-                type="button"
-                className="flex-1 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition"
-                onClick={() => {
-                  // 将用户回答应用到表单
-                  const answers = { ...checkAnswers };
-                  // 填充默认值（用户未修改的）
-                  checkQuestions.forEach((q: any) => {
-                    if (answers[q.field] === undefined && q.default !== undefined) {
-                      answers[q.field] = q.default;
-                    }
-                  });
-                  // 应用确认类问题
-                  checkQuestions.forEach((q: any) => {
-                    if (q.input_type === 'confirm' && answers[q.field] === 'no') {
-                      // 用户否认了推荐值，清空该字段
-                      // 具体处理视字段而定
-                    }
-                  });
-                  // 映射到表单字段
-                  if (answers.material_grade) setMaterialGrade(answers.material_grade);
-                  if (answers.surface_treatment) {
-                    const stMap: Record<string,string> = {
-                      '阳极氧化': '氧化', '粉末喷涂': '喷涂', '氟碳喷涂': '喷涂', '木纹转印': '喷涂', '电镀': '无', '无': '无',
-                    };
-                    const mapped = stMap[answers.surface_treatment] || answers.surface_treatment;
-                    setProductSurfaceTreatment(mapped);
-                    setMaterialSurfaceTreatment(mapped);
-                  }
-                  if (answers.length_mm) {
-                    setFields(prev => ({ ...prev, length: answers.length_mm }));
-                  }
-                  setShowCheckDialog(false);
-                  setCheckQuestions([]);
-                }}
-              >
-                确认并填入
-              </button>
-              <button
-                type="button"
-                className="px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition"
-                onClick={() => { setShowCheckDialog(false); setCheckQuestions([]); }}
-              >
-                跳过
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ===== 登录提示弹窗 ===== */}
-        {showLoginModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4">
-              <div className="text-center">
-                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <User className="w-6 h-6 text-blue-600" />
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900">登录后使用图纸识别</h3>
-                <p className="text-sm text-gray-500 mt-2">注册即送 100 积分，图纸识别自动填入报价表</p>
-              </div>
-              <div className="flex gap-3">
-                <a href="/login" className="flex-1 text-center py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition">去登录</a>
-                <a href="/register" className="flex-1 text-center py-2.5 border border-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition">注册</a>
-              </div>
-              <button onClick={() => setShowLoginModal(false)} className="w-full text-center text-sm text-gray-400 hover:text-gray-600">取消</button>
-            </div>
-          </div>
-        )}
-
-        {/* ===== 额度超限弹窗 ===== */}
-        {showQuotaModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4">
-              <div className="text-center">
-                <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <AlertTriangle className="w-6 h-6 text-amber-600" />
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900">积分不足</h3>
-                <p className="text-sm text-gray-500 mt-2">图纸识别每次消耗 10 积分。邀请好友注册，双方各得 100 积分</p>
-              </div>
-              <div className="space-y-3">
-                <button
-                  onClick={async () => {
-                    const link = await ensureReferralLink();
-                    if (!link) return;
-                    try {
-                      await navigator.clipboard.writeText(link);
-                    } catch {
-                      // 非 HTTPS 或旧浏览器兜底
-                      const ta = document.createElement('textarea');
-                      ta.value = link;
-                      ta.style.position = 'fixed';
-                      ta.style.opacity = '0';
-                      document.body.appendChild(ta);
-                      ta.select();
-                      try { document.execCommand('copy'); } catch { /* ignore */ }
-                      document.body.removeChild(ta);
-                    }
-                    setCopiedInvite(true);
-                    setTimeout(() => setCopiedInvite(false), 2000);
+            {/* 隐藏的模具钢价输入（挤出专用，后端使用默认值 18000 元/吨） */}
+            {productType === '挤出' && (
+              <div style={{ display: 'none' }}>
+                <label style={{ display: 'block', fontSize: 12, color: '#6b7280', marginBottom: 4 }}>
+                  模具钢价(元/吨)
+                  <span style={{ marginLeft: 4, fontSize: 11, color: '#9ca3af' }}>选填，默认18000(H13均价)</span>
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="18000"
+                  value={dieSteelPrice}
+                  onChange={e => setDieSteelPrice(e.target.value)}
+                  style={{
+                    width: '100%',
+                    borderRadius: 8,
+                    border: '1px solid #e2e8f0',
+                    background: '#f8fafc',
+                    padding: '6px 12px',
+                    fontSize: 14,
+                    color: '#1f2937',
+                    outline: 'none',
+                    minHeight: 36,
+                    boxSizing: 'border-box',
                   }}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition"
-                >
-                  <Share2 className="w-4 h-4" />
-                  {copiedInvite ? '已复制，去发给好友吧' : '复制邀请链接'}
-                </button>
-                <button
-                  onClick={() => {
-                    setShowQuotaModal(false);
-                    if (!uploadedFile) {
-                      setRecogError('请先上传图纸文件，再申请深度报价（工程师人工报价）');
-                      return;
-                    }
-                    requestDeepQuote();
-                  }}
-                  className="w-full text-center py-2.5 border border-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition"
-                >
-                  申请深度报价
-                </button>
+                />
               </div>
-              <button onClick={() => setShowQuotaModal(false)} className="w-full text-center text-sm text-gray-400 hover:text-gray-600">关闭</button>
-            </div>
+            )}
           </div>
         )}
 
@@ -3544,7 +3802,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             正在计算...
           </div>
         )}
-
       </div>
     </div>
   );
