@@ -627,7 +627,8 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
               {recogResult.perimeter != null && <div>外周长: <b>{recogResult.perimeter}mm</b></div>}
               {recogResult.inner_perimeter != null && <div>内周长: <b>{recogResult.inner_perimeter}mm</b></div>}
               {recogResult.meter_weight != null && <div>米重: <b>{recogResult.meter_weight}kg/m</b></div>}
-              {recogResult.num_cavities != null && <div>面域: <b>{recogResult.num_cavities}</b></div>}
+              {recogResult.section_area_mm2 != null && <div>面域: <b>{recogResult.section_area_mm2}mm²</b></div>}
+              {recogResult.num_cavities != null && <div>模腔数: <b>{recogResult.num_cavities}</b></div>}
               {recogResult.material_grade ? <div className="col-span-2">材质: <b>{recogResult.material_grade}</b></div> : <div className="col-span-2 text-amber-600">材质: 无法识别，请手动选择</div>}
               {recogResult.surface_treatment ? <div className="col-span-2">表面处理: <b>{recogResult.surface_treatment}</b></div> : <div className="col-span-2 text-amber-600">表面处理: 无法识别，请手动选择</div>}
               {recogResult.product_code && <div className="col-span-2">图号: <b>{recogResult.product_code}</b></div>}
