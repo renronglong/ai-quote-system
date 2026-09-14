@@ -2166,6 +2166,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           length: cadJson.extrusion_length_mm,
           process: cadJson.process || null,
           secondary_operations: cadJson.secondary_operations || null,
+          cnc_holes: cadJson.cnc_holes || null,
+          cnc_total_holes: cadJson.cnc_total_holes || 0,
+          machining_time_min: cadJson.machining_time_min || null,
           notes: `3D 模型解析 | ⚠️仅用于报价估算，不可作为开模依据`,
         };
         setRecogResult(recogData);
