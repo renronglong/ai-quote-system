@@ -291,7 +291,7 @@ export default function QuotePage() {
               </div>
               <div className="flex items-baseline gap-1.5">
                 <span className="text-base font-bold text-gray-800"><span className="text-blue-600">碧利制造</span> <span className="text-gray-400">·</span> AI报价系统</span>
-                <span className="hidden sm:inline text-[11px] text-gray-400">gyparts.cn <span className="text-[10px] text-blue-400">v1.9.9</span></span>
+                <span className="hidden sm:inline text-[11px] text-gray-400">gyparts.cn <span className="text-[10px] text-blue-400">v2.0.0</span></span>
               </div>
             </Link>
 
