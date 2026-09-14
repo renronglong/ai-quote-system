@@ -1854,7 +1854,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   // Field rendering with two-column grid
   const renderFields = () => {
     if (!categoryConfig) return null;
-    const fieldOrder = ['thickness', 'width', 'height', 'perimeter', 'num_cavities', 'die_type', 'meterWeight', 'crossSectionArea', 'productSize', 'netWeight'];
+    const fieldOrder = ['thickness', 'length', 'width', 'height', 'perimeter', 'num_cavities', 'die_type', 'meterWeight', 'crossSectionArea', 'productSize', 'quantity', 'netWeight'];
     let visibleFields = fieldOrder.filter(f => categoryConfig.fields.includes(f));
     // In standard mode, hide num_cavities, die_type, width, height, perimeter
     // (these are handled by structured dimension inputs + mold matching)
@@ -2574,8 +2574,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.06)', border: '1px solid #f3f4f6', padding: 12 }}>
             <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>加工工艺</label>
 
-            {/* === 上半部分：3列 grid === */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 0.6fr', gap: 16 }}>
+            {/* === 上半部分：2列 grid === */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
 
               {/* 左列 - 工艺选择 */}
               <div>
@@ -2644,60 +2644,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 </div>
               )}
 
-              {/* 右列 - 参数（长度+数量） */}
-              <div style={{ borderLeft: '1px solid #e5e7eb', paddingLeft: 16 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#2563eb', marginBottom: 8 }}>参数</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {fields.length !== undefined && (
-                    <div>
-                      <div style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>长度(mm)</div>
-                      <input
-                        type="number"
-                        min={0}
-                        placeholder="长度"
-                        value={fields.length}
-                        onChange={e => setFields(prev => ({ ...prev, length: e.target.value }))}
-                        style={{
-                          width: '100%',
-                          borderRadius: 8,
-                          border: '1px solid #e2e8f0',
-                          background: '#f8fafc',
-                          padding: '6px 8px',
-                          fontSize: 14,
-                          color: '#1f2937',
-                          outline: 'none',
-                          minHeight: 32,
-                          boxSizing: 'border-box',
-                        }}
-                      />
-                    </div>
-                  )}
-                  {fields.quantity !== undefined && (
-                    <div>
-                      <div style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>数量</div>
-                      <input
-                        type="number"
-                        min={0}
-                        placeholder="数量"
-                        value={fields.quantity}
-                        onChange={e => setFields(prev => ({ ...prev, quantity: e.target.value }))}
-                        style={{
-                          width: '100%',
-                          borderRadius: 8,
-                          border: '1px solid #e2e8f0',
-                          background: '#f8fafc',
-                          padding: '6px 8px',
-                          fontSize: 14,
-                          color: '#1f2937',
-                          outline: 'none',
-                          minHeight: 32,
-                          boxSizing: 'border-box',
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
 
             {/* === 下半部分：4列 grid 子参数卡片 === */}
