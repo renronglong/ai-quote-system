@@ -1133,8 +1133,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     prevAiDataRef.current = aiData;
 
     // If raw recognition data (snake_case fields), use applyRecogToForm directly
-    if (aiData.product_type || aiData.perimeter !== undefined || aiData.meter_weight !== undefined || aiData.die_type !== undefined) {
-      applyRecogToForm(aiData as Record<string, any>);
+    const raw = aiData as Record<string, any>;
+    if (raw.product_type || raw.perimeter !== undefined || raw.meter_weight !== undefined || raw.die_type !== undefined) {
+      applyRecogToForm(raw);
       return;
     }
 
