@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Upload, FileText, X, Loader2, AlertTriangle, User, CheckCircle2, Share2 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
+import { PRODUCT_TYPES } from './QuoteForm';
 
 // ==================== Types ====================
 

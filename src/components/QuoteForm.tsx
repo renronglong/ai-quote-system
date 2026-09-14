@@ -112,7 +112,7 @@ interface MaterialCategoryConfig {
   productSurfaceTreatment?: ProductSurfaceOption[];
 }
 
-interface ProductTypeConfig {
+export interface ProductTypeConfig {
   label: string;
   icon: string;
   materialCategories: Record<string, MaterialCategoryConfig>;
@@ -120,7 +120,7 @@ interface ProductTypeConfig {
 
 const ALL_COLORS_OXIDATION = ['本色', '红色', '黑色', '金色', '铁灰色'];
 
-const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
+export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
   '挤出': {
     label: '挤出铝型材',
     icon: '⊞',
