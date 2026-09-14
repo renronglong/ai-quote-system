@@ -1854,7 +1854,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   // Field rendering with two-column grid
   const renderFields = () => {
     if (!categoryConfig) return null;
-    const fieldOrder = ['thickness', 'length', 'width', 'height', 'perimeter', 'num_cavities', 'die_type', 'meterWeight', 'crossSectionArea', 'productSize', 'quantity', 'netWeight'];
+    const fieldOrder = ['thickness', 'width', 'height', 'perimeter', 'num_cavities', 'die_type', 'meterWeight', 'crossSectionArea', 'productSize', 'netWeight'];
     let visibleFields = fieldOrder.filter(f => categoryConfig.fields.includes(f));
     // In standard mode, hide num_cavities, die_type, width, height, perimeter
     // (these are handled by structured dimension inputs + mold matching)
