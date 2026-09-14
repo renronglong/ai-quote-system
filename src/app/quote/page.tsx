@@ -367,9 +367,9 @@ export default function QuotePage() {
       )}
 
       {/* 主内容区 - 三栏布局 */}
-      <main className="flex-1 min-h-0 overflow-hidden hidden lg:grid" style={{ gridTemplateColumns: guideCollapsed ? '380px 1fr' : '380px 1fr 280px', gap: '0px' }}>
+      <main className="flex-1 min-h-0 overflow-hidden hidden lg:grid" style={{ gridTemplateColumns: guideCollapsed ? '480px 1fr' : '480px 1fr 280px', gap: '16px', padding: '16px' }}>
         {/* 左栏：参数设置 */}
-        <div className="overflow-y-auto bg-gray-50 border-r border-gray-200">
+        <div className="overflow-y-auto overflow-x-hidden bg-gray-50 rounded-xl border border-gray-200">
           <div className="p-4 space-y-4">
             <OperationGuide />
             <div className="bg-white rounded-xl border border-gray-200 p-4">
@@ -389,9 +389,8 @@ export default function QuotePage() {
         </div>
 
         {/* 中栏：报价结果 */}
-        <div className="overflow-y-auto bg-gray-50">
-          <div className="p-4">
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="overflow-y-auto overflow-x-hidden bg-gray-50 rounded-xl border border-gray-200">
+          <div className="p-5">
               <ResultPanel
                 pricingResult={pricingResult}
                 aluminumPrice={aluminumPrice}
@@ -420,13 +419,11 @@ export default function QuotePage() {
               />
             </div>
           </div>
-        </div>
 
         {/* 右栏：报价指南 */}
         {!guideCollapsed && (
-          <div className="overflow-y-auto bg-gray-50 border-l border-gray-200">
+          <div className="overflow-y-auto overflow-x-hidden bg-gray-50 rounded-xl border border-gray-200">
             <div className="p-4">
-              <div className="bg-white rounded-xl border border-gray-200">
                 {/* 标题行 */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                   <span className="text-sm font-semibold text-gray-700">💡 报价指南</span>
@@ -531,7 +528,6 @@ export default function QuotePage() {
                     </div>
                   </div>
                 </div>
-              </div>
             </div>
           </div>
         )}
