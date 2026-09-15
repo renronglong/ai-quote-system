@@ -1102,7 +1102,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const subParams: Record<string, any> = {};
       if (subDef) {
         for (const param of subDef) {
-          if (param.type === 'number') subParams[param.name] = '';
+          // 加工时间(分钟)：有识别结果时预填，否则留空让用户填
+          if (param.type === 'number' && param.name === 'minutes') {
+            const recogMin = recogResult?.machining_time_min || recogResult?.process?.machining_time_min;
+            subParams[param.name] = recogMin ?? '';
+          } else if (param.type === 'number') subParams[param.name] = '';
           else if (param.type === 'select' && param.options) subParams[param.name] = param.options[0];
         }
       }
@@ -1821,11 +1825,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         });
       }
     }
-    // CNC 加工：直接从 STP/CAD 解析结果自动添加
+    // CNC 加工：直接从 STP/CAD 解析结果自动添加（有孔位或有加工时间均触发）
     const cncHoles = d.cnc_holes || d.process?.cnc_holes;
     const cncTotalHoles = d.cnc_total_holes || d.process?.cnc_total_holes || 0;
     const machiningTime = d.machining_time_min || d.process?.machining_time_min;
-    if ((cncHoles && Array.isArray(cncHoles) && cncHoles.length > 0) || cncTotalHoles > 0) {
+    const hasCncData = (cncHoles && Array.isArray(cncHoles) && cncHoles.length > 0) || cncTotalHoles > 0 || !!machiningTime;
+    if (hasCncData) {
       setProcesses(prev => {
         const existingNames = new Set(prev.map(p => p.name));
         const newProcs = [];
