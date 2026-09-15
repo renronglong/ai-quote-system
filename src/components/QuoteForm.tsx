@@ -1336,11 +1336,15 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       '喷涂': '喷涂', '氧化': '氧化本色', '电镀': '镀锌/镀镍',
       '除油': '除油',
     };
-    // 使用合并后的统一表面处理
-    if (surfaceTreatment && surfaceTreatment !== '无') {
-      let mapped = surfaceMap[surfaceTreatment];
+    // 使用合并后的统一表面处理：优先用户手动选的，其次AI识别的
+    const effectiveST = (surfaceTreatment && surfaceTreatment !== '无')
+      ? surfaceTreatment
+      : ((materialSurfaceTreatment && materialSurfaceTreatment !== '无') ? materialSurfaceTreatment
+        : (productSurfaceTreatment && productSurfaceTreatment !== '无') ? productSurfaceTreatment : '');
+    if (effectiveST) {
+      let mapped = surfaceMap[effectiveST];
       if (!mapped) return null;
-      if (surfaceTreatment === '氧化') {
+      if (effectiveST === '氧化') {
         if (surfaceColor && surfaceColor !== '本色') mapped = '氧化上色';
         else mapped = '氧化本色';
       }
