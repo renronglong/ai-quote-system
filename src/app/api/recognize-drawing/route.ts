@@ -67,7 +67,7 @@ function autoComputeGeometry(params: Record<string, unknown>): Record<string, un
     const diagonal = Math.sqrt(w * w + h * h);
     result.outer_circle_diameter = Math.round(diagonal * 100) / 100;
 
-    const recommendedDie = diagonal * 1.1 + 80;
+    const recommendedDie = diagonal * 1.1 + 90;
     const standardDies = [130, 140, 160, 180, 200, 220, 250, 280, 300, 350, 400];
     const die = standardDies.find((d) => d >= recommendedDie) || standardDies[standardDies.length - 1];
     result.recommended_die = die;
@@ -80,7 +80,7 @@ function autoComputeGeometry(params: Record<string, unknown>): Record<string, un
     // 复杂实心型材（翅片/台阶等）无法用简单矩形近似，不强行算截面积和米重
     const diagonal = Math.sqrt(w * w + h * h);
     result.outer_circle_diameter = Math.round(diagonal * 100) / 100;
-    const recommendedDie = diagonal * 1.1 + 80;
+    const recommendedDie = diagonal * 1.1 + 90;
     const standardDies = [130, 140, 160, 180, 200, 220, 250, 280, 300, 350, 400];
     const die = standardDies.find((d) => d >= recommendedDie) || standardDies[standardDies.length - 1];
     result.recommended_die = die;

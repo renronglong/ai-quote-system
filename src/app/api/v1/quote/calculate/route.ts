@@ -826,7 +826,7 @@ function calcExtrusion(
       // 方/扁棒、角铝、方管、异型材：矩形对角线
       diagonal = Math.sqrt(W * W + H_dim * H_dim);
     }
-    let phiDiag = diagonal * 1.1 + 80;
+    let phiDiag = diagonal * 1.1 + 90;
     let dieDiameter = STANDARD_DIE_SIZES.find(s => s >= phiDiag) || STANDARD_DIE_SIZES[STANDARD_DIE_SIZES.length - 1];
     if (phiDiag <= 140) dieDiameter = 139;
 
