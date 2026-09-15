@@ -66,6 +66,7 @@ export default function QuotePage() {
   const [aluminumPrice, setAluminumPrice] = useState<AluminumPrice | null>(null);
   const [aiFormData, setAiFormData] = useState<AiFormUpdate | null>(null);
   const [drawingRecogData, setDrawingRecogData] = useState<any>(null);
+  const [drawingKey, setDrawingKey] = useState(0);
   const drawingRecogCounter = useRef(0);
   const handleDrawingData = useCallback((data: any) => {
     drawingRecogCounter.current += 1;
@@ -194,6 +195,9 @@ export default function QuotePage() {
     setManualMinOrderQty(null);
     setCurrentParams(null);
     setProductInfo({ productName: '', productCode: '' });
+    setAiFormData(null);
+    setDrawingRecogData(null);
+    setDrawingKey(k => k + 1);
     setFormNonce(n => n + 1);
   }, []);
 
@@ -398,6 +402,7 @@ export default function QuotePage() {
         {/* 第一栏：图纸识别 */}
         <div className="overflow-y-auto overflow-x-hidden min-w-0 rounded-xl border border-gray-200 bg-white">
           <DrawingRecognition
+            key={drawingKey}
             onDrawingData={handleDrawingData}
             user={user}
             aiData={drawingRecogData}
