@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     if (!file) return NextResponse.json({ error: '未收到文件' }, { status: 400 });
 
     const fileName = file.name.toLowerCase();
-    if (!/\.(dxf|step|stp|zip|dwg|pdf|png|jpg|jpeg|gif|bmp|webp)$/i.test(fileName))
+    if (!/\.(dxf|step|stp|zip|dwg|pdf|png|jpg|jpeg|gif|bmp|webp|igs|iges|x_t)$/i.test(fileName))
       return NextResponse.json({ error: '不支持的文件格式' }, { status: 400 });
 
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -38,7 +38,22 @@ export async function POST(request: NextRequest) {
       } catch {}
     }
 
-    // 1. 上传文件到Coze
+    // 1. 判断文件类型 — CAD/非图片文件直接存工单，跳过Coze
+    const isImage = IMAGE_EXTS.some(e => fileName.endsWith(e));
+    const isPdf = fileName.endsWith('.pdf');
+
+    if (!isImage && !isPdf) {
+      // CAD文件（stp/step/dxf/dwg/igs等）Coze不支持，直接存工单
+      await saveReq(supabaseServiceKey, supabaseUrl, { userId, cozeFileId: '', fileName: file.name, fileSize: file.size, userInfo, remark, status: 'pending', fileBuffer: buffer });
+      return NextResponse.json({ success: true, autoFill: false, message: 'CAD文件已提交，工程师将尽快处理' });
+    }
+
+    if (!apiToken) {
+      await saveReq(supabaseServiceKey, supabaseUrl, { userId, cozeFileId: '', fileName: file.name, fileSize: file.size, userInfo, remark, status: 'pending', fileBuffer: buffer });
+      return NextResponse.json({ success: true, autoFill: false, message: '文件已提交，工程师将尽快处理' });
+    }
+
+    // 2. 上传文件到Coze（仅图片和PDF）
     const uf = new FormData();
     const ext = fileName.split('.').pop() || 'png';
     const mt: Record<string,string> = {png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',bmp:'image/bmp',webp:'image/webp',pdf:'application/pdf'};
@@ -48,16 +63,10 @@ export async function POST(request: NextRequest) {
     const ulr = await ur.json() as {code?:number;data?:{id:string};msg?:string};
     if (ulr.code !== 0 || !ulr.data?.id) {
       console.error('[FC] upload fail:', ulr);
-      return NextResponse.json({ error: ulr.msg || '文件上传失败' }, { status: 500 });
-    }
-    const cozeFileId = ulr.data.id;
-
-    // 2. 非图片文件直接存工单
-    const isImage = IMAGE_EXTS.some(e => fileName.endsWith(e));
-    if (!isImage || !apiToken) {
-      await saveReq(supabaseServiceKey, supabaseUrl, { userId, cozeFileId, fileName: file.name, fileSize: file.size, userInfo, remark, status: 'pending', fileBuffer: buffer });
+      await saveReq(supabaseServiceKey, supabaseUrl, { userId, cozeFileId: '', fileName: file.name, fileSize: file.size, userInfo, remark, status: 'pending', fileBuffer: buffer });
       return NextResponse.json({ success: true, autoFill: false, message: '文件已提交，工程师将尽快处理' });
     }
+    const cozeFileId = ulr.data.id;
 
     // 3. 调Bot识别
     const prompt = `你是铝型材工程图纸识别专家。请分析这张图纸/截面图/零件图片，提取报价参数。
@@ -94,7 +103,7 @@ export async function POST(request: NextRequest) {
 
     const chatId = cResult.data.id, convId = cResult.data.conversation_id;
 
-    // 4. 轮询(500ms间隔,40次=20秒)
+    // 4. 轮询
     let rc = '';
     for (let i = 0; i < 55; i++) {
       await new Promise(r => setTimeout(r, 1000));
@@ -165,7 +174,6 @@ async function saveReq(sk:string,su:string,opts:{userId:string;cozeFileId:string
   try {
     const s = createClient(su,sk);
     let storedPath = `/uploads/${opts.fileName}`;
-    // 上传文件到 Supabase Storage
     if (opts.fileBuffer) {
       const bucket = 'cad-requests';
       const path = `deep-quote/${Date.now()}_${opts.fileName}`;
@@ -178,7 +186,6 @@ async function saveReq(sk:string,su:string,opts:{userId:string;cozeFileId:string
         storedPath = `${bucket}/${path}`;
       }
     }
-    // 先尝试完整插入，缺列时降级为核心字段
     const fullData = {
       user_id:opts.userId||null, file_name:opts.fileName, file_size:opts.fileSize,
       coze_file_id:opts.cozeFileId, file_path: storedPath, status:opts.status,
@@ -189,7 +196,6 @@ async function saveReq(sk:string,su:string,opts:{userId:string;cozeFileId:string
     };
     const { error } = await s.from('cad_requests').insert(fullData);
     if (error && error.message?.includes('column')) {
-      // 降级：只存核心字段
       console.warn('[FC] 表结构不完整，降级存储:', error.message);
       await s.from('cad_requests').insert({
         file_name: opts.fileName,
