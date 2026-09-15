@@ -47,6 +47,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
   const [recogProducts, setRecogProducts] = useState<Record<string, any>[]>([]);
   const [selectedProductIdx, setSelectedProductIdx] = useState(0);
   const [recogError, setRecogError] = useState<string | null>(null);
+  const [recognitionFailed, setRecognitionFailed] = useState(false);
   const [checkQuestions, setCheckQuestions] = useState<any[]>([]);
   const [checkAnswers, setCheckAnswers] = useState<Record<string, any>>({});
   const [showCheckDialog, setShowCheckDialog] = useState(false);
@@ -151,6 +152,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
 
     setRecognizing(true);
     setRecogError(null);
+    setRecognitionFailed(false);
     setRecogResult(null);
     setRecogProducts([]);
     setSelectedProductIdx(0);
@@ -171,6 +173,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         setRecogError(null);
         if (!dxfResp.ok || !dxfJson.parse_success) {
           setRecogError(dxfJson.error || dxfJson.parse_errors || 'DXF解析失败');
+          setRecognitionFailed(true);
           return;
         }
         // 从 dimensions 计算展开尺寸
@@ -214,17 +217,20 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         const zipJson = await zipResp.json();
         if (!zipResp.ok || !zipJson.success) {
           setRecogError(zipJson.error || '压缩包解压失败');
+          setRecognitionFailed(true);
           return;
         }
         const files = zipJson.files || [];
         if (files.length === 0) {
           setRecogError('压缩包中没有可识别的文件');
+          setRecognitionFailed(true);
           return;
         }
         const DRAWABLE_EXTS = ['.stp', '.step', '.igs', '.iges', '.x_t', '.dwg', '.dxf', '.pdf'];
         const targetFiles = files.filter((f: any) => DRAWABLE_EXTS.includes('.' + f.name.split('.').pop()?.toLowerCase()));
         if (targetFiles.length === 0) {
           setRecogError('压缩包中没有支持的图纸格式(STP/DXF/DWG/PDF)');
+          setRecognitionFailed(true);
           return;
         }
         setRecogError(`解压成功，共 ${targetFiles.length} 个文件，正在逐个识别...`);
@@ -312,6 +318,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         setRecogError(null);
         if (!cadResp.ok || !cadJson.parse_success) {
           setRecogError(cadJson.error || cadJson.parse_errors || '3D 模型解析失败');
+          setRecognitionFailed(true);
           return;
         }
         const recogData: Record<string, any> = {
@@ -380,6 +387,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
       }
       if (!resp.ok || !json.success) {
         setRecogError(json.error || '识别失败');
+        setRecognitionFailed(true);
         return;
       }
       const d = json.data || {};
@@ -393,6 +401,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
       }
     } catch (e: any) {
       setRecogError(e?.message || '网络错误');
+      setRecognitionFailed(true);
     } finally {
       setRecognizing(false);
     }
@@ -422,6 +431,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
     setRecogProducts([]);
     setSelectedProductIdx(0);
     setRecogError(null);
+    setRecognitionFailed(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -557,7 +567,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
             <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
               <div className="text-sm text-amber-700">{recogError}</div>
-              {uploadedFile && (
+              {recognitionFailed && uploadedFile && (
                 <button
                   type="button"
                   onClick={requestDeepQuote}

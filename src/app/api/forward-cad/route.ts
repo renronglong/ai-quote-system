@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
     if (!/\.(dxf|step|stp|zip|dwg|pdf|png|jpg|jpeg|gif|bmp|webp)$/i.test(fileName))
       return NextResponse.json({ error: '不支持的文件格式' }, { status: 400 });
 
+    const buffer = Buffer.from(await file.arrayBuffer());
     const apiToken = process.env.COZE_API_TOKEN;
     const apiBase = process.env.COZE_API_BASE_URL || 'https://api.coze.cn';
     const botId = process.env.COZE_RECOG_BOT_ID || '7677190179169796123';
@@ -38,7 +39,6 @@ export async function POST(request: NextRequest) {
     }
 
     // 1. 上传文件到Coze
-    const buffer = Buffer.from(await file.arrayBuffer());
     const uf = new FormData();
     const ext = fileName.split('.').pop() || 'png';
     const mt: Record<string,string> = {png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',bmp:'image/bmp',webp:'image/webp',pdf:'application/pdf'};
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     // 2. 非图片文件直接存工单
     const isImage = IMAGE_EXTS.some(e => fileName.endsWith(e));
     if (!isImage || !apiToken) {
-      await saveReq(supabaseServiceKey, supabaseUrl, { userId, cozeFileId, fileName: file.name, fileSize: file.size, userInfo, remark, status: 'pending' });
+      await saveReq(supabaseServiceKey, supabaseUrl, { userId, cozeFileId, fileName: file.name, fileSize: file.size, userInfo, remark, status: 'pending', fileBuffer: buffer });
       return NextResponse.json({ success: true, autoFill: false, message: '文件已提交，工程师将尽快处理' });
     }
 
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     });
     const cResult = await cr.json() as {code?:number;data?:{id:string;conversation_id:string};msg?:string};
     if (cResult.code !== 0 || !cResult.data?.id) {
-      await saveReq(supabaseServiceKey, supabaseUrl, { userId, cozeFileId, fileName:file.name, fileSize:file.size, userInfo, remark, status:'pending' });
+      await saveReq(supabaseServiceKey, supabaseUrl, { userId, cozeFileId, fileName:file.name, fileSize:file.size, userInfo, remark, status:'pending', fileBuffer: buffer });
       return NextResponse.json({ success:true, autoFill:false, message:'AI服务暂不可用，已提交工程师处理' });
     }
 
@@ -109,13 +109,13 @@ export async function POST(request: NextRequest) {
         break;
       }
       if (st==='failed'||st==='requires_action') {
-        await saveReq(supabaseServiceKey, supabaseUrl, { userId, cozeFileId, fileName:file.name, fileSize:file.size, userInfo, remark, status:'pending' });
+        await saveReq(supabaseServiceKey, supabaseUrl, { userId, cozeFileId, fileName:file.name, fileSize:file.size, userInfo, remark, status:'pending', fileBuffer: buffer });
         return NextResponse.json({ success:true, autoFill:false, message:'AI识别失败，已提交工程师处理' });
       }
     }
 
     if (!rc) {
-      await saveReq(supabaseServiceKey, supabaseUrl, { userId, cozeFileId, fileName:file.name, fileSize:file.size, userInfo, remark, status:'pending' });
+      await saveReq(supabaseServiceKey, supabaseUrl, { userId, cozeFileId, fileName:file.name, fileSize:file.size, userInfo, remark, status:'pending', fileBuffer: buffer });
       return NextResponse.json({ success:true, autoFill:false, message:'AI识别超时，已提交工程师处理' });
     }
 
@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
       if (fb>=0&&lb>fb) c=c.substring(fb,lb+1);
       parsed = JSON.parse(c.trim());
     } catch {
-      await saveReq(supabaseServiceKey, supabaseUrl, { userId, cozeFileId, fileName:file.name, fileSize:file.size, userInfo, remark, status:'pending' });
+      await saveReq(supabaseServiceKey, supabaseUrl, { userId, cozeFileId, fileName:file.name, fileSize:file.size, userInfo, remark, status:'pending', fileBuffer: buffer });
       return NextResponse.json({ success:true, autoFill:false, message:'解析失败，已提交工程师处理' });
     }
 
@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
 
     await saveReq(supabaseServiceKey, supabaseUrl, {
       userId, cozeFileId, fileName:file.name, fileSize:file.size, userInfo, remark,
-      status: autoFill?'auto_recognized':'pending', recognitionResult: parsed,
+      status: autoFill?'auto_recognized':'pending', recognitionResult: parsed, fileBuffer: buffer,
     });
 
     if (autoFill) {
@@ -160,14 +160,28 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function saveReq(sk:string,su:string,opts:{userId:string;cozeFileId:string;fileName:string;fileSize:number;userInfo:{phone:string;email:string;company:string};remark:string;status:string;recognitionResult?:Record<string,unknown>;}) {
+async function saveReq(sk:string,su:string,opts:{userId:string;cozeFileId:string;fileName:string;fileSize:number;userInfo:{phone:string;email:string;company:string};remark:string;status:string;recognitionResult?:Record<string,unknown>;fileBuffer?:Buffer;}) {
   if (!sk) return;
   try {
     const s = createClient(su,sk);
+    let storedPath = `/uploads/${opts.fileName}`;
+    // 上传文件到 Supabase Storage
+    if (opts.fileBuffer) {
+      const bucket = 'cad-requests';
+      const path = `deep-quote/${Date.now()}_${opts.fileName}`;
+      const { error: uploadErr } = await s.storage
+        .from(bucket)
+        .upload(path, opts.fileBuffer, { contentType: 'application/octet-stream', upsert: false });
+      if (uploadErr) {
+        console.warn('[FC] Storage upload failed:', uploadErr.message, '— 降级为元数据存储');
+      } else {
+        storedPath = `${bucket}/${path}`;
+      }
+    }
     // 先尝试完整插入，缺列时降级为核心字段
     const fullData = {
       user_id:opts.userId||null, file_name:opts.fileName, file_size:opts.fileSize,
-      coze_file_id:opts.cozeFileId, file_path: `/uploads/${opts.fileName}`, status:opts.status,
+      coze_file_id:opts.cozeFileId, file_path: storedPath, status:opts.status,
       email:opts.userInfo.email, phone:opts.userInfo.phone,
       company_name:opts.userInfo.company, remark:opts.remark||'',
       result_json:opts.recognitionResult?JSON.stringify(opts.recognitionResult):null,
@@ -179,7 +193,7 @@ async function saveReq(sk:string,su:string,opts:{userId:string;cozeFileId:string
       console.warn('[FC] 表结构不完整，降级存储:', error.message);
       await s.from('cad_requests').insert({
         file_name: opts.fileName,
-        file_path: `/uploads/${opts.fileName}`,
+        file_path: storedPath,
         file_size: opts.fileSize,
         status: opts.status,
       });
