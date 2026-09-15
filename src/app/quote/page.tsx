@@ -485,15 +485,15 @@ export default function QuotePage() {
                       <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                       </div>
-                      <div className="w-0.5 h-8 bg-emerald-200 mt-1" />
+                      <div className="w-0.5 h-7 bg-emerald-200 mt-1" />
                     </div>
                     <div className="pt-0.5">
                       <p className="text-sm font-medium text-emerald-700">上传图纸</p>
-                      <p className="text-sm text-slate-600 mt-0.5">拖拽或点击上传 STP/PDF/图片</p>
+                      <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">STP/STEP/DXF/DWG/PDF/图片，支持Ctrl+V粘贴；不上传也可直接填写</p>
                     </div>
                   </div>
 
-                  {/* 步骤2: 确认参数 */}
+                  {/* 步骤2: 核对参数 */}
                   <div className="flex items-start gap-3">
                     <div className="flex flex-col items-center">
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center ${pricingResult !== null ? 'bg-emerald-100' : 'bg-blue-100'}`}>
@@ -503,15 +503,15 @@ export default function QuotePage() {
                           <span className="text-sm font-bold text-blue-600">2</span>
                         )}
                       </div>
-                      <div className={`w-0.5 h-8 mt-1 ${pricingResult !== null ? 'bg-emerald-200' : 'bg-gray-200'}`} />
+                      <div className={`w-0.5 h-7 mt-1 ${pricingResult !== null ? 'bg-emerald-200' : 'bg-gray-200'}`} />
                     </div>
                     <div className={`pt-0.5 rounded-lg px-2 py-1 -ml-2 ${pricingResult !== null ? '' : 'bg-blue-50'}`}>
-                      <p className={`text-sm font-medium ${pricingResult !== null ? 'text-emerald-700' : 'text-blue-700'}`}>确认参数</p>
-                      <p className="text-sm text-slate-600 mt-0.5">核对AI识别的尺寸、材质</p>
+                      <p className={`text-sm font-medium ${pricingResult !== null ? 'text-emerald-700' : 'text-blue-700'}`}>核对参数</p>
+                      <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">绿点=AI识别，橙色边框请逐项核对：材料、表面处理、长度、数量</p>
                     </div>
                   </div>
 
-                  {/* 步骤3: 选择工艺 */}
+                  {/* 步骤3: 匹配模具 */}
                   <div className="flex items-start gap-3">
                     <div className="flex flex-col items-center">
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center ${pricingResult !== null ? 'bg-emerald-100' : 'bg-gray-100'}`}>
@@ -521,28 +521,46 @@ export default function QuotePage() {
                           <span className="text-sm font-bold text-slate-600">3</span>
                         )}
                       </div>
-                      <div className={`w-0.5 h-8 mt-1 ${pricingResult !== null ? 'bg-emerald-200' : 'bg-gray-200'}`} />
+                      <div className={`w-0.5 h-7 mt-1 ${pricingResult !== null ? 'bg-emerald-200' : 'bg-gray-200'}`} />
                     </div>
                     <div className="pt-0.5">
-                      <p className={`text-sm font-medium ${pricingResult !== null ? 'text-emerald-700' : 'text-slate-600'}`}>选择工艺</p>
-                      <p className="text-sm text-slate-600 mt-0.5">勾选加工方式和表面处理</p>
+                      <p className={`text-sm font-medium ${pricingResult !== null ? 'text-emerald-700' : 'text-slate-600'}`}>匹配模具</p>
+                      <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">选平模/分流模，填宽高周长，搜索现有模具可免开模费</p>
                     </div>
                   </div>
 
-                  {/* 步骤4: 导出报价单 */}
+                  {/* 步骤4: 选择工艺 */}
                   <div className="flex items-start gap-3">
                     <div className="flex flex-col items-center">
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center ${pricingResult !== null ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center ${pricingResult !== null ? 'bg-emerald-100' : 'bg-gray-100'}`}>
                         {pricingResult !== null ? (
-                          <span className="text-sm font-bold text-blue-600">4</span>
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                         ) : (
                           <span className="text-sm font-bold text-slate-600">4</span>
                         )}
                       </div>
+                      <div className={`w-0.5 h-7 mt-1 ${pricingResult !== null ? 'bg-emerald-200' : 'bg-gray-200'}`} />
+                    </div>
+                    <div className="pt-0.5">
+                      <p className={`text-sm font-medium ${pricingResult !== null ? 'text-emerald-700' : 'text-slate-600'}`}>选择工艺</p>
+                      <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">勾选加工与表面处理，表面处理直接影响单价，出价前请回查</p>
+                    </div>
+                  </div>
+
+                  {/* 步骤5: 出价导出 */}
+                  <div className="flex items-start gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center ${pricingResult !== null ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                        {pricingResult !== null ? (
+                          <span className="text-sm font-bold text-blue-600">5</span>
+                        ) : (
+                          <span className="text-sm font-bold text-slate-600">5</span>
+                        )}
+                      </div>
                     </div>
                     <div className={`pt-0.5 rounded-lg px-2 py-1 -ml-2 ${pricingResult !== null ? 'bg-blue-50' : ''}`}>
-                      <p className={`text-sm font-medium ${pricingResult !== null ? 'text-blue-700' : 'text-slate-600'}`}>导出报价单</p>
-                      <p className="text-sm text-slate-600 mt-0.5">生成PDF或Excel报价单</p>
+                      <p className={`text-sm font-medium ${pricingResult !== null ? 'text-blue-700' : 'text-slate-600'}`}>出价导出</p>
+                      <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">核对含税/未税单价，导出Excel与PDF报价单</p>
                     </div>
                   </div>
                 </div>
@@ -553,19 +571,27 @@ export default function QuotePage() {
                   <div className="space-y-1.5">
                     <div className="flex items-start gap-2">
                       <span className="w-1 h-1 rounded-full bg-blue-400 mt-1.5 shrink-0" />
-                      <span className="text-xs text-slate-600">上传图纸后AI自动识别参数</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span className="w-1 h-1 rounded-full bg-orange-400 mt-1.5 shrink-0" />
-                      <span className="text-xs text-slate-600">橙色边框字段需手动确认</span>
+                      <span className="text-xs text-slate-600">同一模具多个长度：点「＋」存入报价池，出单时模具费只算一次</span>
                     </div>
                     <div className="flex items-start gap-2">
                       <span className="w-1 h-1 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
-                      <span className="text-xs text-slate-600">绿点标记为自动识别字段</span>
+                      <span className="text-xs text-slate-600">模具费为一次性费用，不计入单件价格</span>
                     </div>
                     <div className="flex items-start gap-2">
-                      <span className="w-1 h-1 rounded-full bg-gray-400 mt-1.5 shrink-0" />
-                      <span className="text-xs text-slate-600">模具费为一次性费用</span>
+                      <span className="w-1 h-1 rounded-full bg-orange-400 mt-1.5 shrink-0" />
+                      <span className="text-xs text-slate-600">最小起订量按300kg折算，未达标时页面会提示</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="w-1 h-1 rounded-full bg-purple-400 mt-1.5 shrink-0" />
+                      <span className="text-xs text-slate-600">材料费随南海现货铝锭价每日同步，以出单当日为准</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="w-1 h-1 rounded-full bg-cyan-400 mt-1.5 shrink-0" />
+                      <span className="text-xs text-slate-600">注册赠送100积分，免注册也可试算</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="w-1 h-1 rounded-full bg-rose-400 mt-1.5 shrink-0" />
+                      <span className="text-xs text-slate-600">报价单自出具之日起15天内有效</span>
                     </div>
                   </div>
                 </div>
