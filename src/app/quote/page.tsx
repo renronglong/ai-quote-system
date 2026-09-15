@@ -109,6 +109,13 @@ export default function QuotePage() {
   const [guideCollapsed, setGuideCollapsed] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const aiDataCounter = useRef(0);
+  const sectionDrawingRef = useRef<HTMLDivElement>(null);
+  const sectionParamRef = useRef<HTMLDivElement>(null);
+  const sectionResultRef = useRef<HTMLDivElement>(null);
+
+  const scrollToSection = (ref: React.RefObject<HTMLDivElement | null>) => {
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   const handleFormUpdate = useCallback((data: AiFormUpdate) => {
     aiDataCounter.current += 1;
@@ -400,7 +407,7 @@ export default function QuotePage() {
       {/* 主内容区 - 四栏布局 */}
       <main className="flex-1 min-h-0 overflow-x-auto grid" style={{ gridTemplateColumns: guideCollapsed ? '340px minmax(700px, 780px) 360px' : '340px minmax(700px, 780px) 360px 300px', gap: '16px', padding: '16px', minWidth: guideCollapsed ? '1400px' : '1700px' }}>
         {/* 第一栏：图纸识别 */}
-        <div className="overflow-y-auto overflow-x-hidden min-w-0 rounded-xl border border-gray-200 bg-white">
+        <div ref={sectionDrawingRef} className="overflow-y-auto overflow-x-hidden min-w-0 rounded-xl border border-gray-200 bg-white">
           <DrawingRecognition
             key={drawingKey}
             onDrawingData={handleDrawingData}
@@ -410,7 +417,7 @@ export default function QuotePage() {
         </div>
 
         {/* 第二栏：参数设置 */}
-        <div className="overflow-y-auto overflow-x-hidden min-w-0 bg-gray-50 rounded-xl border border-gray-200">
+        <div ref={sectionParamRef} className="overflow-y-auto overflow-x-hidden min-w-0 bg-gray-50 rounded-xl border border-gray-200">
           <div className="p-4 space-y-4">
             <div className="bg-white rounded-xl border border-gray-200 p-4">
               <QuoteForm
@@ -430,7 +437,7 @@ export default function QuotePage() {
         </div>
 
         {/* 中栏：报价结果 */}
-        <div className="overflow-y-auto overflow-x-hidden bg-gray-50 rounded-xl border border-gray-200">
+        <div ref={sectionResultRef} className="overflow-y-auto overflow-x-hidden bg-gray-50 rounded-xl border border-gray-200">
           <div className="p-5">
               <ResultPanel
                 pricingResult={pricingResult}
@@ -480,7 +487,7 @@ export default function QuotePage() {
                 {/* 步骤进度条 */}
                 <div className="p-4 space-y-0">
                   {/* 步骤1: 上传图纸 - 始终完成 */}
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-start gap-3 cursor-pointer rounded-lg px-2 py-1.5 -mx-2 hover:bg-blue-50/50 transition-colors" onClick={() => scrollToSection(sectionDrawingRef)}>
                     <div className="flex flex-col items-center">
                       <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600" />
@@ -494,7 +501,7 @@ export default function QuotePage() {
                   </div>
 
                   {/* 步骤2: 核对参数 */}
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-start gap-3 cursor-pointer rounded-lg px-2 py-1.5 -mx-2 hover:bg-blue-50/50 transition-colors" onClick={() => scrollToSection(sectionParamRef)}>
                     <div className="flex flex-col items-center">
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center ${pricingResult !== null ? 'bg-emerald-100' : 'bg-blue-100'}`}>
                         {pricingResult !== null ? (
@@ -512,7 +519,7 @@ export default function QuotePage() {
                   </div>
 
                   {/* 步骤3: 匹配模具 */}
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-start gap-3 cursor-pointer rounded-lg px-2 py-1.5 -mx-2 hover:bg-blue-50/50 transition-colors" onClick={() => scrollToSection(sectionParamRef)}>
                     <div className="flex flex-col items-center">
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center ${pricingResult !== null ? 'bg-emerald-100' : 'bg-gray-100'}`}>
                         {pricingResult !== null ? (
@@ -530,7 +537,7 @@ export default function QuotePage() {
                   </div>
 
                   {/* 步骤4: 选择工艺 */}
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-start gap-3 cursor-pointer rounded-lg px-2 py-1.5 -mx-2 hover:bg-blue-50/50 transition-colors" onClick={() => scrollToSection(sectionParamRef)}>
                     <div className="flex flex-col items-center">
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center ${pricingResult !== null ? 'bg-emerald-100' : 'bg-gray-100'}`}>
                         {pricingResult !== null ? (
@@ -548,7 +555,7 @@ export default function QuotePage() {
                   </div>
 
                   {/* 步骤5: 出价导出 */}
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-start gap-3 cursor-pointer rounded-lg px-2 py-1.5 -mx-2 hover:bg-blue-50/50 transition-colors" onClick={() => scrollToSection(sectionResultRef)}>
                     <div className="flex flex-col items-center">
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center ${pricingResult !== null ? 'bg-blue-100' : 'bg-gray-100'}`}>
                         {pricingResult !== null ? (
