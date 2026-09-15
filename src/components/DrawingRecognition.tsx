@@ -193,7 +193,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         const totalHoles = dxfJson.hole_count || holes.reduce((s: number, h: any) => s + h.count, 0);
         const holeDesc = holes.map((h: any) => `Ø${h.diameter_mm}×${h.count}`).join(' + ');
         const recogData: Record<string, any> = {
-          confidence: 0.95,
+          confidence: 0.85,
           product_type: productType === '板材' ? 'stamping' : productType,
           material_category: '铝板',
           unfold_length: unfoldL,
@@ -270,7 +270,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
             continue;
           }
           const recogData: Record<string, any> = {
-            confidence: 0.9,
+            confidence: 0.85,
             product_type: productType,
             product_code: parseJson.product_code || '',
             surface_treatment: parseJson.surface_treatment || '',
@@ -322,7 +322,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
           return;
         }
         const recogData: Record<string, any> = {
-          confidence: 0.9,
+          confidence: 0.85,
           product_type: productType,
           product_code: cadJson.product_code || '',
           surface_treatment: cadJson.surface_treatment || '',
@@ -625,7 +625,11 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
               }`}>
                 {recogResult.needs_human ? '识别不确定，请确认参数' : 'AI已自动填入参数'}
                 {typeof recogResult.confidence === 'number' && (
-                  <span className="ml-1 opacity-70">（置信度{(recogResult.confidence*100).toFixed(0)}%）</span>
+                  <span className={`ml-1 opacity-70`}>
+                    （置信度{(recogResult.confidence*100).toFixed(0)}%
+                    {recogResult.confidence < 0.5 && <span className="text-amber-600 font-normal">，建议人工复核</span>}
+                    ）
+                  </span>
                 )}
               </span>
             </div>
@@ -683,7 +687,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
           </div>
           {checkQuestions.map((q: any, idx: number) => (
             <div key={idx} className="bg-white rounded-lg p-3 border border-blue-100">
-              <div className="text-sm text-gray-700 mb-2">{q.question}</div>
+              <div className="text-sm text-gray-700 mb-2">{String(q.question || '').replace(/^请+/, '请')}</div>
               {q.input_type === 'select' && (
                 <select
                   className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"

@@ -1183,6 +1183,23 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     }
 
     if (aiData.materialGrade) setMaterialGrade(aiData.materialGrade);
+    // 表面处理：camelCase 分支也需要处理
+    if (aiData.surfaceTreatment && aiData.surfaceTreatment !== '无' && aiData.surfaceTreatment !== '') {
+      const st = String(aiData.surfaceTreatment);
+      const stMap: Record<string,string> = {
+        '阳极氧化': '氧化', '氧化本色': '氧化', '本色氧化': '氧化', '硬质氧化': '氧化',
+        '喷砂': '喷砂氧化', '喷砂阳极氧化': '喷砂氧化',
+        '抛光': '抛光氧化', '抛光阳极氧化': '抛光氧化',
+        '拉丝': '拉丝氧化', '拉丝阳极氧化': '拉丝氧化',
+        '喷粉': '喷涂', '粉末喷涂': '喷涂', '喷漆': '喷涂',
+        '氧化': '氧化', '喷涂': '喷涂', '电泳': '电泳',
+      };
+      const mappedSt = stMap[st] || (['氧化','喷砂氧化','抛光氧化','拉丝氧化','喷涂','电泳'].includes(st) ? st : '');
+      if (mappedSt) {
+        setMaterialSurfaceTreatment(mappedSt);
+        setProductSurfaceTreatment(mappedSt);
+      }
+    }
     if (aiData.quantity) setFields(prev => ({ ...prev, quantity: aiData.quantity! }));
     if (aiData.width) setFields(prev => ({ ...prev, width: aiData.width! }));
     if (aiData.height) setFields(prev => ({ ...prev, height: aiData.height! }));
