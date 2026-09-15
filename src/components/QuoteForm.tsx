@@ -1202,6 +1202,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       if (mappedSt) {
         setMaterialSurfaceTreatment(mappedSt);
         setProductSurfaceTreatment(mappedSt);
+        setSurfaceTreatment(mappedSt);
       }
     }
     if (aiData.quantity) setFields(prev => ({ ...prev, quantity: aiData.quantity! }));
