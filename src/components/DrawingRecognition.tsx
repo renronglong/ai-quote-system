@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
-import { Upload, FileText, X, Loader2, AlertTriangle, User, CheckCircle2, Share2 } from 'lucide-react';
+import { Upload, FileText, X, Loader2, AlertTriangle, User, CheckCircle2, Share2, Package } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { PRODUCT_TYPES } from './QuoteForm';
 
@@ -52,6 +52,8 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
   const [checkAnswers, setCheckAnswers] = useState<Record<string, any>>({});
   const [showCheckDialog, setShowCheckDialog] = useState(false);
   const [deepQuoteLoading, setDeepQuoteLoading] = useState(false);
+  const [assemblyInfo, setAssemblyInfo] = useState<{ is_assembly: boolean; part_count: number; parts: any[] } | null>(null);
+  const [assemblyMode, setAssemblyMode] = useState<'bundle' | 'individual' | null>(null);
   const [copiedInvite, setCopiedInvite] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [productType, setProductType] = useState('挤出');
@@ -193,7 +195,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         const totalHoles = dxfJson.hole_count || holes.reduce((s: number, h: any) => s + h.count, 0);
         const holeDesc = holes.map((h: any) => `Ø${h.diameter_mm}×${h.count}`).join(' + ');
         const recogData: Record<string, any> = {
-          confidence: 0.85,
+          confidence: null,
           product_type: productType === '板材' ? 'stamping' : productType,
           material_category: '铝板',
           unfold_length: unfoldL,
@@ -322,7 +324,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
           return;
         }
         const recogData: Record<string, any> = {
-          confidence: 0.85,
+          confidence: null,
           product_type: productType,
           product_code: cadJson.product_code || '',
           surface_treatment: cadJson.surface_treatment || '',
@@ -393,6 +395,20 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
       const d = json.data || {};
       setRecogResult(d);
       checkQuota();
+      
+      // 装配体检测
+      if (d.is_assembly && d.part_count > 0) {
+        setAssemblyInfo({
+          is_assembly: true,
+          part_count: d.part_count,
+          parts: d.parts || []
+        });
+        setAssemblyMode(null); // 让用户选择模式
+      } else {
+        setAssemblyInfo(null);
+        setAssemblyMode(null);
+      }
+      
       const recognitionId = json.recognition_id || ("rec_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8));
       if (json.autoFill && d.confidence >= 0.75) {
         onDrawingData({ recogData: d, recognitionId });
@@ -579,6 +595,71 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                 </button>
               )}
             </div>
+          </div>
+        )}
+
+        {/* 装配体检测提示 */}
+        {assemblyInfo && assemblyInfo.is_assembly && (
+          <div className="mt-2 p-3 rounded-lg bg-purple-50 border border-purple-200">
+            <div className="flex items-center gap-2 mb-2">
+              <Package className="w-4 h-4 text-purple-600" />
+              <span className="text-sm font-semibold text-purple-700">
+                检测到装配体，共 {assemblyInfo.part_count} 个零件
+              </span>
+            </div>
+            <div className="text-xs text-purple-600 mb-2">
+              请选择报价方式：
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setAssemblyMode('bundle');
+                  onDrawingData({ 
+                    recogData: { ...recogResult, assembly_mode: 'bundle' },
+                    recognitionId: "asm_" + Date.now()
+                  });
+                }}
+                className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${
+                  assemblyMode === 'bundle'
+                    ? 'bg-purple-600 text-white border-purple-600'
+                    : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-100'
+                }`}
+              >
+                整件打包报价
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAssemblyMode('individual');
+                  // 分件报价：遍历所有零件，逐个提交
+                  if (assemblyInfo.parts && assemblyInfo.parts.length > 0) {
+                    assemblyInfo.parts.forEach((part, idx) => {
+                      setTimeout(() => {
+                        onDrawingData({
+                          recogData: { ...part, assembly_mode: 'individual', part_index: idx },
+                          recognitionId: "asm_part_" + idx + "_" + Date.now()
+                        });
+                      }, idx * 100);
+                    });
+                  }
+                }}
+                className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${
+                  assemblyMode === 'individual'
+                    ? 'bg-purple-600 text-white border-purple-600'
+                    : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-100'
+                }`}
+              >
+                分件报价
+              </button>
+            </div>
+            {assemblyInfo.parts && assemblyInfo.parts.length > 0 && (
+              <div className="mt-2 text-xs text-purple-600">
+                零件列表：{assemblyInfo.parts.map((p: any, i: number) => 
+                  p.product_name || p.product_code || `零件${i+1}`
+                ).join('、')}
+              </div>
+            )}
           </div>
         )}
 
