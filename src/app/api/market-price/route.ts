@@ -1,4 +1,8 @@
 import { NextRequest } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jotgxnhueagbsvfeepic.supabase.co';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 interface PriceSource { keywords: string[]; sources: string[]; unit: string }
 interface PriceItem { name: string; price: string; change: string; source: string; unit: string }
@@ -114,6 +118,30 @@ function buildDataField(prices: PriceItem[]) {
   return { price: parseInt(primary.price), change: signed, changePercent: primary.price ? (signed / parseInt(primary.price) * 100) : 0 };
 }
 
+
+// 将价格数据写入数据库
+async function savePricesToDb(material: string, prices: PriceItem[]): Promise<void> {
+  if (!supabaseServiceKey) return;
+  try {
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const today = new Date().toISOString().split('T')[0];
+    const rows = prices.map(p => ({
+      material,
+      name: p.name,
+      price: parseInt(p.price),
+      change_amount: parseInt(p.change.replace(/[↑↓→]/g, '')) || 0,
+      source: p.source,
+      price_date: today,
+    }));
+    const { error } = await supabase
+      .from('material_prices')
+      .upsert(rows, { onConflict: 'material,name,price_date' });
+    if (error) console.error('[market-price] 数据库写入失败:', error);
+  } catch (err) {
+    console.error('[market-price] 数据库写入异常:', err);
+  }
+}
+
 export async function GET(request: NextRequest) {
   const sp = new URL(request.url).searchParams;
   const mq = sp.get('material') || sp.get('q') || '';
@@ -121,6 +149,43 @@ export async function GET(request: NextRequest) {
   const mm = matchMaterial(mq);
   if (!mm) return Response.json({ success: false, error: `不支持的材质: ${mq}`, supportedMaterials: Object.keys(MATERIAL_SOURCES) });
 
+  // 优先从数据库读取今日价格
+  const forceRefresh = sp.get('refresh') === '1';
+  if (!forceRefresh) {
+    try {
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+      const today = new Date().toISOString().split('T')[0];
+      const { data: dbPrices, error } = await supabase
+        .from('material_prices')
+        .select('*')
+        .eq('material', mm)
+        .eq('price_date', today)
+        .order('created_at', { ascending: false });
+      
+      if (!error && dbPrices && dbPrices.length > 0) {
+        const prices: PriceItem[] = dbPrices.map((row: any) => ({
+          name: row.name,
+          price: String(row.price),
+          change: row.change_amount > 0 ? `↑${row.change_amount}` : row.change_amount < 0 ? `↓${Math.abs(row.change_amount)}` : '→0',
+          source: row.source || 'lvdingjia.com',
+          unit: '元/吨',
+        }));
+        return Response.json({ 
+          success: true, 
+          material: mm, 
+          prices, 
+          cached: true,
+          fromDb: true,
+          updatedAt: dbPrices[0].created_at,
+          data: buildDataField(prices)
+        });
+      }
+    } catch (err) {
+      console.error('[market-price] 数据库读取失败:', err);
+    }
+  }
+
+  // 降级到实时抓取
   const cached = priceCache.get(mm);
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
     return Response.json({ success: true, material: mm, prices: cached.data, cached: true, updatedAt: new Date(cached.timestamp).toISOString(), data: buildDataField(cached.data) });
@@ -136,6 +201,7 @@ export async function GET(request: NextRequest) {
 
     if (pricedData.length > 0) {
       priceCache.set(mm, { data: pricedData, timestamp: Date.now(), material: mm });
+      await savePricesToDb(mm, pricedData);  // 写入数据库
       return Response.json({ success: true, material: mm, prices: pricedData, cached: false, updatedAt: new Date().toISOString(), data: buildDataField(pricedData) });
     }
     return Response.json({ success: false, material: mm, prices: [], error: '未查询到价格数据' });
