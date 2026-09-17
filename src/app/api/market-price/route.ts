@@ -109,13 +109,24 @@ interface PriceCache { data: PriceItem[]; timestamp: number; material: string }
 const priceCache = new Map<string, PriceCache>();
 const CACHE_DURATION = 2 * 60 * 60 * 1000;
 
-function buildDataField(prices: PriceItem[]) {
-  const primary = prices[0];
+function buildDataField(prices: PriceItem[], material?: string) {
+  // 优先取"南海铝锭(含票)"作为铝型材主显示价；找不到再降级到数组第一个
+  let primary = prices[0];
+  if (material === '铝型材') {
+    const nanhai = prices.find(p => p.name.includes('南海铝锭(含票)') || p.name === '南海铝锭');
+    if (nanhai) primary = nanhai;
+  }
+  if (material === '压铸铝') {
+    const adc12 = prices.find(p => p.name.includes('标准ADC12') || p.name.includes('ADC12'));
+    if (adc12) primary = adc12;
+  }
   if (!primary) return null;
   const raw = parseInt(primary.change.replace(/[↑↓→]/g, '')) || 0;
   const isDown = primary.change.includes('↓');
   const signed = isDown ? -raw : raw;
-  return { price: parseInt(primary.price), change: signed, changePercent: primary.price ? (signed / parseInt(primary.price) * 100) : 0 };
+  // 涨跌幅基于前一日收盘价计算（price - change = 昨收价）
+  const prevClose = parseInt(primary.price) - signed;
+  return { price: parseInt(primary.price), change: signed, changePercent: prevClose > 0 ? (signed / prevClose * 100) : 0, primaryName: primary.name };
 }
 
 
@@ -177,7 +188,7 @@ export async function GET(request: NextRequest) {
           cached: true,
           fromDb: true,
           updatedAt: dbPrices[0].created_at,
-          data: buildDataField(prices)
+          data: buildDataField(prices, mm)
         });
       }
     } catch (err) {
@@ -188,7 +199,7 @@ export async function GET(request: NextRequest) {
   // 降级到实时抓取
   const cached = priceCache.get(mm);
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-    return Response.json({ success: true, material: mm, prices: cached.data, cached: true, updatedAt: new Date(cached.timestamp).toISOString(), data: buildDataField(cached.data) });
+    return Response.json({ success: true, material: mm, prices: cached.data, cached: true, updatedAt: new Date(cached.timestamp).toISOString(), data: buildDataField(cached.data, mm) });
   }
 
   try {
@@ -202,7 +213,7 @@ export async function GET(request: NextRequest) {
     if (pricedData.length > 0) {
       priceCache.set(mm, { data: pricedData, timestamp: Date.now(), material: mm });
       await savePricesToDb(mm, pricedData);  // 写入数据库
-      return Response.json({ success: true, material: mm, prices: pricedData, cached: false, updatedAt: new Date().toISOString(), data: buildDataField(pricedData) });
+      return Response.json({ success: true, material: mm, prices: pricedData, cached: false, updatedAt: new Date().toISOString(), data: buildDataField(pricedData, mm) });
     }
     return Response.json({ success: false, material: mm, prices: [], error: '未查询到价格数据' });
   } catch (error) {
