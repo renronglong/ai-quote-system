@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Upload, FileText, X, Loader2, AlertTriangle, User, CheckCircle2, Share2, Package } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { PRODUCT_TYPES } from './QuoteForm';
@@ -16,6 +16,25 @@ interface DrawingRecognitionProps {
   aiData: any;
 }
 
+interface PartInfo {
+  part_id: string;
+  product_name: string;
+  quantity: number;
+  section_width_mm: number;
+  section_height_mm: number;
+  outer_perimeter_mm: number;
+  inner_perimeter_mm: number;
+  section_area_mm2: number;
+  weight_kg_per_m: number;
+  wall_thickness_mm: number;
+  is_hollow: boolean;
+  die_type: string;
+  extrusion_direction: string;
+  extrusion_length_mm: number;
+  bounding_box_mm: [number, number, number];
+  volume_mm3: number;
+}
+
 // Allowed upload extensions
 const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t', '.zip', '.rar', '.7z', '.tar', '.gz'];
 
@@ -28,6 +47,44 @@ const processToProductType: Record<string, string> = {
   '挤压铝型材': '挤出', '板材': '板材', '铝板': '板材',
   '锌合金压铸': '压铸', '铝合金压铸': '压铸', '注塑': '注塑',
 };
+
+// 将后端返回的零件/单件数据转为前端recogData格式
+function buildRecogDataFromParse(parseJson: any, productType: string, source: string, fileName?: string): Record<string, any> {
+  const dieTypeRaw = String(parseJson.die_type || parseJson.mold_type || '').toLowerCase();
+  let dieType: string;
+  if (['split', '分流模', '中空', '空心'].some(v => dieTypeRaw.includes(v))) dieType = 'split';
+  else if (['flat', '平模', '实心'].some(v => dieTypeRaw.includes(v))) dieType = 'flat';
+  else dieType = parseJson.die_type || parseJson.mold_type || '';
+
+  return {
+    confidence: parseJson.confidence_score != null ? parseJson.confidence_score : null,
+    product_type: productType,
+    product_code: parseJson.product_code || '',
+    surface_treatment: parseJson.surface_treatment || '',
+    material_grade: parseJson.material_grade || '',
+    width: parseJson.section_width_mm,
+    height: parseJson.section_height_mm,
+    perimeter: parseJson.outer_perimeter_mm,
+    inner_perimeter: parseJson.inner_perimeter_mm,
+    meter_weight: parseJson.weight_kg_per_m,
+    wall_thickness: parseJson.wall_thickness_mm,
+    crossSectionArea: parseJson.section_area_mm2,
+    die_type: dieType,
+    num_cavities: parseJson.is_hollow ? 1 : 0,
+    material_category: parseJson.material_grade || '',
+    length: parseJson.extrusion_length_mm,
+    process: parseJson.process || null,
+    secondary_operations: parseJson.secondary_operations || null,
+    cnc_holes: parseJson.cnc_holes || null,
+    cnc_total_holes: parseJson.cnc_total_holes || 0,
+    machining_time_min: parseJson.machining_time_min || null,
+    notes: `${source}${fileName ? ': ' + fileName : ''} | ⚠️仅用于报价估算，不可作为开模依据`,
+    _fileName: fileName,
+    _partId: parseJson.part_id,
+    _quantity: parseJson.quantity || 1,
+    _partName: parseJson.product_name,
+  };
+}
 
 // ==================== Component ====================
 
@@ -43,6 +100,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
   const [fileRemark, setFileRemark] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const [recognizing, setRecognizing] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [recogResult, setRecogResult] = useState<Record<string, any> | null>(null);
   const [recogProducts, setRecogProducts] = useState<Record<string, any>[]>([]);
   const [selectedProductIdx, setSelectedProductIdx] = useState(0);
@@ -52,8 +110,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
   const [checkAnswers, setCheckAnswers] = useState<Record<string, any>>({});
   const [showCheckDialog, setShowCheckDialog] = useState(false);
   const [deepQuoteLoading, setDeepQuoteLoading] = useState(false);
-  const [assemblyInfo, setAssemblyInfo] = useState<{ is_assembly: boolean; part_count: number; parts: any[] } | null>(null);
-  const [assemblyMode, setAssemblyMode] = useState<'bundle' | 'individual' | null>(null);
+  const [isAssembly, setIsAssembly] = useState(false);
   const [copiedInvite, setCopiedInvite] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [productType, setProductType] = useState('挤出');
@@ -64,17 +121,32 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
     return ALLOWED_EXTENSIONS.includes(ext);
   };
 
-  // 切换到指定产品（从 recogProducts 数组中加载）
-  const switchToProduct = (idx: number) => {
+  // 切换到指定产品（零件/多文件切换）
+  const switchToProduct = useCallback((idx: number) => {
     if (idx < 0 || idx >= recogProducts.length) return;
     setSelectedProductIdx(idx);
-    setRecogResult(recogProducts[idx]);
-    onDrawingData({ recogData: recogProducts[idx] });
-  };
+    const product = recogProducts[idx];
+    setRecogResult(product);
+    onDrawingData({ recogData: product });
+  }, [recogProducts, onDrawingData]);
+
+  // 重置识别状态
+  const resetRecognitionState = useCallback(() => {
+    setRecognizing(false);
+    setStatusMessage(null);
+    setRecogError(null);
+    setRecognitionFailed(false);
+    setRecogResult(null);
+    setRecogProducts([]);
+    setSelectedProductIdx(0);
+    setIsAssembly(false);
+    setCheckQuestions([]);
+    setCheckAnswers({});
+    setShowCheckDialog(false);
+  }, []);
 
   // PDF文件在浏览器端用pdf.js转为PNG，再发给AI识别
   const convertPdfToPng = async (pdfFile: File): Promise<File> => {
-    // 动态加载pdf.js（CDN，禁用Worker避免CORS）
     if (!(window as any).pdfjsLib) {
       await new Promise<void>((resolve, reject) => {
         const s = document.createElement('script');
@@ -112,6 +184,28 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
     });
   };
 
+  // 异步发起完整性检查（不阻塞主流程）
+  const launchCheckAsync = useCallback((file: File) => {
+    setTimeout(async () => {
+      try {
+        const checkFd = new FormData();
+        checkFd.append('file', file);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        const checkResp = await fetch('/api/check', { method: 'POST', body: checkFd, signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (checkResp.ok) {
+          const checkData = await checkResp.json();
+          if (checkData.success && checkData.questions && checkData.questions.length > 0) {
+            setCheckQuestions(checkData.questions);
+            setCheckAnswers({});
+            setShowCheckDialog(true);
+          }
+        }
+      } catch { /* 检查失败不影响主流程 */ }
+    }, 100);
+  }, []);
+
   const recognizeFile = async (file: File) => {
     const ext = '.' + file.name.split('.').pop()?.toLowerCase();
     // ===== 登录检查 =====
@@ -128,51 +222,53 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
     }
     if (!AI_RECOG_EXTS.includes(ext)) return;
 
-    // ===== 自动工艺分类 =====
-    const classifyFd = new FormData();
-    classifyFd.append('file', file);
-    try {
-      setRecogError('正在识别工艺类型...');
-      const classifyResp = await fetch('/api/classify', { method: 'POST', body: classifyFd });
-      console.log('[自动分类] API响应状态:', classifyResp.status);
-      if (classifyResp.ok) {
-        const classifyResult = await classifyResp.json();
-        console.log('[自动分类] API返回数据:', classifyResult);
-        const processType = classifyResult.process_type || classifyResult.processType || classifyResult.process;
-        const confidence = classifyResult.confidence || 0;
-
-        if (processType && processToProductType[processType]) {
-          const newProductType = processToProductType[processType];
-          setProductType(newProductType);
-          console.log(`[自动分类] ${processType} (置信度${(confidence*100).toFixed(0)}%) → ${newProductType}`);
-        }
-      }
-    } catch (classifyErr) {
-      console.warn('[自动分类] 失败，继续使用当前品类', classifyErr);
-    }
+    // 重置状态
     setRecogError(null);
-
-    setRecognizing(true);
-    setRecogError(null);
+    setStatusMessage(null);
     setRecognitionFailed(false);
     setRecogResult(null);
     setRecogProducts([]);
     setSelectedProductIdx(0);
+    setIsAssembly(false);
+    setRecognizing(true);
+
     try {
+      // ===== 自动工艺分类 =====
+      const classifyFd = new FormData();
+      classifyFd.append('file', file);
+      try {
+        setStatusMessage('正在识别工艺类型...');
+        const classifyController = new AbortController();
+        const classifyTimeout = setTimeout(() => classifyController.abort(), 10000);
+        const classifyResp = await fetch('/api/classify', { method: 'POST', body: classifyFd, signal: classifyController.signal });
+        clearTimeout(classifyTimeout);
+        if (classifyResp.ok) {
+          const classifyResult = await classifyResp.json();
+          const processType = classifyResult.process_type || classifyResult.processType || classifyResult.process;
+          const confidence = classifyResult.confidence || 0;
+          if (processType && processToProductType[processType]) {
+            const newProductType = processToProductType[processType];
+            setProductType(newProductType);
+            console.log(`[自动分类] ${processType} (置信度${(confidence*100).toFixed(0)}%) → ${newProductType}`);
+          }
+        }
+      } catch (classifyErr) {
+        console.warn('[自动分类] 失败，继续使用当前品类', classifyErr);
+      }
+
       let fileToSend = file;
       if (file.name.toLowerCase().endsWith('.pdf')) {
-        setRecogError('PDF正在转为图片识别...');
+        setStatusMessage('PDF正在转为图片识别...');
         fileToSend = await convertPdfToPng(file);
-        setRecogError(null);
       }
+
       // ===== DXF 图纸解析：走 drawing_parser 服务 =====
       if (file.name.toLowerCase().endsWith('.dxf')) {
-        setRecogError('DXF正在解析...');
+        setStatusMessage('DXF正在解析...');
         const dxfFd = new FormData();
         dxfFd.append('file', file);
         const dxfResp = await fetch('/api/drawing-parse', { method: 'POST', body: dxfFd });
         const dxfJson = await dxfResp.json();
-        setRecogError(null);
         if (!dxfResp.ok || !dxfJson.parse_success) {
           setRecogError(dxfJson.error || dxfJson.parse_errors || 'DXF解析失败');
           setRecognitionFailed(true);
@@ -206,13 +302,16 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         };
         setRecogResult(recogData);
         checkQuota();
+        setStatusMessage(null);
+        setRecognizing(false);
         onDrawingData({ recogData, recognitionId: "dxf_" + Date.now() });
         return;
       }
+
       // ===== ZIP 压缩包：解压后遍历所有图纸文件 =====
       const isZip = ['.zip', '.rar', '.7z', '.tar', '.gz'].includes(ext);
       if (isZip) {
-        setRecogError('压缩包正在解压...');
+        setStatusMessage('压缩包正在解压...');
         const zipFd = new FormData();
         zipFd.append('file', file);
         const zipResp = await fetch('/api/extract', { method: 'POST', body: zipFd });
@@ -235,22 +334,24 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
           setRecognitionFailed(true);
           return;
         }
-        setRecogError(`解压成功，共 ${targetFiles.length} 个文件，正在逐个识别...`);
+        setStatusMessage(`解压成功，共 ${targetFiles.length} 个文件，正在逐个识别...`);
         const allProducts: Record<string, any>[] = [];
         for (let fi = 0; fi < targetFiles.length; fi++) {
           const targetFile = targetFiles[fi];
-          setRecogError(`正在识别 ${fi + 1}/${targetFiles.length}: ${targetFile.name}...`);
+          setStatusMessage(`正在识别 ${fi + 1}/${targetFiles.length}: ${targetFile.name}...`);
           if (fi === 0) {
-            const clsFd = new FormData();
-            clsFd.append('file_id', targetFile.file_id);
-            const clsResp = await fetch('/api/classify', { method: 'POST', body: clsFd });
-            if (clsResp.ok) {
-              const classifyData = await clsResp.json();
-              const mapped = processToProductType[classifyData.process_type_cn];
-              if (mapped && PRODUCT_TYPES[mapped] && mapped !== productType) {
-                setProductType(mapped);
+            try {
+              const clsFd = new FormData();
+              clsFd.append('file_id', targetFile.file_id);
+              const clsResp = await fetch('/api/classify', { method: 'POST', body: clsFd });
+              if (clsResp.ok) {
+                const classifyData = await clsResp.json();
+                const mapped = processToProductType[classifyData.process_type_cn];
+                if (mapped && PRODUCT_TYPES[mapped] && mapped !== productType) {
+                  setProductType(mapped);
+                }
               }
-            }
+            } catch { /* 分类失败忽略 */ }
           }
           const parseFd = new FormData();
           parseFd.append('file_id', targetFile.file_id);
@@ -271,40 +372,29 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
             });
             continue;
           }
-          const recogData: Record<string, any> = {
-            confidence: 0.85,
-            product_type: productType,
-            product_code: parseJson.product_code || '',
-            surface_treatment: parseJson.surface_treatment || '',
-            material_grade: parseJson.material_grade || '',
-            width: parseJson.section_width_mm,
-            height: parseJson.section_height_mm,
-            perimeter: parseJson.outer_perimeter_mm,
-            inner_perimeter: parseJson.inner_perimeter_mm,
-            meter_weight: parseJson.weight_kg_per_m,
-            wall_thickness: parseJson.wall_thickness_mm,
-            crossSectionArea: parseJson.section_area_mm2,
-            die_type: (() => {
-              const raw = String(parseJson.die_type || parseJson.mold_type || '').toLowerCase();
-              if (['split', '分流模', '中空', '空心'].some(v => raw.includes(v))) return 'split';
-              if (['flat', '平模', '实心'].some(v => raw.includes(v))) return 'flat';
-              return parseJson.die_type || parseJson.mold_type || '';
-            })(),
-            num_cavities: parseJson.is_hollow ? 1 : 0,
-            material_category: parseJson.material_grade || '',
-            length: parseJson.extrusion_length_mm,
-            process: parseJson.process || null,
-            secondary_operations: parseJson.secondary_operations || null,
-            notes: `压缩包解析: ${targetFile.name} | ⚠️仅用于报价估算，不可作为开模依据`,
-            _fileName: targetFile.name,
-          };
-          allProducts.push(recogData);
+          // 检查压缩包内是否有装配体
+          if (parseJson.is_assembly && parseJson.parts && parseJson.parts.length > 0) {
+            // 装配体：展开零件加入列表
+            for (const part of parseJson.parts) {
+              const partData = buildRecogDataFromParse(part, productType, '装配体零件', targetFile.name + ' / ' + (part.product_name || part.part_id));
+              allProducts.push(partData);
+            }
+          } else {
+            const recogData = buildRecogDataFromParse(parseJson, productType, '压缩包解析', targetFile.name);
+            allProducts.push(recogData);
+          }
         }
-        setRecogError(null);
+        if (allProducts.length === 0) {
+          setRecogError('没有成功解析的文件');
+          setRecognitionFailed(true);
+          return;
+        }
+        setStatusMessage(null);
         setRecogProducts(allProducts);
         setSelectedProductIdx(0);
         setRecogResult(allProducts[0]);
         checkQuota();
+        setRecognizing(false);
         onDrawingData({ recogData: allProducts[0], recognitionId: "zip_" + Date.now() });
         return;
       }
@@ -312,71 +402,56 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
       // ===== 3D CAD 图纸解析：走 drawing_parser 服务 =====
       const is3DCAD = ['.stp', '.step', '.igs', '.iges', '.x_t', '.dwg'].includes(ext);
       if (is3DCAD) {
-        setRecogError('3D 模型正在解析...');
+        setStatusMessage('3D 模型正在解析...');
         const cadFd = new FormData();
         cadFd.append('file', file);
         const cadResp = await fetch('/api/drawing-parse', { method: 'POST', body: cadFd });
         const cadJson = await cadResp.json();
-        setRecogError(null);
         if (!cadResp.ok || !cadJson.parse_success) {
           setRecogError(cadJson.error || cadJson.parse_errors || '3D 模型解析失败');
           setRecognitionFailed(true);
           return;
         }
-        const recogData: Record<string, any> = {
-          confidence: null,
-          product_type: productType,
-          product_code: cadJson.product_code || '',
-          surface_treatment: cadJson.surface_treatment || '',
-          material_grade: cadJson.material_grade || '',
-          width: cadJson.section_width_mm,
-          height: cadJson.section_height_mm,
-          perimeter: cadJson.outer_perimeter_mm,
-          inner_perimeter: cadJson.inner_perimeter_mm,
-          meter_weight: cadJson.weight_kg_per_m,
-          wall_thickness: cadJson.wall_thickness_mm,
-          crossSectionArea: cadJson.section_area_mm2,
-          die_type: (() => {
-            const raw = String(cadJson.die_type || cadJson.mold_type || '').toLowerCase();
-            if (['split', '分流模', '中空', '空心'].some(v => raw.includes(v))) return 'split';
-            if (['flat', '平模', '实心'].some(v => raw.includes(v))) return 'flat';
-            return cadJson.die_type || cadJson.mold_type || '';
-          })(),
-          num_cavities: cadJson.is_hollow ? 1 : 0,
-          material_category: cadJson.material_grade || '',
-          length: cadJson.extrusion_length_mm,
-          process: cadJson.process || null,
-          secondary_operations: cadJson.secondary_operations || null,
-          cnc_holes: cadJson.cnc_holes || null,
-          cnc_total_holes: cadJson.cnc_total_holes || 0,
-          machining_time_min: cadJson.machining_time_min || null,
-          notes: `3D 模型解析 | ⚠️仅用于报价估算，不可作为开模依据`,
-        };
+
+        // ===== 装配体检测 =====
+        if (cadJson.is_assembly && cadJson.parts && cadJson.parts.length > 0) {
+          // 装配体：构建零件列表
+          setIsAssembly(true);
+          const parts: Record<string, any>[] = cadJson.parts.map((part: PartInfo) =>
+            buildRecogDataFromParse(part, productType, '装配体零件')
+          );
+          setRecogProducts(parts);
+          setSelectedProductIdx(0);
+          setRecogResult(parts[0]);
+          checkQuota();
+          setStatusMessage(null);
+          setRecognizing(false);
+          onDrawingData({ recogData: parts[0], recognitionId: "asm_" + Date.now() });
+          launchCheckAsync(file);
+          return;
+        }
+
+        // 单件模式
+        const recogData = buildRecogDataFromParse(cadJson, productType, '3D 模型解析');
         setRecogResult(recogData);
         checkQuota();
+        setStatusMessage(null);
+        setRecognizing(false);
         const recognitionId = "cad_" + Date.now();
         onDrawingData({ recogData, recognitionId });
-        // 调用完整性检查，获取需要用户确认的问题
-        const checkFd = new FormData();
-        checkFd.append('file', file);
-        try {
-          const checkResp = await fetch('/api/check', { method: 'POST', body: checkFd });
-          if (checkResp.ok) {
-            const checkData = await checkResp.json();
-            if (checkData.success && checkData.questions && checkData.questions.length > 0) {
-              setCheckQuestions(checkData.questions);
-              setCheckAnswers({});
-              setShowCheckDialog(true);
-            }
-          }
-        } catch(e) { /* 检查失败不影响主流程 */ }
+        launchCheckAsync(file);
         return;
       }
+
+      // ===== 图片/PDF AI识别 =====
+      setStatusMessage('AI正在识别图纸参数...');
       const fd = new FormData();
       fd.append('file', fileToSend);
-      // 根据产品类型路由到不同的识别API：板材用独立API
       const apiEndpoint = productType === '板材' ? '/api/recognize-sheet' : '/api/recognize-drawing';
-      const resp = await fetch(apiEndpoint + '?userId=' + user!.id, { method: 'POST', body: fd });
+      const aiController = new AbortController();
+      const aiTimeout = setTimeout(() => aiController.abort(), 60000);
+      const resp = await fetch(apiEndpoint + '?userId=' + user!.id, { method: 'POST', body: fd, signal: aiController.signal });
+      clearTimeout(aiTimeout);
       const json = await resp.json();
       if (resp.status === 429 || json.quotaExceeded) {
         checkQuota();
@@ -395,31 +470,35 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
       const d = json.data || {};
       setRecogResult(d);
       checkQuota();
-      
-      // 装配体检测
-      if (d.is_assembly && d.part_count > 0) {
-        setAssemblyInfo({
-          is_assembly: true,
-          part_count: d.part_count,
-          parts: d.parts || []
-        });
-        setAssemblyMode(null); // 让用户选择模式
+
+      // AI返回装配体信息（当前豆包识图一般不会返回，预留支持）
+      if (d.is_assembly && d.part_count > 0 && d.parts) {
+        setIsAssembly(true);
+        const parts = d.parts.map((p: any) => ({ ...p, confidence: d.confidence }));
+        setRecogProducts(parts);
+        setSelectedProductIdx(0);
+        setRecogResult(parts[0]);
+        onDrawingData({ recogData: parts[0], recognitionId: "asm_" + Date.now() });
       } else {
-        setAssemblyInfo(null);
-        setAssemblyMode(null);
+        const recognitionId = json.recognition_id || ("rec_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8));
+        if (json.autoFill && d.confidence >= 0.75) {
+          onDrawingData({ recogData: d, recognitionId });
+        } else {
+          onDrawingData({ recogData: null, recognitionId });
+        }
       }
-      
-      const recognitionId = json.recognition_id || ("rec_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8));
-      if (json.autoFill && d.confidence >= 0.75) {
-        onDrawingData({ recogData: d, recognitionId });
-      } else {
-        onDrawingData({ recogData: null, recognitionId });
-      }
+      setStatusMessage(null);
+      setRecognizing(false);
     } catch (e: any) {
-      setRecogError(e?.message || '网络错误');
+      if (e?.name === 'AbortError') {
+        setRecogError('识别超时，请重试或申请深度报价');
+      } else {
+        setRecogError(e?.message || '网络错误');
+      }
       setRecognitionFailed(true);
     } finally {
       setRecognizing(false);
+      setStatusMessage(null);
     }
   };
 
@@ -443,11 +522,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
 
   const removeFile = () => {
     setUploadedFile(null);
-    setRecogResult(null);
-    setRecogProducts([]);
-    setSelectedProductIdx(0);
-    setRecogError(null);
-    setRecognitionFailed(false);
+    resetRecognitionState();
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -478,11 +553,12 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
   const requestDeepQuote = async () => {
     if (!uploadedFile || deepQuoteLoading) return;
     setDeepQuoteLoading(true);
-    setRecogError('正在进行深度识别，请稍候（可能需要30-60秒）...');
+    setRecogError(null);
+    setStatusMessage('正在进行深度识别，请稍候（可能需要30-60秒）...');
     try {
       let fileToSend = uploadedFile;
       if (uploadedFile.name.toLowerCase().endsWith('.pdf')) {
-        setRecogError('PDF正在转为图片识别，请稍候...');
+        setStatusMessage('PDF正在转为图片识别，请稍候...');
         fileToSend = await convertPdfToPng(uploadedFile);
       }
       const fd = new FormData();
@@ -495,6 +571,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
       if (result.success && result.autoFill && result.data) {
         setRecogResult(result.data);
         setRecogError(null);
+        setStatusMessage(null);
         setUploadedFile(null);
         onDrawingData({ recogData: result.data });
       } else {
@@ -504,6 +581,8 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
       setRecogError('深度报价提交失败: ' + (e?.message || '网络错误'));
     } finally {
       setDeepQuoteLoading(false);
+      setStatusMessage(null);
+      setRecognizing(false);
     }
   };
 
@@ -569,11 +648,11 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
           className="w-full mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
         />
 
-        {/* 识别中 */}
-        {recognizing && (
+        {/* 识别中 + 进度提示 */}
+        {(recognizing || statusMessage) && (
           <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 text-blue-600 text-sm">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            正在AI识别图纸参数...
+            <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+            <span>{statusMessage || '处理中...'}</span>
           </div>
         )}
 
@@ -598,75 +677,27 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
           </div>
         )}
 
-        {/* 装配体检测提示 */}
-        {assemblyInfo && assemblyInfo.is_assembly && (
+        {/* 装配体提示 */}
+        {isAssembly && recogProducts.length > 0 && (
           <div className="mt-2 p-3 rounded-lg bg-purple-50 border border-purple-200">
             <div className="flex items-center gap-2 mb-2">
               <Package className="w-4 h-4 text-purple-600" />
               <span className="text-sm font-semibold text-purple-700">
-                检测到装配体，共 {assemblyInfo.part_count} 个零件
+                检测到装配体，共 {recogProducts.length} 个零件
               </span>
             </div>
             <div className="text-xs text-purple-600 mb-2">
-              请选择报价方式：
+              点击零件切换到对应报价页面，逐个保存后可在报价记录中多选导出汇总单
             </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setAssemblyMode('bundle');
-                  onDrawingData({ 
-                    recogData: { ...recogResult, assembly_mode: 'bundle' },
-                    recognitionId: "asm_" + Date.now()
-                  });
-                }}
-                className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${
-                  assemblyMode === 'bundle'
-                    ? 'bg-purple-600 text-white border-purple-600'
-                    : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-100'
-                }`}
-              >
-                整件打包报价
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAssemblyMode('individual');
-                  // 分件报价：遍历所有零件，逐个提交
-                  if (assemblyInfo.parts && assemblyInfo.parts.length > 0) {
-                    assemblyInfo.parts.forEach((part, idx) => {
-                      setTimeout(() => {
-                        onDrawingData({
-                          recogData: { ...part, assembly_mode: 'individual', part_index: idx },
-                          recognitionId: "asm_part_" + idx + "_" + Date.now()
-                        });
-                      }, idx * 100);
-                    });
-                  }
-                }}
-                className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${
-                  assemblyMode === 'individual'
-                    ? 'bg-purple-600 text-white border-purple-600'
-                    : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-100'
-                }`}
-              >
-                分件报价
-              </button>
-            </div>
-            {assemblyInfo.parts && assemblyInfo.parts.length > 0 && (
-              <div className="mt-2 text-xs text-purple-600">
-                零件列表：{assemblyInfo.parts.map((p: any, i: number) => 
-                  p.product_name || p.product_code || `零件${i+1}`
-                ).join('、')}
-              </div>
-            )}
           </div>
         )}
 
-        {/* 多产品列表 */}
-        {recogProducts.length > 1 && (
+        {/* 零件/产品列表（装配体或ZIP多文件） */}
+        {recogProducts.length > 0 && (
           <div className="mt-2 space-y-1.5">
-            <div className="text-sm font-semibold text-gray-700">共识别 {recogProducts.length} 个产品，点击切换：</div>
+            <div className="text-sm font-semibold text-gray-700">
+              {isAssembly ? `装配体零件（${recogProducts.length}个），点击选择报价：` : `共识别 ${recogProducts.length} 个产品，点击切换：`}
+            </div>
             <div className="flex flex-wrap gap-1.5">
               {recogProducts.map((p, i) => (
                 <button
@@ -681,7 +712,8 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                         : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
                   }`}
                 >
-                  {p._failed ? '' : '✓'} {p._fileName || `产品${i + 1}`}
+                  {p._failed ? '✗' : '✓'} {isAssembly ? (p._partName || p.product_code || `零件${i+1}`) : (p._fileName || `产品${i + 1}`)}
+                  {isAssembly && p._quantity > 1 && <span className="ml-1 opacity-70">×{p._quantity}</span>}
                 </button>
               ))}
             </div>
@@ -689,7 +721,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         )}
 
         {/* 识别结果 */}
-        {recogResult && !recogError && (
+        {recogResult && !recogError && !recognizing && (
           <div className={`mt-2 rounded-lg border p-2.5 ${
             recogResult.needs_human
               ? 'bg-amber-50 border-amber-200'
@@ -704,9 +736,9 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
               <span className={`text-sm font-semibold ${
                 recogResult.needs_human ? 'text-amber-700' : 'text-emerald-700'
               }`}>
-                {recogResult.needs_human ? '识别不确定，请确认参数' : 'AI已自动填入参数'}
-                {typeof recogResult.confidence === 'number' && (
-                  <span className={`ml-1 opacity-70`}>
+                {recogResult.needs_human ? '识别不确定，请确认参数' : (isAssembly ? `已填入零件「${recogResult._partName || recogResult.product_code || '零件'+(selectedProductIdx+1)}」参数` : '已自动填入参数')}
+                {typeof recogResult.confidence === 'number' && recogResult.confidence > 0 && (
+                  <span className="ml-1 opacity-70">
                     （置信度{(recogResult.confidence*100).toFixed(0)}%
                     {recogResult.confidence < 0.5 && <span className="text-amber-600 font-normal">，建议人工复核</span>}
                     ）
@@ -722,8 +754,9 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
               {recogResult.perimeter != null && <div>外周长: <b>{recogResult.perimeter}mm</b></div>}
               {recogResult.inner_perimeter != null && <div>内周长: <b>{recogResult.inner_perimeter}mm</b></div>}
               {recogResult.meter_weight != null && <div>米重: <b>{recogResult.meter_weight}kg/m</b></div>}
-              {recogResult.section_area_mm2 != null && <div>面域: <b>{recogResult.section_area_mm2}mm²</b></div>}
+              {recogResult.crossSectionArea != null && <div>截面积: <b>{recogResult.crossSectionArea}mm²</b></div>}
               {recogResult.num_cavities != null && <div>模腔数: <b>{recogResult.num_cavities}</b></div>}
+              {isAssembly && recogResult._quantity > 1 && <div>数量: <b>{recogResult._quantity}件</b></div>}
               {recogResult.material_grade ? <div className="col-span-2">材质: <b>{recogResult.material_grade}</b></div> : <div className="col-span-2 text-amber-600">材质: 无法识别，请手动选择</div>}
               {recogResult.surface_treatment ? <div className="col-span-2">表面处理: <b>{recogResult.surface_treatment}</b></div> : <div className="col-span-2 text-amber-600">表面处理: 无法识别，请手动选择</div>}
               {recogResult.product_code && <div className="col-span-2">图号: <b>{recogResult.product_code}</b></div>}
@@ -731,29 +764,33 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
             {recogResult.handoff_reason && (
               <div className="mt-1.5 text-xs text-amber-600">{recogResult.handoff_reason}</div>
             )}
-            <div className="mt-2 flex gap-2">
-              {recogResult.needs_human && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => onDrawingData({ recogData: recogResult })}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-500 text-white text-sm font-medium hover:bg-emerald-600 transition-colors"
-                  >
-                    <CheckCircle2 className="w-3 h-3" />
-                    确认填入
-                  </button>
-                  <button
-                    type="button"
-                    onClick={requestDeepQuote}
-                    disabled={deepQuoteLoading}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {deepQuoteLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <User className="w-3 h-3" />}
-                    {deepQuoteLoading ? '深度识别中...' : '申请深度报价'}
-                  </button>
-                </>
-              )}
-            </div>
+            {recogResult.needs_human && (
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => onDrawingData({ recogData: recogResult })}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-500 text-white text-sm font-medium hover:bg-emerald-600 transition-colors"
+                >
+                  <CheckCircle2 className="w-3 h-3" />
+                  确认填入
+                </button>
+                <button
+                  type="button"
+                  onClick={requestDeepQuote}
+                  disabled={deepQuoteLoading}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deepQuoteLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <User className="w-3 h-3" />}
+                  {deepQuoteLoading ? '深度识别中...' : '申请深度报价'}
+                </button>
+              </div>
+            )}
+            {/* 装配体零件导航提示 */}
+            {isAssembly && recogProducts.length > 1 && (
+              <div className="mt-2 pt-2 border-t border-purple-200 text-xs text-purple-600">
+                💡 提示：保存当前零件报价后，点击上方零件列表切换下一个零件继续报价。所有零件报价保存后，可在「我的报价」中多选导出汇总单。
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -846,7 +883,6 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                     answers[q.field] = q.default;
                   }
                 });
-                // Map check answers to form data and send via onDrawingData
                 const mappedData: Record<string, any> = {};
                 if (answers.material_grade) mappedData.material_grade = answers.material_grade;
                 if (answers.surface_treatment) {
