@@ -3,11 +3,10 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, Upload, FileText, Layers, CheckCircle2, Clock,
+  ArrowLeft, FileText, Layers, CheckCircle2, Clock,
   ChevronRight, ArrowRight, Package, Ruler, Box, Info, AlertCircle
 } from 'lucide-react';
 import TopNavLinks from '@/components/TopNav';
-import { useAuth } from '@/lib/auth-context';
 
 interface PartData {
   _partName?: string;
@@ -56,7 +55,6 @@ interface PartsPayload {
 }
 
 export default function QuotePartsPage() {
-  const { user } = useAuth();
   const router = useRouter();
   const [payload, setPayload] = useState<PartsPayload | null>(null);
   const [quotedParts, setQuotedParts] = useState<Set<number>>(new Set());
@@ -158,7 +156,7 @@ export default function QuotePartsPage() {
 
   return (
     <div className="h-screen flex flex-col bg-slate-50">
-      <TopNavLinks user={user} />
+      <TopNavLinks />
       <main className="flex-1 min-h-0 overflow-y-auto">
         <div className="max-w-4xl mx-auto p-6">
           {/* 顶部导航 */}
