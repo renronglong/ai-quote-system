@@ -615,7 +615,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
       </div>
       {/* ---- 图纸上传 ---- */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-        <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wide">图纸上传（可选）</label>
+        <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wide">图纸上传</label>
         <div
           onDragOver={e => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}

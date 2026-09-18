@@ -135,11 +135,16 @@ export default function QuotePartsPage() {
   };
 
   const getPartName = (p: PartData, idx: number): string => {
-    if (p._partName) return p._partName;
-    if (p._fileName) return p._fileName;
-    if (p.product_code) return p.product_code;
-    if (p.product_name) return p.product_name;
-    return `零件${idx + 1}`;
+    const baseName = p._partName || p.product_name || p.product_code || `零件${idx + 1}`;
+    const fileName = p._fileName;
+    if (fileName) {
+      const shortName = fileName.replace(/\.[^.]+$/, '');
+      if (baseName.startsWith('零件')) {
+        return `${shortName} #${idx + 1}`;
+      }
+      return `${baseName} (${shortName})`;
+    }
+    return baseName;
   };
 
   if (!payload) {
@@ -157,6 +162,15 @@ export default function QuotePartsPage() {
   return (
     <div className="h-screen flex flex-col bg-slate-50">
       <TopNavLinks />
+      <div className="bg-white border-b border-slate-100 px-6 py-2">
+        <div className="max-w-4xl mx-auto flex items-center gap-1.5 text-xs text-slate-500">
+          <Link href="/" className="hover:text-slate-700">首页</Link>
+          <span className="text-slate-300">/</span>
+          <Link href="/quote" className="hover:text-slate-700">AI报价</Link>
+          <span className="text-slate-300">/</span>
+          <span className="text-slate-700 font-medium">零件列表</span>
+        </div>
+      </div>
       <main className="flex-1 min-h-0 overflow-y-auto">
         <div className="max-w-4xl mx-auto p-6">
           {/* 顶部导航 */}
@@ -295,7 +309,7 @@ export default function QuotePartsPage() {
               <div>
                 <p className="font-medium mb-1">使用提示</p>
                 <ul className="text-blue-700 space-y-0.5 text-xs leading-relaxed">
-                  <li>• 点击零件卡片进入报价页面，AI参数已预填，确认无误后点击「计算报价」并保存</li>
+                  <li>• 点击零件卡片进入报价页面，AI参数已预填，确认无误后点击「保存报价」</li>
                   <li>• 保存后自动回到零件列表，已报价零件标记为绿色✓</li>
                   <li>• 全部零件报价完成后，在「我的报价」页面多选零件导出汇总报价单</li>
                 </ul>

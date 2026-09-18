@@ -49,6 +49,15 @@ export default function QuoteRecognizePage() {
   return (
     <div className="h-screen flex flex-col bg-slate-50">
       <TopNavLinks />
+      <div className="bg-white border-b border-slate-100 px-6 py-2">
+        <div className="max-w-4xl mx-auto flex items-center gap-1.5 text-xs text-slate-500">
+          <Link href="/" className="hover:text-slate-700">首页</Link>
+          <span className="text-slate-300">/</span>
+          <Link href="/quote" className="hover:text-slate-700">AI报价</Link>
+          <span className="text-slate-300">/</span>
+          <span className="text-slate-700 font-medium">图纸识别</span>
+        </div>
+      </div>
       <main className="flex-1 min-h-0 flex items-center justify-center p-6">
         <div className="w-full max-w-xl">
           <div className="mb-6">

@@ -392,6 +392,17 @@ export default function QuotePage() {
         </div>
       </header>
 
+      {/* 面包屑导航 */}
+      <div className="shrink-0 bg-white border-b border-slate-100 px-6 py-2">
+        <div className="max-w-[1600px] mx-auto flex items-center gap-1.5 text-xs text-slate-500">
+          <Link href="/" className="hover:text-slate-700">首页</Link>
+          <span className="text-slate-300">/</span>
+          <span className="text-slate-700 font-medium">AI报价</span>
+          <span className="text-slate-300">/</span>
+          <span className="text-slate-700 font-medium">手动报价</span>
+        </div>
+      </div>
+
       {/* ===== Excel 正式报价单出单弹窗 ===== */}
       {showSheetDialog && user && (
         <QuoteSheetDialog
@@ -459,7 +470,7 @@ export default function QuotePage() {
             <div className="flex items-center gap-2 text-gray-800 font-medium mb-2">
               <FileText size={16} className="text-slate-500" /> 手动填单报价
             </div>
-            <p className="text-xs text-gray-500 leading-relaxed">在右侧直接填写产品参数、选择材质和表面处理，点击计算即可出报价。</p>
+            <p className="text-xs text-gray-500 leading-relaxed">在右侧直接填写产品参数、选择材质和表面处理，参数填齐后系统自动计算报价。</p>
           </div>
 
           {/* 已有报价 */}
@@ -491,8 +502,8 @@ export default function QuotePage() {
         </div>
 
         {/* 中栏：报价结果 */}
-        <div ref={sectionResultRef} className="overflow-y-auto overflow-x-hidden bg-gray-50 rounded-xl border border-gray-200">
-          <div className="p-5">
+        <div ref={sectionResultRef} className="flex flex-col overflow-hidden bg-gray-50 rounded-xl border border-gray-200">
+          <div className="flex-1 overflow-y-auto p-5">
               <ResultPanel
                 pricingResult={pricingResult}
                 aluminumPrice={aluminumPrice}
@@ -518,8 +529,38 @@ export default function QuotePage() {
                 manualMinOrderQty={manualMinOrderQty}
                 onManualMinOrderQtyChange={setManualMinOrderQty}
                 onExportPDF={exportQuotePDF}
+                hideActions
               />
             </div>
+          {!isPlaceholder && onSave && (
+            <div className="shrink-0 border-t border-gray-200 bg-white p-3 space-y-2">
+              <button
+                onClick={exportQuotePDF}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-bold bg-gradient-to-r from-emerald-600 to-emerald-500 text-white hover:from-emerald-700 hover:to-emerald-600 transition-all shadow-sm"
+              >
+                <FileText className="w-4 h-4" /> 导出报价单
+              </button>
+              <button
+                onClick={handleSaveQuote}
+                disabled={saving || saveSuccess}
+                className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                  saveSuccess
+                    ? 'bg-emerald-500 text-white'
+                    : saving
+                      ? 'bg-gray-100 text-slate-600 cursor-not-allowed'
+                      : 'bg-white border border-gray-200 text-gray-700 hover:border-blue-300 hover:text-blue-600'
+                }`}
+              >
+                {saveSuccess ? (
+                  <><CheckCircle2 className="w-4 h-4" /> 已保存</>
+                ) : saving ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> 保存中...</>
+                ) : (
+                  <><Save className="w-4 h-4" /> 保存报价</>
+                )}
+              </button>
+            </div>
+          )}
           </div>
 
         {/* 右栏：报价指南 */}
@@ -713,6 +754,7 @@ export default function QuotePage() {
               manualMinOrderQty={manualMinOrderQty}
               onManualMinOrderQtyChange={setManualMinOrderQty}
               onExportPDF={exportQuotePDF}
+              hideActions={false}
             />
           </div>
         )}
@@ -763,7 +805,7 @@ function fmtPrice(n: number): string {
 }
 
 
-function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, compact, productDiscount, moldDiscount, onProductDiscountChange, onMoldDiscountChange, moldFee, onSave, saving, saveSuccess, user, baseUnitPrice, baseMoldFee, useExistingMold, manualUnitPrice, manualMoldFee, onManualUnitPriceChange, onManualMoldFeeChange, minOrderQty, manualMinOrderQty, onManualMinOrderQtyChange, onExportPDF }: {
+function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, compact, productDiscount, moldDiscount, onProductDiscountChange, onMoldDiscountChange, moldFee, onSave, saving, saveSuccess, user, baseUnitPrice, baseMoldFee, useExistingMold, manualUnitPrice, manualMoldFee, onManualUnitPriceChange, onManualMoldFeeChange, minOrderQty, manualMinOrderQty, onManualMinOrderQtyChange, onExportPDF, hideActions }: {
   pricingResult: PricingResult | null;
   aluminumPrice: AluminumPrice | null;
   productName: string;
@@ -789,6 +831,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
   manualMinOrderQty: number | null;
   onManualMinOrderQtyChange: (v: number | null) => void;
   onExportPDF?: () => void;
+  hideActions?: boolean;
 }) {
   const isPlaceholder = !pricingResult;
   const internal = isInternalUser(user);
@@ -997,7 +1040,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
       )}
 
       {/* 操作按钮 */}
-      {!isPlaceholder && onSave && (
+      {!hideActions && !isPlaceholder && onSave && (
         <div className="space-y-2">
           <button
             onClick={onExportPDF}
