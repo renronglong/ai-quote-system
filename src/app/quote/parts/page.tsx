@@ -123,7 +123,7 @@ export default function QuotePartsPage() {
       else if (p.length != null && p.width != null) parts.push(`${p.length}×${p.width}`);
       if (p.thickness_mm != null) parts.push(`×${p.thickness_mm}`);
       else if (p.wall_thickness != null) parts.push(`×${p.wall_thickness}`);
-      if (p.bend_count > 0) parts.push(`${p.bend_count}折`);
+      if (p.bend_count != null && p.bend_count > 0) parts.push(`${p.bend_count}折`);
       return parts.join(' ') || '-';
     }
     // 挤压
@@ -264,8 +264,8 @@ export default function QuotePartsPage() {
                         <div className="flex items-center gap-3 text-sm text-slate-600 mt-1">
                           <FileText size={13} className="text-slate-400 shrink-0" />
                           <span>
-                            {p.punch_holes_total > 0 && `${p.punch_holes_total}孔`}
-                            {p.cnc_total_holes > 0 && `${p.punch_holes_total > 0 ? ' + ' : ''}CNC ${p.cnc_total_holes}孔`}
+                            {(p.punch_holes_total ?? 0) > 0 && `${p.punch_holes_total}孔`}
+                            {(p.cnc_total_holes ?? 0) > 0 && `${(p.punch_holes_total ?? 0) > 0 ? ' + ' : ''}CNC ${p.cnc_total_holes}孔`}
                           </span>
                         </div>
                       )}
