@@ -233,7 +233,7 @@ export default function QuotePartsPage() {
                         <div className="font-medium text-slate-800 truncate">{getPartName(p, idx)}</div>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className={`text-xs px-1.5 py-0.5 rounded ${type.color}`}>{type.label}</span>
-                          {p._quantity > 1 && (
+                          {(p._quantity ?? 0) > 1 && (
                             <span className="text-xs text-slate-500">×{p._quantity}件</span>
                           )}
                         </div>
