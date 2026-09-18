@@ -1842,8 +1842,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     const cncTotalHoles = toNum(d.cnc_total_holes) || toNum(d.all_holes_total) || 0;
     const machiningTime = toNum(d.machining_time_min) || d.process?.machining_time_min;
     const isSheetPart = d.is_sheet_metal === true || d.area_method === 'sheet_metal' || productType === '板材';
+    // 钣金件：仅当is_cnc=true的孔>0时加CNC；cnc_total_holes=0说明所有孔都是挤压工艺孔，不加CNC
+    // （后端machining_time可能错误把侧向挤压工艺孔计入，钣金件不以此为依据）
     const hasCncData = isSheetPart
-      ? (cncTotalHoles > 0 || !!machiningTime || (Array.isArray(cncHoles) && cncHoles.length > 0))
+      ? (cncTotalHoles > 0 || (Array.isArray(cncHoles) && cncHoles.length > 0))
       : ((cncHoles && Array.isArray(cncHoles) && cncHoles.length > 0) || cncTotalHoles > 0 || !!machiningTime);
     if (hasCncData) {
       setProcesses(prev => {
