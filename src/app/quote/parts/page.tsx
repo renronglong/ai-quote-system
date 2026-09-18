@@ -3,8 +3,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, FileText, Layers, CheckCircle2, Clock,
-  ChevronRight, ArrowRight, Package, Ruler, Box, Info, AlertCircle
+  ArrowLeft, FileText, Layers, CheckCircle2,
+  ChevronRight, ArrowRight, Package, Ruler, Box, Info, AlertCircle, Loader2
 } from 'lucide-react';
 import TopNavLinks from '@/components/TopNav';
 
