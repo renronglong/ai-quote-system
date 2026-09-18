@@ -93,9 +93,12 @@ export default function QuotePage() {
   const aiDataCounter = useRef(0);
   const sectionParamRef = useRef<HTMLDivElement>(null);
   const sectionResultRef = useRef<HTMLDivElement>(null);
+  // 标记是否已从sessionStorage预填过零件参数，避免formNonce触发重挂载时再次回填
+  const partsPrefillConsumedRef = useRef(false);
 
   // 从零件列表页跳转过来时，读取sessionStorage中的预填零件参数
   useEffect(() => {
+    if (partsPrefillConsumedRef.current) return;
     try {
       const urlParams = new URLSearchParams(window.location.search);
       if (urlParams.get('from') === 'parts') {
@@ -104,6 +107,7 @@ export default function QuotePage() {
         if (idxStr != null && partRaw) {
           const idx = parseInt(idxStr, 10);
           const part = JSON.parse(partRaw);
+          partsPrefillConsumedRef.current = true;
           setFromPartsList(true);
           setPartsListPartIdx(idx);
           setPartsListPartName(part._partName || part.product_code || part.product_name || `零件${idx + 1}`);
@@ -113,6 +117,11 @@ export default function QuotePage() {
           if (part._partName) setProductInfo(prev => ({ ...prev, productName: part._partName }));
           if (part.product_code) setProductInfo(prev => ({ ...prev, productCode: part.product_code }));
           if (part.product_name) setProductInfo(prev => ({ ...prev, productName: part.product_name }));
+          // 清理URL的from=parts参数，避免formNonce触发重挂载时再次读取
+          urlParams.delete('from');
+          const newQuery = urlParams.toString();
+          const newUrl = window.location.pathname + (newQuery ? '?' + newQuery : '') + window.location.hash;
+          window.history.replaceState({}, '', newUrl);
         }
       }
     } catch (e) { console.error('Failed to load parts data:', e); }
@@ -220,6 +229,20 @@ export default function QuotePage() {
     setProductInfo({ productName: '', productCode: '' });
     setAiFormData(null);
     setDrawingRecogData(null);
+    // 清除零件列表跳转标记，防止重挂载时再次回填旧数据
+    setFromPartsList(false);
+    partsPrefillConsumedRef.current = true;
+    try {
+      sessionStorage.removeItem('ai_quote_selected_idx');
+      sessionStorage.removeItem('ai_quote_selected_part');
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('from')) {
+        urlParams.delete('from');
+        const newQuery = urlParams.toString();
+        const newUrl = window.location.pathname + (newQuery ? '?' + newQuery : '') + window.location.hash;
+        window.history.replaceState({}, '', newUrl);
+      }
+    } catch (e) {}
     setFormNonce(n => n + 1);
   }, []);
 
@@ -532,7 +555,6 @@ export default function QuotePage() {
                 hideActions
               />
             </div>
-          {!isPlaceholder && onSave && (
             <div className="shrink-0 border-t border-gray-200 bg-white p-3 space-y-2">
               <button
                 onClick={exportQuotePDF}
@@ -560,7 +582,6 @@ export default function QuotePage() {
                 )}
               </button>
             </div>
-          )}
           </div>
 
         {/* 右栏：报价指南 */}
