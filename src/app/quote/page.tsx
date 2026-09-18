@@ -4,8 +4,8 @@ import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import QuoteForm, { PricingResult } from '@/components/QuoteForm';
-import DrawingRecognition from '@/components/DrawingRecognition';
 import {
+  Sparkles,
   TrendingUp,
   Loader2,
   Factory,
@@ -23,6 +23,7 @@ import {
   Settings,
   MessageCircle,
   X,
+  ArrowLeft,
 } from 'lucide-react';
 import SavedQuotesPanel, { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
 import QuoteSheetDialog from '@/components/QuoteSheetDialog';
@@ -66,29 +67,7 @@ export default function QuotePage() {
   const [aluminumPrice, setAluminumPrice] = useState<AluminumPrice | null>(null);
   const [aiFormData, setAiFormData] = useState<AiFormUpdate | null>(null);
   const [drawingRecogData, setDrawingRecogData] = useState<any>(null);
-  const [drawingKey, setDrawingKey] = useState(0);
   const drawingRecogCounter = useRef(0);
-  const handleDrawingData = useCallback((data: any) => {
-    drawingRecogCounter.current += 1;
-    setDrawingRecogData({ ...data, _v: drawingRecogCounter.current });
-    // Also pass through aiFormData for backward compatibility
-    if (data && data.recogData) {
-      const rd = data.recogData;
-      const mapped: AiFormUpdate = {};
-      if (rd.product_type) mapped.productType = rd.product_type;
-      if (rd.material_category) mapped.materialCategory = rd.material_category;
-      if (rd.material_grade) mapped.materialGrade = rd.material_grade;
-      if (rd.surface_treatment) mapped.surfaceTreatment = rd.surface_treatment;
-      if (rd.quantity) mapped.quantity = rd.quantity;
-      if (rd.width) mapped.width = rd.width;
-      if (rd.height) mapped.height = rd.height;
-      if (rd.length) mapped.length = rd.length;
-      if (rd.wall_thickness) mapped.wallThickness = rd.wall_thickness;
-      if (rd.standardCategory) mapped.standardCategory = rd.standardCategory;
-      // 保留 snake_case 原始字段，让 QuoteForm.applyRecogToForm 能读取米重/截面积/外周长等
-      setAiFormData({ ...rd, ...mapped, _v: drawingRecogCounter.current } as AiFormUpdate);
-    }
-  }, []);
   const [pricingResult, setPricingResult] = useState<PricingResult | null>(null);
   const [productInfo, setProductInfo] = useState<{ productName: string; productCode: string }>({ productName: '', productCode: '' });
   const [resultExpanded, setResultExpanded] = useState(true);
@@ -108,10 +87,37 @@ export default function QuotePage() {
   const [formNonce, setFormNonce] = useState(0); // 新建报价时重挂载 QuoteForm 清空表单
   const [guideCollapsed, setGuideCollapsed] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [fromPartsList, setFromPartsList] = useState(false); // 从零件列表页跳过来
+  const [partsListPartIdx, setPartsListPartIdx] = useState<number>(-1);
+  const [partsListPartName, setPartsListPartName] = useState('');
   const aiDataCounter = useRef(0);
-  const sectionDrawingRef = useRef<HTMLDivElement>(null);
   const sectionParamRef = useRef<HTMLDivElement>(null);
   const sectionResultRef = useRef<HTMLDivElement>(null);
+
+  // 从零件列表页跳转过来时，读取sessionStorage中的预填零件参数
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('from') === 'parts') {
+        const idxStr = sessionStorage.getItem('ai_quote_selected_idx');
+        const partRaw = sessionStorage.getItem('ai_quote_selected_part');
+        if (idxStr != null && partRaw) {
+          const idx = parseInt(idxStr, 10);
+          const part = JSON.parse(partRaw);
+          setFromPartsList(true);
+          setPartsListPartIdx(idx);
+          setPartsListPartName(part._partName || part.product_code || part.product_name || `零件${idx + 1}`);
+          // 模拟handleDrawingData预填参数
+          handleFormUpdate(part);
+          // 设置productName/productCode
+          if (part._partName) setProductInfo(prev => ({ ...prev, productName: part._partName }));
+          if (part.product_code) setProductInfo(prev => ({ ...prev, productCode: part.product_code }));
+          if (part.product_name) setProductInfo(prev => ({ ...prev, productName: part.product_name }));
+        }
+      }
+    } catch (e) { console.error('Failed to load parts data:', e); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const scrollToSection = (ref: React.RefObject<HTMLDivElement | null>) => {
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -121,6 +127,16 @@ export default function QuotePage() {
     aiDataCounter.current += 1;
     setAiFormData({ ...data, _v: aiDataCounter.current } as AiFormUpdate);
   }, []);
+
+  // 兼容QuoteForm内部Ctrl+V粘贴识别：直接把识别数据传给表单
+  const handleDrawingData = useCallback((data: any) => {
+    drawingRecogCounter.current += 1;
+    setDrawingRecogData({ ...data, _v: drawingRecogCounter.current });
+    const rd = data?.recogData || data;
+    if (rd && typeof rd === 'object') {
+      handleFormUpdate({ ...rd, _v: drawingRecogCounter.current } as AiFormUpdate);
+    }
+  }, [handleFormUpdate]);
 
   const handleResult = useCallback((result: PricingResult | null) => {
     setPricingResult(result);
@@ -246,6 +262,18 @@ export default function QuotePage() {
     if (saved) {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 1500);
+      // 如果来自零件列表，标记该零件已报价并返回列表
+      if (fromPartsList && partsListPartIdx >= 0) {
+        try {
+          sessionStorage.setItem('ai_quote_last_quoted_idx', String(partsListPartIdx));
+          // 派发自定义事件通知同tab的零件列表页（如果是新tab打开会走storage事件）
+          window.dispatchEvent(new Event('ai-quote-saved'));
+          // 延迟跳转，让用户看到"保存成功"提示
+          setTimeout(() => {
+            router.push('/quote/parts');
+          }, 1200);
+        } catch (e) { console.error(e); }
+      }
     }
   };
 
@@ -404,16 +432,43 @@ export default function QuotePage() {
         </div>
       )}
 
-      {/* 主内容区 - 四栏布局 */}
-      <main className="flex-1 min-h-0 overflow-x-auto grid" style={{ gridTemplateColumns: guideCollapsed ? '340px minmax(700px, 780px) 360px' : '340px minmax(700px, 780px) 360px 300px', gap: '16px', padding: '16px', minWidth: guideCollapsed ? '1400px' : '1700px' }}>
-        {/* 第一栏：图纸识别 */}
-        <div ref={sectionDrawingRef} className="overflow-y-auto overflow-x-hidden min-w-0 rounded-xl border border-gray-200 bg-white">
-          <DrawingRecognition
-            key={drawingKey}
-            onDrawingData={handleDrawingData}
-            user={user}
-            aiData={drawingRecogData}
-          />
+      {/* 主内容区 - 两栏布局（参数 + 结果），图纸识别跳转至独立页面 */}
+      <main className="flex-1 min-h-0 overflow-x-auto grid" style={{ gridTemplateColumns: guideCollapsed ? '280px minmax(700px, 780px) 360px' : '280px minmax(700px, 780px) 360px 300px', gap: '16px', padding: '16px', minWidth: guideCollapsed ? '1340px' : '1640px' }}>
+        {/* 第一栏：快捷操作 */}
+        <div className="space-y-3">
+          {/* 从零件列表过来：显示返回入口 */}
+          {fromPartsList ? (
+            <Link href="/quote/parts" className="block rounded-xl border border-blue-200 bg-blue-50 p-4 hover:bg-blue-100 transition">
+              <div className="flex items-center gap-2 text-blue-700 font-medium mb-1">
+                <ArrowLeft size={16} /> 返回零件列表
+              </div>
+              <p className="text-xs text-blue-600">当前零件：{partsListPartName || `零件${partsListPartIdx + 1}`}</p>
+              <p className="text-xs text-blue-500 mt-1">保存报价后将自动返回</p>
+            </Link>
+          ) : (
+            <Link href="/quote/recognize" className="block rounded-xl border border-gray-200 bg-white p-4 hover:border-blue-300 hover:shadow-md transition group">
+              <div className="flex items-center gap-2 text-gray-800 font-medium mb-1">
+                <Sparkles size={16} className="text-blue-600" /> 图纸AI识别
+              </div>
+              <p className="text-xs text-gray-500">上传STP/PDF/图片，AI自动识别尺寸参数并报价</p>
+              <div className="mt-2 text-xs text-blue-600 opacity-0 group-hover:opacity-100 transition">去上传 →</div>
+            </Link>
+          )}
+
+          {/* 手动报价提示 */}
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <div className="flex items-center gap-2 text-gray-800 font-medium mb-2">
+              <FileText size={16} className="text-slate-500" /> 手动填单报价
+            </div>
+            <p className="text-xs text-gray-500 leading-relaxed">在右侧直接填写产品参数、选择材质和表面处理，点击计算即可出报价。</p>
+          </div>
+
+          {/* 已有报价 */}
+          <Link href="/history" className="block rounded-xl border border-gray-200 bg-white p-4 hover:border-blue-300 transition">
+            <div className="flex items-center gap-2 text-gray-800 font-medium">
+              <History size={16} className="text-slate-500" /> 我的报价
+            </div>
+          </Link>
         </div>
 
         {/* 第二栏：参数设置 */}
@@ -486,19 +541,19 @@ export default function QuotePage() {
 
                 {/* 步骤进度条 */}
                 <div className="p-4 space-y-0">
-                  {/* 步骤1: 上传图纸 - 始终完成 */}
-                  <div className="flex items-start gap-3 cursor-pointer rounded-lg px-2 py-1.5 -mx-2 hover:bg-blue-50/50 transition-colors" onClick={() => scrollToSection(sectionDrawingRef)}>
+                  {/* 步骤1: AI识别（跳转独立页） */}
+                  <Link href="/quote/recognize" className="flex items-start gap-3 cursor-pointer rounded-lg px-2 py-1.5 -mx-2 hover:bg-blue-50/50 transition-colors">
                     <div className="flex flex-col items-center">
-                      <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center">
+                        <Sparkles className="w-4 h-4 text-blue-600" />
                       </div>
-                      <div className="w-0.5 h-7 bg-emerald-200 mt-1" />
+                      <div className="w-0.5 h-7 bg-blue-200 mt-1" />
                     </div>
                     <div className="pt-0.5">
-                      <p className="text-sm font-medium text-emerald-700">上传图纸</p>
-                      <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">STP/STEP/DXF/DWG/PDF/图片，支持Ctrl+V粘贴；不上传也可直接填写</p>
+                      <p className="text-sm font-medium text-blue-700">图纸AI识别</p>
+                      <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">点击跳转上传STP/PDF/图片自动识别；也可直接手动填写</p>
                     </div>
-                  </div>
+                  </Link>
 
                   {/* 步骤2: 核对参数 */}
                   <div className="flex items-start gap-3 cursor-pointer rounded-lg px-2 py-1.5 -mx-2 hover:bg-blue-50/50 transition-colors" onClick={() => scrollToSection(sectionParamRef)}>
@@ -507,14 +562,14 @@ export default function QuotePage() {
                         {pricingResult !== null ? (
                           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                         ) : (
-                          <span className="text-sm font-bold text-blue-600">2</span>
+                          <span className="text-sm font-bold text-blue-600">1</span>
                         )}
                       </div>
                       <div className={`w-0.5 h-7 mt-1 ${pricingResult !== null ? 'bg-emerald-200' : 'bg-gray-200'}`} />
                     </div>
                     <div className={`pt-0.5 rounded-lg px-2 py-1 -ml-2 ${pricingResult !== null ? '' : 'bg-blue-50'}`}>
                       <p className={`text-sm font-medium ${pricingResult !== null ? 'text-emerald-700' : 'text-blue-700'}`}>核对参数</p>
-                      <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">绿点=AI识别，橙色边框请逐项核对：材料、表面处理、长度、数量</p>
+                      <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">选择产品类型和材质，填写截面尺寸和长度数量</p>
                     </div>
                   </div>
 
@@ -525,7 +580,7 @@ export default function QuotePage() {
                         {pricingResult !== null ? (
                           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                         ) : (
-                          <span className="text-sm font-bold text-slate-600">3</span>
+                          <span className="text-sm font-bold text-slate-600">2</span>
                         )}
                       </div>
                       <div className={`w-0.5 h-7 mt-1 ${pricingResult !== null ? 'bg-emerald-200' : 'bg-gray-200'}`} />
@@ -543,7 +598,7 @@ export default function QuotePage() {
                         {pricingResult !== null ? (
                           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                         ) : (
-                          <span className="text-sm font-bold text-slate-600">4</span>
+                          <span className="text-sm font-bold text-slate-600">3</span>
                         )}
                       </div>
                       <div className={`w-0.5 h-7 mt-1 ${pricingResult !== null ? 'bg-emerald-200' : 'bg-gray-200'}`} />
@@ -554,14 +609,14 @@ export default function QuotePage() {
                     </div>
                   </div>
 
-                  {/* 步骤5: 出价导出 */}
+                  {/* 步骤4: 出价导出 */}
                   <div className="flex items-start gap-3 cursor-pointer rounded-lg px-2 py-1.5 -mx-2 hover:bg-blue-50/50 transition-colors" onClick={() => scrollToSection(sectionResultRef)}>
                     <div className="flex flex-col items-center">
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center ${pricingResult !== null ? 'bg-blue-100' : 'bg-gray-100'}`}>
                         {pricingResult !== null ? (
-                          <span className="text-sm font-bold text-blue-600">5</span>
+                          <span className="text-sm font-bold text-blue-600">4</span>
                         ) : (
-                          <span className="text-sm font-bold text-slate-600">5</span>
+                          <span className="text-sm font-bold text-slate-600">4</span>
                         )}
                       </div>
                     </div>

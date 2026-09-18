@@ -11,9 +11,12 @@ interface DrawingRecognitionProps {
     recogData: Record<string, any> | null;
     recognitionId?: string;
     checkAnswers?: Record<string, any>;
+    recogProducts?: Record<string, any>[];
+    isAssembly?: boolean;
+    fileName?: string;
   }) => void;
   user: any;
-  aiData: any;
+  aiData?: any;
 }
 
 interface PartInfo {
@@ -410,9 +413,10 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         setRecogProducts(allProducts);
         setSelectedProductIdx(0);
         setRecogResult(allProducts[0]);
+        setIsAssembly(allProducts.length > 1 || allProducts.some(p => p.is_assembly));
         checkQuota();
         setRecognizing(false);
-        onDrawingData({ recogData: allProducts[0], recognitionId: "zip_" + Date.now() });
+        onDrawingData({ recogData: allProducts[0], recogProducts: allProducts, isAssembly: allProducts.length > 1, fileName: file.name, recognitionId: "zip_" + Date.now() });
         return;
       }
 
@@ -443,7 +447,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
           checkQuota();
           setStatusMessage(null);
           setRecognizing(false);
-          onDrawingData({ recogData: parts[0], recognitionId: "asm_" + Date.now() });
+          onDrawingData({ recogData: parts[0], recogProducts: parts, isAssembly: true, fileName: file.name, recognitionId: "asm_" + Date.now() });
           launchCheckAsync(file);
           return;
         }
@@ -455,7 +459,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         setStatusMessage(null);
         setRecognizing(false);
         const recognitionId = "cad_" + Date.now();
-        onDrawingData({ recogData, recognitionId });
+        onDrawingData({ recogData, recogProducts: [recogData], isAssembly: false, fileName: file.name, recognitionId });
         launchCheckAsync(file);
         return;
       }
