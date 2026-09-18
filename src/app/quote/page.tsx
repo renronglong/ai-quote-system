@@ -220,7 +220,6 @@ export default function QuotePage() {
     setProductInfo({ productName: '', productCode: '' });
     setAiFormData(null);
     setDrawingRecogData(null);
-    setDrawingKey(k => k + 1);
     setFormNonce(n => n + 1);
   }, []);
 
