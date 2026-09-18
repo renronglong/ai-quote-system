@@ -1672,19 +1672,25 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   doCalculateRef.current = doCalculate;
 
   const applyRecogToForm = (d: Record<string, any>) => {
+    // 钣金件优先：is_sheet_metal=true 或 area_method=sheet_metal 时强制切板材
+    const isSheet = d.is_sheet_metal === true || d.area_method === 'sheet_metal' || d.product_type === 'sheet_metal';
+    if (isSheet) {
+      d.product_type = 'sheet_metal';
+      d.material_category = d.material_category || '铝板';
+    }
     // 如果当前是板材tab，强制覆盖AI可能返回的错误product_type
-    if (productType === '板材') {
+    if (productType === '板材' && !isSheet) {
       d.product_type = d.product_type || 'stamping';
       d.material_category = d.material_category || '铝板';
     }
-    // 产品类型映射：当前已是板材时，不因AI返回的product_type切换tab
-    if (d.product_type && productType !== '板材') {
+    // 产品类型映射
+    if (d.product_type) {
       const ptMap: Record<string,string> = {
         extrusion: '挤出', stamping: '板材', sheet_metal: '板材', die_casting: '压铸',
         zinc_alloy: '压铸', cnc: '挤出', injection: '注塑',
       };
       const mapped = ptMap[String(d.product_type).toLowerCase()] || ptMap[d.product_type];
-      if (mapped && PRODUCT_TYPES[mapped]) setProductType(mapped);
+      if (mapped && PRODUCT_TYPES[mapped] && productType !== mapped) setProductType(mapped);
     }
 
     // 型材细分类别（必须在填字段之前处理：resetProfileState 会清空截面字段）
@@ -1831,10 +1837,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       }
     }
     // CNC 加工：直接从 STP/CAD 解析结果自动添加（有孔位或有加工时间均触发）
+    // 钣金件：仅当有明确CNC孔数或加工时间时才加CNC；零孔+无加工时间的纯折弯件不加
     const cncHoles = d.cnc_holes || d.process?.cnc_holes;
-    const cncTotalHoles = d.cnc_total_holes || d.process?.cnc_total_holes || 0;
-    const machiningTime = d.machining_time_min || d.process?.machining_time_min;
-    const hasCncData = (cncHoles && Array.isArray(cncHoles) && cncHoles.length > 0) || cncTotalHoles > 0 || !!machiningTime;
+    const cncTotalHoles = toNum(d.cnc_total_holes) || toNum(d.all_holes_total) || 0;
+    const machiningTime = toNum(d.machining_time_min) || d.process?.machining_time_min;
+    const isSheetPart = d.is_sheet_metal === true || d.area_method === 'sheet_metal' || productType === '板材';
+    const hasCncData = isSheetPart
+      ? (cncTotalHoles > 0 || !!machiningTime || (Array.isArray(cncHoles) && cncHoles.length > 0))
+      : ((cncHoles && Array.isArray(cncHoles) && cncHoles.length > 0) || cncTotalHoles > 0 || !!machiningTime);
     if (hasCncData) {
       setProcesses(prev => {
         const existingNames = new Set(prev.map(p => p.name));
@@ -1849,6 +1859,17 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           newProcs.push({ name: '钻孔', quantity: cncTotalHoles, subParams: { hole_count: cncTotalHoles } });
         }
         return newProcs.length > 0 ? [...prev, ...newProcs] : prev;
+      });
+    }
+    // 钣金折弯：bend_count>0时自动勾选折弯工序
+    const bendCount = toNum(d.bend_count) || 0;
+    if (bendCount > 0 && (isSheetPart || productType === '板材')) {
+      setProcesses(prev => {
+        const existingNames = new Set(prev.map(p => p.name));
+        if (!existingNames.has('折弯')) {
+          return [...prev, { name: '折弯', quantity: bendCount }];
+        }
+        return prev;
       });
     }
     setAiSynced(true);

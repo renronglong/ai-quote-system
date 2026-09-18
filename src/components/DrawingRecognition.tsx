@@ -56,33 +56,50 @@ function buildRecogDataFromParse(parseJson: any, productType: string, source: st
   else if (['flat', '平模', '实心'].some(v => dieTypeRaw.includes(v))) dieType = 'flat';
   else dieType = parseJson.die_type || parseJson.mold_type || '';
 
+  // 钣金件优先处理：is_sheet_metal=true 或 area_method=sheet_metal 时，强制覆盖product_type
+  const isSheet = parseJson.is_sheet_metal === true || parseJson.area_method === 'sheet_metal';
+  const resolvedProductType = isSheet ? 'sheet_metal' : productType;
+
   return {
     confidence: parseJson.confidence_score != null ? parseJson.confidence_score : null,
-    product_type: productType,
+    product_type: resolvedProductType,
     product_code: parseJson.product_code || '',
     surface_treatment: parseJson.surface_treatment || '',
     material_grade: parseJson.material_grade || '',
-    width: parseJson.section_width_mm,
-    height: parseJson.section_height_mm,
+    width: isSheet ? parseJson.unfold_width_mm : parseJson.section_width_mm,
+    height: isSheet ? parseJson.unfold_length_mm : parseJson.section_height_mm,
+    length: isSheet ? parseJson.thickness_mm : parseJson.extrusion_length_mm,
     perimeter: parseJson.outer_perimeter_mm,
     inner_perimeter: parseJson.inner_perimeter_mm,
     meter_weight: parseJson.weight_kg_per_m,
-    wall_thickness: parseJson.wall_thickness_mm,
+    wall_thickness: parseJson.wall_thickness_mm || parseJson.thickness_mm,
     crossSectionArea: parseJson.section_area_mm2,
-    die_type: dieType,
-    num_cavities: parseJson.is_hollow ? 1 : 0,
-    material_category: parseJson.material_grade || '',
-    length: parseJson.extrusion_length_mm,
+    die_type: isSheet ? null : dieType,
+    num_cavities: (parseJson.is_hollow && !isSheet) ? 1 : 0,
+    material_category: parseJson.material_grade || (isSheet ? '铝板' : ''),
+    // 钣金专用字段
+    is_sheet_metal: isSheet,
+    sheet_thickness: parseJson.thickness_mm,
+    bend_angle: parseJson.bend_angle_deg,
+    bend_radius: parseJson.bend_radius_mm,
+    bend_dimension: parseJson.bend_dimension_mm,
+    unfold_length: parseJson.unfold_length_mm,
+    unfold_width: parseJson.unfold_width_mm,
+    unfold_size: parseJson.unfold_size,
+    extrusion_length: parseJson.extrusion_length_mm,
     process: parseJson.process || null,
     secondary_operations: parseJson.secondary_operations || null,
     cnc_holes: parseJson.cnc_holes || null,
     cnc_total_holes: parseJson.cnc_total_holes || 0,
+    all_holes: parseJson.all_holes || null,
+    all_holes_total: parseJson.all_holes_total || 0,
     machining_time_min: parseJson.machining_time_min || null,
-    notes: `${source}${fileName ? ': ' + fileName : ''} | ⚠️仅用于报价估算，不可作为开模依据`,
+    notes: `${source}${fileName ? ': ' + fileName : ''}${isSheet ? ` | 钣金折弯件 ${parseJson.unfold_size || ''} ${parseJson.bend_angle_deg || 90}°/R${parseJson.bend_radius_mm || ''}` : ''} | ⚠️仅用于报价估算，不可作为开模依据`,
     _fileName: fileName,
     _partId: parseJson.part_id,
     _quantity: parseJson.quantity || 1,
     _partName: parseJson.product_name,
+    _isSheetMetal: isSheet,
   };
 }
 
@@ -747,15 +764,29 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
               </span>
             </div>
             <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-sm text-gray-600">
-              {recogResult.width != null && <div>宽: <b>{recogResult.width}mm</b></div>}
-              {recogResult.height != null && <div>高: <b>{recogResult.height}mm</b></div>}
-              {recogResult.wall_thickness != null && <div>壁厚: <b>{recogResult.wall_thickness}mm</b></div>}
-              {recogResult.length != null && <div>长: <b>{recogResult.length}mm</b></div>}
-              {recogResult.perimeter != null && <div>外周长: <b>{recogResult.perimeter}mm</b></div>}
-              {recogResult.inner_perimeter != null && <div>内周长: <b>{recogResult.inner_perimeter}mm</b></div>}
-              {recogResult.meter_weight != null && <div>米重: <b>{recogResult.meter_weight}kg/m</b></div>}
-              {recogResult.crossSectionArea != null && <div>截面积: <b>{recogResult.crossSectionArea}mm²</b></div>}
-              {recogResult.num_cavities != null && <div>模腔数: <b>{recogResult.num_cavities}</b></div>}
+              {recogResult._isSheetMetal || recogResult.is_sheet_metal ? (
+                <>
+                  {recogResult.unfold_length != null && <div>展开长: <b>{recogResult.unfold_length}mm</b></div>}
+                  {recogResult.unfold_width != null && <div>展开宽: <b>{recogResult.unfold_width}mm</b></div>}
+                  {(recogResult.sheet_thickness || recogResult.wall_thickness) != null && <div>板厚: <b>{(recogResult.sheet_thickness || recogResult.wall_thickness)}mm</b></div>}
+                  {recogResult.bend_angle != null && <div>折弯角: <b>{recogResult.bend_angle}°</b></div>}
+                  {recogResult.bend_radius != null && <div>折弯R: <b>R{recogResult.bend_radius}</b></div>}
+                  {(recogResult.all_holes_total || recogResult.cnc_total_holes) != null && <div>孔数: <b>{recogResult.all_holes_total || recogResult.cnc_total_holes}个</b></div>}
+                  <div className="col-span-2 text-blue-600 font-medium">📐 钣金折弯件（无需挤压模具）</div>
+                </>
+              ) : (
+                <>
+                  {recogResult.width != null && <div>宽: <b>{recogResult.width}mm</b></div>}
+                  {recogResult.height != null && <div>高: <b>{recogResult.height}mm</b></div>}
+                  {recogResult.wall_thickness != null && <div>壁厚: <b>{recogResult.wall_thickness}mm</b></div>}
+                  {recogResult.length != null && <div>长: <b>{recogResult.length}mm</b></div>}
+                  {recogResult.perimeter != null && <div>外周长: <b>{recogResult.perimeter}mm</b></div>}
+                  {recogResult.inner_perimeter != null && <div>内周长: <b>{recogResult.inner_perimeter}mm</b></div>}
+                  {recogResult.meter_weight != null && <div>米重: <b>{recogResult.meter_weight}kg/m</b></div>}
+                  {recogResult.crossSectionArea != null && <div>截面积: <b>{recogResult.crossSectionArea}mm²</b></div>}
+                  {recogResult.num_cavities != null && <div>模腔数: <b>{recogResult.num_cavities}</b></div>}
+                </>
+              )}
               {isAssembly && recogResult._quantity > 1 && <div>数量: <b>{recogResult._quantity}件</b></div>}
               {recogResult.material_grade ? <div className="col-span-2">材质: <b>{recogResult.material_grade}</b></div> : <div className="col-span-2 text-amber-600">材质: 无法识别，请手动选择</div>}
               {recogResult.surface_treatment ? <div className="col-span-2">表面处理: <b>{recogResult.surface_treatment}</b></div> : <div className="col-span-2 text-amber-600">表面处理: 无法识别，请手动选择</div>}
