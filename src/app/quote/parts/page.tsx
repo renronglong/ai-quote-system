@@ -121,15 +121,15 @@ export default function QuotePartsPage() {
       const parts: string[] = [];
       if (p.unfold_length_mm != null && p.unfold_width_mm != null) parts.push(`${p.unfold_length_mm}×${p.unfold_width_mm}`);
       else if (p.length != null && p.width != null) parts.push(`${p.length}×${p.width}`);
-      if (p.thickness_mm != null) parts.push(`×${p.thickness_mm}`);
-      else if (p.wall_thickness != null) parts.push(`×${p.wall_thickness}`);
+      if (p.thickness_mm != null) parts.push(`t${p.thickness_mm}`);
+      else if (p.wall_thickness != null) parts.push(`t${p.wall_thickness}`);
       if (p.bend_count != null && p.bend_count > 0) parts.push(`${p.bend_count}折`);
       return parts.join(' ') || '-';
     }
     // 挤压
     const parts: string[] = [];
     if (p.width != null && p.height != null) parts.push(`${p.width}×${p.height}`);
-    if (p.wall_thickness != null) parts.push(`×t${p.wall_thickness}`);
+    if (p.wall_thickness != null) parts.push(`t${p.wall_thickness}`);
     if (p.length != null) parts.push(`L${p.length}`);
     return parts.join(' ') || '-';
   };
@@ -269,15 +269,17 @@ export default function QuotePartsPage() {
                           </span>
                         </div>
                       )}
-                      <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                      <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
                         {isQuoted ? (
-                          <span className="text-emerald-600 flex items-center gap-1">
-                            <CheckCircle2 size={12} /> 已报价
+                          <span className="inline-flex items-center gap-1 text-emerald-600 text-sm font-medium">
+                            <CheckCircle2 size={14} /> 已报价
                           </span>
                         ) : (
-                          <span className="text-blue-600 font-medium group-hover:text-blue-700">点击报价 →</span>
+                          <span className="inline-flex items-center gap-1 text-blue-600 font-semibold text-sm group-hover:text-blue-700">
+                            点击进入报价 <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
+                          </span>
                         )}
-                        {p.material_grade && <span className="text-slate-400 truncate ml-2">{p.material_grade}</span>}
+                        {p.material_grade && <span className="text-slate-400 truncate ml-2 text-xs">{p.material_grade}</span>}
                       </div>
                     </>
                   )}
