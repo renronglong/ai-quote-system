@@ -113,6 +113,7 @@ interface QuoteResponse {
   min_order_met?: boolean;
   min_order_weight_kg?: number;
   min_order_qty?: number;
+  min_order_value?: number;        // 最小起订金额（元），用于板材
   material_utilization_rate?: number; // 材料利用率(0-1)
   notes?: string[];
   product_name?: string;
@@ -1623,6 +1624,13 @@ function calcSheetMetal(
     detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
   };
 
+  // 板材最小起订量：按总价值 3000 元计算
+  const minOrderValue = 3000; // 元
+  const minOrderQty = unitPrice > 0 ? Math.ceil(minOrderValue / unitPrice) : 0;
+  if (minOrderQty > 0) {
+    notes.push(`最小起订量: ${minOrderQty}件（按总价值${minOrderValue}元换算，单价${unitPrice}元/件）`);
+  }
+
   return {
     costs: {
       material_cost: mat.cost,
@@ -1638,6 +1646,8 @@ function calcSheetMetal(
       total_ex_tax: r2(preTaxPrice),
       total_in_tax: unitPrice,
       weight_per_piece_kg: mat.weight,
+      min_order_qty: minOrderQty,
+      min_order_value: minOrderValue,
     },
     breakdown,
     weight: mat.weight,
@@ -2048,12 +2058,31 @@ export async function POST(request: NextRequest) {
     result.costs.total_ex_tax = r2(exTaxUnit * body.quantity);
     result.costs.total_in_tax = r2(inTaxUnit * body.quantity);
 
-    // 5. 最低订单量检查（按模具规格分档：300/500/1000kg）
-    const totalWeight = result.weight * body.quantity;
-    const minOrderWeight = result.costs.min_order_weight_kg || 300;
-    const minOrderMet = totalWeight >= minOrderWeight;
+    // 5. 最低订单量检查
+    // 板材：按总价值 3000 元；其他类型：按模具规格分档重量（300/500/1000kg）
+    let minOrderMet = true;
+    let minOrderNote = '';
+
+    if (body.product_type === 'sheet_metal') {
+      // 板材按总价值检查
+      const minOrderValue = result.costs.min_order_value || 3000;
+      const minOrderQty = result.costs.min_order_qty || 0;
+      minOrderMet = body.quantity >= minOrderQty;
+      if (!minOrderMet) {
+        minOrderNote = `订单数量 ${body.quantity}件 未达到最小起订量 ${minOrderQty}件（按总价值${minOrderValue}元换算）`;
+      }
+    } else {
+      // 其他类型按重量检查
+      const totalWeight = result.weight * body.quantity;
+      const minOrderWeight = result.costs.min_order_weight_kg || 300;
+      minOrderMet = totalWeight >= minOrderWeight;
+      if (!minOrderMet) {
+        minOrderNote = `订单总重量 ${r2(totalWeight)}kg 未达到最低起订量 ${minOrderWeight}kg`;
+      }
+    }
+
     if (!minOrderMet) {
-      result.notes.push(`订单总重量 ${r2(totalWeight)}kg 未达到最低起订量 ${minOrderWeight}kg`);
+      result.notes.push(minOrderNote);
     }
 
     // 6. 构造响应
