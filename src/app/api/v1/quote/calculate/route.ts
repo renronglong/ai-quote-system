@@ -2062,6 +2062,7 @@ export async function POST(request: NextRequest) {
     // 板材：按总价值 3000 元；其他类型：按模具规格分档重量（300/500/1000kg）
     let minOrderMet = true;
     let minOrderNote = '';
+    let minOrderWeightKg = 0;
 
     if (body.product_type === 'sheet_metal') {
       // 板材按总价值检查
@@ -2074,10 +2075,10 @@ export async function POST(request: NextRequest) {
     } else {
       // 其他类型按重量检查
       const totalWeight = result.weight * body.quantity;
-      const minOrderWeight = result.costs.min_order_weight_kg || 300;
-      minOrderMet = totalWeight >= minOrderWeight;
+      minOrderWeightKg = result.costs.min_order_weight_kg || 300;
+      minOrderMet = totalWeight >= minOrderWeightKg;
       if (!minOrderMet) {
-        minOrderNote = `订单总重量 ${r2(totalWeight)}kg 未达到最低起订量 ${minOrderWeight}kg`;
+        minOrderNote = `订单总重量 ${r2(totalWeight)}kg 未达到最低起订量 ${minOrderWeightKg}kg`;
       }
     }
 
@@ -2094,7 +2095,7 @@ export async function POST(request: NextRequest) {
       breakdown: result.breakdown,
       aluminum_index: aluminumPrice,
       min_order_met: minOrderMet,
-      min_order_weight_kg: minOrderWeight,
+      min_order_weight_kg: minOrderWeightKg || result.costs.min_order_weight_kg || 300,
       material_utilization_rate: result.utilizationRate,
       notes: result.notes,
       product_name: body.product_name,
