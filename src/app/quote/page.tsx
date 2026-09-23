@@ -110,13 +110,14 @@ export default function QuotePage() {
           partsPrefillConsumedRef.current = true;
           setFromPartsList(true);
           setPartsListPartIdx(idx);
-          setPartsListPartName(part._partName || part.product_code || part.product_name || `零件${idx + 1}`);
+          setPartsListPartName(part._partName || part.part_number || part.product_code || part.product_name || part.part_name || `零件${idx + 1}`);
           // 模拟handleDrawingData预填参数
           handleFormUpdate(part);
-          // 设置productName/productCode
-          if (part._partName) setProductInfo(prev => ({ ...prev, productName: part._partName }));
-          if (part.product_code) setProductInfo(prev => ({ ...prev, productCode: part.product_code }));
-          if (part.product_name) setProductInfo(prev => ({ ...prev, productName: part.product_name }));
+          // 设置productName/productCode（兼容多种字段名）
+          const resolvedName = part._partName || part.product_name || part.part_name || '';
+          const resolvedCode = part.product_code || part.part_number || '';
+          if (resolvedName) setProductInfo(prev => ({ ...prev, productName: resolvedName }));
+          if (resolvedCode) setProductInfo(prev => ({ ...prev, productCode: resolvedCode }));
           // 清理URL的from=parts参数，避免formNonce触发重挂载时再次读取
           urlParams.delete('from');
           const newQuery = urlParams.toString();

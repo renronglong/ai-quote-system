@@ -1738,8 +1738,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       }
     }
 
-    if (d.product_code) setProductCode(d.product_code);
-    if (d.product_name) setProductName(d.product_name);
+    // 产品名称/编号：兼容 product_name/product_code 和 part_name/part_number 以及 _partName
+    const resolvedName = d.product_name || d.part_name || d._partName || '';
+    const resolvedCode = d.product_code || d.part_number || '';
+    if (resolvedCode) setProductCode(resolvedCode);
+    if (resolvedName) setProductName(resolvedName);
 
     // 字段统一最后填，避免被类别切换的 reset 清掉
     // toNum: 兼容AI返回的字符串数字（如 "28.5" → 28.5）
@@ -1766,8 +1769,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         next.die_type = nc >= 1 ? 'split' : 'flat';
       }
       const mw = toNum(d.meter_weight); if (mw !== null) next.meterWeight = mw;
-      const qty = toNum(d.quantity); if (qty !== null) next.quantity = qty;
-      const wt = toNum(d.wall_thickness) ?? toNum(d.thickness); if (wt !== null) next.thickness = wt;
+      const qty = toNum(d.quantity) ?? toNum(d._quantity); if (qty !== null) next.quantity = qty;
+      const wt = toNum(d.wall_thickness) ?? toNum(d.thickness) ?? toNum(d.sheet_thickness) ?? toNum(d.thickness_mm); if (wt !== null) next.thickness = wt;
       // 板材专用：展开尺寸 → length + width 独立字段
       const sheetL = toNum(d.unfold_length) ?? toNum(d.sheet_length);
       const sheetW = toNum(d.unfold_width) ?? toNum(d.sheet_width);

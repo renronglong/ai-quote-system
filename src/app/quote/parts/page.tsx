@@ -21,6 +21,9 @@ interface PartData {
   area_method?: string;
   product_code?: string;
   product_name?: string;
+  part_name?: string;
+  part_number?: string;
+  quantity?: number;
   material_grade?: string;
   surface_treatment?: string;
   // 挤型参数
@@ -135,7 +138,7 @@ export default function QuotePartsPage() {
   };
 
   const getPartName = (p: PartData, idx: number): string => {
-    const baseName = p._partName || p.product_name || p.product_code || `零件${idx + 1}`;
+    const baseName = p.part_number || p._partName || p.product_code || p.product_name || p.part_name || `零件${idx + 1}`;
     const fileName = p._fileName;
     if (fileName) {
       const shortName = fileName.replace(/\.[^.]+$/, '');
@@ -247,8 +250,8 @@ export default function QuotePartsPage() {
                         <div className="font-medium text-slate-800 truncate">{getPartName(p, idx)}</div>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className={`text-xs px-1.5 py-0.5 rounded ${type.color}`}>{type.label}</span>
-                          {(p._quantity ?? 0) > 1 && (
-                            <span className="text-xs text-slate-500">×{p._quantity}件</span>
+                          {((p.quantity ?? p._quantity ?? 0) > 1) && (
+                            <span className="text-xs text-slate-500">×{p.quantity || p._quantity}件</span>
                           )}
                         </div>
                       </div>

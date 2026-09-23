@@ -63,15 +63,22 @@ function buildRecogDataFromParse(parseJson: any, productType: string, source: st
   const isSheet = parseJson.is_sheet_metal === true || parseJson.area_method === 'sheet_metal';
   const resolvedProductType = isSheet ? 'sheet_metal' : productType;
 
+  // 兼容后端返回 part_name/part_number 或 product_name/product_code
+  const resolvedProductName = parseJson.product_name || parseJson.part_name || '';
+  const resolvedProductCode = parseJson.product_code || parseJson.part_number || '';
+
   return {
     confidence: parseJson.confidence_score != null ? parseJson.confidence_score : null,
     product_type: resolvedProductType,
-    product_code: parseJson.product_code || '',
+    product_code: resolvedProductCode,
+    product_name: resolvedProductName,
+    part_name: resolvedProductName,
+    part_number: resolvedProductCode,
     surface_treatment: parseJson.surface_treatment || '',
     material_grade: parseJson.material_grade || '',
     width: isSheet ? parseJson.unfold_width_mm : parseJson.section_width_mm,
     height: isSheet ? parseJson.unfold_length_mm : parseJson.section_height_mm,
-    length: isSheet ? parseJson.thickness_mm : parseJson.extrusion_length_mm,
+    length: isSheet ? parseJson.unfold_length_mm : parseJson.extrusion_length_mm,
     perimeter: parseJson.outer_perimeter_mm,
     inner_perimeter: parseJson.inner_perimeter_mm,
     meter_weight: parseJson.weight_kg_per_m,
@@ -82,7 +89,10 @@ function buildRecogDataFromParse(parseJson: any, productType: string, source: st
     material_category: parseJson.material_grade || (isSheet ? '铝板' : ''),
     // 钣金专用字段
     is_sheet_metal: isSheet,
+    thickness_mm: parseJson.thickness_mm,
     sheet_thickness: parseJson.thickness_mm,
+    unfold_length_mm: parseJson.unfold_length_mm,
+    unfold_width_mm: parseJson.unfold_width_mm,
     bend_angle: parseJson.bend_angle_deg,
     bend_radius: parseJson.bend_radius_mm,
     bend_dimension: parseJson.bend_dimension_mm,
@@ -97,11 +107,14 @@ function buildRecogDataFromParse(parseJson: any, productType: string, source: st
     all_holes: parseJson.all_holes || null,
     all_holes_total: parseJson.all_holes_total || 0,
     machining_time_min: parseJson.machining_time_min || null,
+    quantity: parseJson.quantity || 1,
+    bend_count: parseJson.bend_count || 0,
+    punch_holes_total: parseJson.punch_holes_total || 0,
     notes: `${source}${fileName ? ': ' + fileName : ''}${isSheet ? ` | 钣金折弯件 ${parseJson.unfold_size || ''} ${parseJson.bend_angle_deg || 90}°/R${parseJson.bend_radius_mm || ''}` : ''} | ⚠️仅用于报价估算，不可作为开模依据`,
     _fileName: fileName,
-    _partId: parseJson.part_id,
+    _partId: parseJson.part_id || parseJson.part_number || '',
     _quantity: parseJson.quantity || 1,
-    _partName: parseJson.product_name,
+    _partName: resolvedProductName,
     _isSheetMetal: isSheet,
   };
 }
