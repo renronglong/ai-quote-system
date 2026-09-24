@@ -659,7 +659,17 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [productCode, setProductCode] = useState('');
 
   // Core form state
-  const [productType, setProductType] = useState('挤出');
+  const [productType, setProductType] = useState(() => {
+    // 初始化时检查 sessionStorage，如果有板材数据就设置为板材
+    try {
+      const partRaw = sessionStorage.getItem('ai_quote_selected_part');
+      if (partRaw) {
+        const part = JSON.parse(partRaw);
+        if (part.product_type === 'sheet_metal' || part.is_sheet_metal) return '板材';
+      }
+    } catch (e) {}
+    return '挤出';
+  });
   const [materialCategory, setMaterialCategory] = useState('异型材');
   const [fields, setFields] = useState<Record<string, number | string>>({
     width: '', height: '', length: '', quantity: '',
@@ -1940,7 +1950,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   // Field rendering with two-column grid
   const renderFields = () => {
     if (!categoryConfig) return null;
-    const fieldOrder = ['thickness', 'length', 'width', 'height', 'perimeter', 'num_cavities', 'die_type', 'meterWeight', 'crossSectionArea', 'productSize', 'quantity', 'netWeight'];
+    const fieldOrder = ['thickness', 'length', 'width', 'height', 'perimeter', 'num_cavities', 'die_type', 'meterWeight', 'crossSectionArea', 'productSize', 'quantity', 'netWeight', 'holes', 'outer_perimeter', 'cut_total_length'];
     let visibleFields = fieldOrder.filter(f => categoryConfig.fields.includes(f));
     // In standard mode, hide num_cavities, die_type, width, height, perimeter
     // (these are handled by structured dimension inputs + mold matching)
