@@ -121,7 +121,7 @@ export default function QuotePage() {
             productType: part.product_type === 'sheet_metal' ? '板材' : (part.product_type || undefined),
           };
           // 延迟调用，让 QuoteForm 先完成 productType 切换后的 resetCategoryState
-          setTimeout(() => handleFormUpdate(mappedData), 100);
+          setTimeout(() => handleFormUpdate(mappedData), 500);
           // 设置productName/productCode（兼容多种字段名）
           const resolvedName = part._partName || part.product_name || part.part_name || '';
           const resolvedCode = part.product_code || part.part_number || '';
