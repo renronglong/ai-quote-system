@@ -772,6 +772,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (cat.fields.includes('crossSectionArea')) defaultFields.crossSectionArea = '';
     if (cat.fields.includes('netWeight')) defaultFields.netWeight = '';
     if (cat.fields.includes('perimeter')) defaultFields.perimeter = '';
+    if (cat.fields.includes('holes')) defaultFields.holes = '';
+    if (cat.fields.includes('outer_perimeter')) defaultFields.outer_perimeter = '';
+    if (cat.fields.includes('cut_total_length')) defaultFields.cut_total_length = '';
     if (cat.fields.includes('num_cavities')) defaultFields.num_cavities = '';
     if (cat.fields.includes('die_type')) defaultFields.die_type = '';
     setFields(defaultFields);
