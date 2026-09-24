@@ -1754,6 +1754,24 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       if (typeof v === 'string' && v.trim() !== '') { const n = parseFloat(v); return isNaN(n) ? null : n; }
       return null;
     };
+    // 板材分支：延迟设置字段，避免被 resetCategoryState 覆盖
+    const isSheet = d.is_sheet_metal === true || d.area_method === 'sheet_metal' || d.product_type === 'sheet_metal';
+    if (isSheet) {
+      setTimeout(() => {
+        setFields(prev => {
+          const next = { ...prev };
+          const wt = toNum(d.wall_thickness) ?? toNum(d.thickness) ?? toNum(d.sheet_thickness) ?? toNum(d.thickness_mm);
+          if (wt !== null) next.thickness = wt;
+          const sheetL = toNum(d.unfold_length) ?? toNum(d.unfold_length_mm) ?? toNum(d.sheet_length);
+          const sheetW = toNum(d.unfold_width) ?? toNum(d.unfold_width_mm) ?? toNum(d.sheet_width);
+          if (sheetL !== null) next.length = sheetL;
+          if (sheetW !== null) next.width = sheetW;
+          const qty = toNum(d.quantity) ?? toNum(d._quantity);
+          if (qty !== null) next.quantity = qty;
+          return next;
+        });
+      }, 300);
+    } else {
     setFields(prev => {
       const next = { ...prev };
       const w = toNum(d.width); if (w !== null) next.width = w;
@@ -1792,6 +1810,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       if ((resolvedCat === '铝圆管' || resolvedCat === '铝六角管') && innerD) next.height = innerD;
       return next;
     });
+    }
     if (d.material_grade) setMaterialGrade(d.material_grade);
     if (d.surface_treatment && d.surface_treatment !== '无') {
       // 归一化到表单表面处理选项
