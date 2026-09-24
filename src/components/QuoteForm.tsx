@@ -427,7 +427,7 @@ const FIELD_LABELS: Record<string, string> = {
 
 // 按产品类型覆盖字段标签
 const FIELD_LABEL_OVERRIDES: Record<string, Record<string, string>> = {
-  '板材': { length: '展开长(mm)', width: '展开宽(mm)' },
+  '板材': { length: '展开长 (mm)', width: '展开宽 (mm)', holes: '孔数 (个)', outer_perimeter: '展开外轮廓周长 (mm)', cut_total_length: '含孔下料总路径 (mm)' },
 };
 
 const getFieldLabel = (productType: string, fieldKey: string): string => {
