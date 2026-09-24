@@ -237,7 +237,7 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
     materialCategories: {
       '铝板': {
         label: '铝板',
-        fields: ['thickness', 'length', 'width', 'quantity'],
+        fields: ['thickness', 'length', 'width', 'quantity', 'holes', 'perimeter'],
         processes: [
           { name: '无' },
           { name: '冲压', unit: '次' },
@@ -259,7 +259,7 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
       },
       '冷轧板': {
         label: '冷轧板',
-        fields: ['thickness', 'length', 'width', 'quantity'],
+        fields: ['thickness', 'length', 'width', 'quantity', 'holes', 'perimeter'],
         processes: [
           { name: '无' },
           { name: '冲压', unit: '次' },
@@ -278,7 +278,7 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
       },
       '不锈钢': {
         label: '不锈钢',
-        fields: ['thickness', 'length', 'width', 'quantity'],
+        fields: ['thickness', 'length', 'width', 'quantity', 'holes', 'perimeter'],
         processes: [
           { name: '无' },
           { name: '冲压', unit: '次' },
@@ -1767,6 +1767,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           if (sheetW !== null) next.width = sheetW;
           const qty = toNum(d.quantity) ?? toNum(d._quantity);
           if (qty !== null) next.quantity = qty;
+          // 孔数和展开周长
+          const holes = toNum(d.punch_holes_total) ?? toNum(d.cnc_total_holes) ?? toNum(d.all_holes_total) ?? toNum(d.holes);
+          if (holes !== null) next.holes = holes;
+          const perimeter = toNum(d.outer_perimeter_mm) ?? toNum(d.perimeter) ?? toNum(d.sheet_perimeter);
+          if (perimeter !== null) next.perimeter = perimeter;
           return next;
         });
       }, 300);
