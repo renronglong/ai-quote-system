@@ -416,14 +416,14 @@ function calcSheetMaterialCost(
 
   // 排版：板材 2440×1220 两个方向都试，取能排下的最大件数（单件外形矩形 + 10mm 割缝/边距）
   const gap = 10;
-  const partL = length_mm + gap, partW = width_mm + gap;
-  const n1 = Math.floor(sheetSize.length_mm / partL) * Math.floor(sheetSize.width_mm / partW);
-  const n2 = Math.floor(sheetSize.length_mm / partW) * Math.floor(sheetSize.width_mm / partL);
-  const nestingQty = Math.max(1, n1, n2);
-  const materialCost = sheetPrice / nestingQty;
+  const netMaterialCost = weightKg * pricePerTon / 1000; // 净重材料费（元）
 
-  const netMaterialCost = weightKg * pricePerTon / 1000; // 净重材料参考价（展示用）
-  detailStr += ` | 整张${sheetSize.length_mm}×${sheetSize.width_mm}×${t}mm = ${r2(sheetWeightKg)}kg → 整板${r2(sheetPrice)}元；展开件${length_mm}×${width_mm}排版 ${nestingQty}件/张 → 单件材料费 ${r2(materialCost)}元（净重参考 ${r2(netMaterialCost)}元，单件 ${r2(weightKg)}kg）`;
+  // 材料费 = 净重 × 单价 × 损耗系数（替代排版分摊法，对小零件更公平）
+  // 排版分摊法对 122×70mm 小件会收 4.42 元（实际净重只值 0.86 元），不合理
+  const wasteFactor = 1.2; // 20% 切割废料损耗
+  const materialCost = netMaterialCost * wasteFactor;
+
+  detailStr += ` | 单件净重 ${r2(weightKg)}kg × ${r2(pricePerTon)}元/吨 = 净重材料费 ${r2(netMaterialCost)}元；加 20% 切割损耗 → 单件材料费 ${r2(materialCost)}元`;
 
   return {
     cost: r2(materialCost),
