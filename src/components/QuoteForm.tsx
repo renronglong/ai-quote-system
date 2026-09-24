@@ -1139,6 +1139,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     const raw = aiData as Record<string, any>;
     const hasRawFields = raw.product_type || raw.perimeter !== undefined || raw.meter_weight !== undefined || raw.die_type !== undefined;
     const hasSheetFields = raw.thickness_mm !== undefined || raw.unfold_length_mm !== undefined || raw.unfold_width_mm !== undefined || raw.is_sheet_metal !== undefined;
+    console.log('[QuoteForm] aiData received:', { hasRawFields, hasSheetFields, thickness_mm: raw.thickness_mm, unfold_length_mm: raw.unfold_length_mm, unfold_width_mm: raw.unfold_width_mm, quantity: raw.quantity, product_type: raw.product_type });
     if (hasRawFields || hasSheetFields) {
       applyRecogToForm(raw);
       return;
