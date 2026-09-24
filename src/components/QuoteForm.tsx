@@ -777,7 +777,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (cat.fields.includes('width')) defaultFields.width = '';
     if (cat.fields.includes('height')) defaultFields.height = '';
     if (cat.fields.includes('length')) defaultFields.length = '';
-    if (cat.fields.includes('thickness')) defaultFields.thickness = 2;
+    if (cat.fields.includes('thickness')) defaultFields.thickness = '';
     if (cat.fields.includes('productSize')) defaultFields.productSize = '';
     if (cat.fields.includes('meterWeight')) defaultFields.meterWeight = '';
     if (cat.fields.includes('crossSectionArea')) defaultFields.crossSectionArea = '';
