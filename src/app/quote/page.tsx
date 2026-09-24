@@ -111,8 +111,16 @@ export default function QuotePage() {
           setFromPartsList(true);
           setPartsListPartIdx(idx);
           setPartsListPartName(part._partName || part.part_number || part.product_code || part.product_name || part.part_name || `零件${idx + 1}`);
-          // 模拟handleDrawingData预填参数
-          handleFormUpdate(part);
+          // 将 part 对象映射为 AiFormUpdate 格式
+          const mappedData: any = {
+            ...part,
+            wallThickness: part.thickness_mm || part.sheet_thickness || part.wall_thickness,
+            length: part.unfold_length_mm || part.unfold_length || part.sheet_length,
+            width: part.unfold_width_mm || part.unfold_width || part.sheet_width,
+            quantity: part.quantity || part._quantity,
+            productType: part.product_type === 'sheet_metal' ? '板材' : (part.product_type || undefined),
+          };
+          handleFormUpdate(mappedData);
           // 设置productName/productCode（兼容多种字段名）
           const resolvedName = part._partName || part.product_name || part.part_name || '';
           const resolvedCode = part.product_code || part.part_number || '';
