@@ -1481,13 +1481,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       };
     }
     if (productType === '板材') {
-      const thickness = fields.thickness as number;
       const num = (v: unknown): number | undefined => {
         const n = typeof v === 'number' ? v : parseFloat(String(v));
         return Number.isFinite(n) && n > 0 ? n : undefined;
       };
       const bL = num(fields.length);
       const bW = num(fields.width);
+      const thickness = num(fields.thickness);
       if (bL && bW) return { length_mm: bL, width_mm: bW, wall_thickness_mm: thickness || undefined };
       // 兼容旧 productSize 字段
       if (parsed) return { length_mm: parsed.l, width_mm: parsed.w, wall_thickness_mm: thickness || undefined };
