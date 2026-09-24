@@ -659,8 +659,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [productCode, setProductCode] = useState('');
 
   // Core form state
-  const [productType, setProductType] = useState(() => {
-    // 初始化时检查 sessionStorage，如果有板材数据就设置为板材
+  const initialProductType = (() => {
     try {
       const partRaw = sessionStorage.getItem('ai_quote_selected_part');
       if (partRaw) {
@@ -669,7 +668,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       }
     } catch (e) {}
     return '挤出';
-  });
+  })();
+  
+  const [productType, setProductType] = useState(initialProductType);
   const [materialCategory, setMaterialCategory] = useState('异型材');
   const [fields, setFields] = useState<Record<string, number | string>>({
     width: '', height: '', length: '', quantity: '',
