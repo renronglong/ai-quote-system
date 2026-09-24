@@ -1755,7 +1755,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       return null;
     };
     // 板材分支：延迟设置字段，避免被 resetCategoryState 覆盖
-    const isSheet = d.is_sheet_metal === true || d.area_method === 'sheet_metal' || d.product_type === 'sheet_metal';
     if (isSheet) {
       setTimeout(() => {
         setFields(prev => {
