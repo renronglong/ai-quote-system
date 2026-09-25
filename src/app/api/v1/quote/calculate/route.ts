@@ -381,9 +381,9 @@ function calcSheetMaterialCost(
         break;
       }
     }
-    pricePerTon = aluminumPrice * (1 + premium / 1000);
-    formulaStr = '铝锭价 × (1 + 牌号加价/1000) × 密度 × 体积';
-    detailStr = `${aluminumPrice} × (1 + ${premium}/1000) = ${r2(pricePerTon)} 元/吨`;
+    pricePerTon = aluminumPrice + premium; // 牌号加价是固定金额（元/吨），不是百分比
+    formulaStr = '(铝锭价 + 牌号加价) × 密度 × 体积';
+    detailStr = `${aluminumPrice} + ${premium} = ${r2(pricePerTon)} 元/吨`;
   } else if (category === '冷板SPCC' || category === '冷板' || category === '冷轧板' || category === '镀锌板') {
     density = matRule['冷板SPCC']?.density || 7.85;
     pricePerTon = DEFAULT_HOT_ROLL_PRICE * 1.05;
