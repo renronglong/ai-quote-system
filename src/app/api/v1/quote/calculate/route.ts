@@ -357,7 +357,7 @@ function calcSheetMaterialCost(
   dimensions: NonNullable<QuoteRequest['dimensions']>,
   aluminumPrice: number,
   rules: PricingRules,
-): { cost: number; weight: number; rawWeight: number; formula: string; detail: string; utilizationRate?: number } {
+): { cost: number; weight: number; rawWeight: number; formula: string; detail: string; utilizationRate?: number; sheetPrice?: number; nestingQty?: number } {
   const { length_mm, width_mm } = dimensions;
   // 板材厚度优先使用 wall_thickness_mm，其次 height_mm（兼容旧格式）
   const t = dimensions.wall_thickness_mm || dimensions.height_mm || 2;
@@ -430,6 +430,8 @@ function calcSheetMaterialCost(
     rawWeight: weightKg,
     formula: formulaStr,
     detail: detailStr,
+    sheetPrice: r2(sheetPrice),
+    nestingQty: nestingQty,
   };
 }
 
@@ -441,7 +443,7 @@ function calcVolumetricMaterialCost(
   volumeCm3: number,
   aluminumPrice: number,
   rules: PricingRules,
-): { cost: number; weight: number; rawWeight: number; formula: string; detail: string; utilizationRate?: number } {
+): { cost: number; weight: number; rawWeight: number; formula: string; detail: string; utilizationRate?: number; sheetPrice?: number; nestingQty?: number } {
   const matRule = rules.material_prices;
   let density = 2.7;
   let pricePerKg = 0;
@@ -641,7 +643,7 @@ function calcExtrusionMaterialCost(
   aluminumPrice: number,
   rules: PricingRules,
   weightOverride?: number,
-): { cost: number; weight: number; rawWeight: number; formula: string; detail: string; utilizationRate?: number } {
+): { cost: number; weight: number; rawWeight: number; formula: string; detail: string; utilizationRate?: number; sheetPrice?: number; nestingQty?: number } {
   const matRule = rules.material_prices['挤压铝型材'] || {};
   const extrusionFeePerTon = matRule.extrusion_fee_per_ton || 3000;
   
@@ -1623,11 +1625,19 @@ function calcSheetMetal(
     detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
   };
 
-  // 板材最小起订量：按总价值 3000 元计算
+  // 板材最小起订量：按整板算，总价值≥3000 元
   const minOrderValue = 3000; // 元
-  const minOrderQty = unitPrice > 0 ? Math.ceil(minOrderValue / unitPrice) : 0;
+  const sheetPrice = mat.sheetPrice || 0;
+  const nestingQty = mat.nestingQty || 1;
+  let minOrderQty = 0;
+  if (sheetPrice > 0) {
+    const sheetsNeeded = Math.ceil(minOrderValue / sheetPrice); // 需要的整板数
+    minOrderQty = sheetsNeeded * nestingQty; // 整板数 × 每件排版数
+  } else if (unitPrice > 0) {
+    minOrderQty = Math.ceil(minOrderValue / unitPrice);
+  }
   if (minOrderQty > 0) {
-    notes.push(`最小起订量: ${minOrderQty}件（按总价值${minOrderValue}元换算，单价${unitPrice}元/件）`);
+    notes.push(`最小起订量: ${minOrderQty}件（按整板${sheetPrice}元/张×${nestingQty}件/张，总价值≥${minOrderValue}元）`);
   }
 
   return {
