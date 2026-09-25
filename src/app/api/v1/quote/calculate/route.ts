@@ -416,12 +416,6 @@ function calcSheetMaterialCost(
 
   // 排版：板材 2440×1220 两个方向都试，取能排下的最大件数（单件外形矩形 + 10mm 割缝/边距）
   const gap = 10;
-  // 材料费 = 整张板材价格  排版数量（按展开外形矩形排版，含废料利用率）
-  const sheetVolumeCm3 = (sheetSize.length_mm * sheetSize.width_mm * t) / 1000;
-  const sheetWeightKg = sheetVolumeCm3 * density / 1000;
-  const sheetPrice = sheetWeightKg * pricePerTon / 1000;
-
-  const gap = 10;
   const partL = length_mm + gap, partW = width_mm + gap;
   const n1 = Math.floor(sheetSize.length_mm / partL) * Math.floor(sheetSize.width_mm / partW);
   const n2 = Math.floor(sheetSize.length_mm / partW) * Math.floor(sheetSize.width_mm / partL);
