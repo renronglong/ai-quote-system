@@ -122,6 +122,8 @@ export default function QuotePage() {
           cut_total_length: part.cut_total_path_mm || '',
           product_name: part._partName || part.product_name || part.part_name || '',  // P0-5: 产品名称
           product_code: part.product_code || part.part_number || '',  // P0-5: 产品编号
+          productName: part._partName || part.product_name || part.part_name || '',  // P0-5: camelCase 兼容
+          productCode: part.product_code || part.part_number || '',  // P0-5: camelCase 兼容
           productType: part.product_type === 'sheet_metal' || part.is_sheet_metal ? '板材' : (part.product_type || undefined),
         };
         // 延迟调用，让 QuoteForm 先完成 productType 切换后的 resetCategoryState

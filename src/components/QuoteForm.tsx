@@ -1204,6 +1204,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     }
 
     if (aiData.materialGrade) setMaterialGrade(aiData.materialGrade);
+    // 产品名称/编号（camelCase）
+    if (aiData.productName) setProductName(aiData.productName);
+    if (aiData.productCode) setProductCode(aiData.productCode);
     // 表面处理：camelCase 分支也需要处理
     if (aiData.surfaceTreatment && aiData.surfaceTreatment !== '无' && aiData.surfaceTreatment !== '') {
       const st = String(aiData.surfaceTreatment);
