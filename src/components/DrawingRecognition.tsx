@@ -14,6 +14,7 @@ interface DrawingRecognitionProps {
     recogProducts?: Record<string, any>[];
     isAssembly?: boolean;
     fileName?: string;
+    material?: string;
   }) => void;
   user: any;
   aiData?: any;
