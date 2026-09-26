@@ -1781,9 +1781,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           if (sheetW !== null) next.width = sheetW;
           const qty = toNum(d.quantity) ?? toNum(d._quantity);
           if (qty !== null) next.quantity = qty;
-          // 孔数
-          const holes = toNum(d.unfold_hole_count) ?? toNum(d.punch_holes_total) ?? toNum(d.cnc_total_holes) ?? toNum(d.all_holes_total) ?? toNum(d.holes);
-          if (holes !== null) next.holes = holes;
+          // 孔数：优先用 unfold_hole_count，没有时留空（不填 0，避免误导用户）
+          // punch_holes_total 默认是 0（冲孔工序参数），不能当孔数用
+          const holes = toNum(d.unfold_hole_count);
+          if (holes !== null && holes > 0) next.holes = holes;
+          else if (d.unfold_hole_count === undefined) next.holes = '';  // 留空
           // 展开外轮廓周长（不含孔）
           const outerPerimeter = toNum(d.unfold_outer_perimeter_mm) ?? toNum(d.outer_perimeter_mm) ?? toNum(d.outer_perimeter);
           if (outerPerimeter !== null) next.outer_perimeter = outerPerimeter;

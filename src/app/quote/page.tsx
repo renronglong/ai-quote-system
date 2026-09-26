@@ -97,42 +97,49 @@ export default function QuotePage() {
   const partsPrefillConsumedRef = useRef(false);
 
   // 从零件列表页跳转过来时，读取sessionStorage中的预填零件参数
+  // F5 刷新后也要读，所以不依赖 from=parts 参数
   useEffect(() => {
     if (partsPrefillConsumedRef.current) return;
     try {
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('from') === 'parts') {
-        const idxStr = sessionStorage.getItem('ai_quote_selected_idx');
-        const partRaw = sessionStorage.getItem('ai_quote_selected_part');
-        if (idxStr != null && partRaw) {
-          const idx = parseInt(idxStr, 10);
-          const part = JSON.parse(partRaw);
-          partsPrefillConsumedRef.current = true;
-          setFromPartsList(true);
-          setPartsListPartIdx(idx);
-          setPartsListPartName(part._partName || part.part_number || part.product_code || part.product_name || part.part_name || `零件${idx + 1}`);
-          // 将 part 对象映射为 AiFormUpdate 格式
-          const mappedData: any = {
-            ...part,
-            wallThickness: part.thickness_mm || part.sheet_thickness || part.wall_thickness,
-            length: part.unfold_length_mm || part.unfold_length || part.sheet_length,
-            width: part.unfold_width_mm || part.unfold_width || part.sheet_width,
-            quantity: part.quantity || part._quantity,
-            productType: part.product_type === 'sheet_metal' ? '板材' : (part.product_type || undefined),
-          };
-          // 延迟调用，让 QuoteForm 先完成 productType 切换后的 resetCategoryState
-          setTimeout(() => handleFormUpdate(mappedData), 500);
-          // 设置productName/productCode（兼容多种字段名）
-          const resolvedName = part._partName || part.product_name || part.part_name || '';
-          const resolvedCode = part.product_code || part.part_number || '';
-          if (resolvedName) setProductInfo(prev => ({ ...prev, productName: resolvedName }));
-          if (resolvedCode) setProductInfo(prev => ({ ...prev, productCode: resolvedCode }));
-          // 清理URL的from=parts参数，避免formNonce触发重挂载时再次读取
+      const idxStr = sessionStorage.getItem('ai_quote_selected_idx');
+      const partRaw = sessionStorage.getItem('ai_quote_selected_part');
+      if (idxStr != null && partRaw) {
+        const idx = parseInt(idxStr, 10);
+        const part = JSON.parse(partRaw);
+        partsPrefillConsumedRef.current = true;
+        setFromPartsList(true);
+        setPartsListPartIdx(idx);
+        setPartsListPartName(part._partName || part.part_number || part.product_code || part.product_name || part.part_name || `零件${idx + 1}`);
+        // 将 part 对象映射为 AiFormUpdate 格式
+        const mappedData: any = {
+          ...part,
+          wallThickness: part.thickness_mm || part.sheet_thickness || part.wall_thickness,
+          length: part.unfold_length_mm || part.unfold_length || part.sheet_length,
+          width: part.unfold_width_mm || part.unfold_width || part.sheet_width,
+          quantity: part.quantity || part._quantity,
+          holes: part.unfold_hole_count || '',  // P0-2: 没有值时留空，不填 0
+          outer_perimeter: part.unfold_perimeter_mm || '',
+          cut_total_length: part.cut_total_path_mm || '',
+          partName: part._partName || part.product_name || part.part_name || '',  // P0-5: 产品名称
+          partNumber: part.product_code || part.part_number || '',  // P0-5: 产品编号
+          productType: part.product_type === 'sheet_metal' || part.is_sheet_metal ? '板材' : (part.product_type || undefined),
+        };
+        // 延迟调用，让 QuoteForm 先完成 productType 切换后的 resetCategoryState
+        setTimeout(() => handleFormUpdate(mappedData), 500);
+        // 设置productName/productCode（兼容多种字段名）
+        const resolvedName = part._partName || part.product_name || part.part_name || '';
+        const resolvedCode = part.product_code || part.part_number || '';
+        if (resolvedName) setProductInfo(prev => ({ ...prev, productName: resolvedName }));
+        if (resolvedCode) setProductInfo(prev => ({ ...prev, productCode: resolvedCode }));
+        // 清理URL的from=parts参数，避免formNonce触发重挂载时再次读取
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('from') === 'parts') {
           urlParams.delete('from');
           const newQuery = urlParams.toString();
           const newUrl = window.location.pathname + (newQuery ? '?' + newQuery : '') + window.location.hash;
           window.history.replaceState({}, '', newUrl);
         }
+      }
       }
     } catch (e) { console.error('Failed to load parts data:', e); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
