@@ -120,8 +120,8 @@ export default function QuotePage() {
           holes: part.unfold_hole_count || '',  // P0-2: 没有值时留空，不填 0
           outer_perimeter: part.unfold_perimeter_mm || '',
           cut_total_length: part.cut_total_path_mm || '',
-          partName: part._partName || part.product_name || part.part_name || '',  // P0-5: 产品名称
-          partNumber: part.product_code || part.part_number || '',  // P0-5: 产品编号
+          product_name: part._partName || part.product_name || part.part_name || '',  // P0-5: 产品名称
+          product_code: part.product_code || part.part_number || '',  // P0-5: 产品编号
           productType: part.product_type === 'sheet_metal' || part.is_sheet_metal ? '板材' : (part.product_type || undefined),
         };
         // 延迟调用，让 QuoteForm 先完成 productType 切换后的 resetCategoryState
