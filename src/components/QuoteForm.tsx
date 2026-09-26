@@ -1776,6 +1776,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     // 板材分支：延迟设置字段，避免被 resetCategoryState 覆盖
     if (isSheet) {
       setTimeout(() => {
+        // 产品名称/编号也要延迟设置
+        const resolvedName = d.product_name || d.part_name || d._partName || d.productName || '';
+        const resolvedCode = d.product_code || d.part_number || d.productCode || '';
+        if (resolvedCode) setProductCode(resolvedCode);
+        if (resolvedName) setProductName(resolvedName);
         setFields(prev => {
           const next = { ...prev };
           const wt = toNum(d.wall_thickness) ?? toNum(d.thickness) ?? toNum(d.sheet_thickness) ?? toNum(d.thickness_mm);
