@@ -137,9 +137,8 @@ export default function QuotePage() {
           urlParams.delete('from');
           const newQuery = urlParams.toString();
           const newUrl = window.location.pathname + (newQuery ? '?' + newQuery : '') + window.location.hash;
-          window.history.replaceState({}, '', newUrl);
+            window.history.replaceState({}, '', newUrl);
         }
-      }
       }
     } catch (e) { console.error('Failed to load parts data:', e); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
