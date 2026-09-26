@@ -110,6 +110,8 @@ export default function QuotePage() {
         setFromPartsList(true);
         setPartsListPartIdx(idx);
         setPartsListPartName(part._partName || part.part_number || part.product_code || part.product_name || part.part_name || `零件${idx + 1}`);
+        // P0-5: 文件名兜底
+        const fileNameNoExt = (part._fileName || '').replace(/\.[^.]+$/, '');
         // 将 part 对象映射为 AiFormUpdate 格式
         const mappedData: any = {
           ...part,
@@ -120,17 +122,17 @@ export default function QuotePage() {
           holes: part.unfold_hole_count || '',  // P0-2: 没有值时留空，不填 0
           outer_perimeter: part.unfold_perimeter_mm || '',
           cut_total_length: part.cut_total_path_mm || '',
-          product_name: part._partName || part.product_name || part.part_name || '',  // P0-5: 产品名称
-          product_code: part.product_code || part.part_number || '',  // P0-5: 产品编号
-          productName: part._partName || part.product_name || part.part_name || '',  // P0-5: camelCase 兼容
-          productCode: part.product_code || part.part_number || '',  // P0-5: camelCase 兼容
+          product_name: part._partName || part.product_name || part.part_name || fileNameNoExt || '',
+          product_code: part.product_code || part.part_number || fileNameNoExt || '',
+          productName: part._partName || part.product_name || part.part_name || fileNameNoExt || '',
+          productCode: part.product_code || part.part_number || fileNameNoExt || '',
           productType: part.product_type === 'sheet_metal' || part.is_sheet_metal ? '板材' : (part.product_type || undefined),
         };
         // 延迟调用，让 QuoteForm 先完成 productType 切换后的 resetCategoryState
         setTimeout(() => handleFormUpdate(mappedData), 500);
         // 设置productName/productCode（兼容多种字段名）
-        const resolvedName = part._partName || part.product_name || part.part_name || '';
-        const resolvedCode = part.product_code || part.part_number || '';
+        const resolvedName = part._partName || part.product_name || part.part_name || fileNameNoExt || '';
+        const resolvedCode = part.product_code || part.part_number || fileNameNoExt || '';
         if (resolvedName) setProductInfo(prev => ({ ...prev, productName: resolvedName }));
         if (resolvedCode) setProductInfo(prev => ({ ...prev, productCode: resolvedCode }));
         // 清理URL的from=parts参数，避免formNonce触发重挂载时再次读取

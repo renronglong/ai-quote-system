@@ -147,6 +147,8 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
   const [copiedInvite, setCopiedInvite] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [productType, setProductType] = useState('挤出');
+  const [selectedMaterial, setSelectedMaterial] = useState('6063');
+  const MATERIAL_OPTIONS = ['6063', '6061', '5052', '6060', '铝（未指定）', '钢', '不锈钢'];
 
   // ===== Helper =====
   const isValidFile = (file: File): boolean => {
@@ -429,7 +431,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         setIsAssembly(allProducts.length > 1 || allProducts.some(p => p.is_assembly));
         checkQuota();
         setRecognizing(false);
-        onDrawingData({ recogData: allProducts[0], recogProducts: allProducts, isAssembly: allProducts.length > 1, fileName: file.name, recognitionId: "zip_" + Date.now() });
+        onDrawingData({ recogData: allProducts[0], recogProducts: allProducts, isAssembly: allProducts.length > 1, fileName: file.name, recognitionId: "zip_" + Date.now(), material: selectedMaterial });
         return;
       }
 
@@ -460,7 +462,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
           checkQuota();
           setStatusMessage(null);
           setRecognizing(false);
-          onDrawingData({ recogData: parts[0], recogProducts: parts, isAssembly: true, fileName: file.name, recognitionId: "asm_" + Date.now() });
+          onDrawingData({ recogData: parts[0], recogProducts: parts, isAssembly: true, fileName: file.name, recognitionId: "asm_" + Date.now(), material: selectedMaterial });
           launchCheckAsync(file);
           return;
         }
@@ -472,7 +474,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         setStatusMessage(null);
         setRecognizing(false);
         const recognitionId = "cad_" + Date.now();
-        onDrawingData({ recogData, recogProducts: [recogData], isAssembly: false, fileName: file.name, recognitionId });
+        onDrawingData({ recogData, recogProducts: [recogData], isAssembly: false, fileName: file.name, recognitionId, material: selectedMaterial });
         launchCheckAsync(file);
         return;
       }
@@ -681,6 +683,19 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
           onChange={e => setFileRemark(e.target.value)}
           className="w-full mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
         />
+        <div className="mt-2">
+          <label className="block text-sm font-semibold text-slate-600 mb-1">材质选择</label>
+          <select
+            value={selectedMaterial}
+            onChange={e => setSelectedMaterial(e.target.value)}
+            className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+          >
+            {MATERIAL_OPTIONS.map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+          <p className="text-xs text-slate-400 mt-1">STEP文件不含材质信息，请手动选择</p>
+        </div>
 
         {/* 识别中 + 进度提示 */}
         {(recognizing || statusMessage) && (

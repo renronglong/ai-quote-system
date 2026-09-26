@@ -104,8 +104,11 @@ export default function QuotePartsPage() {
     const part = payload.products[idx];
     if (part._failed) return;
     // 存当前选中零件索引和完整数据，跳转报价页
+    // 如果零件没有材质信息，使用上传时选择的材质
+    const payloadMaterial = (payload as any)?.material;
+    const partToStore = (!part.material_grade && payloadMaterial) ? { ...part, material_grade: payloadMaterial } : part;
     sessionStorage.setItem('ai_quote_selected_idx', String(idx));
-    sessionStorage.setItem('ai_quote_selected_part', JSON.stringify(part));
+    sessionStorage.setItem('ai_quote_selected_part', JSON.stringify(partToStore));
     router.push('/quote?from=parts');
   };
 

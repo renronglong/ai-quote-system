@@ -33,6 +33,7 @@ export default function QuoteRecognizePage() {
         isAssembly,
         fileName: data.fileName || (data.recogData?._fileName) || '',
         recognitionId: data.recognitionId,
+        material: data.material || '',
         createdAt: Date.now(),
       };
       sessionStorage.setItem('ai_quote_parts', JSON.stringify(payload));

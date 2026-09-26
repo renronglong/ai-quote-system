@@ -1922,15 +1922,25 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         return newProcs.length > 0 ? [...prev, ...newProcs] : prev;
       });
     }
-    // 钣金折弯：bend_count>0时自动勾选折弯工序
+    // 钣金折弯：bend_count>0时自动勾选折弯工序 + 冲压工序
     const bendCount = toNum(d.bend_count) || 0;
     if (bendCount > 0 && (isSheetPart || productType === '板材')) {
       setProcesses(prev => {
         const existingNames = new Set(prev.map(p => p.name));
+        const updated = [...prev];
         if (!existingNames.has('折弯')) {
-          return [...prev, { name: '折弯', quantity: bendCount }];
+          updated.push({ name: '折弯', quantity: bendCount });
         }
-        return prev;
+        if (!existingNames.has('冲压')) {
+          updated.push({ name: '冲压', quantity: bendCount, subParams: { tonnage: '<=35T' } });
+        } else {
+          // 已有冲压工序时，如果数量为空则用bend_count填充
+          const stampIdx = updated.findIndex(p => p.name === '冲压');
+          if (stampIdx >= 0 && !updated[stampIdx].quantity) {
+            updated[stampIdx] = { ...updated[stampIdx], quantity: updated[stampIdx].quantity || bendCount };
+          }
+        }
+        return updated;
       });
     }
     setAiSynced(true);
@@ -2757,7 +2767,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
             {/* === 下半部分：4列 grid 子参数卡片 === */}
             {(() => {
-              const hasAnySubCard = processes.some(p => PROCESS_SUB_PARAMS[p.name])
+              const hasAnySubCard = processes.some(p => PROCESS_SUB_PARAMS[p.name] || p.name === '折弯')
                 || (surfaceTreatment && surfaceTreatment !== '无' && getSurfaceColorOptions().length > 0)
                 || (productType === '挤出' && surfaceTreatment && surfaceTreatment !== '无');
               if (!hasAnySubCard) return null;
@@ -2851,6 +2861,28 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                             )}
                           </div>
                         ))}
+                      </div>
+                    );
+                  })()}
+
+                  {/* 折弯卡片 */}
+                  {processes.some(p => p.name === '折弯') && (() => {
+                    const proc = processes.find(p => p.name === '折弯');
+                    return (
+                      <div key="bend_card" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>折弯</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                          <span style={{ fontSize: 12, color: '#475569' }}>道数:</span>
+                          <input
+                            type="number"
+                            min={0}
+                            placeholder="道数"
+                            value={proc?.quantity ?? ''}
+                            onChange={e => updateProcessQuantity('折弯', e.target.value)}
+                            style={{ flex: 1, borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 13, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
+                          />
+                          <span style={{ fontSize: 12, color: '#475569' }}>道</span>
+                        </div>
                       </div>
                     );
                   })()}
