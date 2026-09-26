@@ -75,6 +75,8 @@ export interface AiFormUpdate {
   surfaceTreatment?: string;
   packaging?: string;
   secondaryProcessing?: string[];
+  productName?: string;
+  productCode?: string;
 }
 
 
