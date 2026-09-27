@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Sparkles, Plus, Loader2, CheckCircle2 } from 'lucide-react';
+import { Sparkles, Plus, Loader2, CheckCircle2, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
+import { calculateStampingMoldFee, type StampingMoldResult } from '@/lib/stamping-mold-calculator';
 import { STEEL_STANDARD_SPECS } from '@/data/steelStandardSpecs';
 
 // ==================== Types ====================
@@ -717,6 +718,44 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   // Recognition data from DrawingRecognition component
   const [recognitionId, setRecognitionId] = useState<string | null>(null);
   const [recogResult, setRecogResult] = useState<Record<string, any> | null>(null);
+
+  // 冲压模具费计算结果
+  const [stampingMoldResult, setStampingMoldResult] = useState<StampingMoldResult | null>(null);
+  const [stampingMoldExpanded, setStampingMoldExpanded] = useState(false);
+
+  // 板材件：自动计算冲压模具费
+  useEffect(() => {
+    if (productType !== '板材') {
+      setStampingMoldResult(null);
+      return;
+    }
+    const L = Number(fields.length) || 0;
+    const W = Number(fields.width) || 0;
+    const T = Number(fields.thickness) || 0;
+    const holeCount = Number(fields.holes) || 0;
+    // 外轮廓周长：优先用识别值，否则从长宽矩形近似
+    let outerPerimeter = Number(fields.outer_perimeter) || 0;
+    if (!outerPerimeter && L > 0 && W > 0) outerPerimeter = 2 * (L + W);
+    // 孔周长合计：优先用识别值，否则从 cut_total_length - outer_perimeter 推算
+    let holesPerimeter = Number(fields.holes_perimeter) || 0;
+    if (!holesPerimeter) {
+      const cutTotal = Number(fields.cut_total_length) || 0;
+      if (cutTotal > outerPerimeter) holesPerimeter = cutTotal - outerPerimeter;
+    }
+    if (L > 0 && W > 0 && T > 0) {
+      const result = calculateStampingMoldFee({
+        unfoldLength: L,
+        unfoldWidth: W,
+        thickness: T,
+        outerPerimeter,
+        holesPerimeter,
+        holeCount,
+      });
+      setStampingMoldResult(result);
+    } else {
+      setStampingMoldResult(null);
+    }
+  }, [productType, fields.length, fields.width, fields.thickness, fields.holes, fields.outer_perimeter, fields.cut_total_length, fields.holes_perimeter]);
 
   // 上报识别反馈：AI识别值 vs 用户最终确认值
   const reportRecognitionFeedback = useCallback(() => {
@@ -1615,6 +1654,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       if (processInfo.secondary_operations.length > 0 || processInfo.cut_count !== undefined) {
         payload.process = processInfo;
       }
+      // 冲压模具费：板材类型且有前端计算结果时，传递给后端
+      if (productType === '板材' && stampingMoldResult && !stampingMoldResult.isNonStandard) {
+        payload.mold_cost = stampingMoldResult.totalMoldFee;
+        payload.mold_spec = `冲压复合模 ${stampingMoldResult.frameSize[0]}×${stampingMoldResult.frameSize[1]}`;
+      }
       const mySeq = ++calcReqSeq.current;
       const res = await fetch('/api/v1/quote/calculate', {
         method: 'POST',
@@ -1803,11 +1847,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           if (holes !== null && holes > 0) next.holes = holes;
           else if (d.unfold_hole_count === undefined && !Array.isArray(d.all_holes)) next.holes = '';  // 留空
           // 展开外轮廓周长（不含孔）
-          const outerPerimeter = toNum(d.unfold_outer_perimeter_mm) ?? toNum(d.outer_perimeter_mm) ?? toNum(d.outer_perimeter);
+          const outerPerimeter = toNum(d.unfold_perimeter_mm) ?? toNum(d.unfold_outer_perimeter_mm) ?? toNum(d.outer_perimeter_mm) ?? toNum(d.outer_perimeter);
           if (outerPerimeter !== null) next.outer_perimeter = outerPerimeter;
           // 含孔下料总路径
-          const cutTotalLength = toNum(d.cut_total_length_mm) ?? toNum(d.cut_total_length) ?? toNum(d.total_perimeter);
+          const cutTotalLength = toNum(d.cut_total_path_mm) ?? toNum(d.cut_total_length_mm) ?? toNum(d.cut_total_length) ?? toNum(d.total_perimeter);
           if (cutTotalLength !== null) next.cut_total_length = cutTotalLength;
+          // 孔周长合计（用于模具费计算）
+          const holesPerimeter = toNum(d.holes_perimeter_mm) ?? toNum(d.holes_perimeter);
+          if (holesPerimeter !== null) next.holes_perimeter = holesPerimeter;
           return next;
         });
       }, 300);
@@ -2714,6 +2761,90 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wide">基本参数</label>
           {renderFields()}
         </div>
+
+        {/* ---- 冲压模具费明细（板材+识别数据时自动计算） ---- */}
+        {productType === '板材' && stampingMoldResult && (() => {
+          const r = stampingMoldResult;
+          const fmt = (v: number) => v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          return (
+            <div className="bg-white rounded-xl shadow-sm border border-amber-200 overflow-hidden transition-shadow duration-200 hover:shadow-md">
+              <button
+                type="button"
+                onClick={() => setStampingMoldExpanded(!stampingMoldExpanded)}
+                className="w-full flex items-center justify-between px-3 py-2.5 bg-gradient-to-r from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 transition-all"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-base">🔧</span>
+                  <span className="text-sm font-semibold text-amber-800">冲压模具费明细</span>
+                  {r.isNonStandard ? (
+                    <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-xs font-semibold">需非标模架</span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold">
+                      模架 {r.frameSize[0]}×{r.frameSize[1]}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {!r.isNonStandard && (
+                    <span className="text-sm font-bold text-amber-900">¥{fmt(r.totalMoldFee)}</span>
+                  )}
+                  <ChevronDown className={`w-4 h-4 text-amber-600 transition-transform duration-200 ${stampingMoldExpanded ? 'rotate-180' : ''}`} />
+                </div>
+              </button>
+              {stampingMoldExpanded && !r.isNonStandard && (
+                <div className="px-3 pb-3 pt-1 space-y-2 text-sm">
+                  {/* 模架选型 */}
+                  <div className="rounded-lg bg-slate-50 border border-slate-200 p-2">
+                    <div className="text-xs font-semibold text-slate-500 mb-1">模架选型</div>
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div><span className="text-slate-500">模架外框</span><br/><span className="font-mono font-semibold text-slate-700">{r.frameSize[0]}×{r.frameSize[1]}</span></div>
+                      <div><span className="text-slate-500">凹模边界</span><br/><span className="font-mono font-semibold text-slate-700">{r.cavitySize[0]}×{r.cavitySize[1]}</span></div>
+                      <div><span className="text-slate-500">闭合高度</span><br/><span className="font-mono font-semibold text-slate-700">{r.closingHeight}mm</span></div>
+                    </div>
+                  </div>
+                  {/* 六件套重量 */}
+                  <div className="rounded-lg bg-slate-50 border border-slate-200 p-2">
+                    <div className="text-xs font-semibold text-slate-500 mb-1">六件套明细 <span className="text-slate-400 font-normal">(模具总高 {r.totalHeight}mm)</span></div>
+                    <div className="space-y-0.5">
+                      {r.partsDetail.map((p, i) => (
+                        <div key={i} className="flex items-center justify-between text-xs">
+                          <span className="text-slate-600">{p.name} <span className="text-slate-400">({p.material} {p.length}×{p.width}×{p.thickness}mm)</span></span>
+                          <span className="font-mono text-slate-700">{p.weight.toFixed(2)} kg</span>
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between text-xs font-semibold border-t border-slate-200 pt-0.5 mt-0.5">
+                        <span className="text-slate-600">合计</span>
+                        <span className="font-mono text-slate-700">{r.totalWeight.toFixed(2)} kg <span className="text-slate-400 font-normal">(R12: {r.r12Weight.toFixed(2)} / A3: {r.a3Weight.toFixed(2)})</span></span>
+                      </div>
+                    </div>
+                  </div>
+                  {/* 费用明细 */}
+                  <div className="rounded-lg bg-amber-50/50 border border-amber-200 p-2">
+                    <div className="text-xs font-semibold text-amber-700 mb-1">费用汇总</div>
+                    <div className="space-y-0.5 text-xs">
+                      <div className="flex justify-between"><span className="text-slate-600">钢材费</span><span className="font-mono">¥{fmt(r.steelCost)}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-600">热处理费</span><span className="font-mono">¥{fmt(r.heatTreatmentCost)}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-600">线割费</span><span className="font-mono">¥{fmt(r.wireCuttingCost)}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-600">圆孔凸模费</span><span className="font-mono">¥{fmt(r.punchCost)}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-600">基础加工费</span><span className="font-mono">¥{fmt(r.baseProcessingCost)}</span></div>
+                      <div className="flex justify-between font-semibold text-amber-800 border-t border-amber-200 pt-1 mt-1">
+                        <span>模具费合计 <span className="text-xs font-normal text-amber-600">(×1.25+100)</span></span>
+                        <span className="font-mono text-base">¥{fmt(r.totalMoldFee)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {stampingMoldExpanded && r.isNonStandard && (
+                <div className="px-3 pb-3 pt-1">
+                  <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+                    产品展开尺寸超出最大标准模架（630×500），需定制非标模架，模具费需另行报价。
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ---- 加工工艺（合并工艺+表面处理+参数） ---- */}
         {categoryConfig && (
