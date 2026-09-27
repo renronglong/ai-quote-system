@@ -15,6 +15,7 @@ interface DrawingRecognitionProps {
     isAssembly?: boolean;
     fileName?: string;
     material?: string;
+    fromCheckDialog?: boolean;
   }) => void;
   user: any;
   aiData?: any;
@@ -242,7 +243,17 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         if (checkResp.ok) {
           const checkData = await checkResp.json();
           if (checkData.success && checkData.questions && checkData.questions.length > 0) {
-            setCheckQuestions(checkData.questions);
+            // 去掉材质/牌号的硬默认值，避免用户误以为已选好
+            const questions = checkData.questions.map((q: any) => {
+              if (q.field === 'material_grade' || q.field === 'material' || q.question?.includes('材质') || q.question?.includes('牌号')) {
+                return { ...q, default: '' };
+              }
+              if (q.field === 'surface_treatment' || q.question?.includes('表面处理')) {
+                return { ...q, default: '' };
+              }
+              return q;
+            });
+            setCheckQuestions(questions);
             setCheckAnswers({});
             setShowCheckDialog(true);
           }
@@ -814,7 +825,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                   {(recogResult.sheet_thickness || recogResult.wall_thickness) != null && <div>板厚: <b>{(recogResult.sheet_thickness || recogResult.wall_thickness)}mm</b></div>}
                   {recogResult.bend_angle != null && <div>折弯角: <b>{recogResult.bend_angle}°</b></div>}
                   {recogResult.bend_radius != null && <div>折弯R: <b>R{recogResult.bend_radius}</b></div>}
-                  {(recogResult.all_holes_total || recogResult.cnc_total_holes) != null && <div>孔数: <b>{recogResult.all_holes_total || recogResult.cnc_total_holes}个</b></div>}
+                  {(() => { const holeCount = recogResult.unfold_hole_count ?? recogResult.all_holes_total ?? recogResult.cnc_total_holes; return holeCount != null && holeCount > 0 ? <div>孔数: <b>{holeCount}个</b></div> : null; })()}
                   <div className="col-span-2 text-blue-600 font-medium">📐 钣金折弯件（无需挤压模具）</div>
                 </>
               ) : (
@@ -966,7 +977,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                   mappedData.surface_treatment = stMap[answers.surface_treatment] || answers.surface_treatment;
                 }
                 if (answers.length_mm) mappedData.length = answers.length_mm;
-                onDrawingData({ recogData: mappedData, checkAnswers: answers });
+                onDrawingData({ recogData: mappedData, checkAnswers: answers, fromCheckDialog: true });
                 setShowCheckDialog(false);
                 setCheckQuestions([]);
               }}

@@ -41,8 +41,8 @@ export default function QuoteRecognizePage() {
     } catch (e) {
       console.error('Failed to save recognition data:', e);
     }
-    // Material validation: block if not selected
-    if (!data.material) {
+    // Material validation: only block on initial recognition, not check dialog update
+    if (!data.fromCheckDialog && !data.material && products.length > 0) {
       alert('请先选择材质，材质决定剪切强度，直接影响冲裁力和报价准确性');
       return;
     }
