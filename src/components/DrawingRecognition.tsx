@@ -16,6 +16,7 @@ interface DrawingRecognitionProps {
     fileName?: string;
     material?: string;
     fromCheckDialog?: boolean;
+    skipCheckDialogValidation?: boolean;
   }) => void;
   user: any;
   aiData?: any;
@@ -903,6 +904,9 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                     setCheckAnswers(prev => ({ ...prev, [q.field]: e.target.value }));
                   }}
                 >
+                  {(q.field === 'material_grade' || q.field === 'material' || q.question?.includes('材质') || q.question?.includes('牌号')) && (
+                    <option value="" disabled>请选择材质</option>
+                  )}
                   {q.options?.map((opt: string) => (
                     <option key={opt} value={opt}>{opt}</option>
                   ))}
@@ -991,7 +995,11 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
             <button
               type="button"
               className="px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition"
-              onClick={() => { setShowCheckDialog(false); setCheckQuestions([]); }}
+              onClick={() => {
+                setShowCheckDialog(false);
+                setCheckQuestions([]);
+                onDrawingData({ fromCheckDialog: true, recogData: {}, checkAnswers: {}, skipCheckDialogValidation: true });
+              }}
             >
               跳过
             </button>

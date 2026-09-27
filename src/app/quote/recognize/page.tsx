@@ -21,24 +21,22 @@ export default function QuoteRecognizePage() {
 
   const handleDrawingData = useCallback((data: any) => {
     if (!data) return;
-    // 从CheckDialog来的更新：只合并字段，不覆盖识别数据
+    // 从CheckDialog来的更新：合并字段到已有识别数据，然后导航
     if (data.fromCheckDialog) {
+      let existingParts: any = {};
+      let mergedCheckAnswers: any = {};
       try {
-        // 读取已有的识别数据
         const existingRecog = JSON.parse(sessionStorage.getItem('ai_quote_recog_result') || '{}');
-        const existingParts = JSON.parse(sessionStorage.getItem('ai_quote_parts') || '{}');
-        // 合并 checkAnswers 到 recogData
+        existingParts = JSON.parse(sessionStorage.getItem('ai_quote_parts') || '{}');
         const mergedRecogData = { ...(existingRecog.recogData || {}), ...(data.recogData || {}) };
-        const mergedCheckAnswers = { ...(existingRecog.checkAnswers || {}), ...(data.checkAnswers || {}) };
+        mergedCheckAnswers = { ...(existingRecog.checkAnswers || {}), ...(data.checkAnswers || {}) };
         const mergedRecog = { ...existingRecog, recogData: mergedRecogData, checkAnswers: mergedCheckAnswers };
         sessionStorage.setItem('ai_quote_recog_result', JSON.stringify(mergedRecog));
-        // 更新 products 中对应字段的值
         if (existingParts.products && existingParts.products.length > 0) {
           const updatedProducts = existingParts.products.map((p: any) => ({
             ...p,
             ...(data.recogData || {}),
           }));
-          // 材质从 checkAnswers 取
           if (mergedCheckAnswers.material_grade) {
             updatedProducts.forEach((p: any) => { p.material_grade = mergedCheckAnswers.material_grade; });
           }
@@ -46,7 +44,20 @@ export default function QuoteRecognizePage() {
         }
       } catch (e) { console.error('Failed to merge check dialog data:', e); }
       setRecogData(data);
-      return; // check dialog 更新不触发导航
+      // 验证材质（"跳过"按钮 skipCheckDialogValidation=true 时跳过校验）
+      if (!data.skipCheckDialogValidation) {
+        const hasMaterial = existingParts?.material || mergedCheckAnswers?.material_grade || '';
+        if (!hasMaterial) {
+          alert('请先选择材质，材质决定剪切强度，直接影响冲裁力和报价准确性');
+          return;
+        }
+      }
+      // 导航到零件列表
+      if (!navigatedRef.current) {
+        navigatedRef.current = true;
+        setTimeout(() => router.push('/quote/parts'), 300);
+      }
+      return;
     }
     setRecogData(data);
     // 构建零件列表：优先用recogProducts，否则用recogData单件
