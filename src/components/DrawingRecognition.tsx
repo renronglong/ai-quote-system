@@ -258,7 +258,12 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
               }
               return q;
             });
-            setCheckQuestions(questions);
+            // 过滤掉板材件不需要的挤压件参数（如"每根型材长度"）
+            const filtered = questions.filter((q: any) => {
+              if (q.field === 'length_mm' || q.question?.includes('型材长度') || q.question?.includes('每根')) return false;
+              return true;
+            });
+            setCheckQuestions(filtered);
             setCheckAnswers({});
             setShowCheckDialog(true);
           }
@@ -709,8 +714,10 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
           onChange={e => setFileRemark(e.target.value)}
           className="w-full mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
         />
+        {/* 材质选择：仅在识别完成后显示（API分析之后才需要选材质） */}
+        {recogResult && !recognizing && (
         <div className="mt-2">
-          <label className="block text-sm font-semibold text-slate-600 mb-1">材质选择</label>
+          <label className="block text-sm font-semibold text-slate-600 mb-1">材质选择 <span className="text-red-500">*</span></label>
           <select
             value={selectedMaterial}
             onChange={e => handleMaterialChange(e.target.value)}
@@ -721,8 +728,9 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
               <option key={opt} value={opt}>{opt}</option>
             ))}
           </select>
-          <p className="text-xs text-slate-400 mt-1">STEP文件不含材质信息，请手动选择</p>
+          <p className="text-xs text-slate-400 mt-1">材质决定剪切强度，直接影响冲裁力和报价</p>
         </div>
+        )}
 
         {/* 识别中 + 进度提示 */}
         {(recognizing || statusMessage) && (

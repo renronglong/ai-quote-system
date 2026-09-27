@@ -139,7 +139,6 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
           { name: '无' },
           { name: '锯切' },
           { name: '冲压', unit: '次' },
-          { name: 'CNC加工', unit: '分钟' },
           { name: '车加工', unit: '分钟' },
           { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
@@ -191,7 +190,6 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
           { name: '无' },
           { name: '锯切' },
           { name: '冲压', unit: '次' },
-          { name: 'CNC加工', unit: '分钟' },
           { name: '车加工', unit: '分钟' },
           { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
@@ -243,7 +241,6 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
         processes: [
           { name: '无' },
           { name: '冲压', unit: '次' },
-          { name: 'CNC加工', unit: '分钟' },
           { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
           { name: '激光切割', unit: '米' },
@@ -265,7 +262,6 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
         processes: [
           { name: '无' },
           { name: '冲压', unit: '次' },
-          { name: 'CNC加工', unit: '分钟' },
           { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
           { name: '激光切割', unit: '米' },
@@ -284,7 +280,6 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
         processes: [
           { name: '无' },
           { name: '冲压', unit: '次' },
-          { name: 'CNC加工', unit: '分钟' },
           { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
           { name: '激光切割', unit: '米' },
@@ -303,7 +298,6 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
         processes: [
           { name: '无' },
           { name: '冲压', unit: '次' },
-          { name: 'CNC加工', unit: '分钟' },
           { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
           { name: '激光切割', unit: '米' },
@@ -329,7 +323,6 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
           { name: '无' },
           { name: '开合' },
           { name: '冲压', unit: '次' },
-          { name: 'CNC加工', unit: '分钟' },
           { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
           { name: '抛光' },
@@ -348,7 +341,6 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
           { name: '无' },
           { name: '开合' },
           { name: '冲压', unit: '次' },
-          { name: 'CNC加工', unit: '分钟' },
           { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
           { name: '抛光' },
@@ -390,7 +382,6 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
         processes: [
           { name: '无' },
           { name: '锯切' },
-          { name: 'CNC加工', unit: '分钟' },
           { name: '车加工', unit: '分钟' },
           { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
@@ -628,7 +619,6 @@ const PROCESS_SUB_PARAMS: Record<string, { name: string; type: string; label: st
     { name: 'tonnage', type: 'select', label: '吨位', options: ['<=35T', '45T', '60T', '80T', '110T', '160T', '200T', '200T双轴', '250T双轴'] },
   ],
   '钻孔': [
-    { name: 'hole_count', type: 'number', label: '孔数量' },
     { name: 'diameter_range', type: 'select', label: '孔径范围', options: ['ø3~6', 'ø6~10', 'ø10~16', 'ø16~25'] },
   ],
   '攻牙': [
@@ -1400,9 +1390,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         stampingCount = Number(proc.quantity) || 1;
       } else if (proc.name === '钻孔') {
         secondaryOps.push('钻孔');
-        const hc = Number(proc.subParams?.hole_count ?? proc.quantity) || 0;
+        // 孔数从表单 dimensions 字段取（unfold_hole_count），不从工序子参数取
         const dr = proc.subParams?.diameter_range || 'ø6~10';
-        if (hc > 0) holes = { count: hc, diameter_range: dr };
+        holes = { count: 0, diameter_range: dr }; // placeholder, will be overridden by dimensions
       } else if (proc.name === '攻牙') {
         secondaryOps.push('攻丝');
         const hc = Number(proc.subParams?.hole_count ?? proc.quantity) || 0;
@@ -1428,7 +1418,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (cutCount !== undefined) result.cut_count = cutCount;
     if (stampingTonnage) result.stamping_tonnage = stampingTonnage;
     if (stampingCount !== undefined) result.stamping_count = stampingCount;
-    if (holes) result.holes = holes;
+    // 孔数优先从表单 dimensions 取（unfold_hole_count），覆盖工序子参数
+    const dimHoles = Number((fields as any).holes) || 0;
+    if (dimHoles > 0) {
+      result.holes = { count: dimHoles, diameter_range: holes?.diameter_range || 'ø6~10' };
+    } else if (holes) {
+      result.holes = holes;
+    }
     if (tappedHoles) result.tapped_holes = tappedHoles;
     if (cncTime) result.cnc_time = cncTime;
     if (bendCount !== undefined) result.bend_count = bendCount;
