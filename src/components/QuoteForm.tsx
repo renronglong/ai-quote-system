@@ -1791,11 +1791,21 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           if (sheetW !== null) next.width = sheetW;
           const qty = toNum(d.quantity) ?? toNum(d._quantity);
           if (qty !== null) next.quantity = qty;
-          // 孔数：优先用 unfold_hole_count，没有时留空（不填 0，避免误导用户）
+          // 孔数：优先用 unfold_hole_count，没有时从 all_holes 过滤（排除折弯圆角）
           // punch_holes_total 默认是 0（冲孔工序参数），不能当孔数用
-          const holes = toNum(d.unfold_hole_count);
+          let holes = toNum(d.unfold_hole_count);
+          // If unfold_hole_count not available, calculate from all_holes excluding bend radii
+          if (holes === null && Array.isArray(d.all_holes) && d.all_holes.length > 0) {
+            const bendRadius = toNum(d.bend_radius) || 0;
+            const realHoles = d.all_holes.filter((h: any) => {
+              const dia = Number(h.diameter) || 0;
+              // Exclude bend radii: diameter ≈ 2×bend_radius (within 0.5mm tolerance)
+              return dia > 0 && Math.abs(dia - 2 * bendRadius) > 0.5;
+            });
+            holes = realHoles.length > 0 ? realHoles.length : null;
+          }
           if (holes !== null && holes > 0) next.holes = holes;
-          else if (d.unfold_hole_count === undefined) next.holes = '';  // 留空
+          else if (d.unfold_hole_count === undefined && !Array.isArray(d.all_holes)) next.holes = '';  // 留空
           // 展开外轮廓周长（不含孔）
           const outerPerimeter = toNum(d.unfold_outer_perimeter_mm) ?? toNum(d.outer_perimeter_mm) ?? toNum(d.outer_perimeter);
           if (outerPerimeter !== null) next.outer_perimeter = outerPerimeter;

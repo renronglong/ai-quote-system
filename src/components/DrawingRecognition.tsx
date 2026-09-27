@@ -148,8 +148,17 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
   const [copiedInvite, setCopiedInvite] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [productType, setProductType] = useState('挤出');
-  const [selectedMaterial, setSelectedMaterial] = useState('6063');
+  const [selectedMaterial, setSelectedMaterial] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('user_default_material') || '';
+    }
+    return '';
+  });
   const MATERIAL_OPTIONS = ['6063', '6061', '5052', '6060', '铝（未指定）', '钢', '不锈钢'];
+  const handleMaterialChange = (val: string) => {
+    setSelectedMaterial(val);
+    if (val) localStorage.setItem('user_default_material', val);
+  };
 
   // ===== Helper =====
   const isValidFile = (file: File): boolean => {
@@ -688,9 +697,10 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
           <label className="block text-sm font-semibold text-slate-600 mb-1">材质选择</label>
           <select
             value={selectedMaterial}
-            onChange={e => setSelectedMaterial(e.target.value)}
+            onChange={e => handleMaterialChange(e.target.value)}
             className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
           >
+            <option value="" disabled>请选择材质</option>
             {MATERIAL_OPTIONS.map(opt => (
               <option key={opt} value={opt}>{opt}</option>
             ))}

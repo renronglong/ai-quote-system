@@ -41,6 +41,11 @@ export default function QuoteRecognizePage() {
     } catch (e) {
       console.error('Failed to save recognition data:', e);
     }
+    // Material validation: block if not selected
+    if (!data.material) {
+      alert('请先选择材质，材质决定剪切强度，直接影响冲裁力和报价准确性');
+      return;
+    }
     if (!navigatedRef.current && products.length > 0) {
       navigatedRef.current = true;
       setTimeout(() => router.push('/quote/parts'), 400);
