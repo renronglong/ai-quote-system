@@ -455,7 +455,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
           // 装配体：构建零件列表
           setIsAssembly(true);
           const parts: Record<string, any>[] = cadJson.parts.map((part: PartInfo) =>
-            buildRecogDataFromParse(part, productType, '装配体零件')
+            buildRecogDataFromParse(part, productType, '装配体零件', file.name)
           );
           setRecogProducts(parts);
           setSelectedProductIdx(0);
@@ -469,7 +469,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         }
 
         // 单件模式
-        const recogData = buildRecogDataFromParse(cadJson, productType, '3D 模型解析');
+        const recogData = buildRecogDataFromParse(cadJson, productType, '3D 模型解析', file.name);
         setRecogResult(recogData);
         checkQuota();
         setStatusMessage(null);

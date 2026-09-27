@@ -1932,7 +1932,28 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           updated.push({ name: '折弯', quantity: bendCount });
         }
         if (!existingNames.has('冲压')) {
-          updated.push({ name: '冲压', quantity: bendCount, subParams: { tonnage: '<=35T' } });
+          // Calculate actual diameter range from all_holes if available
+          let diameterRange = 'ø3~6'; // default
+          try {
+            const allHoles = (d as any).all_holes;
+            if (Array.isArray(allHoles) && allHoles.length > 0) {
+              const bendRadius = toNum(d.bend_radius) || 0;
+              // Filter out bend radii (diameter ≈ 2×bend_radius)
+              const realHoles = allHoles.filter((h: any) => {
+                const dia = Number(h.diameter) || 0;
+                return dia > 0 && Math.abs(dia - 2 * bendRadius) > 0.5; // not a bend radius
+              });
+              if (realHoles.length > 0) {
+                const diameters = realHoles.map((h: any) => Number(h.diameter) || 0).filter(d => d > 0);
+                if (diameters.length > 0) {
+                  const minDia = Math.min(...diameters);
+                  const maxDia = Math.max(...diameters);
+                  diameterRange = `ø${minDia}~${maxDia}`;
+                }
+              }
+            }
+          } catch (e) { /* ignore */ }
+          updated.push({ name: '冲压', quantity: bendCount, subParams: { tonnage: '<=35T', diameter_range: diameterRange } });
         } else {
           // 已有冲压工序时，如果数量为空则用bend_count填充
           const stampIdx = updated.findIndex(p => p.name === '冲压');
