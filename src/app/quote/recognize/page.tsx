@@ -21,6 +21,33 @@ export default function QuoteRecognizePage() {
 
   const handleDrawingData = useCallback((data: any) => {
     if (!data) return;
+    // 从CheckDialog来的更新：只合并字段，不覆盖识别数据
+    if (data.fromCheckDialog) {
+      try {
+        // 读取已有的识别数据
+        const existingRecog = JSON.parse(sessionStorage.getItem('ai_quote_recog_result') || '{}');
+        const existingParts = JSON.parse(sessionStorage.getItem('ai_quote_parts') || '{}');
+        // 合并 checkAnswers 到 recogData
+        const mergedRecogData = { ...(existingRecog.recogData || {}), ...(data.recogData || {}) };
+        const mergedCheckAnswers = { ...(existingRecog.checkAnswers || {}), ...(data.checkAnswers || {}) };
+        const mergedRecog = { ...existingRecog, recogData: mergedRecogData, checkAnswers: mergedCheckAnswers };
+        sessionStorage.setItem('ai_quote_recog_result', JSON.stringify(mergedRecog));
+        // 更新 products 中对应字段的值
+        if (existingParts.products && existingParts.products.length > 0) {
+          const updatedProducts = existingParts.products.map((p: any) => ({
+            ...p,
+            ...(data.recogData || {}),
+          }));
+          // 材质从 checkAnswers 取
+          if (mergedCheckAnswers.material_grade) {
+            updatedProducts.forEach((p: any) => { p.material_grade = mergedCheckAnswers.material_grade; });
+          }
+          sessionStorage.setItem('ai_quote_parts', JSON.stringify({ ...existingParts, products: updatedProducts }));
+        }
+      } catch (e) { console.error('Failed to merge check dialog data:', e); }
+      setRecogData(data);
+      return; // check dialog 更新不触发导航
+    }
     setRecogData(data);
     // 构建零件列表：优先用recogProducts，否则用recogData单件
     const products: any[] = data.recogProducts && data.recogProducts.length > 0
@@ -41,8 +68,8 @@ export default function QuoteRecognizePage() {
     } catch (e) {
       console.error('Failed to save recognition data:', e);
     }
-    // Material validation: only block on initial recognition, not check dialog update
-    if (!data.fromCheckDialog && !data.material && products.length > 0) {
+    // Material validation: block if not selected
+    if (!data.material && products.length > 0) {
       alert('请先选择材质，材质决定剪切强度，直接影响冲裁力和报价准确性');
       return;
     }
