@@ -85,6 +85,13 @@ interface QuoteRequest {
   aluminum_price_override?: number; // 铝锭价覆盖值（元/吨）
   weight_per_piece_kg?: number;     // 单件重量，不填则根据体积×密度估算
   mold_cost?: number;               // 模具费（元），可选
+  laser_cutting_fee?: number;          // 前端计算的激光切割费（元/件），可选
+  laser_cutting_detail?: {             // 激光切割费明细（可选）
+    cutting_fee: number;
+    piercing_fee: number;
+    unit_price: number;
+    pierce_rate: number;
+  };
   use_existing_mold?: boolean;          // 使用已有模具（模具费为0）
   product_name?: string;            // 产品名称（可选，用于保存报价记录）
   product_code?: string;            // 产品编号（可选，用于保存报价记录）
@@ -1548,11 +1555,25 @@ function calcSheetMetal(
   const cutPerimeter = 2 * (dims.length_mm + dims.width_mm); // 展开外形周长 mm
   let proc: { cost: number; formula: string; detail: string; sizeSurcharge: number; volumeSurcharge: number };
   if (hasLaser) {
+    // 优先使用前端计算的激光切割费（前端使用业主报价单口径：查表单价 + cut_total_path_mm）
+    if (req.laser_cutting_fee != null && req.laser_cutting_fee > 0) {
+      const detail = req.laser_cutting_detail;
+      const cutFee = detail?.cutting_fee ?? 0;
+      const pierceFee = detail?.piercing_fee ?? 0;
+      const unitPrice = detail?.unit_price ?? 0;
+      const pierceRate = detail?.pierce_rate ?? 0;
+      proc = {
+        cost: req.laser_cutting_fee,
+        formula: `激光切割：切割长度×单价${unitPrice}元/米 + 穿孔${pierceRate}元/孔`,
+        detail: `前端计价：切割费¥${cutFee} + 穿孔费¥${pierceFee} = ¥${req.laser_cutting_fee}元`,
+        sizeSurcharge: 0, volumeSurcharge: 0,
+      };
+    } else {
+    // 后端兜底：前端未传时使用旧公式（不推荐）
     const cat = req.material.category;
     const ratePerMeterPerMm = cat.includes('铝') ? 4 : cat.includes('不锈钢') ? 2.5 : 1.5; // 元/米/mm板厚
     const cutLengthM = cutPerimeter / 1000;
     const laserCost = r2(cutLengthM * t * ratePerMeterPerMm);
-    // 穿孔费 0.1元/孔（外形起割点1个 + 内孔 holes+tapped_holes）
     const pierceCount = 1 + (req.process?.holes?.count || 0) + (req.process?.tapped_holes?.count || 0);
     const pierceCost = r2(pierceCount * 0.1);
     const totalLaser = r2(laserCost + pierceCost);
@@ -1562,6 +1583,7 @@ function calcSheetMetal(
       detail: `周长${cutPerimeter}mm=${r2(cutLengthM)}m × ${t}mm厚 × ${ratePerMeterPerMm}元 = ${laserCost}元；穿孔${pierceCount}个×0.1=${pierceCost}元；合计${totalLaser}元`,
       sizeSurcharge: 0, volumeSurcharge: 0,
     };
+    }
   } else {
     proc = calcSheetProcessingFee(dims, volumeCm3, req.material.category, rules);
   }
