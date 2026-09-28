@@ -280,7 +280,7 @@ export function calculateStampingMoldFee(input: StampingMoldInput): StampingMold
     wireCuttingCost: r2(wireCuttingCost),
     punchCost: r2(punchCost),
     baseProcessingCost: r2(baseProcessingCost),
-    totalMoldFee: r2(totalMoldFee),
+    totalMoldFee: Math.round(totalMoldFee),
     isNonStandard: false,
     partsDetail,
   };
