@@ -2802,7 +2802,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         {/* ---- 冲压模具费明细（板材+识别数据时自动计算） ---- */}
         {productType === '板材' && stampingMoldResult && (() => {
           const r = stampingMoldResult;
-          const fmt = (v: number) => v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          const fmt = (v: number) => {
+            if (v === 0 || !isFinite(v)) return v === 0 ? '0.00' : String(v);
+            const d = Math.ceil(Math.log10(Math.abs(v)));
+            const factor = Math.pow(10, 3 - d);
+            const rounded = Math.round(v * factor) / factor;
+            return rounded.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          };
           return (
             <div className="bg-white rounded-xl shadow-sm border border-amber-200 overflow-hidden transition-shadow duration-200 hover:shadow-md">
               <button
@@ -2893,7 +2899,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         {/* ---- 激光切割费明细（板材+识别数据时自动计算，方案B：不开模） ---- */}
         {productType === '板材' && laserCuttingResult && (() => {
           const r = laserCuttingResult;
-          const fmt = (v: number) => v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          const fmt = (v: number) => {
+            if (v === 0 || !isFinite(v)) return v === 0 ? '0.00' : String(v);
+            const d = Math.ceil(Math.log10(Math.abs(v)));
+            const factor = Math.pow(10, 3 - d);
+            const rounded = Math.round(v * factor) / factor;
+            return rounded.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          };
           return (
             <div className="bg-white rounded-xl shadow-sm border border-blue-200 overflow-hidden transition-shadow duration-200 hover:shadow-md">
               <button
