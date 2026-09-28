@@ -235,7 +235,13 @@ export default function QuotePage() {
       min_order_qty: manualMinOrderQty ?? pricingResult.min_order_qty ?? 0,
     };
     const label = len ? `${productInfo.productName || productType} ${len}mm` : (productInfo.productName || productType);
-    const saved = await saveQuoteToAPI(user.id, params, result, productType, productDiscount, moldDiscount, moldGroupId, label);
+    // 将激光切割费明细写入 result，确保保存后可回溯
+    const r = result as Record<string, any>;
+    if (params.laser_cutting_fee) r.laser_cutting_fee = params.laser_cutting_fee;
+    if (params.laser_cutting_detail) r.laser_cutting_detail = params.laser_cutting_detail;
+    if (params.mold_spec) r.mold_spec = params.mold_spec;
+    const saved = await saveQuoteToAPI(user.id, params, r, productType, productDiscount, moldDiscount, moldGroupId, label);
+    if (!saved) console.warn('[SaveToPool] 保存失败，无返回数据');
     return !!saved;
   }, [user, pricingResult, currentParams, productInfo, manualUnitPrice, manualMinOrderQty, productDiscount, moldDiscount, moldGroupId, router]);
 
@@ -300,9 +306,15 @@ export default function QuotePage() {
       min_order_qty: manualMinOrderQty ?? pricingResult.min_order_qty ?? 0,
       manual_min_order_qty: manualMinOrderQty,
     };
+    // 将激光切割费明细写入 result，确保保存后可回溯
+    const r = result as Record<string, any>;
+    if (params.laser_cutting_fee) r.laser_cutting_fee = params.laser_cutting_fee;
+    if (params.laser_cutting_detail) r.laser_cutting_detail = params.laser_cutting_detail;
+    if (params.mold_spec) r.mold_spec = params.mold_spec;
     setSaving(true);
-    const saved = await saveQuoteToAPI(user.id, params, result, productType, productDiscount, moldDiscount, moldGroupId);
+    const saved = await saveQuoteToAPI(user.id, params, r, productType, productDiscount, moldDiscount, moldGroupId);
     setSaving(false);
+    if (!saved) { console.warn('[SaveQuote] 保存失败，无返回数据'); return; }
     if (saved) {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 1500);
