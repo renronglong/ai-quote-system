@@ -2799,12 +2799,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           );
         })()}
 
-        {/* ---- 基本参数 ---- */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-          <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wide">基本参数</label>
-          {renderFields()}
-        </div>
-
         {/* ---- 冲压模具费明细（板材+识别数据时自动计算） ---- */}
         {productType === '板材' && stampingMoldResult && (() => {
           const r = stampingMoldResult;
@@ -2888,6 +2882,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             </div>
           );
         })()}
+
+
+                {/* ---- 基本参数 ---- */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+          <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wide">基本参数</label>
+          {renderFields()}
+        </div>
 
         {/* ---- 激光切割费明细（板材+识别数据时自动计算，方案B：不开模） ---- */}
         {productType === '板材' && laserCuttingResult && (() => {
