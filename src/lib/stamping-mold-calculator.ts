@@ -285,3 +285,96 @@ export function calculateStampingMoldFee(input: StampingMoldInput): StampingMold
     partsDetail,
   };
 }
+
+// ==================== 激光切割计价 ====================
+
+// 切割单价表（按板厚查表，元/米）
+const LASER_UNIT_PRICE: Record<number, number> = {
+  0.8: 0.8, 1: 0.9, 1.2: 1.0, 1.5: 1.4, 2: 1.7, 3: 2.3, 4: 3.5,
+  5: 4.0, 6: 5.2, 8: 5.6, 10: 6.5, 12: 8.0, 14: 12, 16: 14, 18: 16, 20: 18, 22: 20,
+};
+
+// 板厚档位（升序）
+const LASER_TIERS = [0.8, 1, 1.2, 1.5, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20, 22];
+
+// 穿孔费率（按板厚递增）
+const laserPierceRate = (t: number): number => {
+  if (t <= 4) return 0.1;
+  return 0.1 * (Math.ceil((t - 4) / 4) + 1);
+};
+
+// 根据板厚查切割单价（元/米）
+// 板厚不在档里 → 往上取（1.8→2档，2.5→3档，7→8档）
+// 板厚 > 22mm → null（激光做不了）
+const laserUnitPrice = (t: number): number | null => {
+  const hit = LASER_TIERS.find(x => x >= t);
+  return hit == null ? null : LASER_UNIT_PRICE[hit];
+};
+
+export interface LaserCuttingInput {
+  /** 板厚 mm */
+  thickness: number;
+  /** 切割总路径 mm（已含孔周长，优先用 cut_total_path_mm） */
+  cutTotalPath: number;
+  /** 孔数（用 unfold_hole_count） */
+  holeCount: number;
+}
+
+export interface LaserCuttingResult {
+  /** 切割费（元/件） */
+  cuttingFee: number;
+  /** 穿孔费（元/件） */
+  piercingFee: number;
+  /** 激光费合计（元/件） */
+  totalLaserFee: number;
+  /** 使用的单价（元/米） */
+  unitPrice: number;
+  /** 使用的穿孔费率（元/孔） */
+  pierceRate: number;
+  /** 是否不可用（板厚 > 22mm） */
+  unavailable: boolean;
+}
+
+/**
+ * 计算激光切割费用（不开模方案 B）
+ * 公式：切割费 = 切割长度 ÷ 1000 × 切割单价(元/米)
+ *       穿孔费 = 费率 × 孔数
+ *       激光费 = 切割费 + 穿孔费
+ */
+export function calculateLaserCuttingFee(input: LaserCuttingInput): LaserCuttingResult | null {
+  const { thickness, cutTotalPath, holeCount } = input;
+
+  if (!(thickness > 0) || !(cutTotalPath > 0)) {
+    return null;
+  }
+
+  const unitPrice = laserUnitPrice(thickness);
+
+  // 板厚 > 22mm → 激光做不了
+  if (unitPrice == null) {
+    return {
+      cuttingFee: 0,
+      piercingFee: 0,
+      totalLaserFee: 0,
+      unitPrice: 0,
+      pierceRate: 0,
+      unavailable: true,
+    };
+  }
+
+  const safeHoleCount = holeCount > 0 ? holeCount : 0;
+  const pierceRate = laserPierceRate(thickness);
+
+  const cuttingFee = r2((cutTotalPath / 1000) * unitPrice);
+  const piercingFee = r2(pierceRate * safeHoleCount);
+  const totalLaserFee = r2(cuttingFee + piercingFee);
+
+  return {
+    cuttingFee,
+    piercingFee,
+    totalLaserFee,
+    unitPrice,
+    pierceRate,
+    unavailable: false,
+  };
+}

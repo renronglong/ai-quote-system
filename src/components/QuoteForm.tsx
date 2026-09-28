@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Sparkles, Plus, Loader2, CheckCircle2, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
-import { calculateStampingMoldFee, type StampingMoldResult } from '@/lib/stamping-mold-calculator';
+import { calculateStampingMoldFee, calculateLaserCuttingFee, type StampingMoldResult, type LaserCuttingResult } from '@/lib/stamping-mold-calculator';
 import { STEEL_STANDARD_SPECS } from '@/data/steelStandardSpecs';
 
 // ==================== Types ====================
@@ -731,6 +731,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   // 冲压模具费计算结果
   const [stampingMoldResult, setStampingMoldResult] = useState<StampingMoldResult | null>(null);
   const [stampingMoldExpanded, setStampingMoldExpanded] = useState(false);
+  const [laserCuttingResult, setLaserCuttingResult] = useState<LaserCuttingResult | null>(null);
+  const [laserCuttingExpanded, setLaserCuttingExpanded] = useState(false);
 
   // 板材件：自动计算冲压模具费
   useEffect(() => {
@@ -765,6 +767,27 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       setStampingMoldResult(null);
     }
   }, [productType, fields.length, fields.width, fields.thickness, fields.holes, fields.outer_perimeter, fields.cut_total_length, fields.holes_perimeter]);
+
+  // 板材件：自动计算激光切割费用（不开模方案B）
+  useEffect(() => {
+    if (productType !== '板材') {
+      setLaserCuttingResult(null);
+      return;
+    }
+    const T = Number(fields.thickness) || 0;
+    const cutTotalPath = Number(fields.cut_total_length) || 0;
+    const holeCount = Number(fields.holes) || 0;
+    if (T > 0 && cutTotalPath > 0) {
+      const result = calculateLaserCuttingFee({
+        thickness: T,
+        cutTotalPath,
+        holeCount,
+      });
+      setLaserCuttingResult(result);
+    } else {
+      setLaserCuttingResult(null);
+    }
+  }, [productType, fields.thickness, fields.cut_total_length, fields.holes]);
 
   // 上报识别反馈：AI识别值 vs 用户最终确认值
   const reportRecognitionFeedback = useCallback(() => {
@@ -1668,6 +1691,16 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       if (productType === '板材' && stampingMoldResult && !stampingMoldResult.isNonStandard) {
         payload.mold_cost = stampingMoldResult.totalMoldFee;
         payload.mold_spec = `冲压复合模 ${stampingMoldResult.frameSize[0]}×${stampingMoldResult.frameSize[1]}`;
+      }
+      // 激光切割费：板材类型且有计算结果时（方案B：不开模）
+      if (productType === '板材' && laserCuttingResult && !laserCuttingResult.unavailable) {
+        payload.laser_cutting_fee = laserCuttingResult.totalLaserFee;
+        payload.laser_cutting_detail = {
+          cutting_fee: laserCuttingResult.cuttingFee,
+          piercing_fee: laserCuttingResult.piercingFee,
+          unit_price: laserCuttingResult.unitPrice,
+          pierce_rate: laserCuttingResult.pierceRate,
+        };
       }
       const mySeq = ++calcReqSeq.current;
       const res = await fetch('/api/v1/quote/calculate', {
@@ -2849,6 +2882,70 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 <div className="px-3 pb-3 pt-1">
                   <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
                     产品展开尺寸超出最大标准模架（630×500），需定制非标模架，模具费需另行报价。
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ---- 激光切割费明细（板材+识别数据时自动计算，方案B：不开模） ---- */}
+        {productType === '板材' && laserCuttingResult && (() => {
+          const r = laserCuttingResult;
+          const fmt = (v: number) => v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          return (
+            <div className="bg-white rounded-xl shadow-sm border border-blue-200 overflow-hidden transition-shadow duration-200 hover:shadow-md">
+              <button
+                type="button"
+                onClick={() => setLaserCuttingExpanded(!laserCuttingExpanded)}
+                className="w-full flex items-center justify-between px-3 py-2.5 bg-gradient-to-r from-blue-50 to-cyan-50 hover:from-blue-100 hover:to-cyan-100 transition-all"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-base">⚡</span>
+                  <span className="text-sm font-semibold text-blue-800">激光切割费明细</span>
+                  {r.unavailable ? (
+                    <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-xs font-semibold">板厚超过22mm 激光做不了</span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
+                      方案B · 不开模
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {!r.unavailable && (
+                    <span className="text-sm font-bold text-blue-900">¥{fmt(r.totalLaserFee)}/件</span>
+                  )}
+                  <ChevronDown className={`w-4 h-4 text-blue-600 transition-transform duration-200 ${laserCuttingExpanded ? 'rotate-180' : ''}`} />
+                </div>
+              </button>
+              {laserCuttingExpanded && !r.unavailable && (
+                <div className="px-3 pb-3 pt-1 space-y-2 text-sm">
+                  {/* 参数信息 */}
+                  <div className="rounded-lg bg-slate-50 border border-slate-200 p-2">
+                    <div className="text-xs font-semibold text-slate-500 mb-1">计算参数</div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div><span className="text-slate-500">切割单价</span><br/><span className="font-mono font-semibold text-slate-700">¥{r.unitPrice}/米</span></div>
+                      <div><span className="text-slate-500">穿孔费率</span><br/><span className="font-mono font-semibold text-slate-700">¥{r.pierceRate}/孔</span></div>
+                    </div>
+                  </div>
+                  {/* 费用明细 */}
+                  <div className="rounded-lg bg-blue-50/50 border border-blue-200 p-2">
+                    <div className="text-xs font-semibold text-blue-700 mb-1">费用计算</div>
+                    <div className="space-y-0.5 text-xs">
+                      <div className="flex justify-between"><span className="text-slate-600">切割费</span><span className="font-mono">¥{fmt(r.cuttingFee)}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-600">穿孔费</span><span className="font-mono">¥{fmt(r.piercingFee)}</span></div>
+                      <div className="flex justify-between font-semibold text-blue-800 border-t border-blue-200 pt-1 mt-1">
+                        <span>激光费合计</span>
+                        <span className="font-mono text-base">¥{fmt(r.totalLaserFee)}/件</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {laserCuttingExpanded && r.unavailable && (
+                <div className="px-3 pb-3 pt-1">
+                  <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+                    板厚超过22mm，激光切割无法加工，只能走开模方案。
                   </div>
                 </div>
               )}
