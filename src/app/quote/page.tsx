@@ -217,7 +217,8 @@ export default function QuotePage() {
     const len = params.length;
     const result = {
       material_cost: pricingResult.material_cost,
-      processing_cost: pricingResult.secondary_operations_cost || 0,
+      processing_cost: pricingResult.processing_cost || 0,
+      secondary_operations_cost: pricingResult.secondary_operations_cost || 0,
       surface_treatment_cost: pricingResult.surface_treatment_cost,
       packaging_cost: pricingResult.packaging_cost,
       transport_cost: pricingResult.transport_cost,
@@ -280,7 +281,8 @@ export default function QuotePage() {
     if (productInfo.productCode) params.productCode = productInfo.productCode;
     const result = {
       material_cost: pricingResult.material_cost,
-      processing_cost: pricingResult.secondary_operations_cost || 0,
+      processing_cost: pricingResult.processing_cost || 0,
+      secondary_operations_cost: pricingResult.secondary_operations_cost || 0,
       surface_treatment_cost: pricingResult.surface_treatment_cost,
       packaging_cost: pricingResult.packaging_cost,
       transport_cost: pricingResult.transport_cost,
@@ -896,7 +898,8 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
 
   const breakdownItems = [
     { label: '材料费', value: p.material_cost, key: 'material_cost' },
-    { label: '加工费', value: p.secondary_operations_cost || 0, key: 'processing_cost' },
+    { label: '加工费', value: p.processing_cost || 0, key: 'processing_cost' },
+    { label: '二次工序费', value: p.secondary_operations_cost || 0, key: 'secondary_operations_cost' },
     { label: '表面处理费', value: p.surface_treatment_cost, key: 'surface_treatment_cost' },
     { label: '包装费', value: p.packaging_cost, key: 'packaging_cost' },
     { label: '运输费', value: p.transport_cost, key: 'transport_cost' },

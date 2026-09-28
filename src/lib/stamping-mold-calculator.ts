@@ -15,7 +15,7 @@ export const STAMPING_MOLD_CONFIG = {
   /** 圆凸模单价（元/支） */
   price_round_punch: 6.5,
   /** 线割系数 */
-  coeff_wire_cutting: 0.035,
+  coeff_wire_cutting: 0.0035,
   /** 基础加工费系数 */
   coeff_base_processing: 0.0035,
   /** 加工倍数 */

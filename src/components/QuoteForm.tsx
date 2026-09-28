@@ -143,6 +143,7 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
           { name: '车加工', unit: '分钟' },
           { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
+          { name: 'CNC加工', unit: '分钟' },
         ],
         productSurfaceTreatmentMap: {
           '无': [
@@ -194,6 +195,7 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
           { name: '车加工', unit: '分钟' },
           { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
+          { name: 'CNC加工', unit: '分钟' },
         ],
         productSurfaceTreatmentMap: {
           '无': [
@@ -244,6 +246,7 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
           { name: '冲压', unit: '次' },
           { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
+          { name: 'CNC加工', unit: '分钟' },
           { name: '激光切割', unit: '米' },
           { name: '折弯', unit: '次' },
         ],
@@ -265,6 +268,7 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
           { name: '冲压', unit: '次' },
           { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
+          { name: 'CNC加工', unit: '分钟' },
           { name: '激光切割', unit: '米' },
           { name: '折弯', unit: '次' },
           { name: '抛光' },
@@ -283,6 +287,7 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
           { name: '冲压', unit: '次' },
           { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
+          { name: 'CNC加工', unit: '分钟' },
           { name: '激光切割', unit: '米' },
           { name: '折弯', unit: '次' },
           { name: '抛光' },
@@ -301,6 +306,7 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
           { name: '冲压', unit: '次' },
           { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
+          { name: 'CNC加工', unit: '分钟' },
           { name: '激光切割', unit: '米' },
           { name: '折弯', unit: '次' },
           { name: '抛光' },
@@ -326,6 +332,7 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
           { name: '冲压', unit: '次' },
           { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
+          { name: 'CNC加工', unit: '分钟' },
           { name: '抛光' },
           { name: '除披锋' },
         ],
@@ -344,6 +351,7 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
           { name: '冲压', unit: '次' },
           { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
+          { name: 'CNC加工', unit: '分钟' },
           { name: '抛光' },
           { name: '除披锋' },
         ],
@@ -359,12 +367,12 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
     label: '注塑',
     icon: '🧪',
     materialCategories: {
-      'ABS': { label: 'ABS', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }] },
-      'PP': { label: 'PP', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }] },
-      'PC': { label: 'PC', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }] },
-      'PA': { label: 'PA', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }] },
-      'POM': { label: 'POM', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }] },
-      'PMMA': { label: 'PMMA', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }] },
+      'ABS': { label: 'ABS', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }, { name: 'CNC加工', unit: '分钟' }] },
+      'PP': { label: 'PP', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }, { name: 'CNC加工', unit: '分钟' }] },
+      'PC': { label: 'PC', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }, { name: 'CNC加工', unit: '分钟' }] },
+      'PA': { label: 'PA', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }, { name: 'CNC加工', unit: '分钟' }] },
+      'POM': { label: 'POM', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }, { name: 'CNC加工', unit: '分钟' }] },
+      'PMMA': { label: 'PMMA', fields: ['quantity', 'netWeight', 'productSize'], processes: [{ name: '无' }, { name: '开合' }, { name: '除披锋' }, { name: '钻孔', unit: '次' }, { name: '攻牙', unit: '次' }, { name: 'CNC加工', unit: '分钟' }] },
     },
   },
   '钢材': {
@@ -386,6 +394,7 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
           { name: '车加工', unit: '分钟' },
           { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
+          { name: 'CNC加工', unit: '分钟' },
           { name: '铣削', unit: '分钟' },
           { name: '磨削', unit: '分钟' },
         ],
@@ -620,7 +629,7 @@ const PROCESS_SUB_PARAMS: Record<string, { name: string; type: string; label: st
     { name: 'tonnage', type: 'select', label: '吨位', options: ['<=35T', '45T', '60T', '80T', '110T', '160T', '200T', '200T双轴', '250T双轴'] },
   ],
   '钻孔': [
-    { name: 'diameter_range', type: 'select', label: '孔径范围', options: ['ø3~6', 'ø6~10', 'ø10~16', 'ø16~25'] },
+    { name: 'diameter_range', type: 'text', label: '孔径范围' },
   ],
   '攻牙': [
     { name: 'hole_count', type: 'number', label: '孔数量' },
@@ -1147,9 +1156,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const subParams: Record<string, any> = {};
       if (subDef) {
         for (const param of subDef) {
-          // 加工时间(分钟)：有识别结果时预填，否则留空让用户填
+          // 加工时间(分钟)：仅当cnc_total_holes > 0时才用识别数据预填，避免误填
           if (param.type === 'number' && param.name === 'minutes') {
-            const recogMin = recogResult?.machining_time_min || recogResult?.process?.machining_time_min;
+            const cncTotalHolesVal = Number(recogResult?.cnc_total_holes) || 0;
+            const recogMin = cncTotalHolesVal > 0 ? (recogResult?.machining_time_min || recogResult?.process?.machining_time_min) : null;
             subParams[param.name] = recogMin ?? '';
           } else if (param.type === 'number') subParams[param.name] = '';
           else if (param.type === 'select' && param.options) subParams[param.name] = param.options[0];
