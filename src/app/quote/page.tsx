@@ -128,8 +128,9 @@ export default function QuotePage() {
         const mappedData: any = {
           ...part,
           wallThickness: part.thickness_mm || part.sheet_thickness || part.wall_thickness,
-          length: part.unfold_length_mm || part.unfold_length || part.sheet_length,
-          width: part.unfold_width_mm || part.unfold_width || part.sheet_width,
+          length: part.length || part.extrusion_length_mm || part.unfold_length_mm || part.unfold_length || part.sheet_length,
+          width: part.width || part.section_width_mm || part.unfold_width_mm || part.unfold_width || part.sheet_width,
+          height: part.height || part.section_height_mm || undefined,
           quantity: part.quantity || part._quantity,
           holes: part.unfold_hole_count || '',  // P0-2: 没有值时留空，不填 0
           outer_perimeter: part.unfold_perimeter_mm || '',
@@ -138,7 +139,9 @@ export default function QuotePage() {
           product_code: part.product_code || part.part_number || fileNameNoExt || '',
           productName: part._partName || part.product_name || part.part_name || fileNameNoExt || '',
           productCode: part.product_code || part.part_number || fileNameNoExt || '',
-          productType: part.product_type === 'sheet_metal' || part.is_sheet_metal ? '板材' : (part.product_type || undefined),
+          productType: part.product_type === 'sheet_metal' || part.is_sheet_metal ? '板材'
+            : part.process_type === 'extrusion' || part.die_type || part.perimeter ? '挤出'
+            : (part.product_type || undefined),
           materialCategory: matInfo.cat,   // 传递给 QuoteForm 的材料大类
           materialGrade: matInfo.grade,    // 传递给 QuoteForm 的具体牌号
         };
