@@ -1554,22 +1554,21 @@ function calcSheetMetal(
   const t = dims.wall_thickness_mm || dims.height_mm || 2;
   const cutPerimeter = 2 * (dims.length_mm + dims.width_mm); // 展开外形周长 mm
   let proc: { cost: number; formula: string; detail: string; sizeSurcharge: number; volumeSurcharge: number };
-  if (hasLaser) {
+  if (req.laser_cutting_fee != null && req.laser_cutting_fee > 0) {
     // 优先使用前端计算的激光切割费（前端使用业主报价单口径：查表单价 + cut_total_path_mm）
-    if (req.laser_cutting_fee != null && req.laser_cutting_fee > 0) {
-      const detail = req.laser_cutting_detail;
-      const cutFee = detail?.cutting_fee ?? 0;
-      const pierceFee = detail?.piercing_fee ?? 0;
-      const unitPrice = detail?.unit_price ?? 0;
-      const pierceRate = detail?.pierce_rate ?? 0;
-      proc = {
-        cost: req.laser_cutting_fee,
-        formula: `激光切割：切割长度×单价${unitPrice}元/米 + 穿孔${pierceRate}元/孔`,
-        detail: `前端计价：切割费¥${cutFee} + 穿孔费¥${pierceFee} = ¥${req.laser_cutting_fee}元`,
-        sizeSurcharge: 0, volumeSurcharge: 0,
-      };
-    } else {
-    // 后端兜底：前端未传时使用旧公式（不推荐）
+    const detail = req.laser_cutting_detail;
+    const cutFee = detail?.cutting_fee ?? 0;
+    const pierceFee = detail?.piercing_fee ?? 0;
+    const unitPrice = detail?.unit_price ?? 0;
+    const pierceRate = detail?.pierce_rate ?? 0;
+    proc = {
+      cost: req.laser_cutting_fee,
+      formula: `激光切割：切割长度×单价${unitPrice}元/米 + 穿孔${pierceRate}元/孔`,
+      detail: `前端计价：切割费¥${cutFee} + 穿孔费¥${pierceFee} = ¥${req.laser_cutting_fee}元`,
+      sizeSurcharge: 0, volumeSurcharge: 0,
+    };
+  } else if (hasLaser) {
+    // 后端兜底：前端未传时（工序含激光切割但无前端计价数据）使用旧公式
     const cat = req.material.category;
     const ratePerMeterPerMm = cat.includes('铝') ? 4 : cat.includes('不锈钢') ? 2.5 : 1.5; // 元/米/mm板厚
     const cutLengthM = cutPerimeter / 1000;
@@ -1583,7 +1582,6 @@ function calcSheetMetal(
       detail: `周长${cutPerimeter}mm=${r2(cutLengthM)}m × ${t}mm厚 × ${ratePerMeterPerMm}元 = ${laserCost}元；穿孔${pierceCount}个×0.1=${pierceCost}元；合计${totalLaser}元`,
       sizeSurcharge: 0, volumeSurcharge: 0,
     };
-    }
   } else {
     proc = calcSheetProcessingFee(dims, volumeCm3, req.material.category, rules);
   }
