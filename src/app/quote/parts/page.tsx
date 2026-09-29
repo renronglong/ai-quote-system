@@ -103,9 +103,14 @@ export default function QuotePartsPage() {
     if (!payload) return;
     const part = payload.products[idx];
     if (part._failed) return;
-    // 存当前选中零件索引和完整数据，跳转报价页
-    // 如果零件没有材质信息，使用上传时选择的材质
+    // 必须有材料才能进入报价系统
     const payloadMaterial = (payload as any)?.material;
+    const partMaterial = part.material_grade || payloadMaterial;
+    if (!partMaterial) {
+      alert('该零件缺少材料信息，无法进入报价系统。请先在识别确认页选择材料。');
+      return;
+    }
+    // 存当前选中零件索引和完整数据，跳转报价页
     const partToStore = (!part.material_grade && payloadMaterial) ? { ...part, material_grade: payloadMaterial } : part;
     sessionStorage.setItem('ai_quote_selected_idx', String(idx));
     sessionStorage.setItem('ai_quote_selected_part', JSON.stringify(partToStore));
@@ -294,12 +299,16 @@ export default function QuotePartsPage() {
                           <span className="inline-flex items-center gap-1 text-emerald-600 text-sm font-medium">
                             <CheckCircle2 size={14} /> 已报价
                           </span>
-                        ) : (
+                        ) : (p.material_grade || (payload as any)?.material) ? (
                           <span className="inline-flex items-center gap-1 text-blue-600 font-semibold text-sm group-hover:text-blue-700">
                             点击进入报价 <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
                           </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-amber-600 font-semibold text-sm">
+                            <AlertCircle size={14} /> 缺少材料，无法报价
+                          </span>
                         )}
-                        {p.material_grade && <span className="text-slate-400 truncate ml-2 text-xs">{p.material_grade}</span>}
+                        {(p.material_grade || (payload as any)?.material) && <span className="text-slate-400 truncate ml-2 text-xs">{p.material_grade || (payload as any)?.material}</span>}
                       </div>
                     </>
                   )}
