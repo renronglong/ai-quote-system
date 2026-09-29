@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, FileText, Layers, CheckCircle2,
-  ChevronRight, ArrowRight, Package, Ruler, Box, Info, AlertCircle, Loader2
+  ChevronRight, ArrowRight, Package, Ruler, Box, Info, AlertCircle, Loader2, X
 } from 'lucide-react';
 import TopNavLinks from '@/components/TopNav';
 
@@ -63,6 +63,7 @@ export default function QuotePartsPage() {
   const [quotedParts, setQuotedParts] = useState<Set<number>>(new Set());
   const MATERIAL_OPTIONS = ['6063', '6061', '5052', '6060', '铝（未指定）', '钢', '不锈钢'];
   const [currentMaterial, setCurrentMaterial] = useState<string>('');
+  const [materialModalIdx, setMaterialModalIdx] = useState<number | null>(null); // 哪个零件弹出选材料
 
   // 初始化材料选择：从 payload 读取，没有则留空
   useEffect(() => {
@@ -112,17 +113,33 @@ export default function QuotePartsPage() {
     if (!payload) return;
     const part = payload.products[idx];
     if (part._failed) return;
-    // 零件独立材料优先，其次用批量设置
     const effectiveMaterial = part.material_grade || currentMaterial;
     if (!effectiveMaterial) {
-      alert('该零件没有材料信息，请先在上方"批量材料"选择，或跳过该零件。');
+      // 弹出材料选择弹窗
+      setMaterialModalIdx(idx);
       return;
     }
-    // 存当前选中零件索引和完整数据，跳转报价页
-    const partToStore = (!part.material_grade && currentMaterial) ? { ...part, material_grade: currentMaterial } : part;
+    navigateToQuote(idx, effectiveMaterial);
+  };
+
+  const navigateToQuote = (idx: number, material: string) => {
+    const part = payload!.products[idx];
+    const partToStore = { ...part, material_grade: material };
     sessionStorage.setItem('ai_quote_selected_idx', String(idx));
     sessionStorage.setItem('ai_quote_selected_part', JSON.stringify(partToStore));
     router.push('/quote?from=parts');
+  };
+
+  const handleModalMaterialSelect = (material: string) => {
+    if (materialModalIdx === null || !payload) return;
+    // 更新该零件的材料并跳转
+    const updatedProducts = [...payload.products];
+    updatedProducts[materialModalIdx] = { ...updatedProducts[materialModalIdx], material_grade: material };
+    const updatedPayload = { ...payload, products: updatedProducts };
+    sessionStorage.setItem('ai_quote_parts', JSON.stringify(updatedPayload));
+    setPayload(updatedPayload);
+    setMaterialModalIdx(null);
+    navigateToQuote(materialModalIdx, material);
   };
 
   // 材料变更时同步到 payload 并写回 sessionStorage
@@ -334,18 +351,14 @@ export default function QuotePartsPage() {
                           <span className="inline-flex items-center gap-1 text-emerald-600 text-sm font-medium">
                             <CheckCircle2 size={14} /> 已报价
                           </span>
-                        ) : (p.material_grade || currentMaterial) ? (
+                        ) : (
                           <span className="inline-flex items-center gap-1 text-blue-600 font-semibold text-sm group-hover:text-blue-700">
                             点击进入报价 <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-amber-600 font-semibold text-sm">
-                            <AlertCircle size={14} /> 未设材料
                           </span>
                         )}
                         {p.material_grade ? <span className="text-slate-500 truncate ml-2 text-xs">材质: {p.material_grade}</span>
                           : currentMaterial ? <span className="text-slate-400 truncate ml-2 text-xs">材质: {currentMaterial} (批量)</span>
-                          : <span className="text-amber-400 truncate ml-2 text-xs">材质: 未设</span>}
+                          : <span className="text-amber-400 truncate ml-2 text-xs">材质: 待选择</span>}
                       </div>
                     </>
                   )}
@@ -353,6 +366,36 @@ export default function QuotePartsPage() {
               );
             })}
           </div>
+
+          {/* 材料选择弹窗 */}
+          {materialModalIdx !== null && payload && (() => {
+            const mp = payload.products[materialModalIdx];
+            const mpName = getPartName(mp, materialModalIdx);
+            return (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setMaterialModalIdx(null)}>
+                <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-semibold text-slate-800">选择材料</h3>
+                    <button onClick={() => setMaterialModalIdx(null)} className="text-slate-400 hover:text-slate-600">
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <p className="text-sm text-slate-500 mb-4">零件 <b>{mpName}</b> 需要选择材料才能报价</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {MATERIAL_OPTIONS.map(m => (
+                      <button
+                        key={m}
+                        onClick={() => handleModalMaterialSelect(m)}
+                        className="px-3 py-2.5 text-sm rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition text-slate-700 font-medium"
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* 底部提示 */}
           <div className="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
