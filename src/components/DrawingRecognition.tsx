@@ -155,8 +155,9 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [productType, setProductType] = useState('挤出');
   const [selectedMaterial, setSelectedMaterial] = useState(() => {
+    // 不继承旧值，每次进入识别页从空开始
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('user_default_material') || '';
+      localStorage.removeItem('user_default_material');
     }
     return '';
   });

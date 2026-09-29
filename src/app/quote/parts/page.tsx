@@ -64,11 +64,12 @@ export default function QuotePartsPage() {
   const MATERIAL_OPTIONS = ['6063', '6061', '5052', '6060', '铝（未指定）', '钢', '不锈钢'];
   const [currentMaterial, setCurrentMaterial] = useState<string>('');
 
-  // 初始化/重置材料选择
+  // 初始化/重置材料选择：每次进入零件列表页强制清空，不继承旧值
   useEffect(() => {
     if (!payload) return;
-    const payloadMat = (payload as any)?.material || '';
-    setCurrentMaterial(payloadMat);
+    setCurrentMaterial('');
+    // 也清掉识别页 localStorage 的旧默认材料，防止自动继承
+    localStorage.removeItem('user_default_material');
   }, [payload]);
 
   useEffect(() => {
