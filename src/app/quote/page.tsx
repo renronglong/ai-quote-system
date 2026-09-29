@@ -113,6 +113,18 @@ export default function QuotePage() {
         // P0-5: 文件名兜底
         const fileNameNoExt = (part._fileName || '').replace(/\.[^.]+$/, '');
         // 将 part 对象映射为 AiFormUpdate 格式
+        // 材料映射：根据零件列表选择的材料，确定材料大类和牌号
+        const rawMat = part.material_grade || '';
+        const matMap: Record<string, { cat: string; grade: string }> = {
+          '6063': { cat: '铝板', grade: '6063' },
+          '6061': { cat: '铝板', grade: '6061' },
+          '5052': { cat: '铝板', grade: '5052' },
+          '6060': { cat: '铝板', grade: '6060' },
+          '铝（未指定）': { cat: '铝板', grade: '' },
+          '钢': { cat: '钢', grade: 'Q235' },
+          '不锈钢': { cat: '不锈钢', grade: '304' },
+        };
+        const matInfo = matMap[rawMat] || { cat: '铝板', grade: rawMat };
         const mappedData: any = {
           ...part,
           wallThickness: part.thickness_mm || part.sheet_thickness || part.wall_thickness,
@@ -127,6 +139,8 @@ export default function QuotePage() {
           productName: part._partName || part.product_name || part.part_name || fileNameNoExt || '',
           productCode: part.product_code || part.part_number || fileNameNoExt || '',
           productType: part.product_type === 'sheet_metal' || part.is_sheet_metal ? '板材' : (part.product_type || undefined),
+          materialCategory: matInfo.cat,   // 传递给 QuoteForm 的材料大类
+          materialGrade: matInfo.grade,    // 传递给 QuoteForm 的具体牌号
         };
         // 延迟调用，让 QuoteForm 先完成 productType 切换后的 resetCategoryState
         setTimeout(() => handleFormUpdate(mappedData), 500);
