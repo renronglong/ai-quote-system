@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Upload, FileText, X, Loader2, AlertTriangle, User, CheckCircle2, Share2, Package } from 'lucide-react';
+import { Upload, FileText, Folder, Clipboard, X, Loader2, AlertTriangle, User, CheckCircle2, Share2, Package } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { PRODUCT_TYPES } from './QuoteForm';
 
@@ -153,6 +153,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
   const [isAssembly, setIsAssembly] = useState(false);
   const [copiedInvite, setCopiedInvite] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileManagerInputRef = useRef<HTMLInputElement>(null);
   const [productType, setProductType] = useState('挤出');
   const [selectedMaterial, setSelectedMaterial] = useState(() => {
     // 不继承旧值，每次进入识别页从空开始
@@ -592,6 +593,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
     setUploadedFile(null);
     resetRecognitionState();
     if (fileInputRef.current) fileInputRef.current.value = '';
+    if (fileManagerInputRef.current) fileManagerInputRef.current.value = '';
   };
 
   // ==================== Paste Support ====================
@@ -683,6 +685,13 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
             onChange={handleFileSelect}
             className="hidden"
           />
+          <input
+            ref={fileManagerInputRef}
+            type="file"
+            accept="*/*"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
           {uploadedFile ? (
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-left">
@@ -704,7 +713,46 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
             <div>
               <Upload className={`w-6 h-6 mx-auto mb-1.5 ${dragOver ? 'text-blue-500' : 'text-slate-600'}`} />
               <p className="text-sm text-slate-600">拖拽文件到此处，或<span className="text-blue-500 font-medium">点击上传</span></p>
-              <p className="text-xs text-slate-600 mt-1">支持 PDF、JPG、PNG、DXF、DWG、STP、STEP、IGS、X_T、ZIP、RAR、7Z 等，也可 Ctrl+V 粘贴图片</p>
+              <p className="text-xs text-slate-600 mt-1.5">支持 PDF、JPG、PNG、DXF、DWG、STP、STEP、IGS、X_T、ZIP 等</p>
+              <div className="flex items-center justify-center gap-3 mt-2">
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); fileManagerInputRef.current?.click(); }}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                >
+                  <Folder className="w-3.5 h-3.5" /> 从文件管理选择
+                </button>
+                <button
+                  type="button"
+                  onClick={e => {
+                    e.stopPropagation();
+                    const ta = document.createElement('textarea');
+                    ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0';
+                    ta.onpaste = (ev) => {
+                      const items = (ev.clipboardData as DataTransfer)?.items;
+                      if (!items) return;
+                      for (const item of items) {
+                        if (item.type.startsWith('image/')) {
+                          const file = item.getAsFile();
+                          if (file) {
+                            const namedFile = new File([file], `pasted_${Date.now()}.png`, { type: file.type });
+                            handleFileSelect({ target: { files: [namedFile] } } as any);
+                          }
+                          break;
+                        }
+                      }
+                      ta.remove();
+                    };
+                    document.body.appendChild(ta);
+                    ta.focus();
+                    // On mobile, the system paste menu appears after focus
+                    setTimeout(() => { if (ta.parentNode) ta.remove(); }, 5000);
+                  }}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors"
+                >
+                  <Clipboard className="w-3.5 h-3.5" /> 粘贴
+                </button>
+              </div>
             </div>
           )}
         </div>
