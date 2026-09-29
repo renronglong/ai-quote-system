@@ -61,6 +61,15 @@ export default function QuotePartsPage() {
   const router = useRouter();
   const [payload, setPayload] = useState<PartsPayload | null>(null);
   const [quotedParts, setQuotedParts] = useState<Set<number>>(new Set());
+  const MATERIAL_OPTIONS = ['6063', '6061', '5052', '6060', '铝（未指定）', '钢', '不锈钢'];
+  const [currentMaterial, setCurrentMaterial] = useState<string>('');
+
+  // 初始化/重置材料选择
+  useEffect(() => {
+    if (!payload) return;
+    const payloadMat = (payload as any)?.material || '';
+    setCurrentMaterial(payloadMat);
+  }, [payload]);
 
   useEffect(() => {
     try {
@@ -104,17 +113,27 @@ export default function QuotePartsPage() {
     const part = payload.products[idx];
     if (part._failed) return;
     // 必须有材料才能进入报价系统
-    const payloadMaterial = (payload as any)?.material;
-    const partMaterial = part.material_grade || payloadMaterial;
-    if (!partMaterial) {
-      alert('该零件缺少材料信息，无法进入报价系统。请先在识别确认页选择材料。');
+    const effectiveMaterial = part.material_grade || currentMaterial;
+    if (!effectiveMaterial) {
+      alert('请先在上方选择材料，才能进入报价系统。');
       return;
     }
     // 存当前选中零件索引和完整数据，跳转报价页
-    const partToStore = (!part.material_grade && payloadMaterial) ? { ...part, material_grade: payloadMaterial } : part;
+    const partToStore = (!part.material_grade && currentMaterial) ? { ...part, material_grade: currentMaterial } : part;
     sessionStorage.setItem('ai_quote_selected_idx', String(idx));
     sessionStorage.setItem('ai_quote_selected_part', JSON.stringify(partToStore));
     router.push('/quote?from=parts');
+  };
+
+  // 材料变更时同步到 payload 并写回 sessionStorage
+  const handleMaterialChange = (newMat: string) => {
+    setCurrentMaterial(newMat);
+    if (payload) {
+      const updated = { ...(payload as any), material: newMat };
+      sessionStorage.setItem('ai_quote_parts', JSON.stringify(updated));
+    }
+    // 同步 localStorage 默认材料
+    if (newMat) localStorage.setItem('user_default_material', newMat);
   };
 
   const getPartType = (p: PartData): { label: string; color: string; icon: any } => {
@@ -203,6 +222,31 @@ export default function QuotePartsPage() {
                 : '图纸识别完成，点击进入报价'}
               {payload.fileName && <span className="text-slate-400 ml-1">· {payload.fileName}</span>}
             </p>
+          </div>
+
+          {/* 材料选择栏 */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4 shadow-sm">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-slate-700 shrink-0">材料</span>
+              <select
+                value={currentMaterial}
+                onChange={(e) => handleMaterialChange(e.target.value)}
+                className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">请选择材料</option>
+                {MATERIAL_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+              {!currentMaterial && (
+                <span className="text-xs text-amber-600 flex items-center gap-1 shrink-0">
+                  <AlertCircle size={14} /> 必选
+                </span>
+              )}
+              {currentMaterial && (
+                <span className="text-xs text-emerald-600 flex items-center gap-1 shrink-0">
+                  <CheckCircle2 size={14} /> 已选择
+                </span>
+              )}
+            </div>
           </div>
 
           {/* 进度条 */}
@@ -299,7 +343,7 @@ export default function QuotePartsPage() {
                           <span className="inline-flex items-center gap-1 text-emerald-600 text-sm font-medium">
                             <CheckCircle2 size={14} /> 已报价
                           </span>
-                        ) : (p.material_grade || (payload as any)?.material) ? (
+                        ) : (p.material_grade || currentMaterial) ? (
                           <span className="inline-flex items-center gap-1 text-blue-600 font-semibold text-sm group-hover:text-blue-700">
                             点击进入报价 <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
                           </span>
@@ -308,7 +352,7 @@ export default function QuotePartsPage() {
                             <AlertCircle size={14} /> 缺少材料，无法报价
                           </span>
                         )}
-                        {(p.material_grade || (payload as any)?.material) && <span className="text-slate-400 truncate ml-2 text-xs">{p.material_grade || (payload as any)?.material}</span>}
+                        {(p.material_grade || currentMaterial) && <span className="text-slate-400 truncate ml-2 text-xs">{p.material_grade || currentMaterial}</span>}
                       </div>
                     </>
                   )}
