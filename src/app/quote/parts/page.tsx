@@ -64,12 +64,11 @@ export default function QuotePartsPage() {
   const MATERIAL_OPTIONS = ['6063', '6061', '5052', '6060', '铝（未指定）', '钢', '不锈钢'];
   const [currentMaterial, setCurrentMaterial] = useState<string>('');
 
-  // 初始化/重置材料选择：每次进入零件列表页强制清空，不继承旧值
+  // 初始化材料选择：从 payload 读取，没有则留空
   useEffect(() => {
     if (!payload) return;
-    setCurrentMaterial('');
-    // 也清掉识别页 localStorage 的旧默认材料，防止自动继承
-    localStorage.removeItem('user_default_material');
+    const payloadMat = (payload as any)?.material || '';
+    setCurrentMaterial(payloadMat);
   }, [payload]);
 
   useEffect(() => {
@@ -113,10 +112,10 @@ export default function QuotePartsPage() {
     if (!payload) return;
     const part = payload.products[idx];
     if (part._failed) return;
-    // 必须有材料才能进入报价系统
+    // 零件独立材料优先，其次用批量设置
     const effectiveMaterial = part.material_grade || currentMaterial;
     if (!effectiveMaterial) {
-      alert('请先在上方选择材料，才能进入报价系统。');
+      alert('该零件没有材料信息，请先在上方"批量材料"选择，或跳过该零件。');
       return;
     }
     // 存当前选中零件索引和完整数据，跳转报价页
@@ -225,28 +224,19 @@ export default function QuotePartsPage() {
             </p>
           </div>
 
-          {/* 材料选择栏 */}
+          {/* 批量设置材料（未设材料的零件默认使用此值） */}
           <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4 shadow-sm">
             <div className="flex items-center gap-3">
-              <span className="text-sm font-medium text-slate-700 shrink-0">材料</span>
+              <span className="text-sm font-medium text-slate-700 shrink-0">批量材料</span>
               <select
                 value={currentMaterial}
                 onChange={(e) => handleMaterialChange(e.target.value)}
                 className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                <option value="">请选择材料</option>
+                <option value="">暂不统一设置</option>
                 {MATERIAL_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
-              {!currentMaterial && (
-                <span className="text-xs text-amber-600 flex items-center gap-1 shrink-0">
-                  <AlertCircle size={14} /> 必选
-                </span>
-              )}
-              {currentMaterial && (
-                <span className="text-xs text-emerald-600 flex items-center gap-1 shrink-0">
-                  <CheckCircle2 size={14} /> 已选择
-                </span>
-              )}
+              <span className="text-xs text-slate-400 shrink-0">未单独设材料的零件将使用此值</span>
             </div>
           </div>
 
@@ -350,10 +340,12 @@ export default function QuotePartsPage() {
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 text-amber-600 font-semibold text-sm">
-                            <AlertCircle size={14} /> 缺少材料，无法报价
+                            <AlertCircle size={14} /> 未设材料
                           </span>
                         )}
-                        {(p.material_grade || currentMaterial) && <span className="text-slate-400 truncate ml-2 text-xs">{p.material_grade || currentMaterial}</span>}
+                        {p.material_grade ? <span className="text-slate-500 truncate ml-2 text-xs">材质: {p.material_grade}</span>
+                          : currentMaterial ? <span className="text-slate-400 truncate ml-2 text-xs">材质: {currentMaterial} (批量)</span>
+                          : <span className="text-amber-400 truncate ml-2 text-xs">材质: 未设</span>}
                       </div>
                     </>
                   )}
