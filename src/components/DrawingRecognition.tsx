@@ -809,6 +809,14 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                   {recogResult.num_cavities != null && <div>模腔数: <b>{recogResult.num_cavities}</b></div>}
                 </>
               )}
+              {/* 型材但后端没返回截面尺寸：必须显式告知，否则报价页一片空白、用户不知为何算不出价 */}
+              {!(recogResult._isSheetMetal || recogResult.is_sheet_metal) &&
+                recogResult.crossSectionArea == null && recogResult.width == null && (
+                <div className="col-span-2 mt-0.5 rounded px-1.5 py-1 text-xs text-amber-800 bg-amber-100 border border-amber-200">
+                  ⚠️ 已判定为<b>型材</b>，但未能提取截面尺寸（宽 / 高 / 外周长 / 截面积）。
+                  进入报价页后请手动填写；填了截面积会自动算出米重。
+                </div>
+              )}
               {isAssembly && recogResult._quantity > 1 && <div>数量: <b>{recogResult._quantity}件</b></div>}
               {recogResult.material_grade ? <div className="col-span-2">材质: <b>{recogResult.material_grade}</b></div> : <div className="col-span-2 text-amber-600">材质: 无法识别，请手动选择</div>}
               {recogResult.surface_treatment ? <div className="col-span-2">表面处理: <b>{recogResult.surface_treatment}</b></div> : <div className="col-span-2 text-amber-600">表面处理: 无法识别，请手动选择</div>}
