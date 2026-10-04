@@ -141,12 +141,20 @@ export default function QuotePage() {
           '不锈钢': { cat: '不锈钢', grade: '304' },
         };
         const matInfo = matMap[rawMat] || { cat: '铝板', grade: rawMat };
+        // 产品大类：决定下面取值用哪套字段。
+        // 型材【不能】兜底到板材的 unfold_* 字段 —— 否则会把「展开宽」当成「截面宽」显示，
+        // 这种错值看起来像个正常数字，用户不会察觉（宁可留空，也不要填一个错值）。
+        const isSheetPart = part.is_sheet_metal === true || part._isSheetMetal === true
+                            || part.product_type === 'sheet_metal';
         const mappedData: any = {
           ...part,
           wallThickness: part.thickness_mm || part.sheet_thickness || part.wall_thickness,
-          length: part.length || part.extrusion_length_mm || part.unfold_length_mm || part.unfold_length || part.sheet_length,
-          width: part.width || part.section_width_mm || part.unfold_width_mm || part.unfold_width || part.sheet_width,
-          height: part.height || part.section_height_mm || undefined,
+          // 板材取展开尺寸；型材取挤出长度 / 截面尺寸
+          length: part.length || part.extrusion_length_mm
+            || (isSheetPart ? (part.unfold_length_mm || part.unfold_length || part.sheet_length) : undefined),
+          width: part.width || part.section_width_mm
+            || (isSheetPart ? (part.unfold_width_mm || part.unfold_width || part.sheet_width) : undefined),
+          height: part.height || (isSheetPart ? undefined : part.section_height_mm),
           quantity: part.quantity || part._quantity,
           holes: part.unfold_hole_count || '',  // P0-2: 没有值时留空，不填 0
           outer_perimeter: part.unfold_perimeter_mm || '',
@@ -155,8 +163,12 @@ export default function QuotePage() {
           product_code: part.product_code || part.part_number || fileNameNoExt || '',
           productName: part._partName || part.product_name || part.part_name || fileNameNoExt || '',
           productCode: part.product_code || part.part_number || fileNameNoExt || '',
-          productType: part.product_type === 'sheet_metal' || part.is_sheet_metal ? '板材'
-            : part.process_type === 'extrusion' || part.die_type || part.perimeter ? '挤出'
+          // 型材判定要同时认 'extrusion' 与 'aluminum_extrusion'（后端两种写法都出现过），
+          // 另用截面类字段兜底，避免因命名不一致而误判成「板材」
+          productType: isSheetPart ? '板材'
+            : (part.process_type === 'extrusion' || part.process_type === 'aluminum_extrusion'
+               || part.die_type || part.perimeter || part.extrusion_length_mm
+               || part.section_area_mm2) ? '挤出'
             : (part.product_type || undefined),
           materialCategory: matInfo.cat,   // 传递给 QuoteForm 的材料大类
           materialGrade: matInfo.grade,    // 传递给 QuoteForm 的具体牌号
