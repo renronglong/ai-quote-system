@@ -110,6 +110,11 @@ function buildRecogDataFromParse(parseJson: any, productType: string, source: st
     quantity: parseJson.quantity || 1,
     bend_count: parseJson.bend_count || 0,
     punch_holes_total: parseJson.punch_holes_total || 0,
+    // 板材下料三件套：后端已算好，这里只做透传（不参与任何计算）
+    // 缺失时置 null 而非 0，避免报价页把「没有值」显示成 0
+    unfold_hole_count: parseJson.unfold_hole_count ?? null,
+    unfold_perimeter_mm: parseJson.unfold_perimeter_mm ?? null,
+    cut_total_path_mm: parseJson.cut_total_path_mm ?? null,
     notes: `${source}${fileName ? ': ' + fileName : ''}${isSheet ? ` | 钣金折弯件 ${parseJson.unfold_size || ''} ${parseJson.bend_angle_deg || 90}°/R${parseJson.bend_radius_mm || ''}` : ''} | ⚠️仅用于报价估算，不可作为开模依据`,
     _fileName: fileName,
     _partId: parseJson.part_id || parseJson.part_number || '',
@@ -788,7 +793,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                   {(recogResult.sheet_thickness || recogResult.wall_thickness) != null && <div>板厚: <b>{(recogResult.sheet_thickness || recogResult.wall_thickness)}mm</b></div>}
                   {recogResult.bend_angle != null && <div>折弯角: <b>{recogResult.bend_angle}°</b></div>}
                   {recogResult.bend_radius != null && <div>折弯R: <b>R{recogResult.bend_radius}</b></div>}
-                  {(recogResult.all_holes_total || recogResult.cnc_total_holes) != null && <div>孔数: <b>{recogResult.all_holes_total || recogResult.cnc_total_holes}个</b></div>}
+                  {(recogResult.unfold_hole_count ?? recogResult.all_holes_total ?? recogResult.cnc_total_holes) != null && <div>孔数: <b>{recogResult.unfold_hole_count ?? recogResult.all_holes_total ?? recogResult.cnc_total_holes}个</b></div>}
                   <div className="col-span-2 text-blue-600 font-medium">📐 钣金折弯件（无需挤压模具）</div>
                 </>
               ) : (

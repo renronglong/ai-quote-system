@@ -144,9 +144,12 @@ interface SavedQuotesPanelProps {
   trigger?: React.ReactNode;
   onOpenChange?: (open: boolean) => void;
   onEditQuote?: (quote: SavedQuote) => void;
+  /** drawer = 右侧抽屉（默认）；inline = 直接铺开渲染，供「我的报价」独立页面使用 */
+  variant?: 'drawer' | 'inline';
 }
 
-export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, onEditQuote }: SavedQuotesPanelProps) {
+export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, onEditQuote, variant = 'drawer' }: SavedQuotesPanelProps) {
+  const isInline = variant === 'inline';
   const [open, setOpen] = useState(false);
   const [quotes, setQuotes] = useState<SavedQuote[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -170,12 +173,12 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
     setLoading(false);
   };
 
-  // 加载报价历史
+  // 加载报价历史（抽屉模式在打开时加载；独立页面模式进入即加载）
   useEffect(() => {
-    if (open && userId) {
+    if ((isInline || open) && userId) {
       reload();
     }
-  }, [open, userId]);
+  }, [open, userId, isInline]);
 
   // 加载供方资料（不依赖对话框是否打开，确保随时可用）
   useEffect(() => {
@@ -385,25 +388,10 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
     return { unitPrice: fmt(orig), isDiscounted: false };
   };
 
-  return (
-    <Sheet open={open} onOpenChange={(o) => { setOpen(o); onOpenChange?.(o); }}>
-      <SheetTrigger asChild>
-        {trigger || (
-          <Button variant="outline" size="sm" className="gap-1.5">
-            <History className="w-4 h-4" />
-            已保存报价
-          </Button>
-        )}
-      </SheetTrigger>
-      <SheetContent side="right" className="w-full sm:max-w-[520px] flex flex-col">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <History className="w-5 h-5 text-blue-600" />
-            已保存报价（{quotes.length}）
-          </SheetTitle>
-        </SheetHeader>
-
-        <div className="flex-1 overflow-y-auto pr-2 space-y-2 mt-4">
+  // 列表主体：抽屉与独立页面共用同一份实现，保证两处功能与行为完全一致
+  const listBody = (
+    <>
+      <div className={isInline ? 'space-y-2 mt-4' : 'flex-1 overflow-y-auto pr-2 space-y-2 mt-4'}>
           {loading && (
             <div className="text-center py-4 text-sm text-gray-400">加载中...</div>
           )}
@@ -599,6 +587,41 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
             </DialogContent>
           </Dialog>
         </div>
+    </>
+  );
+
+  // 独立页面模式：「我的报价」页面直接用这一支
+  if (isInline) {
+    return (
+      <div className="flex flex-col">
+        <div className="flex items-center gap-2 text-xl font-bold text-gray-900">
+          <History className="w-5 h-5 text-blue-600" />
+          我的报价（{quotes.length}）
+        </div>
+        {listBody}
+      </div>
+    );
+  }
+
+  // 默认：右侧抽屉模式
+  return (
+    <Sheet open={open} onOpenChange={(o) => { setOpen(o); onOpenChange?.(o); }}>
+      <SheetTrigger asChild>
+        {trigger || (
+          <Button variant="outline" size="sm" className="gap-1.5">
+            <History className="w-4 h-4" />
+            已保存报价
+          </Button>
+        )}
+      </SheetTrigger>
+      <SheetContent side="right" className="w-full sm:max-w-[520px] flex flex-col">
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
+            <History className="w-5 h-5 text-blue-600" />
+            已保存报价（{quotes.length}）
+          </SheetTitle>
+        </SheetHeader>
+        {listBody}
       </SheetContent>
     </Sheet>
   );

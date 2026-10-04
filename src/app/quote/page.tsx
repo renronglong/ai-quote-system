@@ -25,7 +25,7 @@ import {
   X,
   ArrowLeft,
 } from 'lucide-react';
-import SavedQuotesPanel, { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
+import { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
 import QuoteSheetDialog from '@/components/QuoteSheetDialog';
 import TopNavLinks from '@/components/TopNav';
 import ChatPanel from '@/components/ChatPanel';
@@ -95,6 +95,22 @@ export default function QuotePage() {
   const sectionResultRef = useRef<HTMLDivElement>(null);
   // 标记是否已从sessionStorage预填过零件参数，避免formNonce触发重挂载时再次回填
   const partsPrefillConsumedRef = useRef(false);
+
+  // 从「我的报价」页点「编辑」跳转过来时，取出暂存的报价并回填
+  // 放在零件预填逻辑之前：编辑态优先，读到后清掉零件预填键，避免两者互相覆盖
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('ai_quote_edit_quote');
+      if (raw) {
+        sessionStorage.removeItem('ai_quote_edit_quote');
+        sessionStorage.removeItem('ai_quote_selected_part');
+        sessionStorage.removeItem('ai_quote_selected_idx');
+        setEditQuoteData(JSON.parse(raw));
+      }
+    } catch (e) {
+      console.error('读取待编辑报价失败:', e);
+    }
+  }, []);
 
   // 从零件列表页跳转过来时，读取sessionStorage中的预填零件参数
   // F5 刷新后也要读，所以不依赖 from=parts 参数
@@ -417,19 +433,7 @@ export default function QuotePage() {
             </div>
 
             <div className="flex items-center gap-2 ml-auto flex-wrap">
-              {user && (
-                <SavedQuotesPanel
-                  userId={user.id}
-                  user={user}
-                  onEditQuote={handleEditQuote}
-                  trigger={
-                    <button className="hidden sm:flex items-center gap-1 px-2 py-1 text-sm rounded-md bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors">
-                      <History className="w-3.5 h-3.5" />
-                      已保存
-                    </button>
-                  }
-                />
-              )}
+              {/* 「已保存」抽屉入口已合并到「我的报价」页（/history），此处不再重复挂载 */}
               <button onClick={() => router.push('/supplier')} className="hidden sm:flex items-center gap-1 px-2 py-1 text-sm rounded-md bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 transition-colors">
                 <Store className="w-3.5 h-3.5" />
                 供应商
