@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Upload, FileText, Folder, Clipboard, X, Loader2, AlertTriangle, User, CheckCircle2, Share2, Package } from 'lucide-react';
+import { Upload, FileText, X, Loader2, AlertTriangle, User, CheckCircle2, Share2, Package } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { PRODUCT_TYPES } from './QuoteForm';
 
@@ -14,9 +14,6 @@ interface DrawingRecognitionProps {
     recogProducts?: Record<string, any>[];
     isAssembly?: boolean;
     fileName?: string;
-    material?: string;
-    fromCheckDialog?: boolean;
-    skipCheckDialogValidation?: boolean;
   }) => void;
   user: any;
   aiData?: any;
@@ -109,10 +106,6 @@ function buildRecogDataFromParse(parseJson: any, productType: string, source: st
     cnc_total_holes: parseJson.cnc_total_holes || 0,
     all_holes: parseJson.all_holes || null,
     all_holes_total: parseJson.all_holes_total || 0,
-    unfold_hole_count: parseJson.unfold_hole_count ?? null,
-    unfold_perimeter_mm: parseJson.unfold_perimeter_mm ?? null,
-    cut_total_path_mm: parseJson.cut_total_path_mm ?? null,
-    holes_perimeter_mm: parseJson.holes_perimeter_mm ?? null,
     machining_time_min: parseJson.machining_time_min || null,
     quantity: parseJson.quantity || 1,
     bend_count: parseJson.bend_count || 0,
@@ -153,20 +146,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
   const [isAssembly, setIsAssembly] = useState(false);
   const [copiedInvite, setCopiedInvite] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const fileManagerInputRef = useRef<HTMLInputElement>(null);
   const [productType, setProductType] = useState('挤出');
-  const [selectedMaterial, setSelectedMaterial] = useState(() => {
-    // 不继承旧值，每次进入识别页从空开始
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('user_default_material');
-    }
-    return '';
-  });
-  const MATERIAL_OPTIONS = ['6063', '6061', '5052', '6060', '铝（未指定）', '钢', '不锈钢'];
-  const handleMaterialChange = (val: string) => {
-    setSelectedMaterial(val);
-    if (val) localStorage.setItem('user_default_material', val);
-  };
 
   // ===== Helper =====
   const isValidFile = (file: File): boolean => {
@@ -250,22 +230,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         if (checkResp.ok) {
           const checkData = await checkResp.json();
           if (checkData.success && checkData.questions && checkData.questions.length > 0) {
-            // 去掉材质/牌号的硬默认值，避免用户误以为已选好
-            const questions = checkData.questions.map((q: any) => {
-              if (q.field === 'material_grade' || q.field === 'material' || q.question?.includes('材质') || q.question?.includes('牌号')) {
-                return { ...q, default: '' };
-              }
-              if (q.field === 'surface_treatment' || q.question?.includes('表面处理')) {
-                return { ...q, default: '' };
-              }
-              return q;
-            });
-            // 过滤掉板材件不需要的挤压件参数（如"每根型材长度"）
-            const filtered = questions.filter((q: any) => {
-              if (q.field === 'length_mm' || q.question?.includes('型材长度') || q.question?.includes('每根')) return false;
-              return true;
-            });
-            setCheckQuestions(filtered);
+            setCheckQuestions(checkData.questions);
             setCheckAnswers({});
             setShowCheckDialog(true);
           }
@@ -464,7 +429,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         setIsAssembly(allProducts.length > 1 || allProducts.some(p => p.is_assembly));
         checkQuota();
         setRecognizing(false);
-        onDrawingData({ recogData: allProducts[0], recogProducts: allProducts, isAssembly: allProducts.length > 1, fileName: file.name, recognitionId: "zip_" + Date.now(), material: selectedMaterial });
+        onDrawingData({ recogData: allProducts[0], recogProducts: allProducts, isAssembly: allProducts.length > 1, fileName: file.name, recognitionId: "zip_" + Date.now() });
         return;
       }
 
@@ -487,7 +452,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
           // 装配体：构建零件列表
           setIsAssembly(true);
           const parts: Record<string, any>[] = cadJson.parts.map((part: PartInfo) =>
-            buildRecogDataFromParse(part, productType, '装配体零件', file.name)
+            buildRecogDataFromParse(part, productType, '装配体零件')
           );
           setRecogProducts(parts);
           setSelectedProductIdx(0);
@@ -495,19 +460,19 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
           checkQuota();
           setStatusMessage(null);
           setRecognizing(false);
-          onDrawingData({ recogData: parts[0], recogProducts: parts, isAssembly: true, fileName: file.name, recognitionId: "asm_" + Date.now(), material: selectedMaterial });
+          onDrawingData({ recogData: parts[0], recogProducts: parts, isAssembly: true, fileName: file.name, recognitionId: "asm_" + Date.now() });
           launchCheckAsync(file);
           return;
         }
 
         // 单件模式
-        const recogData = buildRecogDataFromParse(cadJson, productType, '3D 模型解析', file.name);
+        const recogData = buildRecogDataFromParse(cadJson, productType, '3D 模型解析');
         setRecogResult(recogData);
         checkQuota();
         setStatusMessage(null);
         setRecognizing(false);
         const recognitionId = "cad_" + Date.now();
-        onDrawingData({ recogData, recogProducts: [recogData], isAssembly: false, fileName: file.name, recognitionId, material: selectedMaterial });
+        onDrawingData({ recogData, recogProducts: [recogData], isAssembly: false, fileName: file.name, recognitionId });
         launchCheckAsync(file);
         return;
       }
@@ -593,7 +558,6 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
     setUploadedFile(null);
     resetRecognitionState();
     if (fileInputRef.current) fileInputRef.current.value = '';
-    if (fileManagerInputRef.current) fileManagerInputRef.current.value = '';
   };
 
   // ==================== Paste Support ====================
@@ -685,13 +649,6 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
             onChange={handleFileSelect}
             className="hidden"
           />
-          <input
-            ref={fileManagerInputRef}
-            type="file"
-            accept="*/*"
-            onChange={handleFileSelect}
-            className="hidden"
-          />
           {uploadedFile ? (
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-left">
@@ -713,46 +670,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
             <div>
               <Upload className={`w-6 h-6 mx-auto mb-1.5 ${dragOver ? 'text-blue-500' : 'text-slate-600'}`} />
               <p className="text-sm text-slate-600">拖拽文件到此处，或<span className="text-blue-500 font-medium">点击上传</span></p>
-              <p className="text-xs text-slate-600 mt-1.5">支持 PDF、JPG、PNG、DXF、DWG、STP、STEP、IGS、X_T、ZIP 等</p>
-              <div className="flex items-center justify-center gap-3 mt-2">
-                <button
-                  type="button"
-                  onClick={e => { e.stopPropagation(); fileManagerInputRef.current?.click(); }}
-                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-                >
-                  <Folder className="w-3.5 h-3.5" /> 从文件管理选择
-                </button>
-                <button
-                  type="button"
-                  onClick={e => {
-                    e.stopPropagation();
-                    const ta = document.createElement('textarea');
-                    ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0';
-                    ta.onpaste = (ev) => {
-                      const items = (ev.clipboardData as DataTransfer)?.items;
-                      if (!items) return;
-                      for (const item of items) {
-                        if (item.type.startsWith('image/')) {
-                          const file = item.getAsFile();
-                          if (file) {
-                            const namedFile = new File([file], `pasted_${Date.now()}.png`, { type: file.type });
-                            handleFileSelect({ target: { files: [namedFile] } } as any);
-                          }
-                          break;
-                        }
-                      }
-                      ta.remove();
-                    };
-                    document.body.appendChild(ta);
-                    ta.focus();
-                    // On mobile, the system paste menu appears after focus
-                    setTimeout(() => { if (ta.parentNode) ta.remove(); }, 5000);
-                  }}
-                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors"
-                >
-                  <Clipboard className="w-3.5 h-3.5" /> 粘贴
-                </button>
-              </div>
+              <p className="text-xs text-slate-600 mt-1">支持 PDF、JPG、PNG、DXF、DWG、STP、STEP、IGS、X_T、ZIP、RAR、7Z 等，也可 Ctrl+V 粘贴图片</p>
             </div>
           )}
         </div>
@@ -763,23 +681,6 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
           onChange={e => setFileRemark(e.target.value)}
           className="w-full mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
         />
-        {/* 材质选择：仅在识别完成后显示（API分析之后才需要选材质） */}
-        {recogResult && !recognizing && (
-        <div className="mt-2">
-          <label className="block text-sm font-semibold text-slate-600 mb-1">材质选择 <span className="text-red-500">*</span></label>
-          <select
-            value={selectedMaterial}
-            onChange={e => handleMaterialChange(e.target.value)}
-            className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
-          >
-            <option value="" disabled>请选择材质</option>
-            {MATERIAL_OPTIONS.map(opt => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
-          <p className="text-xs text-slate-400 mt-1">材质决定剪切强度，直接影响冲裁力和报价</p>
-        </div>
-        )}
 
         {/* 识别中 + 进度提示 */}
         {(recognizing || statusMessage) && (
@@ -887,7 +788,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                   {(recogResult.sheet_thickness || recogResult.wall_thickness) != null && <div>板厚: <b>{(recogResult.sheet_thickness || recogResult.wall_thickness)}mm</b></div>}
                   {recogResult.bend_angle != null && <div>折弯角: <b>{recogResult.bend_angle}°</b></div>}
                   {recogResult.bend_radius != null && <div>折弯R: <b>R{recogResult.bend_radius}</b></div>}
-                  {(() => { const holeCount = recogResult.unfold_hole_count ?? recogResult.all_holes_total ?? recogResult.cnc_total_holes; return holeCount != null && holeCount > 0 ? <div>孔数: <b>{holeCount}个</b></div> : null; })()}
+                  {(recogResult.all_holes_total || recogResult.cnc_total_holes) != null && <div>孔数: <b>{recogResult.all_holes_total || recogResult.cnc_total_holes}个</b></div>}
                   <div className="col-span-2 text-blue-600 font-medium">📐 钣金折弯件（无需挤压模具）</div>
                 </>
               ) : (
@@ -961,9 +862,6 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                     setCheckAnswers(prev => ({ ...prev, [q.field]: e.target.value }));
                   }}
                 >
-                  {(q.field === 'material_grade' || q.field === 'material' || q.question?.includes('材质') || q.question?.includes('牌号')) && (
-                    <option value="" disabled>请选择材质</option>
-                  )}
                   {q.options?.map((opt: string) => (
                     <option key={opt} value={opt}>{opt}</option>
                   ))}
@@ -1042,7 +940,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                   mappedData.surface_treatment = stMap[answers.surface_treatment] || answers.surface_treatment;
                 }
                 if (answers.length_mm) mappedData.length = answers.length_mm;
-                onDrawingData({ recogData: mappedData, checkAnswers: answers, fromCheckDialog: true });
+                onDrawingData({ recogData: mappedData, checkAnswers: answers });
                 setShowCheckDialog(false);
                 setCheckQuestions([]);
               }}
@@ -1052,11 +950,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
             <button
               type="button"
               className="px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition"
-              onClick={() => {
-                setShowCheckDialog(false);
-                setCheckQuestions([]);
-                onDrawingData({ fromCheckDialog: true, recogData: {}, checkAnswers: {}, skipCheckDialogValidation: true });
-              }}
+              onClick={() => { setShowCheckDialog(false); setCheckQuestions([]); }}
             >
               跳过
             </button>
