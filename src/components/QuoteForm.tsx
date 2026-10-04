@@ -1922,11 +1922,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const mw = toNum(d.meter_weight); if (mw !== null) next.meterWeight = mw;
       const qty = toNum(d.quantity) ?? toNum(d._quantity); if (qty !== null) next.quantity = qty;
       const wt = toNum(d.wall_thickness) ?? toNum(d.thickness) ?? toNum(d.sheet_thickness) ?? toNum(d.thickness_mm); if (wt !== null) next.thickness = wt;
-      // 板材专用：展开尺寸 → length + width 独立字段（兼容 _mm 后缀）
-      const sheetL = toNum(d.unfold_length) ?? toNum(d.unfold_length_mm) ?? toNum(d.sheet_length);
-      const sheetW = toNum(d.unfold_width) ?? toNum(d.unfold_width_mm) ?? toNum(d.sheet_width);
-      if (sheetL !== null) next.length = sheetL;
-      if (sheetW !== null) next.width = sheetW;
+      // ⚠️ 这里是【型材】分支，绝不能读板材专用的 unfold_* 字段。
+      // 后端对个别型材会误填 unfold_width_mm / unfold_length_mm（曾实测 795），
+      // 若在此兜底，会把「展开宽」当成「截面宽」写进表单 —— 错值看起来像个正常数字，
+      // 用户不会察觉，会照着算出错误报价。型材的截面尺寸只认 section_*（即上文 d.width/d.height/d.length），
+      // 没有就留空，让用户自己补。
       // 标准件专属尺寸（前端 width/height 复用槽位：圆棒直径、六角对边、圆管外径→width；内径→height）
       const dAny = d as Record<string, unknown>;
       const num = (v: unknown) => toNum(v) ?? (toNum(v) !== null && (toNum(v) as number) > 0 ? toNum(v) : null);
