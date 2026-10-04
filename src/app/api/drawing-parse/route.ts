@@ -13,6 +13,28 @@ const FORMAT_ENDPOINTS: Record<string, string> = {
   '.pdf': '/api/parse/pdf',
 };
 
+/** 带重试的 fetch：跨国网络不稳定，失败自动重试最多 3 次 */
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit & { signal?: AbortSignal },
+  maxRetries = 3,
+): Promise<Response> {
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(url, init);
+      return res;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < maxRetries) {
+        // 指数退避：1s, 2s, 4s
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+      }
+    }
+  }
+  throw lastError!;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -29,18 +51,15 @@ export async function POST(request: NextRequest) {
     const proxyForm = new FormData();
 
     if (fileId) {
-      // 用 file_id 引用已解压的文件
       proxyForm.append("file_id", fileId);
-      // 根据文件名确定格式，或者从请求头传
       const fileName = decodeURIComponent(request.headers.get("x-file-name") || "file.stp");
       const ext = '.' + fileName.split('.').pop()?.toLowerCase();
       const endpoint = FORMAT_ENDPOINTS[ext] || "/api/parse/upload";
 
-      const response = await fetch(`${PARSER_API}${endpoint}`, {
-        method: "POST",
-        body: proxyForm,
-        signal: AbortSignal.timeout(120000),
-      });
+      const response = await fetchWithRetry(
+        `${PARSER_API}${endpoint}`,
+        { method: "POST", body: proxyForm, signal: AbortSignal.timeout(120000) },
+      );
 
       if (!response.ok) {
         const errText = await response.text();
@@ -62,11 +81,10 @@ export async function POST(request: NextRequest) {
     const ext = '.' + file!.name.split('.').pop()?.toLowerCase();
     const endpoint = FORMAT_ENDPOINTS[ext] || "/api/parse/upload";
 
-    const response = await fetch(`${PARSER_API}${endpoint}`, {
-      method: "POST",
-      body: proxyForm,
-      signal: AbortSignal.timeout(120000),
-    });
+    const response = await fetchWithRetry(
+      `${PARSER_API}${endpoint}`,
+      { method: "POST", body: proxyForm, signal: AbortSignal.timeout(120000) },
+    );
 
     if (!response.ok) {
       const errText = await response.text();
