@@ -283,6 +283,23 @@ export default function QuotePartsPage() {
             </div>
           )}
 
+          {/* 型材截面缺失提示：后端对部分型材会先走板材分支，之后不再提取截面，
+              section_* 全空 → 报价页一片空白、价格 ¥--。这里显式告知，避免用户以为是系统坏了 */}
+          {(() => {
+            const missing: any[] = (payload.products || []).filter((p: any) =>
+              !p._failed &&
+              !(p.is_sheet_metal === true || p._isSheetMetal === true || p.product_type === 'sheet_metal') &&
+              p.section_area_mm2 == null && p.crossSectionArea == null &&
+              p.section_width_mm == null && p.width == null);
+            if (missing.length === 0) return null;
+            return (
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+                ⚠️ 有 <b>{missing.length}</b> 个零件判定为<b>型材</b>，但未能提取截面尺寸（宽 / 高 / 外周长 / 截面积）。
+                进入报价页后请手动填写；填了截面积会自动算出米重。
+              </div>
+            );
+          })()}
+
           {/* 零件卡片列表 */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {payload.products.map((p, idx) => {
