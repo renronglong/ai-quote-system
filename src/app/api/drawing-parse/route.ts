@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 
-const PARSER_API = process.env.DRAWING_PARSER_URL || "http://129.204.40.114:8000";
+const PARSER_API = process.env.DRAWING_PARSER_URL || "http://api.gyparts.cn:8000";
 
 const FORMAT_ENDPOINTS: Record<string, string> = {
   '.stp': '/api/parse/stp',
@@ -27,7 +27,6 @@ async function fetchWithRetry(
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       if (attempt < maxRetries) {
-        // 指数退避：1s, 2s, 4s
         await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
       }
     }
