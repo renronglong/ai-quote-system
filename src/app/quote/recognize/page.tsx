@@ -21,44 +21,6 @@ export default function QuoteRecognizePage() {
 
   const handleDrawingData = useCallback((data: any) => {
     if (!data) return;
-    // 从CheckDialog来的更新：合并字段到已有识别数据，然后导航
-    if (data.fromCheckDialog) {
-      let existingParts: any = {};
-      let mergedCheckAnswers: any = {};
-      try {
-        const existingRecog = JSON.parse(sessionStorage.getItem('ai_quote_recog_result') || '{}');
-        existingParts = JSON.parse(sessionStorage.getItem('ai_quote_parts') || '{}');
-        const mergedRecogData = { ...(existingRecog.recogData || {}), ...(data.recogData || {}) };
-        mergedCheckAnswers = { ...(existingRecog.checkAnswers || {}), ...(data.checkAnswers || {}) };
-        const mergedRecog = { ...existingRecog, recogData: mergedRecogData, checkAnswers: mergedCheckAnswers };
-        sessionStorage.setItem('ai_quote_recog_result', JSON.stringify(mergedRecog));
-        if (existingParts.products && existingParts.products.length > 0) {
-          const updatedProducts = existingParts.products.map((p: any) => ({
-            ...p,
-            ...(data.recogData || {}),
-          }));
-          if (mergedCheckAnswers.material_grade) {
-            updatedProducts.forEach((p: any) => { p.material_grade = mergedCheckAnswers.material_grade; });
-          }
-          sessionStorage.setItem('ai_quote_parts', JSON.stringify({ ...existingParts, products: updatedProducts }));
-        }
-      } catch (e) { console.error('Failed to merge check dialog data:', e); }
-      setRecogData(data);
-      // 验证材质（"跳过"按钮 skipCheckDialogValidation=true 时跳过校验）
-      if (!data.skipCheckDialogValidation) {
-        const hasMaterial = existingParts?.material || mergedCheckAnswers?.material_grade || '';
-        if (!hasMaterial) {
-          alert('请先选择材质，材质决定剪切强度，直接影响冲裁力和报价准确性');
-          return;
-        }
-      }
-      // 导航到零件列表
-      if (!navigatedRef.current) {
-        navigatedRef.current = true;
-        setTimeout(() => router.push('/quote/parts'), 300);
-      }
-      return;
-    }
     setRecogData(data);
     // 构建零件列表：优先用recogProducts，否则用recogData单件
     const products: any[] = data.recogProducts && data.recogProducts.length > 0
@@ -71,18 +33,12 @@ export default function QuoteRecognizePage() {
         isAssembly,
         fileName: data.fileName || (data.recogData?._fileName) || '',
         recognitionId: data.recognitionId,
-        material: data.material || '',
         createdAt: Date.now(),
       };
       sessionStorage.setItem('ai_quote_parts', JSON.stringify(payload));
       sessionStorage.setItem('ai_quote_recog_result', JSON.stringify(data));
     } catch (e) {
       console.error('Failed to save recognition data:', e);
-    }
-    // Material validation: block if not selected
-    if (!data.material && products.length > 0) {
-      alert('请先选择材质，材质决定剪切强度，直接影响冲裁力和报价准确性');
-      return;
     }
     if (!navigatedRef.current && products.length > 0) {
       navigatedRef.current = true;
