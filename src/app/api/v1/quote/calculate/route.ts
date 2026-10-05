@@ -1246,6 +1246,8 @@ function calcSheetProcessingFee(
   volumeCm3: number,
   materialCategory: string,
   rules: PricingRules,
+  stampingTonnage?: string,
+  stampingCount?: number,
 ): { cost: number; tonnage: number; baseFee: number; sizeSurcharge: number; volumeSurcharge: number; formula: string; detail: string } {
   const { length_mm, width_mm } = dimensions;
   // 板材厚度优先使用 wall_thickness_mm，其次 height_mm
@@ -1264,23 +1266,37 @@ function calcSheetProcessingFee(
   const tonnage = (perimeter * t * shearStrength) / 1000; // 单位：kN → 换算为吨(近似)
   const tonnageT = tonnage / 10; // 简化换算
 
-  // 根据吨位选择费率（硬编码标准费率，避免远程配置键名不一致问题）
-  let baseFee = 0.3;
-  const rateEntries: [number, number][] = [
-    [35, 0.10],   // ≤35T
-    [45, 0.24],   // 45T
-    [60, 0.30],   // 60T
-    [80, 0.40],   // 80T
-    [110, 0.50],  // 110T
-    [160, 0.60],  // 160T
-    [200, 1.00],  // 200T
-    [400, 1.80],  // 250T双轴
-  ];
-  for (const [limit, rate] of rateEntries) {
-    if (tonnageT <= limit) { baseFee = rate as number; break; }
+  // 吨位档位单价（业主定案：吨位档由前端 9 档下拉选，单价表见 process_rates['冲压吨位费率']）
+  const tonnageRates: Record<string, number> = rules.process_rates?.['冲压吨位费率']?.rates || {};
+  let tierRate = 0;
+  let tierLabel = '';
+  if (stampingTonnage) {
+    const key = stampingTonnage.replace('<=', '≤');
+    if (tonnageRates[key] != null) { tierRate = Number(tonnageRates[key]); tierLabel = key; }
+  }
+  if (!(tierRate > 0)) {
+    // 兜底：前端未传吨位档时，按几何估算的吨位落档（硬编码标准费率，避免远程配置键名不一致）
+    const rateEntries: [number, number][] = [
+      [35, 0.10],   // ≤35T
+      [45, 0.24],   // 45T
+      [60, 0.30],   // 60T
+      [80, 0.40],   // 80T
+      [110, 0.50],  // 110T
+      [160, 0.60],  // 160T
+      [200, 1.00],  // 200T
+      [400, 1.80],  // 250T双轴
+    ];
+    tierRate = 0.30;
+    for (const [limit, rate] of rateEntries) {
+      if (tonnageT <= limit) { tierRate = rate as number; break; }
+    }
+    tierLabel = `估算${r2(tonnageT)}T`;
   }
 
-  // 尺寸附加费
+  // 工序数量：前端「冲压」工序的次数量（= 折弯道数，业主 2026-09-28 定案口径）
+  const ops = Math.max(1, Math.floor(stampingCount || 1));
+
+  // 尺寸附加费（保留：表面处理费公式会用 stampingSurcharge）
   const maxDim = Math.max(length_mm, width_mm);
   let sizeSurcharge = 0;
   if (maxDim > 100) {
@@ -1291,16 +1307,17 @@ function calcSheetProcessingFee(
   const volumeMm3 = volumeCm3 * 1000; // cm³ → mm³
   const volumeSurcharge = volumeMm3 * 0.00000003;
 
-  const processingCost = baseFee + sizeSurcharge + volumeSurcharge;
+  // 业主定案口径：冲压加工费 = 工序数量 × 吨位档位单价（只有这两个乘数）
+  const processingCost = tierRate * ops;
 
   return {
     cost: r2(processingCost),
     tonnage: r2(tonnageT),
-    baseFee: r2(baseFee),
+    baseFee: r2(tierRate),
     sizeSurcharge: r2(sizeSurcharge),
     volumeSurcharge: r2(volumeSurcharge),
-    formula: '冲压吨位基数 + 尺寸附加费 + 体积附加费',
-    detail: `吨位${r2(tonnageT)}T→基数${baseFee}元 + 尺寸附加${r2(sizeSurcharge)}元 + 体积附加${r2(volumeSurcharge)}元`,
+    formula: '工序数量 × 吨位档位单价',
+    detail: `工序${ops}次 × ${tierLabel}档单价${tierRate}元/次 = ${r2(processingCost)}元`,
   };
 }
 
@@ -1580,7 +1597,12 @@ function calcSheetMetal(
       sizeSurcharge: 0, volumeSurcharge: 0,
     };
   } else {
-    proc = calcSheetProcessingFee(dims, volumeCm3, req.material.category, rules);
+    // 冲压加工费 = 工序数量 × 吨位档位单价：吨位档取前端下拉，工序数取前端「冲压」工序次数量
+    proc = calcSheetProcessingFee(
+      dims, volumeCm3, req.material.category, rules,
+      req.process?.stamping_tonnage,
+      req.process?.stamping_count,
+    );
   }
   breakdown['processing'] = { formula: proc.formula, detail: proc.detail };
 
