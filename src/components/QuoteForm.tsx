@@ -2207,6 +2207,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                       <input
                         type="number"
                         min={0}
+                        aria-label={getFieldLabel(productType, fieldKey)}
                         value={(fields[fieldKey] as number | string) ?? ''}
                         onChange={e => {
                             const val = parseFloat(e.target.value) || 0;
@@ -2247,6 +2248,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   <input
                     type="number"
                     min={0}
+                    aria-label={getFieldLabel(productType, fieldKey)}
                     value={(fields[fieldKey] as number | string) ?? ''}
                     onChange={e => {
                         const raw = e.target.value;
