@@ -268,7 +268,6 @@ export default function QuotePage() {
       surface_treatment_cost: pricingResult.surface_treatment_cost,
       packaging_cost: pricingResult.packaging_cost,
       transport_cost: pricingResult.transport_cost,
-      management_fee: pricingResult.management_fee,
       unit_price: manualUnitPrice ?? pricingResult.unit_price,
       total_price: pricingResult.total_price,
       weight_per_piece_kg: pricingResult.weight_per_piece_kg,
@@ -338,7 +337,6 @@ export default function QuotePage() {
       surface_treatment_cost: pricingResult.surface_treatment_cost,
       packaging_cost: pricingResult.packaging_cost,
       transport_cost: pricingResult.transport_cost,
-      management_fee: pricingResult.management_fee,
       unit_price: manualUnitPrice ?? pricingResult.unit_price,
       total_price: pricingResult.total_price,
       weight_per_piece_kg: pricingResult.weight_per_piece_kg,
@@ -950,7 +948,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
   const p = pricingResult || {
     material_cost: 0, processing_cost: 0, surface_treatment_cost: 0,
     secondary_operations_cost: 0, packaging_cost: 0, transport_cost: 0,
-    management_fee: 0, unit_price: 0, unit_price_ex_tax: 0, unit_price_in_tax: 0, total_price: 0, weight_per_piece_kg: 0,
+    unit_price: 0, unit_price_ex_tax: 0, unit_price_in_tax: 0, total_price: 0, weight_per_piece_kg: 0,
     material_utilization_rate: undefined as number | undefined,
     breakdown: {} as Record<string, { formula: string; detail: string }>,
     aluminum_index: 0, notes: [] as string[], mold_cost: 0, mold_spec: '' as string | undefined,
@@ -967,12 +965,11 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
 
   const breakdownItems = [
     { label: '材料费', value: p.material_cost, key: 'material_cost' },
-    { label: '加工费', value: p.processing_cost || 0, key: 'processing_cost' },
-    { label: '二次工序费', value: p.secondary_operations_cost || 0, key: 'secondary_operations_cost' },
+    // 加工费 = 基础加工费 + 二次工序费（合并为单行，避免重复列出）
+    { label: '加工费', value: (p.processing_cost || 0) + (p.secondary_operations_cost || 0), key: 'processing_cost' },
     { label: '表面处理费', value: p.surface_treatment_cost, key: 'surface_treatment_cost' },
     { label: '包装费', value: p.packaging_cost, key: 'packaging_cost' },
     { label: '运输费', value: p.transport_cost, key: 'transport_cost' },
-    { label: '管理费', value: p.management_fee, key: 'management_fee' },
   ];
 
   return (

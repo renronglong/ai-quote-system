@@ -47,7 +47,6 @@ export interface PricingResult {
   secondary_operations_cost: number;
   packaging_cost: number;
   transport_cost: number;
-  management_fee: number;
   unit_price: number;
   unit_price_ex_tax?: number;
   unit_price_in_tax?: number;
@@ -1629,8 +1628,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const processingCost = cutCount > 0 ? cutCount * qty * 0.5 : 0;
 
       const subtotal = materialCost + processingCost;
-      const mgmtFee = subtotal * 0.13;
-      const unitPrice = Math.round((subtotal + mgmtFee) * 100) / 100;
+      const unitPrice = Math.round(subtotal * 100) / 100;
       const totalPrice = Math.round(unitPrice * qty * 100) / 100;
 
       onResult?.({
@@ -1641,7 +1639,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         secondary_operations_cost: 0,
         packaging_cost: 0,
         transport_cost: 0,
-        management_fee: Math.round(mgmtFee * 100) / 100,
         unit_price: unitPrice,
         unit_price_ex_tax: unitPrice,
         unit_price_in_tax: Math.round(unitPrice * 1.13 * 100) / 100,
@@ -1650,7 +1647,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         breakdown: {
           material: { formula: `${weightPerPiece.toFixed(2)}kg×${pricePerTon}元/吨×${qty}件`, detail: `材料费: ${grade} ${pricePerTon}元/吨 × ${weightPerPiece.toFixed(2)}kg/件 × ${qty}件 = ${Math.round(materialCost)}元` },
           ...(cutCount > 0 ? { processing: { formula: `${cutCount}刀×${qty}件×0.5元`, detail: `锯切: ${cutCount}×${qty}×0.5 = ${processingCost}元` } } : {}),
-          management: { formula: `管理费13%`, detail: `管理费: (${Math.round(materialCost)}+${processingCost})×13% = ${Math.round(mgmtFee)}元` },
         },
         aluminum_index: 0,
         notes: [`${grade}圆钢参考价 ${pricePerTon}元/吨（2026-09-10 上海）`, '加工费率待确认，当前仅含材料费+锯切'],
@@ -1722,7 +1718,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             secondary_operations_cost: data.secondary_operations_cost || 0,
             packaging_cost: data.packaging_cost || 0,
             transport_cost: data.transport_cost || 0,
-            management_fee: data.management_fee || 0,
             unit_price: data.unit_price_ex_tax || data.unit_price || 0,
             unit_price_ex_tax: data.unit_price_ex_tax || data.unit_price || 0,
             unit_price_in_tax: data.unit_price_in_tax || 0,

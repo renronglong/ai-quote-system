@@ -118,10 +118,12 @@ async function generateExcel(quotes: ExportQuote[], sections: Set<string>) {
       const items: [string,string][] = [
         ['材料费','material_cost'],['加工费','processing_cost'],
         ['表面处理费','surface_treatment_cost'],['包装费','packaging_cost'],
-        ['运输费','transport_cost'],['管理费','management_fee'],
+        ['运输费','transport_cost'],
       ];
       for (const [label, key] of items) {
-        const val = (result as any)[key];
+        const val = key === 'processing_cost'
+          ? ((result as any).processing_cost || 0) + ((result as any).secondary_operations_cost || 0)
+          : (result as any)[key];
         const detail = (result.breakdown || {})[key]?.formula || '';
         ws.getCell(r, 1).value = label; ws.getCell(r, 1).font = lblFont;
         ws.getCell(r, 2).value = fmt(val); ws.getCell(r, 2).font = valFont;
@@ -298,10 +300,10 @@ function generateHTML(quotes: ExportQuote[], sections: Set<string>): string {
     if (sections.has('cost_breakdown')) {
       const items: [string,string][] = [
         ['材料费','material_cost'],['加工费','processing_cost'],['表面处理费','surface_treatment_cost'],
-        ['包装费','packaging_cost'],['运输费','transport_cost'],['管理费','management_fee'],
+        ['包装费','packaging_cost'],['运输费','transport_cost'],
       ];
       let rows = items.map(([l,k])=>{
-        const v=(result as any)[k]; const d=(result.breakdown||{})[k]?.formula||'';
+        const v = k === 'processing_cost' ? ((result as any).processing_cost||0)+((result as any).secondary_operations_cost||0) : (result as any)[k]; const d=(result.breakdown||{})[k]?.formula||'';
         return `<tr><td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;">${l}</td><td style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e7eb;font-weight:500;">${fmt(v)}</td><td style="padding:6px 8px;font-size:11px;color:#9ca3af;border-bottom:1px solid #e5e7eb;">${d}</td></tr>`;
       }).join('');
 

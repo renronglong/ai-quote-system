@@ -2357,7 +2357,6 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
           let surfCost = extractCost('表面处理费', t);
           let packCost = extractCost('包装费', t);
           let shipCost = extractCost('运输费', t) || extractCost('运费', t);
-          let mgmtCost = extractCost('管理费', t);
           let unitPrice: number | null = null;
           let unitWeight: number | null = null;
 
@@ -2382,7 +2381,7 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
 
           // 如果没拿到合计单价，从各项费用累加
           if (unitPrice === null) {
-            const items = [matCost, procCost, surfCost, packCost, shipCost, mgmtCost].filter(v => v !== null) as number[];
+            const items = [matCost, procCost, surfCost, packCost, shipCost].filter(v => v !== null) as number[];
             if (items.length > 0) {
               unitPrice = Math.round(items.reduce((a, b) => a + b, 0) * 100) / 100;
             }
@@ -2397,7 +2396,7 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
               surfaceCost: surfCost ?? 0,
               packagingCost: packCost ?? 0,
               shippingCost: shipCost ?? 0,
-              managementFee: mgmtCost ?? 0,
+              managementFee: 0,
               unitPrice: unitPrice ?? 0,
             };
             console.log('[ChatPanel] 从Bot回复中解析到报价明细:', pricingResult);

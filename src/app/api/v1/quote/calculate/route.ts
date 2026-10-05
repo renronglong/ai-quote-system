@@ -1048,7 +1048,6 @@ function calcExtrusion(
   let surfaceCost = 0;
   let packagingCost = 0;
   let transportCost = 0;
-  let managementFee = 0;
   let profitFee = 0;
 
   // 冲压附加费（仅体积附加，与是否选冲压工序无关，仅用于表面处理费计算）
@@ -1172,7 +1171,6 @@ function calcExtrusion(
 
     profitFee = r2(accumulated * 0.05);
     accumulated += profitFee;
-    managementFee = 0;
     breakdown['management_profit'] = {
       formula: '合计 × 5%(利润)',
       detail: `利润: ${profitFee}元`,
@@ -1217,7 +1215,6 @@ function calcExtrusion(
       secondary_operations_cost: r2(totalSecondaryCost),
       packaging_cost: packagingCost,
       transport_cost: transportCost,
-      management_fee: r2(managementFee + profitFee),
       unit_price: unitPrice,
       unit_price_ex_tax: r2(preTaxPrice),
       unit_price_in_tax: unitPrice,
@@ -1668,7 +1665,6 @@ function calcSheetMetal(
       secondary_operations_cost: r2(secondaryCost),
       packaging_cost: packagingCost,
       transport_cost: transportCost,
-      management_fee: managementFee,
       unit_price: unitPrice,
       unit_price_ex_tax: r2(preTaxPrice),
       unit_price_in_tax: unitPrice,
@@ -1764,7 +1760,6 @@ function calcDieCasting(
       secondary_operations_cost: r2(secondaryCost),
       packaging_cost: packagingCost,
       transport_cost: transportCost,
-      management_fee: managementFee,
       unit_price: unitPrice,
       unit_price_ex_tax: r2(preTaxPrice),
       unit_price_in_tax: unitPrice,
@@ -1859,7 +1854,6 @@ function calcZincAlloy(
       secondary_operations_cost: r2(secondaryCost),
       packaging_cost: packagingCost,
       transport_cost: transportCost,
-      management_fee: managementFee,
       unit_price: unitPrice,
       unit_price_ex_tax: r2(preTaxPrice),
       unit_price_in_tax: unitPrice,
@@ -1956,7 +1950,6 @@ function calcInjection(
       secondary_operations_cost: r2(secondaryCost),
       packaging_cost: packagingCost,
       transport_cost: transportCost,
-      management_fee: managementFee,
       unit_price: unitPrice,
       unit_price_ex_tax: r2(preTaxPrice),
       unit_price_in_tax: unitPrice,
