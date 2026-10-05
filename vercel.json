@@ -6,5 +6,11 @@
     "src/app/api/drawing-parse/route.ts": {
       "maxDuration": 180
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/api/supplier-upload/:path*",
+      "destination": "http://129.204.40.114:8001/api/:path*"
+    }
+  ]
 }

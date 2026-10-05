@@ -44,6 +44,8 @@ import {
   X,
   Image as ImageIcon,
   Upload,
+  Sparkles,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface SupplierProfile {
@@ -80,6 +82,34 @@ interface SupplierProduct {
   updated_at: string;
 }
 
+/** AI 图纸解析返回的产品对象 */
+interface AiProduct {
+  product_id: string;
+  width: number | null;
+  height: number | null;
+  weight_per_meter: number | null;
+  outer_perimeter?: number | null;
+  inner_perimeter?: number | null;
+  cross_section_area?: number | null;
+  cross_section_image_base64?: string | null;
+  data_confidence?: string; // high / medium / low
+}
+
+// 供应商图纸上传服务：经 Vercel rewrite 代理到 http://129.204.40.114:8001/api/*
+// （vercel.json 中的 source 前缀，避免与现有 /api/supplier/* 路由冲突）
+const SUPPLIER_UPLOAD_API = '/api/supplier-upload';
+
+// base64 → 可渲染的图片地址（兼容已带 data: 前缀的情况）
+const toImageSrc = (b64?: string | null) => {
+  if (!b64) return '';
+  return b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`;
+};
+// 去掉 data URL 前缀，发布接口需要纯 base64
+const stripImagePrefix = (b64?: string | null) => {
+  if (!b64) return '';
+  return b64.includes(',') ? b64.split(',')[1] : b64;
+};
+
 const SURFACE_TREATMENTS = [
   '阳极氧化', '电泳涂装', '粉末喷涂', '氟碳喷涂',
   '木纹转印', '抛光', '拉丝', '喷砂',
@@ -114,6 +144,16 @@ function SupplierProductsContent() {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // ===== AI 上传图纸 =====
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
+  const [aiFile, setAiFile] = useState<File | null>(null);
+  const [aiParsing, setAiParsing] = useState(false);
+  const [aiPublishing, setAiPublishing] = useState(false);
+  const [aiProducts, setAiProducts] = useState<AiProduct[]>([]);
+  const [aiError, setAiError] = useState('');
+  const [aiSuccess, setAiSuccess] = useState('');
+  const [aiMeta, setAiMeta] = useState<{ original_file?: string; dxf_file?: string } | null>(null);
 
   // Handle image file (from upload or paste)
   const handleImageFile = useCallback((file: File) => {
@@ -295,6 +335,122 @@ function SupplierProductsContent() {
     }
   };
 
+  // ===== AI 上传图纸 =====
+  const openAiDialog = () => {
+    setAiFile(null);
+    setAiProducts([]);
+    setAiError('');
+    setAiSuccess('');
+    setAiMeta(null);
+    setAiDialogOpen(true);
+  };
+
+  const handleAiParse = async () => {
+    if (!aiFile) {
+      setAiError('请先选择 DWG 或 DXF 文件');
+      return;
+    }
+    setAiParsing(true);
+    setAiError('');
+    setAiSuccess('');
+    setAiProducts([]);
+    try {
+      const isDxf = /\.dxf$/i.test(aiFile.name);
+      const endpoint = isDxf
+        ? `${SUPPLIER_UPLOAD_API}/upload/parse-dxf`
+        : `${SUPPLIER_UPLOAD_API}/upload/dwg`;
+      const fd = new FormData();
+      fd.append('file', aiFile);
+      const res = await fetch(endpoint, { method: 'POST', body: fd });
+      const text = await res.text();
+      let json: any = null;
+      try { json = JSON.parse(text); } catch { /* 代理 502 等非 JSON 响应 */ }
+      if (!res.ok || !json) {
+        setAiError(
+          json?.error || json?.msg ||
+          `解析失败（HTTP ${res.status}${text && !json ? '：' + text.slice(0, 120) : ''}）`
+        );
+        return;
+      }
+      const list: AiProduct[] = Array.isArray(json.products) ? json.products : [];
+      if (list.length === 0) {
+        setAiError('未从图纸中识别到产品');
+        return;
+      }
+      setAiProducts(list.map((p) => ({ ...p, product_id: p.product_id || '' })));
+      setAiMeta({ original_file: json.original_file, dxf_file: json.dxf_file });
+    } catch (err: any) {
+      setAiError(err?.message || '网络错误，无法连接解析服务');
+    } finally {
+      setAiParsing(false);
+    }
+  };
+
+  const updateAiProduct = (index: number, key: keyof AiProduct, value: any) => {
+    setAiProducts((prev) => prev.map((p, i) => (i === index ? { ...p, [key]: value } : p)));
+  };
+
+  const removeAiProduct = (index: number) => {
+    setAiProducts((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleAiPublish = async () => {
+    if (aiProducts.length === 0) {
+      setAiError('没有可上传的产品');
+      return;
+    }
+    setAiPublishing(true);
+    setAiError('');
+    setAiSuccess('');
+    try {
+      const images: Record<string, string> = {};
+      aiProducts.forEach((p) => {
+        const b64 = stripImagePrefix(p.cross_section_image_base64);
+        if (p.product_id && b64) images[p.product_id] = b64;
+      });
+      const res = await fetch(`${SUPPLIER_UPLOAD_API}/upload/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          products: aiProducts,
+          supplier_id: profile?.id,
+          supplier_name: profile?.company_name,
+          images,
+        }),
+      });
+      const text = await res.text();
+      let json: any = null;
+      try { json = JSON.parse(text); } catch { /* 代理 502 等非 JSON 响应 */ }
+      if (!res.ok || !json) {
+        setAiError(
+          json?.error || json?.msg ||
+          `上传失败（HTTP ${res.status}${text && !json ? '：' + text.slice(0, 120) : ''}）`
+        );
+        return;
+      }
+      const n = json.success_count ?? json.count ?? json.uploaded ?? aiProducts.length;
+      setAiSuccess(`已成功上传 ${n} 个产品到供应商库`);
+      setAiProducts([]);
+      setAiFile(null);
+      if (profile) fetchProducts(profile.id);
+    } catch (err: any) {
+      setAiError(err?.message || '网络错误，无法连接上传服务');
+    } finally {
+      setAiPublishing(false);
+    }
+  };
+
+  const confidenceBadge = (level?: string) => {
+    const map: Record<string, { text: string; cls: string }> = {
+      high: { text: '● 高', cls: 'text-green-600' },
+      medium: { text: '● 中', cls: 'text-amber-500' },
+      low: { text: '● 低', cls: 'text-red-500' },
+    };
+    const m = level ? map[level] : undefined;
+    if (!m) return <span className="text-gray-300 text-xs">-</span>;
+    return <span className={`${m.cls} text-xs font-medium whitespace-nowrap`}>{m.text}</span>;
+  };
+
   if (authLoading || loading) {
     return (
       <AppLayout>
@@ -315,16 +471,20 @@ function SupplierProductsContent() {
             <p className="text-gray-500 text-sm mt-1">{profile?.company_name}</p>
           </div>
           <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={openAiDialog}>
+              <Sparkles className="w-4 h-4 mr-1" />
+              AI 上传图纸
+            </Button>
             <Button variant="outline" onClick={() => router.push('/supplier/products/page-batch')}>
               <Upload className="w-4 h-4 mr-1" />
               批量上传 Excel
             </Button>
             <Button onClick={openAddDialog}>
-            <Plus className="w-4 h-4 mr-1" />
-            新增产品
-          </Button>
-        </div>
+              <Plus className="w-4 h-4 mr-1" />
+              新增产品
+            </Button>
           </div>
+        </div>
 
         {/* 产品表格 */}
         <Card>
@@ -650,6 +810,178 @@ function SupplierProductsContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* AI 上传图纸弹窗 */}
+      <Dialog open={aiDialogOpen} onOpenChange={(o) => { if (!aiParsing && !aiPublishing) setAiDialogOpen(o); }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-blue-600" />
+              AI 上传图纸
+            </DialogTitle>
+            <DialogDescription>
+              上传 DWG/DXF 图纸，自动识别截面参数 → 预览确认 → 推送到供应商库
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {aiError && (
+              <div className="flex items-start gap-2 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span className="break-all">{aiError}</span>
+              </div>
+            )}
+            {aiSuccess && (
+              <div className="flex items-center gap-2 p-3 bg-green-50 text-green-700 rounded-lg text-sm">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                {aiSuccess}
+              </div>
+            )}
+
+            {/* 选择文件 + 解析 */}
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                type="file"
+                accept=".dwg,.dxf"
+                onChange={(e) => {
+                  setAiFile(e.target.files?.[0] || null);
+                  setAiProducts([]);
+                  setAiError('');
+                  setAiSuccess('');
+                }}
+                className="block text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+              />
+              <Button onClick={handleAiParse} disabled={aiParsing || !aiFile}>
+                {aiParsing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                    AI 解析中...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 mr-1" />
+                    上传并解析
+                  </>
+                )}
+              </Button>
+              {aiMeta?.original_file && (
+                <span className="text-xs text-gray-400">
+                  {aiMeta.original_file}{aiMeta.dxf_file ? ` → ${aiMeta.dxf_file}` : ''}
+                </span>
+              )}
+            </div>
+
+            {/* 解析结果预览 */}
+            {aiProducts.length > 0 && (
+              <>
+                <div className="text-sm text-gray-500">
+                  识别到 <b className="text-gray-800">{aiProducts.length}</b> 个产品，可编辑或移除后确认上传：
+                </div>
+                <div className="overflow-x-auto border rounded-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[150px]">编号</TableHead>
+                        <TableHead className="w-[80px]">宽(mm)</TableHead>
+                        <TableHead className="w-[80px]">高(mm)</TableHead>
+                        <TableHead className="w-[110px]">米重(kg/m)</TableHead>
+                        <TableHead className="w-[90px]">截面图</TableHead>
+                        <TableHead className="w-[70px]">置信度</TableHead>
+                        <TableHead className="w-[60px] text-right">操作</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {aiProducts.map((p, i) => (
+                        <TableRow key={i}>
+                          <TableCell>
+                            <Input
+                              className="h-8 text-xs"
+                              value={p.product_id || ''}
+                              onChange={(e) => updateAiProduct(i, 'product_id', e.target.value)}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              className="h-8 text-xs"
+                              type="number"
+                              value={p.width ?? ''}
+                              onChange={(e) => updateAiProduct(i, 'width', e.target.value === '' ? null : Number(e.target.value))}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              className="h-8 text-xs"
+                              type="number"
+                              value={p.height ?? ''}
+                              onChange={(e) => updateAiProduct(i, 'height', e.target.value === '' ? null : Number(e.target.value))}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              className="h-8 text-xs"
+                              type="number"
+                              value={p.weight_per_meter ?? ''}
+                              onChange={(e) => updateAiProduct(i, 'weight_per_meter', e.target.value === '' ? null : Number(e.target.value))}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            {p.cross_section_image_base64 ? (
+                              <img
+                                src={toImageSrc(p.cross_section_image_base64)}
+                                alt="截面图"
+                                className="w-10 h-10 object-contain border rounded bg-white cursor-pointer hover:ring-2 hover:ring-blue-400"
+                                onClick={() => setLightboxImage(toImageSrc(p.cross_section_image_base64))}
+                              />
+                            ) : (
+                              <span className="text-gray-300 text-xs">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>{confidenceBadge(p.data_confidence)}</TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:text-red-700"
+                              onClick={() => removeAiProduct(i)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAiDialogOpen(false)}
+              disabled={aiParsing || aiPublishing}
+            >
+              <X className="w-4 h-4 mr-1" />
+              取消
+            </Button>
+            <Button onClick={handleAiPublish} disabled={aiPublishing || aiProducts.length === 0}>
+              {aiPublishing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  上传中...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-1" />
+                  确认上传到供应商库
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* 图片预览弹窗 */}
       {lightboxImage && (
         <div
