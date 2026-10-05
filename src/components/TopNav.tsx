@@ -22,7 +22,7 @@ export default function TopNavLinks({ className = '' }: { className?: string }) 
           <Link
             key={item.href}
             href={item.href}
-            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+            className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
               active
                 ? 'text-blue-600 bg-blue-50'
                 : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'

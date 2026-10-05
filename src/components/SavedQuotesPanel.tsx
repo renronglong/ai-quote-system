@@ -164,6 +164,7 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
     const [exporting, setExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null); // 待确认删除的报价 id
 
   const reload = async () => {
     if (!userId) return;
@@ -404,7 +405,7 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
 
           {quotes.length > 0 && (
             <div className="flex items-center justify-between mb-2">
-              <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+              <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer py-2 -my-2">
                 <Checkbox
                   checked={quotes.length > 0 && selectedIds.size === quotes.length}
                   onCheckedChange={toggleSelectAll}
@@ -438,7 +439,7 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium text-gray-800 truncate">{quote.name}</span>
+                      <span className="text-sm font-medium text-gray-800 line-clamp-2 break-words">{quote.name}</span>
                       <div className="text-right shrink-0">
                         <span className="text-sm font-bold text-emerald-600">{unitPrice}</span>
                         {isDiscounted && (
@@ -465,19 +466,24 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
                       )}
                     </div>
                   </div>
-                  <button
-                    onClick={() => onEditQuote?.(quote)}
-                    className="p-1 text-gray-400 hover:text-blue-500 transition-colors shrink-0"
-                    title="编辑此报价"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(quote.id)}
-                    className="p-1 text-gray-400 hover:text-red-500 transition-colors shrink-0"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => onEditQuote?.(quote)}
+                      className="flex items-center justify-center h-11 w-11 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
+                      title="编辑此报价"
+                      aria-label="编辑此报价"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setDeleteTarget(quote.id)}
+                      className="flex items-center justify-center h-11 w-11 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                      title="删除此报价"
+                      aria-label="删除此报价"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -587,6 +593,37 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
             </DialogContent>
           </Dialog>
         </div>
+
+        {/* 删除确认弹窗（P1-2：不可逆操作二次确认） */}
+        <Dialog open={deleteTarget !== null} onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}>
+          <DialogContent className="sm:max-w-[380px]">
+            <DialogHeader>
+              <DialogTitle>确认删除报价？</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-gray-600 py-2">
+              此操作不可恢复，删除后该条报价将从「我的报价」中永久移除。
+            </p>
+            <div className="flex justify-end gap-2 mt-2">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="px-3 py-1.5 text-sm rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={async () => {
+                  if (deleteTarget) {
+                    await handleDelete(deleteTarget);
+                    setDeleteTarget(null);
+                  }
+                }}
+                className="px-3 py-1.5 text-sm rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors"
+              >
+                删除
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
     </>
   );
 

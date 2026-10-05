@@ -20,19 +20,19 @@ export default function Footer() {
           <div>
             <h3 className="text-white font-semibold mb-4">产品服务</h3>
             <ul className="space-y-2 text-sm">
-              <li><Link href="/quote" className="hover:text-white transition-colors">AI智能报价</Link></li>
-              <li><Link href="/suppliers" className="hover:text-white transition-colors">供应商产品库</Link></li>
-              <li><Link href="/market" className="hover:text-white transition-colors">铝价行情</Link></li>
-              <li><Link href="/supplier" className="hover:text-white transition-colors">供应商入驻</Link></li>
+              <li><Link href="/quote" className="inline-block py-1 hover:text-white transition-colors">AI智能报价</Link></li>
+              <li><Link href="/suppliers" className="inline-block py-1 hover:text-white transition-colors">供应商产品库</Link></li>
+              <li><Link href="/market" className="inline-block py-1 hover:text-white transition-colors">铝价行情</Link></li>
+              <li><Link href="/supplier" className="inline-block py-1 hover:text-white transition-colors">供应商入驻</Link></li>
             </ul>
           </div>
           <div>
             <h3 className="text-white font-semibold mb-4">帮助支持</h3>
             <ul className="space-y-2 text-sm">
-              <li><Link href="/contact" className="hover:text-white transition-colors">联系我们</Link></li>
-              <li><a href="#" className="hover:text-white transition-colors">使用指南</a></li>
-              <li><a href="#" className="hover:text-white transition-colors">常见问题</a></li>
-              <li><a href="#" className="hover:text-white transition-colors">隐私政策</a></li>
+              <li><Link href="/contact" className="inline-block py-1 hover:text-white transition-colors">联系我们</Link></li>
+              <li><a href="#" className="inline-block py-1 hover:text-white transition-colors">使用指南</a></li>
+              <li><a href="#" className="inline-block py-1 hover:text-white transition-colors">常见问题</a></li>
+              <li><a href="#" className="inline-block py-1 hover:text-white transition-colors">隐私政策</a></li>
             </ul>
           </div>
           <div>
@@ -58,7 +58,7 @@ export default function Footer() {
             © {new Date().getFullYear()} 碧利制造 gyparts.cn. All rights reserved.
           </p>
           <div className="flex items-center gap-4 text-sm text-gray-500">
-            <a href="#" className="hover:text-white transition-colors">粤ICP备XXXXXXXX号</a>
+            <a href="#" className="inline-block py-1 hover:text-white transition-colors">粤ICP备XXXXXXXX号</a>
           </div>
         </div>
       </div>

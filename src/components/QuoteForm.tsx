@@ -2315,14 +2315,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         </div>
 
         {/* ---- 模具组工具条：点「新建报价」=开一副新模具 ---- */}
-        <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-blue-50/70 border border-blue-100">
+        <div className="flex flex-col gap-2 px-3 py-2 rounded-xl bg-blue-50/70 border border-blue-100 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm text-blue-700 leading-snug">
             当前为<b>同一副模具</b>：改长度后点长度框旁的<b>＋</b>存入报价池，出单时模具费只算一次。
           </div>
           <button
             type="button"
             onClick={onNewQuote}
-            className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-blue-300 text-blue-700 text-sm font-semibold hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm"
+            className="shrink-0 flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-white border border-blue-300 text-blue-700 text-sm font-semibold hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm w-full sm:w-auto"
             title="清空表单，开始一副新模具的报价"
           >
             <span className="text-sm leading-none">＋</span> 新建报价
@@ -3064,6 +3064,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                             <input
                               type="number"
                               min={0}
+                              aria-label={param.label}
                               placeholder={param.label}
                               value={proc?.subParams?.[param.name] ?? ''}
                               onChange={e => updateSubParam('CNC加工', param.name, parseFloat(e.target.value) || '')}
@@ -3097,6 +3098,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                               <input
                                 type="number"
                                 min={0}
+                                aria-label={param.label}
                                 placeholder={param.label}
                                 value={proc?.subParams?.[param.name] ?? ''}
                                 onChange={e => updateSubParam('钻孔', param.name, parseFloat(e.target.value) || '')}
@@ -3131,6 +3133,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                               <input
                                 type="number"
                                 min={0}
+                                aria-label={param.label}
                                 placeholder={param.label}
                                 value={proc?.subParams?.[param.name] ?? ''}
                                 onChange={e => updateSubParam('攻牙', param.name, parseFloat(e.target.value) || '')}
@@ -3154,6 +3157,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                           <input
                             type="number"
                             min={0}
+                            aria-label="折弯道数"
                             placeholder="道数"
                             value={proc?.quantity ?? ''}
                             onChange={e => updateProcessQuantity('折弯', e.target.value)}
@@ -3178,6 +3182,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                           <input
                             type="number"
                             min={0}
+                            aria-label="冲压冲次"
                             placeholder="次数"
                             value={proc?.quantity ?? ''}
                             onChange={e => updateProcessQuantity('冲压', e.target.value)}
@@ -3201,6 +3206,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                               <input
                                 type="number"
                                 min={0}
+                                aria-label={param.label}
                                 placeholder={param.label}
                                 value={proc?.subParams?.[param.name] ?? ''}
                                 onChange={e => updateSubParam('冲压', param.name, parseFloat(e.target.value) || '')}
@@ -3226,6 +3232,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                             <input
                               type="number"
                               min={0}
+                              aria-label={param.label}
                               placeholder={param.label}
                               value={proc?.subParams?.[param.name] ?? ''}
                               onChange={e => updateSubParam('车加工', param.name, parseFloat(e.target.value) || '')}

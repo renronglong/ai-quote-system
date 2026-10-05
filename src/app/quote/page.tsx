@@ -87,6 +87,7 @@ export default function QuotePage() {
   const [formNonce, setFormNonce] = useState(0); // 新建报价时重挂载 QuoteForm 清空表单
   const [guideCollapsed, setGuideCollapsed] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [narrow, setNarrow] = useState(false); // ≤1024px 时三栏/四栏改为单列堆叠
   const [fromPartsList, setFromPartsList] = useState(false); // 从零件列表页跳过来
   const [partsListPartIdx, setPartsListPartIdx] = useState<number>(-1);
   const [partsListPartName, setPartsListPartName] = useState('');
@@ -423,8 +424,17 @@ export default function QuotePage() {
   const hasManualUnitPrice = manualUnitPrice !== null;
   const hasManualMoldFee = manualMoldFee !== null;
 
+  // 响应式：≤1024px 时三栏/四栏网格改为单列堆叠（P1-1 / P3-2），关闭根级横向滚动（P2-6）
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1024px)');
+    const apply = () => setNarrow(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+
   return (
-    <div className="h-screen bg-gray-50 flex flex-col overflow-x-auto">
+    <div className="h-screen bg-gray-50 flex flex-col overflow-x-hidden">
       {/* 顶部栏 */}
       <header className="shrink-0 bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-[1600px] mx-auto px-4 lg:px-6">
@@ -484,12 +494,13 @@ export default function QuotePage() {
 
       {/* 面包屑导航 */}
       <div className="shrink-0 bg-white border-b border-slate-100 px-6 py-2">
+        <h1 className="sr-only">手动报价 · gyparts.cn AI报价系统</h1>
         <div className="max-w-[1600px] mx-auto flex items-center gap-1.5 text-xs text-slate-500">
-          <Link href="/" className="hover:text-slate-700">首页</Link>
+          <Link href="/" className="px-1.5 py-1 rounded hover:bg-gray-100 hover:text-slate-700">首页</Link>
           <span className="text-slate-300">/</span>
-          <span className="text-slate-700 font-medium">AI报价</span>
+          <span className="px-1.5 py-1 rounded text-slate-700 font-medium">AI报价</span>
           <span className="text-slate-300">/</span>
-          <span className="text-slate-700 font-medium">手动报价</span>
+          <span className="px-1.5 py-1 rounded text-slate-700 font-medium">手动报价</span>
         </div>
       </div>
 
@@ -533,7 +544,19 @@ export default function QuotePage() {
       )}
 
       {/* 主内容区 - 两栏布局（参数 + 结果），图纸识别跳转至独立页面 */}
-      <main className="flex-1 min-h-0 overflow-x-auto grid" style={{ gridTemplateColumns: guideCollapsed ? '280px minmax(700px, 780px) 360px' : '280px minmax(700px, 780px) 360px 300px', gap: '16px', padding: '16px', minWidth: guideCollapsed ? '1340px' : '1640px' }}>
+      <main
+        className={`flex-1 min-h-0 grid ${narrow ? 'overflow-y-auto overflow-x-hidden' : 'overflow-x-auto'}`}
+        style={{
+          gridTemplateColumns: narrow
+            ? '1fr'
+            : guideCollapsed
+              ? '280px minmax(700px, 780px) 360px'
+              : '280px minmax(700px, 780px) 360px 300px',
+          gap: '16px',
+          padding: '16px',
+          minWidth: narrow ? '0' : (guideCollapsed ? '1340px' : '1640px'),
+        }}
+      >
         {/* 第一栏：快捷操作 */}
         <div className="space-y-3">
           {/* 从零件列表过来：显示返回入口 */}
@@ -869,6 +892,7 @@ export default function QuotePage() {
               : 'bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'
           }`}
           title={chatOpen ? '关闭客服' : '智能客服'}
+          aria-label={chatOpen ? '关闭客服' : '智能客服'}
         >
           {chatOpen ? (
             <X className="w-6 h-6 text-white" />
