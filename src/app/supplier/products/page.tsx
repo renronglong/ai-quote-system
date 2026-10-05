@@ -107,6 +107,12 @@ const numOrNull = (v: any): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
+// 物理量归一化：≤0 视为「未知」（后端常以 0 表示没测出来，如 final_weight_kg_per_m=0）
+const posOrNull = (v: any): number | null => {
+  const n = numOrNull(v);
+  return n != null && n > 0 ? n : null;
+};
+
 // 把解析接口返回的产品对象归一化成界面用的结构。
 // ⚠️ 实际接口字段名与对接文档不一致（实测 2026-10-05）：
 //    实际 width_mm/height_mm、weight_kg_per_m、perimeter_mm、area_mm2、无截面图字段；
@@ -124,10 +130,10 @@ const normalizeAiProduct = (p: any): AiProduct => {
     product_id: String(p?.product_id ?? p?.mold_number ?? p?.name ?? '').trim(),
     width: w,
     height: h,
-    weight_per_meter: numOrNull(p?.weight_per_meter ?? p?.weight_kg_per_m ?? p?.final_weight_kg_per_m),
-    outer_perimeter: numOrNull(p?.outer_perimeter ?? p?.perimeter_mm),
-    inner_perimeter: numOrNull(p?.inner_perimeter),
-    cross_section_area: numOrNull(p?.cross_section_area ?? p?.area_mm2),
+    weight_per_meter: posOrNull(p?.weight_per_meter ?? p?.weight_kg_per_m ?? p?.final_weight_kg_per_m),
+    outer_perimeter: posOrNull(p?.outer_perimeter ?? p?.perimeter_mm),
+    inner_perimeter: posOrNull(p?.inner_perimeter),
+    cross_section_area: posOrNull(p?.cross_section_area ?? p?.area_mm2),
     cross_section_image_base64: p?.cross_section_image_base64 ?? p?.cross_section_image ?? p?.image ?? null,
     data_confidence: p?.data_confidence,
     raw: p && typeof p === 'object' ? p : undefined,
