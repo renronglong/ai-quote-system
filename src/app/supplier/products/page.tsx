@@ -110,6 +110,17 @@ const stripImagePrefix = (b64?: string | null) => {
   return b64.includes(',') ? b64.split(',')[1] : b64;
 };
 
+// 带超时的 fetch：后端无响应时快速失败，避免界面无限等待
+const fetchWithTimeout = async (input: string, init: RequestInit = {}, ms = 90000) => {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(input, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 const SURFACE_TREATMENTS = [
   '阳极氧化', '电泳涂装', '粉末喷涂', '氟碳喷涂',
   '木纹转印', '抛光', '拉丝', '喷砂',
@@ -361,7 +372,7 @@ function SupplierProductsContent() {
         : `${SUPPLIER_UPLOAD_API}/upload/dwg`;
       const fd = new FormData();
       fd.append('file', aiFile);
-      const res = await fetch(endpoint, { method: 'POST', body: fd });
+      const res = await fetchWithTimeout(endpoint, { method: 'POST', body: fd }, 120000);
       const text = await res.text();
       let json: any = null;
       try { json = JSON.parse(text); } catch { /* 代理 502 等非 JSON 响应 */ }
@@ -380,7 +391,11 @@ function SupplierProductsContent() {
       setAiProducts(list.map((p) => ({ ...p, product_id: p.product_id || '' })));
       setAiMeta({ original_file: json.original_file, dxf_file: json.dxf_file });
     } catch (err: any) {
-      setAiError(err?.message || '网络错误，无法连接解析服务');
+      if (err?.name === 'AbortError') {
+        setAiError('解析请求超时（后端无响应）。请确认图纸上传服务是否在线，或稍后重试。');
+      } else {
+        setAiError(err?.message || '网络错误，无法连接解析服务');
+      }
     } finally {
       setAiParsing(false);
     }
@@ -408,7 +423,7 @@ function SupplierProductsContent() {
         const b64 = stripImagePrefix(p.cross_section_image_base64);
         if (p.product_id && b64) images[p.product_id] = b64;
       });
-      const res = await fetch(`${SUPPLIER_UPLOAD_API}/upload/publish`, {
+      const res = await fetchWithTimeout(`${SUPPLIER_UPLOAD_API}/upload/publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -417,7 +432,7 @@ function SupplierProductsContent() {
           supplier_name: profile?.company_name,
           images,
         }),
-      });
+      }, 60000);
       const text = await res.text();
       let json: any = null;
       try { json = JSON.parse(text); } catch { /* 代理 502 等非 JSON 响应 */ }
@@ -434,7 +449,11 @@ function SupplierProductsContent() {
       setAiFile(null);
       if (profile) fetchProducts(profile.id);
     } catch (err: any) {
-      setAiError(err?.message || '网络错误，无法连接上传服务');
+      if (err?.name === 'AbortError') {
+        setAiError('上传请求超时（后端无响应）。请确认图纸上传服务是否在线，或稍后重试。');
+      } else {
+        setAiError(err?.message || '网络错误，无法连接上传服务');
+      }
     } finally {
       setAiPublishing(false);
     }
