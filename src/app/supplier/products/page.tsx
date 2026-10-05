@@ -82,7 +82,7 @@ interface SupplierProduct {
   updated_at: string;
 }
 
-/** AI 图纸解析返回的产品对象 */
+/** AI 图纸解析返回的产品对象（归一化后用于编辑/展示） */
 interface AiProduct {
   product_id: string;
   width: number | null;
@@ -93,11 +93,46 @@ interface AiProduct {
   cross_section_area?: number | null;
   cross_section_image_base64?: string | null;
   data_confidence?: string; // high / medium / low
+  raw?: Record<string, any>; // 解析接口返回的原始对象，发布时原样带回
 }
 
 // 供应商图纸上传服务：经 Vercel rewrite 代理到 http://129.204.40.114:8001/api/*
 // （vercel.json 中的 source 前缀，避免与现有 /api/supplier/* 路由冲突）
 const SUPPLIER_UPLOAD_API = '/api/supplier-upload';
+
+// 归一化数字（空串/null/undefined → null）
+const numOrNull = (v: any): number | null => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+// 把解析接口返回的产品对象归一化成界面用的结构。
+// ⚠️ 实际接口字段名与对接文档不一致（实测 2026-10-05）：
+//    实际 width_mm/height_mm、weight_kg_per_m、perimeter_mm、area_mm2、无截面图字段；
+//    文档写的是 width/height、weight_per_meter、outer_perimeter、cross_section_area、cross_section_image_base64。
+//    两套都兼容，优先文档名，其次实际名。
+const normalizeAiProduct = (p: any): AiProduct => {
+  let w = numOrNull(p?.width ?? p?.width_mm);
+  let h = numOrNull(p?.height ?? p?.height_mm);
+  if ((w == null || h == null) && typeof p?.cross_section_mm === 'string' && p.cross_section_mm.includes('*')) {
+    const parts = p.cross_section_mm.split('*').map((x: string) => Number(String(x).trim()));
+    if (w == null && Number.isFinite(parts[0])) w = parts[0];
+    if (h == null && Number.isFinite(parts[1])) h = parts[1];
+  }
+  return {
+    product_id: String(p?.product_id ?? p?.mold_number ?? p?.name ?? '').trim(),
+    width: w,
+    height: h,
+    weight_per_meter: numOrNull(p?.weight_per_meter ?? p?.weight_kg_per_m ?? p?.final_weight_kg_per_m),
+    outer_perimeter: numOrNull(p?.outer_perimeter ?? p?.perimeter_mm),
+    inner_perimeter: numOrNull(p?.inner_perimeter),
+    cross_section_area: numOrNull(p?.cross_section_area ?? p?.area_mm2),
+    cross_section_image_base64: p?.cross_section_image_base64 ?? p?.cross_section_image ?? p?.image ?? null,
+    data_confidence: p?.data_confidence,
+    raw: p && typeof p === 'object' ? p : undefined,
+  };
+};
 
 // base64 → 可渲染的图片地址（兼容已带 data: 前缀的情况）
 const toImageSrc = (b64?: string | null) => {
@@ -383,12 +418,12 @@ function SupplierProductsContent() {
         );
         return;
       }
-      const list: AiProduct[] = Array.isArray(json.products) ? json.products : [];
+      const list: any[] = Array.isArray(json.products) ? json.products : [];
       if (list.length === 0) {
         setAiError('未从图纸中识别到产品');
         return;
       }
-      setAiProducts(list.map((p) => ({ ...p, product_id: p.product_id || '' })));
+      setAiProducts(list.map(normalizeAiProduct));
       setAiMeta({ original_file: json.original_file, dxf_file: json.dxf_file });
     } catch (err: any) {
       if (err?.name === 'AbortError') {
@@ -423,11 +458,24 @@ function SupplierProductsContent() {
         const b64 = stripImagePrefix(p.cross_section_image_base64);
         if (p.product_id && b64) images[p.product_id] = b64;
       });
+      // 发布时原样带回解析接口的原始对象，并同时给出两套字段名（文档名 + 实测实际名），
+      // 免得后端只认其中一种写法。
+      const payloadProducts = aiProducts.map(({ raw, ...p }) => ({
+        ...(raw || {}),
+        product_id: p.product_id,
+        width: p.width, height: p.height, weight_per_meter: p.weight_per_meter,
+        cross_section_area: p.cross_section_area ?? undefined,
+        outer_perimeter: p.outer_perimeter ?? undefined,
+        width_mm: p.width, height_mm: p.height,
+        weight_kg_per_m: p.weight_per_meter,
+        area_mm2: p.cross_section_area ?? undefined,
+        perimeter_mm: p.outer_perimeter ?? undefined,
+      }));
       const res = await fetchWithTimeout(`${SUPPLIER_UPLOAD_API}/upload/publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          products: aiProducts,
+          products: payloadProducts,
           supplier_id: profile?.id,
           supplier_name: profile?.company_name,
           images,
