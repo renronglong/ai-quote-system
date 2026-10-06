@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Upload, FileText, X, Loader2, AlertTriangle, User, CheckCircle2, Share2, Package } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { PRODUCT_TYPES } from './QuoteForm';
-import { useFileAccept } from '@/lib/use-file-accept';
+import { useFileAccept, useIsMobileUa } from '@/lib/use-file-accept';
 
 // ==================== Types ====================
 
@@ -155,6 +155,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
   const [productType, setProductType] = useState('挤出');
   // 微信/手机端：accept 用 */* 才会出现「从聊天记录选择文件」（详见 use-file-accept）
   const fileAccept = useFileAccept(ALLOWED_EXTENSIONS.join(','));
+  const isMobileUa = useIsMobileUa();
 
   // ===== Helper =====
   const isValidFile = (file: File): boolean => {
@@ -678,7 +679,11 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
             <div>
               <Upload className={`w-6 h-6 mx-auto mb-1.5 ${dragOver ? 'text-blue-500' : 'text-slate-600'}`} />
               <p className="text-sm text-slate-600">拖拽文件到此处，或<span className="text-blue-500 font-medium">点击上传</span></p>
-              <p className="text-xs text-slate-600 mt-1">支持 PDF、JPG、PNG、DXF、DWG、STP、STEP、IGS、X_T、ZIP、RAR、7Z 等，也可 Ctrl+V 粘贴图片</p>
+              <p className="text-xs text-slate-600 mt-1">
+                {isMobileUa
+                  ? '支持 STP/STEP、DXF、DWG、PDF、图片、压缩包等；微信里可从「聊天记录」选择好友发来的文件'
+                  : '支持 PDF、JPG、PNG、DXF、DWG、STP、STEP、IGS、X_T、ZIP、RAR、7Z 等，也可 Ctrl+V 粘贴图片'}
+              </p>
             </div>
           )}
         </div>

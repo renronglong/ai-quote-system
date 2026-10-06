@@ -24,3 +24,12 @@ export function useFileAccept(desktopAccept: string): string {
   }, []);
   return accept;
 }
+
+/** 是否手机端 / 微信内置浏览器（用于切换提示文案等） */
+export function useIsMobileUa(): boolean {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    setMobile(MOBILE_UA.test(navigator.userAgent || ''));
+  }, []);
+  return mobile;
+}
