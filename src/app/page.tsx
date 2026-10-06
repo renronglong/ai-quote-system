@@ -11,6 +11,7 @@ import {
   ArrowRight,
   ChevronRight,
   Handshake,
+  History,
 } from 'lucide-react';
 
 // 三步流程：比罗列「核心能力」更能回答"我要做什么、多久出结果"
@@ -35,21 +36,12 @@ export default function HomePage() {
     <AppLayout>
       {/* 首屏：左文案 + 右报价单示例（原右侧是一大片空白） */}
       <section className="mb-8">
-        <div className="rounded-2xl bg-gradient-to-br from-blue-50 via-white to-slate-50 border border-gray-100 shadow-sm px-6 py-10 md:px-12 md:py-14">
-          <div className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-            {/* 左：标题与入口 */}
+        <div className="rounded-2xl bg-gradient-to-br from-blue-50 via-white to-slate-50 border border-gray-100 shadow-sm px-6 py-8 md:px-10 md:py-10">
+          <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+            {/* 左：只留入口按钮。原有的大标题 + 一句营销文案（"铝型材·五金加工 /
+                上传图纸秒级出报价 / 免注册试算…"）业主判定无用，已删除。 */}
             <div>
-              <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight mb-4">
-                铝型材 · 五金加工
-                <br />
-                <span className="text-blue-600">上传图纸，秒级出报价</span>
-              </h1>
-
-              <p className="text-lg text-gray-600 mb-8 max-w-xl leading-relaxed">
-                {user
-                  ? '报价可保存、可导出，同一副模具的多个长度只算一次模具费。'
-                  : '免注册即可试算；注册后可保存、导出专业报价单。'}
-              </p>
+              <h1 className="text-lg font-semibold text-gray-900 mb-5">AI 智能报价 · 铝型材 / 五金加工</h1>
 
               <div className="flex flex-wrap items-center gap-3">
                 <Link href="/quote/recognize">
@@ -65,6 +57,14 @@ export default function HomePage() {
                     手动填单
                   </Button>
                 </Link>
+                {user && (
+                  <Link href="/history">
+                    <Button size="lg" variant="outline" className="border-gray-300 font-semibold px-6">
+                      <History className="w-5 h-5 mr-2" />
+                      我的报价
+                    </Button>
+                  </Link>
+                )}
               </div>
 
               <Link
