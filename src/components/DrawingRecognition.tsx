@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Upload, FileText, X, Loader2, AlertTriangle, User, CheckCircle2, Share2, Package } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { PRODUCT_TYPES } from './QuoteForm';
+import { useFileAccept } from '@/lib/use-file-accept';
 
 // ==================== Types ====================
 
@@ -152,6 +153,8 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
   const [copiedInvite, setCopiedInvite] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [productType, setProductType] = useState('挤出');
+  // 微信/手机端：accept 用 */* 才会出现「从聊天记录选择文件」（详见 use-file-accept）
+  const fileAccept = useFileAccept(ALLOWED_EXTENSIONS.join(','));
 
   // ===== Helper =====
   const isValidFile = (file: File): boolean => {
@@ -650,7 +653,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
           <input
             ref={fileInputRef}
             type="file"
-            accept={ALLOWED_EXTENSIONS.join(',')}
+            accept={fileAccept}
             onChange={handleFileSelect}
             className="sr-only"
           />

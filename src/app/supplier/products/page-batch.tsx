@@ -2,6 +2,7 @@
 
 import { Suspense, useCallback, useRef, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { useFileAccept } from '@/lib/use-file-accept';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -51,6 +52,8 @@ function BatchUploadContent() {
   const { user, session, loading: authLoading } = useAuth();
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // 微信/手机端用 */* 才会出现「从聊天记录选择文件」
+  const xlsAccept = useFileAccept('.xlsx,.xls');
 
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [fileName, setFileName] = useState('');
@@ -306,7 +309,7 @@ function BatchUploadContent() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".xlsx,.xls"
+                accept={xlsAccept}
                 className="hidden"
                 onChange={handleFileChange}
               />

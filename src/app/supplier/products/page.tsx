@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import AppLayout from '@/components/AppLayout';
+import { useFileAccept } from '@/lib/use-file-accept';
 import {
   Loader2,
   Plus,
@@ -206,6 +207,8 @@ function SupplierProductsContent() {
   const [aiError, setAiError] = useState('');
   const [aiSuccess, setAiSuccess] = useState('');
   const [aiMeta, setAiMeta] = useState<{ original_file?: string; dxf_file?: string } | null>(null);
+  // 微信/手机端用 */* 才会出现「从聊天记录选择文件」
+  const dwgAccept = useFileAccept('.dwg,.dxf');
 
   // Handle image file (from upload or paste)
   const handleImageFile = useCallback((file: File) => {
@@ -915,7 +918,7 @@ function SupplierProductsContent() {
             <div className="flex flex-wrap items-center gap-3">
               <input
                 type="file"
-                accept=".dwg,.dxf"
+                accept={dwgAccept}
                 onChange={(e) => {
                   setAiFile(e.target.files?.[0] || null);
                   setAiProducts([]);
