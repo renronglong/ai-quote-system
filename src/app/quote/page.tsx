@@ -432,6 +432,11 @@ export default function QuotePage() {
     return () => mq.removeEventListener('change', apply);
   }, []);
 
+  // <1280px 默认收起「报价指南」：避免挤到参数表单（只做初始判断，用户仍可手动展开）
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1280) setGuideCollapsed(true);
+  }, []);
+
   return (
     <div className={`${narrow ? 'min-h-screen' : 'h-screen'} bg-gray-50 flex flex-col overflow-x-hidden`}>
       {/* 顶部栏 */}
@@ -542,32 +547,18 @@ export default function QuotePage() {
         </div>
       )}
 
-      {/* 主内容区 - 两栏布局（参数 + 结果），图纸识别跳转至独立页面 */}
-      <main
-        className={`flex-1 min-h-0 grid content-start ${narrow ? 'overflow-x-hidden' : 'overflow-x-auto'}`}
-        style={{
-          gridTemplateColumns: narrow
-            ? '1fr'
-            : guideCollapsed
-              ? '280px minmax(700px, 780px) 360px'
-              : '280px minmax(700px, 780px) 360px 300px',
-          gap: '16px',
-          padding: '16px',
-          minWidth: narrow ? '0' : (guideCollapsed ? '1340px' : '1640px'),
-        }}
-      >
-        {/* 第一栏：快捷操作（压缩成细条，手机端不再吃掉整块首屏） */}
-        <div className="space-y-2">
-          {/* 从零件列表过来：显示返回入口 */}
+      {/* 快捷操作条：原来独占 280px 一整列（只放两条细条），现压成顶部一行 */}
+      <div className="shrink-0 bg-white border-b border-slate-100 px-4 md:px-6 py-2">
+        <div className="max-w-[1600px] mx-auto flex flex-wrap items-center gap-2">
           {fromPartsList ? (
             <Link
               href="/quote/parts"
               title="保存报价后将自动返回"
-              className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 hover:bg-blue-100 transition"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 hover:bg-blue-100 transition"
             >
               <ArrowLeft size={15} className="text-blue-700 shrink-0" />
               <span className="text-sm font-medium text-blue-700 shrink-0">返回零件列表</span>
-              <span className="text-xs text-blue-600 truncate">
+              <span className="text-xs text-blue-600 truncate max-w-[160px]">
                 {partsListPartName || `零件${partsListPartIdx + 1}`}
               </span>
             </Link>
@@ -575,26 +566,40 @@ export default function QuotePage() {
             <Link
               href="/quote/recognize"
               title="上传 STP / PDF / 图片，AI 自动识别尺寸参数并报价"
-              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 hover:border-blue-300 hover:shadow-sm transition group"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 hover:border-blue-300 hover:bg-blue-50 transition"
             >
               <Sparkles size={15} className="text-blue-600 shrink-0" />
-              <span className="text-sm font-medium text-gray-800 shrink-0">图纸AI识别</span>
-              <span className="text-xs text-gray-500 truncate">上传图纸自动识别尺寸</span>
-              <ChevronRight size={14} className="ml-auto text-gray-400 group-hover:text-blue-500 shrink-0" />
+              <span className="text-sm font-medium text-gray-800">图纸AI识别</span>
+              <ChevronRight size={14} className="text-gray-400 shrink-0" />
             </Link>
           )}
 
-          {/* 已有报价。（原「手动填单报价」说明卡已删除：只是解释文字，无实际入口） */}
           <Link
             href="/history"
-            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 hover:border-blue-300 hover:shadow-sm transition group"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 hover:border-blue-300 hover:bg-blue-50 transition"
           >
             <History size={15} className="text-slate-500 shrink-0" />
-            <span className="text-sm font-medium text-gray-800 shrink-0">我的报价</span>
-            <ChevronRight size={14} className="ml-auto text-gray-400 group-hover:text-blue-500 shrink-0" />
+            <span className="text-sm font-medium text-gray-800">我的报价</span>
+            <ChevronRight size={14} className="text-gray-400 shrink-0" />
           </Link>
         </div>
+      </div>
 
+      {/* 主内容区：参数 + 结果（+ 报价指南）。第一列已并入上方操作条，
+          并取消 1640px 强制最小宽度 —— 1366/1440 笔记本不再横向滚动。 */}
+      <main
+        className={`flex-1 min-h-0 grid content-start ${narrow ? 'overflow-x-hidden' : 'overflow-x-auto'}`}
+        style={{
+          gridTemplateColumns: narrow
+            ? '1fr'
+            : guideCollapsed
+              ? 'minmax(420px, 1fr) 380px'
+              : 'minmax(420px, 1fr) 380px 300px',
+          gap: '16px',
+          padding: '16px',
+          minWidth: 0,
+        }}
+      >
         {/* 第二栏：参数设置 */}
         <div ref={sectionParamRef} className="overflow-y-auto overflow-x-hidden min-w-0 bg-gray-50 rounded-xl border border-gray-200">
           <div className="p-4 space-y-4">
