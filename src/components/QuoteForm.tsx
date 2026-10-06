@@ -2382,7 +2382,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 }`}
               >
                 <span className="flex items-center gap-1.5">
-                  <span className="text-base">{cfg.icon}</span>
+                  {/* 手机端窄，隐藏图标可少折一行 Tab */}
+                  <span className="hidden sm:inline text-base">{cfg.icon}</span>
                   {cfg.label}
                   {key === '注塑' && (
                     <span className="ml-0.5 px-1 py-0.5 rounded bg-amber-100 text-amber-600 text-[11px] font-normal leading-none">待开发</span>
