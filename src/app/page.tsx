@@ -20,47 +20,88 @@ const steps = [
   { icon: FileText, title: '出报价单', desc: '材料 + 加工 + 表面处理，可保存导出' },
 ];
 
+// 报价单示例（让首屏右边那片空白说清"产出什么"，数值为示例）
+const demoRows = [
+  { label: '材料费', value: '¥1.23' },
+  { label: '加工费', value: '¥1.57' },
+  { label: '表面处理费', value: '—' },
+  { label: '包装 + 运输', value: '¥0.04' },
+];
+
 export default function HomePage() {
   const { user } = useAuth();
 
   return (
     <AppLayout>
-      {/* 首屏：直接给两个报价入口（主推上传图纸），不再堆能力清单 */}
+      {/* 首屏：左文案 + 右报价单示例（原右侧是一大片空白） */}
       <section className="mb-8">
         <div className="rounded-2xl bg-gradient-to-br from-blue-50 via-white to-slate-50 border border-gray-100 shadow-sm px-6 py-10 md:px-12 md:py-14">
-          <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight mb-4">
-            铝型材 · 五金加工
-            <br />
-            <span className="text-blue-600">上传图纸，秒级出报价</span>
-          </h1>
+          <div className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+            {/* 左：标题与入口 */}
+            <div>
+              <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight mb-4">
+                铝型材 · 五金加工
+                <br />
+                <span className="text-blue-600">上传图纸，秒级出报价</span>
+              </h1>
 
-          <p className="text-lg text-gray-600 mb-8 max-w-2xl leading-relaxed">
-            {user
-              ? '报价可保存、可导出，同一副模具的多个长度只算一次模具费。'
-              : '免注册即可试算；注册后可保存、导出专业报价单。'}
-          </p>
+              <p className="text-lg text-gray-600 mb-8 max-w-xl leading-relaxed">
+                {user
+                  ? '报价可保存、可导出，同一副模具的多个长度只算一次模具费。'
+                  : '免注册即可试算；注册后可保存、导出专业报价单。'}
+              </p>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <Link href="/quote/recognize">
-              <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm px-6">
-                <Upload className="w-5 h-5 mr-2" />
-                上传图纸报价
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            </Link>
-            <Link href="/quote">
-              <Button size="lg" variant="outline" className="border-gray-300 font-semibold px-6">
-                <Calculator className="w-5 h-5 mr-2" />
-                手动填单
-              </Button>
-            </Link>
-            <Link
-              href="/suppliers"
-              className="inline-flex items-center text-blue-600 hover:text-blue-700 font-medium px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors"
-            >
-              浏览供应商产品库
-              <ChevronRight className="w-4 h-4 ml-1" />
-            </Link>
+              <div className="flex flex-wrap items-center gap-3">
+                <Link href="/quote/recognize">
+                  <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm px-6">
+                    <Upload className="w-5 h-5 mr-2" />
+                    上传图纸报价
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </Link>
+                <Link href="/quote">
+                  <Button size="lg" variant="outline" className="border-gray-300 font-semibold px-6">
+                    <Calculator className="w-5 h-5 mr-2" />
+                    手动填单
+                  </Button>
+                </Link>
+              </div>
+
+              <Link
+                href="/suppliers"
+                className="inline-flex items-center text-blue-600 hover:text-blue-700 font-medium mt-4 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors"
+              >
+                浏览供应商产品库
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Link>
+            </div>
+
+            {/* 右：报价单示例 */}
+            <div className="lg:justify-self-end w-full max-w-sm mx-auto lg:mx-0">
+              <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-5">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">报价单</p>
+                    <p className="text-xs text-gray-400 mt-0.5">YL-175-3 · 1.5mm 铝板 · 1 件</p>
+                  </div>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 shrink-0">示例</span>
+                </div>
+
+                <div className="space-y-2 text-sm">
+                  {demoRows.map((r) => (
+                    <div key={r.label} className="flex items-center justify-between text-gray-600">
+                      <span>{r.label}</span>
+                      <span className="tabular-nums">{r.value}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-dashed border-gray-200 flex items-baseline justify-between">
+                  <span className="text-sm text-gray-500">含税单价</span>
+                  <span className="text-xl font-bold text-blue-600 tabular-nums">¥4.03</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -69,7 +110,11 @@ export default function HomePage() {
       <section className="mb-8">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {steps.map((s, i) => (
-            <div key={s.title} className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+            <div key={s.title} className="relative bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+              {/* 步骤之间的连接箭头（手机端隐藏） */}
+              {i < steps.length - 1 && (
+                <ChevronRight className="hidden sm:block absolute -right-[13px] top-1/2 -translate-y-1/2 w-5 h-5 text-gray-300 z-10" />
+              )}
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
                   <s.icon className="w-5 h-5 text-blue-600" />
@@ -83,7 +128,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 供应商入口：压成一条横幅，不再占整列 */}
+      {/* 供应商入口：一条横幅 */}
       <section>
         <div className="flex flex-wrap items-center gap-4 bg-white rounded-xl border border-gray-100 px-5 py-4 shadow-sm">
           <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
