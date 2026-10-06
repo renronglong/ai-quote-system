@@ -432,7 +432,7 @@ export default function QuotePage() {
   }, []);
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col overflow-x-hidden">
+    <div className={`${narrow ? 'min-h-screen' : 'h-screen'} bg-gray-50 flex flex-col overflow-x-hidden`}>
       {/* 顶部栏 */}
       <header className="shrink-0 bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-[1600px] mx-auto px-4 lg:px-6">
@@ -447,8 +447,8 @@ export default function QuotePage() {
               </div>
             </Link>
 
-            {/* 全站统一导航 */}
-            <div className="flex items-center gap-1 flex-wrap">
+            {/* 全站统一导航（min-w-0 flex-1 让它在窄屏能换行，避免「联系我们」被裁掉） */}
+            <div className="flex min-w-0 flex-1 items-center gap-1 flex-wrap">
               <TopNavLinks />
             </div>
 
@@ -543,7 +543,7 @@ export default function QuotePage() {
 
       {/* 主内容区 - 两栏布局（参数 + 结果），图纸识别跳转至独立页面 */}
       <main
-        className={`flex-1 min-h-0 grid ${narrow ? 'overflow-y-auto overflow-x-hidden' : 'overflow-x-auto'}`}
+        className={`flex-1 min-h-0 grid content-start ${narrow ? 'overflow-x-hidden' : 'overflow-x-auto'}`}
         style={{
           gridTemplateColumns: narrow
             ? '1fr'

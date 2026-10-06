@@ -47,7 +47,7 @@ export default function QuoteRecognizePage() {
   }, [router]);
 
   return (
-    <div className="h-screen flex flex-col bg-slate-50 overflow-x-hidden">
+    <div className="min-h-screen flex flex-col bg-slate-50 overflow-x-hidden">
       <TopNavLinks />
       <div className="bg-white border-b border-slate-100 px-6 py-2">
         <div className="max-w-4xl mx-auto flex items-center gap-1.5 text-xs text-slate-500">

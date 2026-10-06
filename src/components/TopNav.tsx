@@ -15,7 +15,7 @@ export const topNavLinks = [
 export default function TopNavLinks({ className = '' }: { className?: string }) {
   const pathname = usePathname();
   return (
-    <nav className={`flex items-center gap-1 ${className}`}>
+    <nav className={`flex flex-wrap items-center gap-1 ${className}`}>
       {topNavLinks.map((item) => {
         const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
         return (

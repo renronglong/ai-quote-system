@@ -43,6 +43,9 @@ interface NavGroup {
   items: NavItem[];
 }
 
+// 未登录时在菜单里隐藏「需要登录才能用」的入口（点进去只会被弹回登录页）
+const GUEST_HIDDEN_HREFS = ['/products', '/inquiries', '/profile'];
+
 // 移动端汉堡菜单 / 头像下拉 使用
 const navGroups: NavGroup[] = [
   {
@@ -120,14 +123,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </div>
             )}
 
-            {/* 桌面端登录状态 */}
+            {/* 登录状态：移动端也要露出「登录」（原来 hidden md:flex 导致手机上完全看不到登录入口） */}
             {!user ? (
-              <div className="hidden md:flex items-center gap-2">
+              <div className="flex items-center gap-2">
                 <Link href="/login"><Button variant="outline" size="sm" className="border-gray-300">登录</Button></Link>
-                <Link href="/register"><Button size="sm" className="bg-blue-600 hover:bg-blue-700 shadow-sm">注册</Button></Link>
+                <Link href="/register" className="hidden sm:inline-flex"><Button size="sm" className="bg-blue-600 hover:bg-blue-700 shadow-sm">注册</Button></Link>
               </div>
             ) : (
-              <div className="relative hidden md:block">
+              <div className="relative">
                 <button
                   onClick={() => setUserMenuOpen(v => !v)}
                   className="flex items-center gap-1.5 rounded-full hover:bg-gray-100 py-1 pl-1 pr-2 transition-colors"
@@ -175,7 +178,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             {/* 移动端菜单 */}
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="md:hidden">
+                <Button variant="ghost" size="icon" aria-label="打开菜单" title="打开菜单"
+                        className="md:hidden h-11 w-11 shrink-0">
                   <List className="w-5 h-5" />
                 </Button>
               </SheetTrigger>
@@ -194,7 +198,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     </div>
                   </div>
                   <div className="h-px bg-gray-200" />
-                  {navGroups.filter(g => !(g.items[0]?.adminOnly) || isAdmin).map((group) => (
+                  {navGroups
+                    .map(g => ({
+                      ...g,
+                      items: g.items.filter(it =>
+                        (!it.adminOnly || isAdmin) &&
+                        (!!user || !GUEST_HIDDEN_HREFS.includes(it.href))
+                      ),
+                    }))
+                    .filter(g => g.items.length > 0)
+                    .map((group) => (
                     <div key={group.label}>
                       <p className="px-2 text-xs font-medium text-gray-500 uppercase mb-2">
                         {group.label}

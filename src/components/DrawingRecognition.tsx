@@ -652,7 +652,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
             type="file"
             accept={ALLOWED_EXTENSIONS.join(',')}
             onChange={handleFileSelect}
-            className="hidden"
+            className="sr-only"
           />
           {uploadedFile ? (
             <div className="flex items-center justify-between">
