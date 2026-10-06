@@ -24,6 +24,7 @@ import {
   MessageCircle,
   X,
   ArrowLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
 import QuoteSheetDialog from '@/components/QuoteSheetDialog';
@@ -555,40 +556,42 @@ export default function QuotePage() {
           minWidth: narrow ? '0' : (guideCollapsed ? '1340px' : '1640px'),
         }}
       >
-        {/* 第一栏：快捷操作 */}
-        <div className="space-y-3">
+        {/* 第一栏：快捷操作（压缩成细条，手机端不再吃掉整块首屏） */}
+        <div className="space-y-2">
           {/* 从零件列表过来：显示返回入口 */}
           {fromPartsList ? (
-            <Link href="/quote/parts" className="block rounded-xl border border-blue-200 bg-blue-50 p-4 hover:bg-blue-100 transition">
-              <div className="flex items-center gap-2 text-blue-700 font-medium mb-1">
-                <ArrowLeft size={16} /> 返回零件列表
-              </div>
-              <p className="text-xs text-blue-600">当前零件：{partsListPartName || `零件${partsListPartIdx + 1}`}</p>
-              <p className="text-xs text-blue-500 mt-1">保存报价后将自动返回</p>
+            <Link
+              href="/quote/parts"
+              title="保存报价后将自动返回"
+              className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 hover:bg-blue-100 transition"
+            >
+              <ArrowLeft size={15} className="text-blue-700 shrink-0" />
+              <span className="text-sm font-medium text-blue-700 shrink-0">返回零件列表</span>
+              <span className="text-xs text-blue-600 truncate">
+                {partsListPartName || `零件${partsListPartIdx + 1}`}
+              </span>
             </Link>
           ) : (
-            <Link href="/quote/recognize" className="block rounded-xl border border-gray-200 bg-white p-4 hover:border-blue-300 hover:shadow-md transition group">
-              <div className="flex items-center gap-2 text-gray-800 font-medium mb-1">
-                <Sparkles size={16} className="text-blue-600" /> 图纸AI识别
-              </div>
-              <p className="text-xs text-gray-500">上传STP/PDF/图片，AI自动识别尺寸参数并报价</p>
-              <div className="mt-2 text-xs text-blue-600 opacity-0 group-hover:opacity-100 transition">去上传 →</div>
+            <Link
+              href="/quote/recognize"
+              title="上传 STP / PDF / 图片，AI 自动识别尺寸参数并报价"
+              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 hover:border-blue-300 hover:shadow-sm transition group"
+            >
+              <Sparkles size={15} className="text-blue-600 shrink-0" />
+              <span className="text-sm font-medium text-gray-800 shrink-0">图纸AI识别</span>
+              <span className="text-xs text-gray-500 truncate">上传图纸自动识别尺寸</span>
+              <ChevronRight size={14} className="ml-auto text-gray-400 group-hover:text-blue-500 shrink-0" />
             </Link>
           )}
 
-          {/* 手动报价提示 */}
-          <div className="rounded-xl border border-gray-200 bg-white p-4">
-            <div className="flex items-center gap-2 text-gray-800 font-medium mb-2">
-              <FileText size={16} className="text-slate-500" /> 手动填单报价
-            </div>
-            <p className="text-xs text-gray-500 leading-relaxed">在右侧直接填写产品参数、选择材质和表面处理，参数填齐后系统自动计算报价。</p>
-          </div>
-
-          {/* 已有报价 */}
-          <Link href="/history" className="block rounded-xl border border-gray-200 bg-white p-4 hover:border-blue-300 transition">
-            <div className="flex items-center gap-2 text-gray-800 font-medium">
-              <History size={16} className="text-slate-500" /> 我的报价
-            </div>
+          {/* 已有报价。（原「手动填单报价」说明卡已删除：只是解释文字，无实际入口） */}
+          <Link
+            href="/history"
+            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 hover:border-blue-300 hover:shadow-sm transition group"
+          >
+            <History size={15} className="text-slate-500 shrink-0" />
+            <span className="text-sm font-medium text-gray-800 shrink-0">我的报价</span>
+            <ChevronRight size={14} className="ml-auto text-gray-400 group-hover:text-blue-500 shrink-0" />
           </Link>
         </div>
 
