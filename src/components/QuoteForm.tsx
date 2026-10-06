@@ -1989,9 +1989,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     // CNC 加工：直接从 STP/CAD 解析结果自动添加（有孔位或有加工时间均触发）
     // 钣金件：仅当有明确CNC孔数或加工时间时才加CNC；零孔+无加工时间的纯折弯件不加
     const cncHoles = d.cnc_holes || d.process?.cnc_holes;
-    const cncTotalHoles = toNum(d.cnc_total_holes) || toNum(d.all_holes_total) || 0;
-    const machiningTime = toNum(d.machining_time_min) || d.process?.machining_time_min;
     const isSheetPart = d.is_sheet_metal === true || d.area_method === 'sheet_metal' || productType === '板材';
+    // ⚠️ 钣金件绝不能用 all_holes_total 兜底：那是「全部孔」（含冲压孔），不是 CNC 孔。
+    //    cnc_total_holes 明确为 0 时必须尊重 0 —— 旧写法 `0 || all_holes_total` 把 0 当假值，
+    //    会把 9 个冲压孔当成 CNC 孔，凭空加出「CNC加工」并按 9 分钟计费。
+    const cncTotalHoles = isSheetPart
+      ? (toNum(d.cnc_total_holes) ?? 0)
+      : (toNum(d.cnc_total_holes) ?? toNum(d.all_holes_total) ?? 0);
+    const machiningTime = toNum(d.machining_time_min) || d.process?.machining_time_min;
     // 钣金件：仅当is_cnc=true的孔>0时加CNC；cnc_total_holes=0说明所有孔都是挤压工艺孔，不加CNC
     // （后端machining_time可能错误把侧向挤压工艺孔计入，钣金件不以此为依据）
     const hasCncData = isSheetPart
@@ -2004,7 +2009,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         if (!existingNames.has('CNC加工')) {
           const cncProc: any = { name: 'CNC加工' };
           if (machiningTime) cncProc.subParams = { minutes: machiningTime };
-          else if (cncTotalHoles > 0) cncProc.quantity = cncTotalHoles;
+          // ⚠️ 孔数 ≠ 工时：钣金件不做「孔数→分钟」换算，否则 9 个冲压孔会被当成 9 分钟 CNC 计费
+          else if (cncTotalHoles > 0 && !isSheetPart) cncProc.quantity = cncTotalHoles;
           newProcs.push(cncProc);
         }
         if (!existingNames.has('钻孔') && cncTotalHoles > 0) {
