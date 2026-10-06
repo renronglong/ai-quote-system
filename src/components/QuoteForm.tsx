@@ -2368,13 +2368,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
         {/* ---- 产品类型 Tab栏 ---- */}
         <div className="border-b border-gray-200">
-          <div className="flex gap-0">
+          {/* flex-wrap + shrink-0：手机端窄，若不换行会把「挤出铝型材」挤成竖排单字 */}
+          <div className="flex flex-wrap gap-0">
             {Object.entries(PRODUCT_TYPES).map(([key, cfg]) => (
               <button
                 key={key}
                 type="button"
                 onClick={() => handleProductTypeChange(key)}
-                className={`relative px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
+                className={`relative shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
                   productType === key
                     ? 'text-blue-600'
                     : 'text-slate-600 hover:text-gray-700 hover:bg-gray-50'
