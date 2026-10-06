@@ -448,7 +448,7 @@ export default function QuotePage() {
             </Link>
 
             {/* 全站统一导航（min-w-0 flex-1 让它在窄屏能换行，避免「联系我们」被裁掉） */}
-            <div className="flex min-w-0 flex-1 items-center gap-1 flex-wrap">
+            <div className="flex min-w-0 w-full sm:w-auto sm:flex-1 items-center gap-1 flex-wrap">
               <TopNavLinks />
             </div>
 
