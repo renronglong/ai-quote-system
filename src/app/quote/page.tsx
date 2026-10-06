@@ -432,9 +432,10 @@ export default function QuotePage() {
     return () => mq.removeEventListener('change', apply);
   }, []);
 
-  // <1280px 默认收起「报价指南」：避免挤到参数表单（只做初始判断，用户仍可手动展开）
+  // <1600px 默认收起「报价指南」：把宽度让给参数表单（1366/1440 笔记本上表单能吃满）。
+  // 只做初始判断，用户随时可点右侧浮动 💡 按钮展开。
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.innerWidth < 1280) setGuideCollapsed(true);
+    if (typeof window !== 'undefined' && window.innerWidth < 1600) setGuideCollapsed(true);
   }, []);
 
   return (
