@@ -5,21 +5,12 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth-context';
 import {
   Upload,
-  ScanLine,
-  FileText,
   Calculator,
   ArrowRight,
   ChevronRight,
   Handshake,
   History,
 } from 'lucide-react';
-
-// 三步流程：比罗列「核心能力」更能回答"我要做什么、多久出结果"
-const steps = [
-  { icon: Upload, title: '上传图纸', desc: 'STP / STEP / DXF / DWG / PDF / 图片' },
-  { icon: ScanLine, title: 'AI 识别尺寸', desc: '自动读取长宽厚、孔数、折弯与工艺' },
-  { icon: FileText, title: '出报价单', desc: '材料 + 加工 + 表面处理，可保存导出' },
-];
 
 // 报价单示例（让首屏右边那片空白说清"产出什么"，数值为示例）
 const demoRows = [
@@ -103,28 +94,6 @@ export default function HomePage() {
               </div>
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* 三步流程 */}
-      <section className="mb-8">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {steps.map((s, i) => (
-            <div key={s.title} className="relative bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-              {/* 步骤之间的连接箭头（手机端隐藏） */}
-              {i < steps.length - 1 && (
-                <ChevronRight className="hidden sm:block absolute -right-[13px] top-1/2 -translate-y-1/2 w-5 h-5 text-gray-300 z-10" />
-              )}
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-                  <s.icon className="w-5 h-5 text-blue-600" />
-                </div>
-                <span className="text-xs font-medium text-gray-400">STEP {i + 1}</span>
-              </div>
-              <h2 className="font-semibold text-gray-900 mb-1">{s.title}</h2>
-              <p className="text-sm text-gray-500 leading-relaxed">{s.desc}</p>
-            </div>
-          ))}
         </div>
       </section>
 
