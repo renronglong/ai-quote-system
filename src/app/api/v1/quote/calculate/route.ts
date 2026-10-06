@@ -1453,6 +1453,7 @@ function calcSecondaryOperationsCost(
   rules: PricingRules,
   materialCost = 0,
   dims: { length_mm?: number; width_mm?: number; height_mm?: number } = {},
+  skipHoles = false,
 ): { cost: number; formula: string; detail: string } {
   let totalCost = 0;
   const details: string[] = [];
@@ -1460,7 +1461,9 @@ function calcSecondaryOperationsCost(
   const cncRates = rules.cnc_rates || {};
 
   // 钻孔费（按≤35T冲压公式：基数0.10 + 长度附加 + 体积附加）
-  if (process.holes && process.holes.count > 0) {
+  // skipHoles：钣金件专用 —— 钣金件的孔在冲压复合模里与落料一次冲完（方案B 由激光切割路径+穿孔费覆盖），
+  //            再收「钻孔费」属重复计费，故钣金引擎传 true 跳过。
+  if (!skipHoles && process.holes && process.holes.count > 0) {
     const baseRate = 0.10;
     const lengthMm = dims.length_mm || 0;
     const widthMm = dims.width_mm || 0;
@@ -1630,9 +1633,10 @@ function calcSheetMetal(
   }
 
   // 5. 二次加工费
+  // 钣金件跳过「钻孔费」：孔在冲压复合模里与落料一次冲完（激光方案由切割路径+穿孔费覆盖），再收属重复计
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions || {});
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions || {}, true);
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
