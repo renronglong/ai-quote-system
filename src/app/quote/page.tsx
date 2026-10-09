@@ -179,7 +179,7 @@ export default function QuotePage() {
           // snake 形式也要覆盖：part 自带的 material_grade 是列表里的原始选项（如"钢"），
           // 不覆盖的话牌号会显示成"钢"，切到铝板时还会拿它去匹配牌号加价
           material_category: matCat,
-          material_grade: matGrade || rawMat || '',
+          material_grade: matGrade,
         };
         // 延迟调用，让 QuoteForm 先完成 productType 切换后的 resetCategoryState
         setTimeout(() => handleFormUpdate(mappedData), 500);
