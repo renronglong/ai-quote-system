@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import QuoteForm, { PricingResult } from '@/components/QuoteForm';
+import QuoteForm, { PricingResult, normalizeSheetCategory } from '@/components/QuoteForm';
 import {
   Sparkles,
   TrendingUp,
@@ -131,30 +131,24 @@ export default function QuotePage() {
         // P0-5: 文件名兜底
         const fileNameNoExt = (part._fileName || '').replace(/\.[^.]+$/, '');
         // 将 part 对象映射为 AiFormUpdate 格式
-        // 材料映射：根据零件列表选择的材料，确定材料大类和牌号
-        // ⚠️ cat 必须是 PRODUCT_TYPES['板材'].materialCategories 里存在的 key
-        // （铝板/冷轧板/钢板/不锈钢/镀锌板），否则会被 QuoteForm 切类型的 effect 清回默认的「铝板」
-        const rawMat = part.material_grade || '';
-        const isSteelMat = /钢|铁|Q235|Q195|A3|SPCC/i.test(rawMat) && !/不锈钢|304|201|316|430/i.test(rawMat);
-        const matMap: Record<string, { cat: string; grade: string }> = {
-          '6063': { cat: '铝板', grade: '6063' },
-          '6061': { cat: '铝板', grade: '6061' },
-          '5052': { cat: '铝板', grade: '5052' },
-          '6060': { cat: '铝板', grade: '6060' },
-          '铝（未指定）': { cat: '铝板', grade: '' },
-          '钢': { cat: '钢板', grade: 'Q235' },
-          '不锈钢': { cat: '不锈钢', grade: '304' },
-        };
-        // 兜底：认不出牌号时按关键字判钢/不锈钢，而不是一律当铝
-        const matInfo = matMap[rawMat]
-          || (/不锈钢|304|201|316|430/i.test(rawMat) ? { cat: '不锈钢', grade: rawMat } : null)
-          || (isSteelMat ? { cat: '钢板', grade: rawMat || 'Q235' } : null)
-          || { cat: '铝板', grade: rawMat };
         // 产品大类：决定下面取值用哪套字段。
         // 型材【不能】兜底到板材的 unfold_* 字段 —— 否则会把「展开宽」当成「截面宽」显示，
         // 这种错值看起来像个正常数字，用户不会察觉（宁可留空，也不要填一个错值）。
         const isSheetPart = part.is_sheet_metal === true || part._isSheetMetal === true
                             || part.product_type === 'sheet_metal';
+        // 材料映射：根据零件列表选择的材料，确定材料大类和牌号
+        // ⚠️ cat 必须是 PRODUCT_TYPES['板材'].materialCategories 里存在的 key
+        // （铝板/冷轧板/钢板/不锈钢/镀锌板），否则会被 QuoteForm 切类型的 effect 清回默认的「铝板」
+        // ⇒ 直接复用 QuoteForm 的归一化规则，保证两边判断一致
+        const rawMat = part.material_grade || '';
+        const GRADE_ALIAS: Record<string, string> = {
+          '6063': '6063', '6061': '6061', '5052': '5052', '6060': '6060',
+          '铝（未指定）': '', '钢': 'Q235', '不锈钢': '304',
+        };
+        const matGrade = (rawMat in GRADE_ALIAS) ? GRADE_ALIAS[rawMat] : rawMat;
+        // 钣金件、或材料明显不是铝 → 用板材类目归一化；铝型材件保持铝板（走挤出分支）
+        const notAluminum = /钢|铁|不锈钢|镀锌|白铁|Q235|Q195|A3|SPCC|304|201|316|430/i.test(rawMat);
+        const matCat = (isSheetPart || notAluminum) ? normalizeSheetCategory(rawMat) : '铝板';
         const mappedData: any = {
           ...part,
           wallThickness: part.thickness_mm || part.sheet_thickness || part.wall_thickness,
@@ -174,18 +168,18 @@ export default function QuotePage() {
           productCode: part.product_code || part.part_number || fileNameNoExt || '',
           // 型材判定要同时认 'extrusion' 与 'aluminum_extrusion'（后端两种写法都出现过），
           // 另用截面类字段兜底，避免因命名不一致而误判成「板材」
-          // 钢材一律走「板材·钢板」：挤出分支是铝型材口径，选钢却进挤出就会按铝报价
-          productType: (isSheetPart || isSteelMat) ? '板材'
+          // 非铝材料一律走「板材」：挤出分支是铝型材口径，选钢却进挤出就会按铝报价
+          productType: (isSheetPart || notAluminum) ? '板材'
             : (part.process_type === 'extrusion' || part.process_type === 'aluminum_extrusion'
                || part.die_type || part.perimeter || part.extrusion_length_mm
                || part.section_area_mm2) ? '挤出'
             : (part.product_type || undefined),
-          materialCategory: matInfo.cat,   // 传递给 QuoteForm 的材料大类
-          materialGrade: matInfo.grade,    // 传递给 QuoteForm 的具体牌号
+          materialCategory: matCat,   // 传递给 QuoteForm 的材料大类
+          materialGrade: matGrade,    // 传递给 QuoteForm 的具体牌号
           // snake 形式也要覆盖：part 自带的 material_grade 是列表里的原始选项（如"钢"），
           // 不覆盖的话牌号会显示成"钢"，切到铝板时还会拿它去匹配牌号加价
-          material_category: matInfo.cat,
-          material_grade: matInfo.grade || rawMat || '',
+          material_category: matCat,
+          material_grade: matGrade || rawMat || '',
         };
         // 延迟调用，让 QuoteForm 先完成 productType 切换后的 resetCategoryState
         setTimeout(() => handleFormUpdate(mappedData), 500);
