@@ -143,11 +143,12 @@ export default function QuotePage() {
         const rawMat = part.material_grade || '';
         const GRADE_ALIAS: Record<string, string> = {
           '6063': '6063', '6061': '6061', '5052': '5052', '6060': '6060',
-          '铝（未指定）': '', '钢板': 'Q235', '钢': 'Q235', '不锈钢': '304',
+          '铝（未指定）': '', '钢板': 'Q235', '钢': 'Q235',
+          '冷轧板': 'SPCC', '不锈钢': '304',
         };
         const matGrade = (rawMat in GRADE_ALIAS) ? GRADE_ALIAS[rawMat] : rawMat;
         // 钣金件、或材料明显不是铝 → 用板材类目归一化；铝型材件保持铝板（走挤出分支）
-        const notAluminum = /钢|铁|不锈钢|镀锌|白铁|Q235|Q195|A3|SPCC|304|201|316|430/i.test(rawMat);
+        const notAluminum = /钢|铁|不锈钢|冷轧|镀锌|白铁|Q235|Q195|A3|SPCC|304|201|316|430/i.test(rawMat);
         const matCat = (isSheetPart || notAluminum) ? normalizeSheetCategory(rawMat) : '铝板';
         const mappedData: any = {
           ...part,
