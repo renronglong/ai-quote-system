@@ -137,8 +137,9 @@ export default function QuotePage() {
         const isSheetPart = part.is_sheet_metal === true || part._isSheetMetal === true
                             || part.product_type === 'sheet_metal';
         // 材料映射：根据零件列表选择的材料，确定材料大类和牌号
-        // ⚠️ cat 必须是 PRODUCT_TYPES['板材'].materialCategories 里存在的 key
-        // （铝板/冷轧板/钢板/不锈钢/镀锌板），否则会被 QuoteForm 切类型的 effect 清回默认的「铝板」
+        // ⚠️ cat 必须是 PRODUCT_TYPES[productType].materialCategories 里存在的 key，
+        //   板材：铝板/冷轧板/钢板/不锈钢/镀锌板；挤出：异型材/标准件。
+        //   否则 QuoteForm 的 categoryConfig 为 null，「基本参数」会渲染成空白。
         // ⇒ 直接复用 QuoteForm 的归一化规则，保证两边判断一致
         const rawMat = part.material_grade || '';
         const GRADE_ALIAS: Record<string, string> = {
@@ -147,9 +148,15 @@ export default function QuotePage() {
           '冷轧板': 'SPCC', '不锈钢': '304',
         };
         const matGrade = (rawMat in GRADE_ALIAS) ? GRADE_ALIAS[rawMat] : rawMat;
-        // 钣金件、或材料明显不是铝 → 用板材类目归一化；铝型材件保持铝板（走挤出分支）
+        // 先判定是否铝型材（挤出），再决定材料大类
         const notAluminum = /钢|铁|不锈钢|冷轧|镀锌|白铁|Q235|Q195|A3|SPCC|304|201|316|430/i.test(rawMat);
-        const matCat = (isSheetPart || notAluminum) ? normalizeSheetCategory(rawMat) : '铝板';
+        const isExtrusionPart = !isSheetPart && !notAluminum && (
+          part.process_type === 'extrusion' || part.process_type === 'aluminum_extrusion'
+          || part.die_type || part.perimeter || part.extrusion_length_mm || part.section_area_mm2
+        );
+        const matCat = isSheetPart || notAluminum ? normalizeSheetCategory(rawMat)
+                     : isExtrusionPart ? '异型材'
+                     : '铝板';
         const mappedData: any = {
           ...part,
           wallThickness: part.thickness_mm || part.sheet_thickness || part.wall_thickness,
@@ -171,9 +178,7 @@ export default function QuotePage() {
           // 另用截面类字段兜底，避免因命名不一致而误判成「板材」
           // 非铝材料一律走「板材」：挤出分支是铝型材口径，选钢却进挤出就会按铝报价
           productType: (isSheetPart || notAluminum) ? '板材'
-            : (part.process_type === 'extrusion' || part.process_type === 'aluminum_extrusion'
-               || part.die_type || part.perimeter || part.extrusion_length_mm
-               || part.section_area_mm2) ? '挤出'
+            : isExtrusionPart ? '挤出'
             : (part.product_type || undefined),
           materialCategory: matCat,   // 传递给 QuoteForm 的材料大类
           materialGrade: matGrade,    // 传递给 QuoteForm 的具体牌号

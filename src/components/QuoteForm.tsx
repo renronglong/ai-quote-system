@@ -1311,7 +1311,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         setMaterialCategory('标准件');
         // 标准件细分类由下方 aiData.standardCategory 分支设置
       } else if (aiData.materialCategory) {
-        // 异型材（含 '铝合金'/'铝型材' 等旧值兼容）：唯一细分类直接选中
+        // 异型材（含 '铝合金'/'铝型材'/'铝板' 等旧值兼容）：唯一细分类直接选中
         keep('异型材');
         setMaterialCategory('异型材');
         setStandardCategory('异型材');
@@ -1910,7 +1910,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         const mapped = normalizeSheetCategory(mc);
         if (typeWillChangeRef.current) preserveCatRef.current = mapped;
         if (mapped) setMaterialCategory(mapped);
-      } else if (/铝合金|铝型材|^铝$|挤压|挤出/.test(mc)) {
+      } else if (/铝合金|铝型材|^铝$|铝板|挤压|挤出/.test(mc)) {
         setMaterialCategory('异型材');
         setStandardCategory('异型材');
       } else {
