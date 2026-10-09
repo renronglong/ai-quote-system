@@ -66,15 +66,7 @@ export default function QuotePartsPage() {
   //   铝板这一项用牌号细化（6063/6061/5052/6060/未指定），其余直接给类目名。
   //   「钢」不是合法类目（10-09 已改为「钢板」）；旧数据里的「钢」由 normalizeSheetCategory 兜底。
   const MATERIAL_OPTIONS = ['6063', '6061', '5052', '6060', '铝（未指定）', '钢板', '冷轧板', '镀锌板', '不锈钢'];
-  const [currentMaterial, setCurrentMaterial] = useState<string>('');
   const [materialModalIdx, setMaterialModalIdx] = useState<number | null>(null); // 哪个零件弹出选材料
-
-  // 初始化材料选择：从 payload 读取，没有则留空
-  useEffect(() => {
-    if (!payload) return;
-    const payloadMat = (payload as any)?.material || '';
-    setCurrentMaterial(payloadMat);
-  }, [payload]);
 
   useEffect(() => {
     try {
@@ -117,7 +109,7 @@ export default function QuotePartsPage() {
     if (!payload) return;
     const part = payload.products[idx];
     if (part._failed) return;
-    const effectiveMaterial = part.material_grade || currentMaterial;
+    const effectiveMaterial = part.material_grade;
     if (!effectiveMaterial) {
       // 弹出材料选择弹窗
       setMaterialModalIdx(idx);
@@ -144,17 +136,6 @@ export default function QuotePartsPage() {
     setPayload(updatedPayload);
     setMaterialModalIdx(null);
     navigateToQuote(materialModalIdx, material);
-  };
-
-  // 材料变更时同步到 payload 并写回 sessionStorage
-  const handleMaterialChange = (newMat: string) => {
-    setCurrentMaterial(newMat);
-    if (payload) {
-      const updated = { ...(payload as any), material: newMat };
-      sessionStorage.setItem('ai_quote_parts', JSON.stringify(updated));
-    }
-    // 同步 localStorage 默认材料
-    if (newMat) localStorage.setItem('user_default_material', newMat);
   };
 
   const getPartType = (p: PartData): { label: string; color: string; icon: any } => {
@@ -243,22 +224,6 @@ export default function QuotePartsPage() {
                 : '图纸识别完成，点击进入报价'}
               {payload.fileName && <span className="text-slate-400 ml-1">· {payload.fileName}</span>}
             </p>
-          </div>
-
-          {/* 批量设置材料（未设材料的零件默认使用此值） */}
-          <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4 shadow-sm">
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium text-slate-700 shrink-0">批量材料</span>
-              <select
-                value={currentMaterial}
-                onChange={(e) => handleMaterialChange(e.target.value)}
-                className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">暂不统一设置</option>
-                {MATERIAL_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-              <span className="text-xs text-slate-400 shrink-0">未单独设材料的零件将使用此值</span>
-            </div>
           </div>
 
           {/* 进度条 */}
@@ -378,7 +343,6 @@ export default function QuotePartsPage() {
                           </span>
                         )}
                         {p.material_grade ? <span className="text-slate-500 truncate ml-2 text-xs">材质: {p.material_grade}</span>
-                          : currentMaterial ? <span className="text-slate-400 truncate ml-2 text-xs">材质: {currentMaterial} (批量)</span>
                           : <span className="text-amber-400 truncate ml-2 text-xs">材质: 待选择</span>}
                       </div>
                     </>
