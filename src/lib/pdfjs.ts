@@ -8,6 +8,9 @@
  */
 
 const PDFJS_SRC = '/pdfjs/pdf.min.js';
+// 必须显式指到同目录的 worker，否则 legacy 版会去猜一个路径再报
+// "Setting up fake worker failed"，PDF 照样转不出来
+const PDFJS_WORKER_SRC = '/pdfjs/pdf.worker.min.js';
 
 let loading: Promise<any> | null = null;
 
@@ -24,7 +27,7 @@ export function loadPdfJs(): Promise<any> {
         reject(new Error('pdf.js 加载后不可用'));
         return;
       }
-      if (lib.GlobalWorkerOptions) lib.GlobalWorkerOptions.workerSrc = '';
+      if (lib.GlobalWorkerOptions) lib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
       w.pdfjsLib = lib;
       resolve(lib);
     };
