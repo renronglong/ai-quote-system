@@ -46,7 +46,7 @@ const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.dxf', '.dwg', '.s
 // 图片扩展名 — 触发AI识别
 const AI_RECOG_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf', '.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t', '.zip', '.rar', '.7z', '.tar', '.gz'];
 // 上传区直接展示的能力标签（与实测结果一致，别再写支持但实际不支持）
-const SUPPORTED_TAGS = ['STP', 'STEP', 'DXF', 'DWG', 'PDF', 'JPG', 'PNG', 'ZIP', 'TAR'];
+const SUPPORTED_TAGS = ['STP', 'STEP', 'DXF', 'DWG', 'PDF', 'JPG', 'PNG', 'ZIP', 'RAR', '7Z', 'TAR'];
 
 // CAD扩展名 — 本地解析或转发
 const CAD_EXTS = ['.dxf', '.dwg', '.step', '.stp', '.igs'];
@@ -54,11 +54,10 @@ const CAD_EXTS = ['.dxf', '.dwg', '.step', '.stp', '.igs'];
 // 单文件体积上限：Vercel Serverless 请求体 4.5MB，超了会直接 413
 const MAX_FILE_BYTES = 4.5 * 1024 * 1024;
 
-// 扩展名在允许列表里，但解压/解析服务当前撑不住 —— 选到就立刻给明确提示，不让用户白等
+// 扩展名在允许列表里，但当前仍会用不了 —— 选到就立刻说清，不让用户白等
+// RAR / 7Z 后端已于 2026-10-09 装好 p7zip，实测可用，不再拦截
 const FORMAT_BLOCKED: Record<string, string> = {
-  '.rar': '暂不支持 RAR 压缩包（服务端缺 7z 组件）。请改用 ZIP 或 TAR 重新打包后上传。',
-  '.7z': '暂不支持 7Z 压缩包（服务端缺 7z 组件）。请改用 ZIP 或 TAR 重新打包后上传。',
-  '.gz': '暂不支持 GZ 压缩包。请改用 ZIP 或 TAR 重新打包后上传。',
+  '.gz': 'GZ 压缩包解压后会丢失图纸扩展名（服务端解出的是无后缀文件名，识别不出来）。请改用 ZIP / TAR，或打包成 .tar.gz。',
 };
 
 const processToProductType: Record<string, string> = {
@@ -343,7 +342,10 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         const vDims = dims.filter((d: any) => d.direction === '垂直').map((d: any) => d.measurement_mm);
         const maxH = hDims.length ? Math.max(...hDims) : 0;
         const maxV = vDims.length ? Math.max(...vDims) : 0;
-        let sizeSource = '图纸标注';
+        // 后端现在会在标注缺失时回填外框值，并在每条 dimension 上标 source=bbox_fallback。
+        // 这种情况下不能跟用户说是「图纸标注」，得如实标成外框估算。
+        const fromBbox = dims.some((d: any) => d && d.source === 'bbox_fallback');
+        let sizeSource = fromBbox ? '图形外框估算（图纸无尺寸标注）' : '图纸标注';
         let unfoldL = maxH;
         let unfoldW = maxV;
         if (maxH <= 0 || maxV <= 0) {
@@ -424,54 +426,88 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
           setRecognitionFailed(true);
           return;
         }
-        setStatusMessage(`解压成功，共 ${targetFiles.length} 个文件，正在逐个识别...`);
-        const allProducts: Record<string, any>[] = [];
-        for (let fi = 0; fi < targetFiles.length; fi++) {
-          const targetFile = targetFiles[fi];
-          setStatusMessage(`正在识别 ${fi + 1}/${targetFiles.length}: ${targetFile.name}...`);
-          if (fi === 0) {
-            try {
-              const clsFd = new FormData();
-              clsFd.append('file_id', targetFile.file_id);
-              const clsResp = await fetch('/api/classify', { method: 'POST', body: clsFd });
-              if (clsResp.ok) {
-                const classifyData = await clsResp.json();
-                const mapped = processToProductType[classifyData.process_type_cn];
-                if (mapped && PRODUCT_TYPES[mapped] && mapped !== productType) {
-                  setProductType(mapped);
-                }
-              }
-            } catch { /* 分类失败忽略 */ }
-          }
-          const parseFd = new FormData();
-          parseFd.append('file_id', targetFile.file_id);
-          const parseResp = await fetch('/api/drawing-parse', {
-            method: 'POST',
-            body: parseFd,
-            headers: { 'x-file-name': encodeURIComponent(targetFile.name) }
-          });
-          const parseJson = await parseResp.json();
-          if (!parseResp.ok || !parseJson.parse_success) {
-            allProducts.push({
-              confidence: 0,
-              product_type: productType,
-              product_code: '',
-              notes: `解析失败: ${targetFile.name} - ${parseJson.error || '未知错误'}`,
-              _fileName: targetFile.name,
-              _failed: true,
-            });
-            continue;
-          }
-          // 检查压缩包内是否有装配体
-          if (parseJson.is_assembly && parseJson.parts && parseJson.parts.length > 0) {
-            // 装配体：展开零件加入列表
-            for (const part of parseJson.parts) {
-              const partData = buildRecogDataFromParse(part, productType, '装配体零件', targetFile.name + ' / ' + (part.product_name || part.part_id));
-              allProducts.push(partData);
+        setStatusMessage(`解压成功，共 ${targetFiles.length} 个文件，正在批量识别...`);
+
+        // 第一个文件先做一次工艺分类（批量接口不返回分类）
+        try {
+          const clsFd = new FormData();
+          clsFd.append('file_id', targetFiles[0].file_id);
+          const clsResp = await fetch('/api/classify', { method: 'POST', body: clsFd });
+          if (clsResp.ok) {
+            const classifyData = await clsResp.json();
+            const mapped = processToProductType[classifyData.process_type_cn];
+            if (mapped && PRODUCT_TYPES[mapped] && mapped !== productType) {
+              setProductType(mapped);
             }
-          } else {
-            const recogData = buildRecogDataFromParse(parseJson, productType, '压缩包解析', targetFile.name);
-            allProducts.push(recogData);
+          }
+        } catch { /* 分类失败忽略 */ }
+
+        // 优先走后端批量解析（并发）；失败才退回逐个解析
+        let allProducts: Record<string, any>[] = [];
+        let usedBatch = false;
+        try {
+          const batchResp = await fetch('/api/parse-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file_ids: targetFiles.map((f: any) => f.file_id) }),
+          });
+          const batchJson = await batchResp.json();
+          if (batchResp.ok && batchJson.success && Array.isArray(batchJson.results)) {
+            usedBatch = true;
+            const nameById: Record<string, string> = {};
+            targetFiles.forEach((f: any) => { nameById[f.file_id] = f.name; });
+            for (const r of batchJson.results as any[]) {
+              const fname = r.file_name || nameById[r.file_id] || '';
+              if (!r.parse_success) {
+                allProducts.push({
+                  confidence: 0, product_type: productType, product_code: '',
+                  notes: `解析失败: ${fname} - ${r.error || r.parse_errors || '未知错误'}`,
+                  _fileName: fname, _failed: true,
+                });
+                continue;
+              }
+              if (r.is_assembly && r.parts && r.parts.length > 0) {
+                for (const part of r.parts) {
+                  allProducts.push(buildRecogDataFromParse(part, productType, '装配体零件', fname + ' / ' + (part.product_name || part.part_id)));
+                }
+              } else {
+                allProducts.push(buildRecogDataFromParse(r, productType, '压缩包解析', fname));
+              }
+            }
+          }
+        } catch { /* 批量失败，退回逐个解析 */ }
+
+        if (!usedBatch) {
+          setStatusMessage(`批量解析不可用，改为逐个识别（共 ${targetFiles.length} 个）...`);
+          for (let fi = 0; fi < targetFiles.length; fi++) {
+            const targetFile = targetFiles[fi];
+            setStatusMessage(`正在识别 ${fi + 1}/${targetFiles.length}: ${targetFile.name}...`);
+            const parseFd = new FormData();
+            parseFd.append('file_id', targetFile.file_id);
+            const parseResp = await fetch('/api/drawing-parse', {
+              method: 'POST',
+              body: parseFd,
+              headers: { 'x-file-name': encodeURIComponent(targetFile.name) }
+            });
+            const parseJson = await parseResp.json();
+            if (!parseResp.ok || !parseJson.parse_success) {
+              allProducts.push({
+                confidence: 0,
+                product_type: productType,
+                product_code: '',
+                notes: `解析失败: ${targetFile.name} - ${parseJson.error || '未知错误'}`,
+                _fileName: targetFile.name,
+                _failed: true,
+              });
+              continue;
+            }
+            if (parseJson.is_assembly && parseJson.parts && parseJson.parts.length > 0) {
+              for (const part of parseJson.parts) {
+                allProducts.push(buildRecogDataFromParse(part, productType, '装配体零件', targetFile.name + ' / ' + (part.product_name || part.part_id)));
+              }
+            } else {
+              allProducts.push(buildRecogDataFromParse(parseJson, productType, '压缩包解析', targetFile.name));
+            }
           }
         }
         if (allProducts.length === 0) {
@@ -500,8 +536,10 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         const cadResp = await fetch('/api/drawing-parse', { method: 'POST', body: cadFd });
         const cadJson = await cadResp.json();
         if (!cadResp.ok || !cadJson.parse_success) {
-          // IGES：服务端目前只会按 STEP 解析，IGES 一律失败 —— 给可执行的替代方案
-          if (ext === '.igs' || ext === '.iges') {
+          // 后端明确返回「格式不支持」时，直接用它给的可读提示（别再甩 FreeCAD 异常堆栈）
+          if (cadJson.error_code === 'unsupported_format' && (cadJson.message || cadJson.hint)) {
+            setRecogError(String(cadJson.message || cadJson.hint));
+          } else if (ext === '.igs' || ext === '.iges') {
             setRecogError('IGES 格式暂不支持解析。请在 CAD 里把文件另存为 STEP（.stp / .step）后再上传。');
           } else if (ext === '.x_t') {
             setRecogError('X_T（Parasolid）格式暂不支持解析。请在 CAD 里把文件另存为 STEP（.stp / .step）后再上传。');
@@ -753,7 +791,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
               {showFmtHelp && (
                 <div className="mt-1.5 text-left rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-800">
                   <div className="font-semibold mb-0.5">暂不支持，传了会失败：</div>
-                  <div><b>RAR / 7Z / GZ</b> —— 请改用 <b>ZIP</b> 或 <b>TAR</b> 打包</div>
+                  <div><b>GZ</b> —— 解压后会丢扩展名，请改用 <b>ZIP</b> / <b>TAR</b> / <b>.tar.gz</b></div>
                   <div><b>IGES / X_T</b> —— 请在 CAD 里另存为 <b>STEP</b>（.stp / .step）</div>
                   <div className="mt-1 text-amber-700">单文件 ≤4.5MB；DXF / DWG 若图纸没有尺寸标注，会按图形外框估算</div>
                 </div>
