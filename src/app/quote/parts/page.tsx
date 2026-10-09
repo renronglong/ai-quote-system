@@ -179,6 +179,8 @@ export default function QuotePartsPage() {
   const [batchDone, setBatchDone] = useState(false);
   const [batchSummary, setBatchSummary] = useState('');
   const [batchError, setBatchError] = useState('');
+  const [batchModalOpen, setBatchModalOpen] = useState(false);
+  const [batchSelected, setBatchSelected] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     try {
@@ -260,8 +262,8 @@ export default function QuotePartsPage() {
     navigateToQuote(materialModalIdx, material);
   };
 
-  // 批量生成报价：用默认/AI预填值，为全部可处理的零件计算并保存
-  const handleBatchGenerate = async () => {
+  // 批量生成报价：点击"立即生成"先弹出零件明细，用户手工勾选要生成的零件
+  const openBatchModal = () => {
     if (!user) {
       if (typeof window !== 'undefined') window.alert('请先登录后再批量生成报价');
       router.push('/login?redirect=/quote/parts');
@@ -270,7 +272,7 @@ export default function QuotePartsPage() {
     if (!payload) return;
     const products = payload.products;
 
-    // 批量生成要求所有待处理零件都已设材料：若 AI 未预填，提示用户先点卡片选择材质
+    // 批量生成要求所有非失败、未报价的待处理零件都已设材料：若 AI 未预填，提示先选材质
     const missingMaterial = products.map((p, idx) =>
       (!quotedParts.has(idx) && !p._failed && !String(p.material_grade || '').trim()) ? idx : -1
     ).filter(i => i !== -1);
@@ -282,12 +284,28 @@ export default function QuotePartsPage() {
       return;
     }
 
-    // 收集待处理零件；跳过已报价 / 识别失败 / 无法构造参数的
+    // 默认勾选：非失败 + 已设材料 + 尚未报价的零件（已报价的也可手动勾选重算）
+    const def: number[] = [];
+    products.forEach((p, idx) => {
+      if (p._failed) return;
+      if (!String(p.material_grade || '').trim()) return;
+      if (!quotedParts.has(idx)) def.push(idx);
+    });
+    setBatchSelected(new Set(def));
+    setBatchError('');
+    setBatchModalOpen(true);
+  };
+
+  // 按用户勾选的索引，逐个计算并保存
+  const runBatchGenerate = async (selectedIdx: number[]) => {
+    if (!user || !payload) return;
+    const products = payload.products;
+
+    // 收集可构造参数的待处理零件（已剔除缺尺寸/无法判型的，后端会报错，这里先标记）
     const toProcess: number[] = [];
     const skippedInitial: Record<number, string> = {};
-    products.forEach((p, idx) => {
-      if (quotedParts.has(idx)) { skippedInitial[idx] = '已报价'; return; }
-      if (p._failed) { skippedInitial[idx] = '识别失败'; return; }
+    selectedIdx.forEach(idx => {
+      const p = products[idx];
       const built = buildPartPayload(p, idx);
       if (built.skipReason) { skippedInitial[idx] = built.skipReason; return; }
       toProcess.push(idx);
@@ -295,13 +313,10 @@ export default function QuotePartsPage() {
 
     if (toProcess.length === 0) {
       setBatchDone(true);
-      setBatchSummary('没有需要生成的零件（已全部报价或均无法处理）。');
+      setBatchSummary('没有需要生成的零件（所选零件均无法处理）。');
+      setBatchModalOpen(false);
       return;
     }
-    const confirmed = typeof window !== 'undefined'
-      ? window.confirm(`将为 ${toProcess.length} 个零件按「默认 / AI 预填值」批量计算并保存报价，确定？`)
-      : true;
-    if (!confirmed) return;
 
     setBatchGenerating(true);
     setBatchDone(false);
@@ -347,6 +362,7 @@ export default function QuotePartsPage() {
 
     setBatchGenerating(false);
     setBatchDone(true);
+    setBatchModalOpen(false);
 
     // 标记已生成的零件为已报价
     setQuotedParts(prev => {
@@ -471,7 +487,7 @@ export default function QuotePartsPage() {
                 </p>
               </div>
               <button
-                onClick={handleBatchGenerate}
+                onClick={openBatchModal}
                 disabled={batchGenerating}
                 className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition"
               >
@@ -648,6 +664,124 @@ export default function QuotePartsPage() {
                         {m}
                       </button>
                     ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* 批量生成 · 选择零件弹窗（用户手工勾选要生成的零件） */}
+          {batchModalOpen && payload && (() => {
+            const selectable: number[] = [];
+            payload.products.forEach((p, idx) => {
+              if (!p._failed && String(p.material_grade || '').trim()) selectable.push(idx);
+            });
+            const allSelected = selectable.length > 0 && selectable.every(i => batchSelected.has(i));
+            const toggleAll = () => {
+              setBatchSelected(prev => {
+                const next = new Set(prev);
+                if (allSelected) selectable.forEach(i => next.delete(i));
+                else selectable.forEach(i => next.add(i));
+                return next;
+              });
+            };
+            return (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+                onClick={() => { if (!batchGenerating) setBatchModalOpen(false); }}
+              >
+                <div
+                  className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-lg mx-4 max-h-[85vh] flex flex-col"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-base font-semibold text-slate-800 flex items-center gap-2">
+                      <Zap size={18} className="text-blue-600" /> 批量生成报价 · 选择零件
+                    </h3>
+                    <button
+                      onClick={() => { if (!batchGenerating) setBatchModalOpen(false); }}
+                      className="text-slate-400 hover:text-slate-600 disabled:opacity-40"
+                      disabled={batchGenerating}
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500 mb-3">
+                    勾选要生成报价的零件，确认后将逐个计算并保存报价。已报价零件也可重新勾选覆盖。
+                  </p>
+                  <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-100">
+                    <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 accent-blue-600"
+                        checked={allSelected}
+                        onChange={toggleAll}
+                        disabled={batchGenerating || selectable.length === 0}
+                      />
+                      全选（共 {selectable.length} 个可生成）
+                    </label>
+                    <span className="text-xs text-slate-400">已选 {batchSelected.size} 个</span>
+                  </div>
+                  <div className="flex-1 overflow-y-auto -mx-1 px-1 space-y-2">
+                    {payload.products.map((p, idx) => {
+                      const type = getPartType(p);
+                      const hasMat = String(p.material_grade || '').trim() !== '';
+                      const disabled = p._failed || !hasMat || batchGenerating;
+                      const checked = batchSelected.has(idx);
+                      return (
+                        <label
+                          key={idx}
+                          className={`flex items-start gap-3 rounded-lg border p-3 transition
+                            ${disabled ? 'border-slate-100 bg-slate-50 opacity-60 cursor-not-allowed'
+                              : checked ? 'border-blue-300 bg-blue-50 cursor-pointer'
+                              : 'border-slate-200 hover:border-blue-200 cursor-pointer'}`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-1 w-4 h-4 accent-blue-600 shrink-0"
+                            checked={checked}
+                            disabled={disabled}
+                            onChange={() => setBatchSelected(prev => {
+                              const next = new Set(prev);
+                              if (next.has(idx)) next.delete(idx); else next.add(idx);
+                              return next;
+                            })}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-slate-800 truncate">{getPartName(p, idx)}</span>
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${type.color}`}>{type.label}</span>
+                            </div>
+                            <div className="text-xs text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                              <span>材质: {p.material_grade || '待选择'}</span>
+                              <span>尺寸: {getPartDims(p)}</span>
+                              {(p.quantity ?? p._quantity) ? <span>数量: {p.quantity || p._quantity}</span> : null}
+                            </div>
+                            {p._failed && <div className="text-xs text-red-500 mt-1">识别失败，无法生成</div>}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-4 flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                    <button
+                      onClick={() => setBatchModalOpen(false)}
+                      disabled={batchGenerating}
+                      className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={() => runBatchGenerate(Array.from(batchSelected))}
+                      disabled={batchGenerating || batchSelected.size === 0}
+                      className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                    >
+                      {batchGenerating ? (
+                        <><Loader2 size={15} className="animate-spin" /> 生成中 {batchProgress.done}/{batchProgress.total}</>
+                      ) : (
+                        <><Zap size={15} /> 确认生成（{batchSelected.size}）</>
+                      )}
+                    </button>
                   </div>
                 </div>
               </div>
