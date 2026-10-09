@@ -586,7 +586,8 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
       fd.append('file', fileToSend);
       const apiEndpoint = productType === '板材' ? '/api/recognize-sheet' : '/api/recognize-drawing';
       const aiController = new AbortController();
-      const aiTimeout = setTimeout(() => aiController.abort(), 60000);
+      // 后端 /api/recognize-drawing 的 maxDuration 是 120s，前端 60s 就掐断会白等一场
+      const aiTimeout = setTimeout(() => aiController.abort(), 110000);
       const resp = await fetch(apiEndpoint + '?userId=' + user!.id, { method: 'POST', body: fd, signal: aiController.signal });
       clearTimeout(aiTimeout);
       const json = await resp.json();
