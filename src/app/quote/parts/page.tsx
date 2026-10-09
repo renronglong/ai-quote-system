@@ -4,9 +4,12 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, FileText, Layers, CheckCircle2,
-  ChevronRight, ArrowRight, Package, Ruler, Box, Info, AlertCircle, Loader2, X
+  ChevronRight, ArrowRight, Package, Ruler, Box, Info, AlertCircle, Loader2, X, Zap
 } from 'lucide-react';
 import TopNavLinks from '@/components/TopNav';
+import { useAuth } from '@/lib/auth-context';
+import { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
+import { normalizeSheetCategory } from '@/components/QuoteForm';
 
 interface PartData {
   _partName?: string;
@@ -57,8 +60,111 @@ interface PartsPayload {
   createdAt: number;
 }
 
+// ==================== 批量生成报价：参数构造 ====================
+// 把识别结果直接喂给 /api/v1/quote/calculate（用默认/AI预填值，无需逐一点击确认）。
+// product_type 映射：钣金折弯 → sheet_metal；挤压型材 → extrusion；其余按 product_type/process_type 兜底。
+type ApiType = 'sheet_metal' | 'extrusion' | 'die_casting' | 'zinc_alloy' | 'injection';
+interface BuiltPayload {
+  apiType: ApiType;
+  productTypeZh: string;
+  category: string;
+  payload: Record<string, any>;
+  params: Record<string, any>;
+  skipReason?: string;
+}
+
+function isSheetPart(p: PartData): boolean {
+  return !!(
+    p.is_sheet_metal === true || p._isSheet ||
+    p.area_method === 'sheet_metal' || p.process_type === 'sheet_metal' ||
+    p.product_type === 'sheet_metal'
+  );
+}
+
+function resolveApiType(p: PartData): { apiType: ApiType | null; zh: string } {
+  if (isSheetPart(p)) return { apiType: 'sheet_metal', zh: '板材' };
+  const t = String(p.product_type || p.process_type || '').toLowerCase();
+  if (t.includes('extrusion') || t === '挤出') return { apiType: 'extrusion', zh: '挤出' };
+  if (t.includes('die_cast') || t === '压铸') return { apiType: 'die_casting', zh: '压铸' };
+  if (t.includes('zinc') || t === '锌') return { apiType: 'zinc_alloy', zh: '锌合金' };
+  if (t.includes('inject') || t === '注塑') return { apiType: 'injection', zh: '注塑' };
+  if (p.die_type || p.perimeter) return { apiType: 'extrusion', zh: '挤出' };
+  return { apiType: null, zh: '' };
+}
+
+function partNameOf(p: PartData, idx: number): string {
+  return p.part_number || p._partName || p.product_code || p.product_name || p.part_name || `零件${idx + 1}`;
+}
+
+function buildPartPayload(p: PartData, idx: number): BuiltPayload {
+  const { apiType, zh } = resolveApiType(p);
+  if (!apiType) {
+    return { apiType: 'sheet_metal', productTypeZh: '', category: '', payload: {}, params: {}, skipReason: '无法判定产品类型' };
+  }
+
+  const partName = partNameOf(p, idx);
+  const grade = p.material_grade || '';
+  // 板材用 normalizeSheetCategory 归一化到合法类目；型材类后端按铝计价（已知限制：钢型材仍按铝），
+  // 其余按类型给默认类目（识别未给材料时兜底）。
+  let category = '';
+  if (apiType === 'sheet_metal') category = normalizeSheetCategory(grade || '铝板');
+  else if (apiType === 'extrusion') category = grade || '铝型材';
+  else if (apiType === 'die_casting') category = grade || '压铸铝ADC12';
+  else if (apiType === 'zinc_alloy') category = grade || '锌合金ZA-8';
+  else if (apiType === 'injection') category = grade || 'ABS';
+
+  const qty = Number(p.quantity || p._quantity || 1) || 1;
+
+  const payload: Record<string, any> = {
+    product_type: apiType,
+    material: { category, grade: grade || undefined },
+    quantity: qty,
+    product_name: partName,
+  };
+  if (p.product_code || p.product_number) payload.product_code = p.product_code || p.product_number;
+
+  let dims: Record<string, any> | null = null;
+  if (apiType === 'sheet_metal') {
+    const l = Number(p.unfold_length_mm ?? p.length);
+    const w = Number(p.unfold_width_mm ?? p.width);
+    const t = Number(p.thickness_mm ?? p.wall_thickness);
+    if (!(l > 0) || !(w > 0)) {
+      return { apiType, productTypeZh: zh, category, payload: {}, params: {}, skipReason: '板材缺少长宽尺寸' };
+    }
+    dims = { length_mm: l, width_mm: w, wall_thickness_mm: t > 0 ? t : undefined };
+  } else if (apiType === 'extrusion') {
+    dims = {
+      width_mm: Number(p.width) || 0,
+      height_mm: Number(p.height) || undefined,
+      length_mm: Number(p.length) || 0,
+      wall_thickness_mm: Number(p.wall_thickness) > 0 ? Number(p.wall_thickness) : undefined,
+      cross_section_area_mm2: Number(p.crossSectionArea || p.section_area_mm2) || undefined,
+      perimeter_mm: Number(p.perimeter) || undefined,
+      meter_weight_kg_per_m: Number(p.meter_weight) || undefined,
+    };
+  }
+  if (dims) payload.dimensions = dims;
+  if (p.surface_treatment) payload.surface_treatment = { type: p.surface_treatment };
+  const wKg = Number(p.weight_g) > 0 ? Number(p.weight_g) / 1000 : undefined;
+  if (wKg) payload.weight_per_piece_kg = wKg;
+
+  const params: Record<string, any> = {
+    product_type: apiType,
+    productName: partName,
+    materialCategory: category,
+    materialGrade: grade,
+    material: { category, grade: grade || undefined },
+    quantity: qty,
+    dimensions: dims || undefined,
+  };
+  if (p.product_code || p.product_number) params.productCode = p.product_code || p.product_number;
+
+  return { apiType, productTypeZh: zh, category, payload, params };
+}
+
 export default function QuotePartsPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [payload, setPayload] = useState<PartsPayload | null>(null);
   const [quotedParts, setQuotedParts] = useState<Set<number>>(new Set());
   // ⚠️ 选项必须能被报价页映射成合法材料大类：
@@ -67,6 +173,11 @@ export default function QuotePartsPage() {
   //   「钢」不是合法类目（10-09 已改为「钢板」）；旧数据里的「钢」由 normalizeSheetCategory 兜底。
   const MATERIAL_OPTIONS = ['6063', '6061', '5052', '6060', '铝（未指定）', '钢板', '冷轧板', '镀锌板', '不锈钢'];
   const [materialModalIdx, setMaterialModalIdx] = useState<number | null>(null); // 哪个零件弹出选材料
+  // 批量生成报价相关状态
+  const [batchGenerating, setBatchGenerating] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0, success: 0, skipped: 0 });
+  const [batchDone, setBatchDone] = useState(false);
+  const [batchSummary, setBatchSummary] = useState('');
 
   useEffect(() => {
     try {
@@ -74,6 +185,16 @@ export default function QuotePartsPage() {
       if (!raw) { router.push('/quote/recognize'); return; }
       const data: PartsPayload = JSON.parse(raw);
       setPayload(data);
+      // 恢复批量生成已保存的零件标记（刷新后仍保持绿色✓）
+      try {
+        const bq = sessionStorage.getItem('ai_quote_batch_quoted');
+        if (bq) {
+          const arr = JSON.parse(bq) as number[];
+          if (Array.isArray(arr) && arr.length) {
+            setQuotedParts(prev => new Set([...prev, ...arr]));
+          }
+        }
+      } catch (_e) { /* ignore */ }
     } catch (e) {
       router.push('/quote/recognize');
     }
@@ -136,6 +257,104 @@ export default function QuotePartsPage() {
     setPayload(updatedPayload);
     setMaterialModalIdx(null);
     navigateToQuote(materialModalIdx, material);
+  };
+
+  // 批量生成报价：用默认/AI预填值，为全部可处理的零件计算并保存
+  const handleBatchGenerate = async () => {
+    if (!user) {
+      if (typeof window !== 'undefined') window.alert('请先登录后再批量生成报价');
+      router.push('/login?redirect=/quote/parts');
+      return;
+    }
+    if (!payload) return;
+    const products = payload.products;
+
+    // 收集待处理零件；跳过已报价 / 识别失败 / 无法构造参数的
+    const toProcess: number[] = [];
+    const skippedInitial: Record<number, string> = {};
+    products.forEach((p, idx) => {
+      if (quotedParts.has(idx)) { skippedInitial[idx] = '已报价'; return; }
+      if (p._failed) { skippedInitial[idx] = '识别失败'; return; }
+      const built = buildPartPayload(p, idx);
+      if (built.skipReason) { skippedInitial[idx] = built.skipReason; return; }
+      toProcess.push(idx);
+    });
+
+    if (toProcess.length === 0) {
+      setBatchDone(true);
+      setBatchSummary('没有需要生成的零件（已全部报价或均无法处理）。');
+      return;
+    }
+    const confirmed = typeof window !== 'undefined'
+      ? window.confirm(`将为 ${toProcess.length} 个零件按「默认 / AI 预填值」批量计算并保存报价，确定？`)
+      : true;
+    if (!confirmed) return;
+
+    setBatchGenerating(true);
+    setBatchDone(false);
+    setBatchSummary('');
+    setBatchProgress({ done: 0, total: toProcess.length, success: 0, skipped: 0 });
+
+    const successIdx: number[] = [];
+    for (const idx of toProcess) {
+      const p = products[idx];
+      const built = buildPartPayload(p, idx);
+      if (built.skipReason) { setBatchProgress(pr => ({ ...pr, done: pr.done + 1, skipped: pr.skipped + 1 })); continue; }
+      try {
+        const res = await fetch('/api/v1/quote/calculate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(built.payload),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          console.warn('[批量生成] 计算失败', idx, data?.error);
+          setBatchProgress(pr => ({ ...pr, done: pr.done + 1, skipped: pr.skipped + 1 }));
+          continue;
+        }
+        // 计算成功 → 保存。result 用完整 API 响应并补 unit_price 别名（历史列表读 result.unit_price）
+        const result: Record<string, any> = {
+          ...data,
+          unit_price: data.unit_price_ex_tax,
+          unit_price_inc_tax: data.unit_price_in_tax,
+        };
+        const saved = await saveQuoteToAPI(user.id, built.params, result, built.productTypeZh, undefined, undefined, undefined, partNameOf(p, idx));
+        if (saved) {
+          successIdx.push(idx);
+          setBatchProgress(pr => ({ ...pr, done: pr.done + 1, success: pr.success + 1 }));
+        } else {
+          setBatchProgress(pr => ({ ...pr, done: pr.done + 1, skipped: pr.skipped + 1 }));
+        }
+      } catch (err) {
+        console.error('[批量生成] 异常', idx, err);
+        setBatchProgress(pr => ({ ...pr, done: pr.done + 1, skipped: pr.skipped + 1 }));
+      }
+    }
+
+    setBatchGenerating(false);
+    setBatchDone(true);
+
+    // 标记已生成的零件为已报价
+    setQuotedParts(prev => {
+      const next = new Set(prev);
+      successIdx.forEach(i => next.add(i));
+      // 持久化（含之前已保存的）
+      try {
+        const existing = sessionStorage.getItem('ai_quote_batch_quoted');
+        const arr: number[] = existing ? (JSON.parse(existing) as number[]) : [];
+        const merged = Array.from(new Set([...arr, ...next]));
+        sessionStorage.setItem('ai_quote_batch_quoted', JSON.stringify(merged));
+      } catch (_e) { /* ignore */ }
+      return next;
+    });
+
+    const skippedCount = toProcess.length - successIdx.length;
+    const initSkipCount = Object.keys(skippedInitial).length;
+    let msg = `批量生成完成：成功保存 ${successIdx.length} 个`;
+    if (skippedCount > 0) msg += `，计算/保存失败 ${skippedCount} 个`;
+    if (initSkipCount > 0) msg += `；另有 ${initSkipCount} 个初始跳过（已报价/识别失败/缺尺寸）`;
+    msg += '。可在「我的报价」多选导出汇总。';
+    setBatchSummary(msg);
   };
 
   const getPartType = (p: PartData): { label: string; color: string; icon: any } => {
@@ -224,6 +443,42 @@ export default function QuotePartsPage() {
                 : '图纸识别完成，点击进入报价'}
               {payload.fileName && <span className="text-slate-400 ml-1">· {payload.fileName}</span>}
             </p>
+          </div>
+
+          {/* 批量生成报价 */}
+          <div className="bg-white rounded-xl border border-blue-200 p-4 mb-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                  <Zap size={16} className="text-blue-600" /> 批量生成报价
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  用默认 / AI 预填值，一键为全部零件计算并保存报价（无需逐一点击确认）
+                </p>
+              </div>
+              <button
+                onClick={handleBatchGenerate}
+                disabled={batchGenerating}
+                className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition"
+              >
+                {batchGenerating ? (
+                  <><Loader2 size={15} className="animate-spin" /> 生成中 {batchProgress.done}/{batchProgress.total}</>
+                ) : (
+                  <><Zap size={15} /> 立即生成</>
+                )}
+              </button>
+            </div>
+            {batchGenerating && batchProgress.total > 0 && (
+              <div className="w-full bg-slate-100 rounded-full h-1.5 mt-3">
+                <div
+                  className="bg-blue-500 h-1.5 rounded-full transition-all"
+                  style={{ width: `${(batchProgress.done / batchProgress.total) * 100}%` }}
+                />
+              </div>
+            )}
+            {batchDone && batchSummary && (
+              <p className="text-xs text-slate-600 mt-2">{batchSummary}</p>
+            )}
           </div>
 
           {/* 进度条 */}
