@@ -178,6 +178,7 @@ export default function QuotePartsPage() {
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0, success: 0, skipped: 0 });
   const [batchDone, setBatchDone] = useState(false);
   const [batchSummary, setBatchSummary] = useState('');
+  const [batchError, setBatchError] = useState('');
 
   useEffect(() => {
     try {
@@ -269,6 +270,18 @@ export default function QuotePartsPage() {
     if (!payload) return;
     const products = payload.products;
 
+    // 批量生成要求所有待处理零件都已设材料：若 AI 未预填，提示用户先点卡片选择材质
+    const missingMaterial = products.map((p, idx) =>
+      (!quotedParts.has(idx) && !p._failed && !String(p.material_grade || '').trim()) ? idx : -1
+    ).filter(i => i !== -1);
+    if (missingMaterial.length > 0) {
+      setBatchError(`有 ${missingMaterial.length} 个零件未选择材料，请先点击零件卡片选择材质后再批量生成。`);
+      setBatchGenerating(false);
+      setBatchDone(false);
+      setBatchSummary('');
+      return;
+    }
+
     // 收集待处理零件；跳过已报价 / 识别失败 / 无法构造参数的
     const toProcess: number[] = [];
     const skippedInitial: Record<number, string> = {};
@@ -293,6 +306,7 @@ export default function QuotePartsPage() {
     setBatchGenerating(true);
     setBatchDone(false);
     setBatchSummary('');
+    setBatchError('');
     setBatchProgress({ done: 0, total: toProcess.length, success: 0, skipped: 0 });
 
     const successIdx: number[] = [];
@@ -475,6 +489,9 @@ export default function QuotePartsPage() {
                   style={{ width: `${(batchProgress.done / batchProgress.total) * 100}%` }}
                 />
               </div>
+            )}
+            {batchError && (
+              <p className="text-xs text-amber-700 mt-2">{batchError}</p>
             )}
             {batchDone && batchSummary && (
               <p className="text-xs text-slate-600 mt-2">{batchSummary}</p>
