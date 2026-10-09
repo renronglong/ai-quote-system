@@ -21,6 +21,7 @@ import {
 import { cn } from '@/lib/utils';
 import { parseDxfFile, parseStepOrIgesFile, CadParseResult, CadDiagnostic } from '@/lib/cad-parser';
 import { useAuth } from '@/lib/auth-context';
+import { loadPdfJs } from '@/lib/pdfjs';
 
 // 消息类型
 interface Message {
@@ -1385,35 +1386,13 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
     
-    // 动态加载pdf.js 2.16.105（如果还没加载）
-    if (!w.pdfjsLib) {
-      await new Promise<void>((resolve, reject) => {
-        if (document.querySelector('script[data-pdfjs]')) {
-          const check = setInterval(() => {
-            if (w.pdfjsLib) { clearInterval(check); resolve(); }
-          }, 100);
-          setTimeout(() => { clearInterval(check); reject(new Error('PDF.js加载超时')); }, 15000);
-          return;
-        }
-        const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js';
-        script.setAttribute('data-pdfjs', 'true');
-        script.onload = () => setTimeout(() => resolve(), 300);
-        script.onerror = () => reject(new Error('PDF.js CDN加载失败'));
-        document.head.appendChild(script);
-      });
-    }
-    
-    if (!w.pdfjsLib) {
+    // 从项目内打包的 pdfjs-dist 按需加载（不再依赖国外 CDN）
+    const pdfjsLib = await loadPdfJs();
+    if (!pdfjsLib) {
       throw new Error('PDF.js未加载，请刷新页面重试');
     }
-    
-    const pdfjsLib = w.pdfjsLib;
-    // pdf.js 2.x: 禁用worker
-    pdfjsLib.GlobalWorkerOptions.workerSrc = '';
-    
+
     const arrayBuffer = await file.arrayBuffer();
-    // pdf.js 2.x 支持 disableWorker 选项
     const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer), disableWorker: true }).promise;
     const maxPages = Math.min(pdf.numPages, 5);
     const images: string[] = [];

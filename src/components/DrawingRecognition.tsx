@@ -4,6 +4,7 @@ import { Upload, FileText, X, Loader2, AlertTriangle, User, CheckCircle2, Share2
 import { useAuth } from '@/lib/auth-context';
 import { PRODUCT_TYPES } from './QuoteForm';
 import { useFileAccept, useIsMobileUa } from '@/lib/use-file-accept';
+import { loadPdfJs } from '@/lib/pdfjs';
 
 // ==================== Types ====================
 
@@ -44,8 +45,21 @@ const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.dxf', '.dwg', '.s
 
 // 图片扩展名 — 触发AI识别
 const AI_RECOG_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf', '.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t', '.zip', '.rar', '.7z', '.tar', '.gz'];
+// 上传区直接展示的能力标签（与实测结果一致，别再写支持但实际不支持）
+const SUPPORTED_TAGS = ['STP', 'STEP', 'DXF', 'DWG', 'PDF', 'JPG', 'PNG', 'ZIP', 'TAR'];
+
 // CAD扩展名 — 本地解析或转发
 const CAD_EXTS = ['.dxf', '.dwg', '.step', '.stp', '.igs'];
+
+// 单文件体积上限：Vercel Serverless 请求体 4.5MB，超了会直接 413
+const MAX_FILE_BYTES = 4.5 * 1024 * 1024;
+
+// 扩展名在允许列表里，但解压/解析服务当前撑不住 —— 选到就立刻给明确提示，不让用户白等
+const FORMAT_BLOCKED: Record<string, string> = {
+  '.rar': '暂不支持 RAR 压缩包（服务端缺 7z 组件）。请改用 ZIP 或 TAR 重新打包后上传。',
+  '.7z': '暂不支持 7Z 压缩包（服务端缺 7z 组件）。请改用 ZIP 或 TAR 重新打包后上传。',
+  '.gz': '暂不支持 GZ 压缩包。请改用 ZIP 或 TAR 重新打包后上传。',
+};
 
 const processToProductType: Record<string, string> = {
   '挤压铝型材': '挤出', '板材': '板材', '铝板': '板材',
@@ -151,6 +165,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
   const [deepQuoteLoading, setDeepQuoteLoading] = useState(false);
   const [isAssembly, setIsAssembly] = useState(false);
   const [copiedInvite, setCopiedInvite] = useState(false);
+  const [showFmtHelp, setShowFmtHelp] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [productType, setProductType] = useState('挤出');
   // 微信/手机端：accept 用 */* 才会出现「从聊天记录选择文件」（详见 use-file-accept）
@@ -161,6 +176,16 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
   const isValidFile = (file: File): boolean => {
     const ext = '.' + file.name.split('.').pop()?.toLowerCase();
     return ALLOWED_EXTENSIONS.includes(ext);
+  };
+
+  // 上传前拦截：体积超限 / 服务端撑不住的格式。返回 null 表示可以放行
+  const preflightError = (file: File): string | null => {
+    const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+    if (file.size > MAX_FILE_BYTES) {
+      return `文件 ${(file.size / 1024 / 1024).toFixed(1)}MB 超过单文件上限 4.5MB，请压缩后再上传（ZIP 里只放需要报价的图纸）。`;
+    }
+    if (FORMAT_BLOCKED[ext]) return FORMAT_BLOCKED[ext];
+    return null;
   };
 
   // 切换到指定产品（零件/多文件切换）
@@ -189,20 +214,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
 
   // PDF文件在浏览器端用pdf.js转为PNG，再发给AI识别
   const convertPdfToPng = async (pdfFile: File): Promise<File> => {
-    if (!(window as any).pdfjsLib) {
-      await new Promise<void>((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-        s.onload = () => {
-          (window as any).pdfjsLib = (window as any).pdfjsLib || (window as any).pdfjs;
-          (window as any).pdfjsLib.GlobalWorkerOptions.workerSrc = '';
-          resolve();
-        };
-        s.onerror = () => reject(new Error('pdf.js加载失败'));
-        document.head.appendChild(s);
-      });
-    }
-    const pdfjsLib = (window as any).pdfjsLib;
+    const pdfjsLib = await loadPdfJs();
     const arrayBuffer = await pdfFile.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer, disableWorker: true }).promise;
     const page = await pdf.getPage(1);
@@ -262,6 +274,13 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
       setShowQuotaModal(true);
       return;
     }
+    // ===== 上传前拦截（体积 / 服务端不支持的格式）=====
+    const blocked = preflightError(file);
+    if (blocked) {
+      setRecogError(blocked);
+      setRecognitionFailed(true);
+      return;
+    }
     if (!AI_RECOG_EXTS.includes(ext)) return;
 
     // 重置状态
@@ -304,15 +323,17 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         fileToSend = await convertPdfToPng(file);
       }
 
-      // ===== DXF 图纸解析：走 drawing_parser 服务 =====
-      if (file.name.toLowerCase().endsWith('.dxf')) {
-        setStatusMessage('DXF正在解析...');
+      // ===== DXF / DWG 图纸解析：走 drawing_parser 服务 =====
+      // 说明：DWG 由服务端先转成 DXF 再解析，返回结构与 DXF 完全一致，故走同一分支
+      if (ext === '.dxf' || ext === '.dwg') {
+        const extLabel = ext === '.dwg' ? 'DWG' : 'DXF';
+        setStatusMessage(`${extLabel}正在解析...`);
         const dxfFd = new FormData();
         dxfFd.append('file', file);
         const dxfResp = await fetch('/api/drawing-parse', { method: 'POST', body: dxfFd });
         const dxfJson = await dxfResp.json();
         if (!dxfResp.ok || !dxfJson.parse_success) {
-          setRecogError(dxfJson.error || dxfJson.parse_errors || 'DXF解析失败');
+          setRecogError(dxfJson.error || dxfJson.parse_errors || `${extLabel}解析失败`);
           setRecognitionFailed(true);
           return;
         }
@@ -322,13 +343,30 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         const vDims = dims.filter((d: any) => d.direction === '垂直').map((d: any) => d.measurement_mm);
         const maxH = hDims.length ? Math.max(...hDims) : 0;
         const maxV = vDims.length ? Math.max(...vDims) : 0;
-        const vCount: Record<number, number> = {};
-        vDims.forEach((v: number) => { const k = Math.round(v * 10); vCount[k] = (vCount[k] || 0) + 1; });
-        const bodyH = Math.max(...Object.entries(vCount).filter(([, c]) => c >= 2).map(([k]) => Number(k) / 10), 0);
-        const bendExt = vDims.filter((v: number) => Math.abs(v - bodyH) > bodyH * 0.3 && Math.abs(v - maxV) < 1);
-        const bendVal = bendExt.length ? Math.max(...bendExt) : 0;
-        const unfoldL = maxH > 0 ? Math.round((maxH + bendVal) * 100) / 100 : maxH;
-        const unfoldW = maxV;
+        let sizeSource = '图纸标注';
+        let unfoldL = maxH;
+        let unfoldW = maxV;
+        if (maxH <= 0 || maxV <= 0) {
+          // 图纸没有尺寸标注（国内常见：导出 DXF 丢了标注实体）→ 退回图形外框 bbox 估算
+          const bb = (dxfJson.unit && dxfJson.unit.bbox_mm) || dxfJson.bbox_mm;
+          if (Array.isArray(bb) && bb.length >= 2 && bb[0] > 0 && bb[1] > 0) {
+            unfoldL = Math.round(Number(bb[0]) * 100) / 100;
+            unfoldW = Math.round(Number(bb[1]) * 100) / 100;
+            sizeSource = '图形外框估算（图纸无尺寸标注）';
+          }
+        } else {
+          const vCount: Record<number, number> = {};
+          vDims.forEach((v: number) => { const k = Math.round(v * 10); vCount[k] = (vCount[k] || 0) + 1; });
+          const bodyH = Math.max(...Object.entries(vCount).filter(([, c]) => c >= 2).map(([k]) => Number(k) / 10), 0);
+          const bendExt = vDims.filter((v: number) => Math.abs(v - bodyH) > bodyH * 0.3 && Math.abs(v - maxV) < 1);
+          const bendVal = bendExt.length ? Math.max(...bendExt) : 0;
+          unfoldL = Math.round((maxH + bendVal) * 100) / 100;
+        }
+        if (unfoldL <= 0 || unfoldW <= 0) {
+          setRecogError(`${extLabel}解析成功但未读到任何尺寸：图纸里既没有尺寸标注、外框也为空。请在 CAD 里补齐标注后重新上传，或直接手动填单报价。`);
+          setRecognitionFailed(true);
+          return;
+        }
         const holes = dxfJson.hole_groups || [];
         const totalHoles = dxfJson.hole_count || holes.reduce((s: number, h: any) => s + h.count, 0);
         const holeDesc = holes.map((h: any) => `Ø${h.diameter_mm}×${h.count}`).join(' + ');
@@ -340,13 +378,13 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
           unfold_width: unfoldW,
           hole_count: totalHoles,
           thickness: null,
-          notes: `DXF解析 | 展开${unfoldL}×${unfoldW}mm | 孔: ${holeDesc || '无'} | ⚠️仅用于报价估算，不可作为开模依据`,
+          notes: `${extLabel}解析 | 展开${unfoldL}×${unfoldW}mm（${sizeSource}） | 孔: ${holeDesc || '无'} | ⚠️仅用于报价估算，不可作为开模依据`,
         };
         setRecogResult(recogData);
         checkQuota();
         setStatusMessage(null);
         setRecognizing(false);
-        onDrawingData({ recogData, recognitionId: "dxf_" + Date.now() });
+        onDrawingData({ recogData, recognitionId: "dxf_" + Date.now(), fileName: file.name });
         return;
       }
 
@@ -356,10 +394,20 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         setStatusMessage('压缩包正在解压...');
         const zipFd = new FormData();
         zipFd.append('file', file);
-        const zipResp = await fetch('/api/extract', { method: 'POST', body: zipFd });
+        let zipResp = await fetch('/api/extract', { method: 'POST', body: zipFd });
+        // 解压服务偶发 5xx（实测 ZIP 首次 502、重试即成功），这里重试一次
+        if (!zipResp.ok) {
+          setStatusMessage('解压服务响应异常，正在重试...');
+          zipResp = await fetch('/api/extract', { method: 'POST', body: zipFd });
+        }
         const zipJson = await zipResp.json();
         if (!zipResp.ok || !zipJson.success) {
-          setRecogError(zipJson.error || '压缩包解压失败');
+          const raw = String(zipJson.error || zipJson.detail || '');
+          setRecogError(
+            raw.includes('7z')
+              ? '暂不支持 RAR / 7Z 压缩包。请改用 ZIP 或 TAR 重新打包后上传。'
+              : (zipJson.error || '压缩包解压失败，请确认文件未损坏，或改用 ZIP / TAR 格式')
+          );
           setRecognitionFailed(true);
           return;
         }
@@ -443,7 +491,8 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
       }
 
       // ===== 3D CAD 图纸解析：走 drawing_parser 服务 =====
-      const is3DCAD = ['.stp', '.step', '.igs', '.iges', '.x_t', '.dwg'].includes(ext);
+      // 注意：DWG 已在上面的 DXF 分支处理（服务端先转 DXF），这里不再包含 .dwg
+      const is3DCAD = ['.stp', '.step', '.igs', '.iges', '.x_t'].includes(ext);
       if (is3DCAD) {
         setStatusMessage('3D 模型正在解析...');
         const cadFd = new FormData();
@@ -451,7 +500,14 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         const cadResp = await fetch('/api/drawing-parse', { method: 'POST', body: cadFd });
         const cadJson = await cadResp.json();
         if (!cadResp.ok || !cadJson.parse_success) {
-          setRecogError(cadJson.error || cadJson.parse_errors || '3D 模型解析失败');
+          // IGES：服务端目前只会按 STEP 解析，IGES 一律失败 —— 给可执行的替代方案
+          if (ext === '.igs' || ext === '.iges') {
+            setRecogError('IGES 格式暂不支持解析。请在 CAD 里把文件另存为 STEP（.stp / .step）后再上传。');
+          } else if (ext === '.x_t') {
+            setRecogError('X_T（Parasolid）格式暂不支持解析。请在 CAD 里把文件另存为 STEP（.stp / .step）后再上传。');
+          } else {
+            setRecogError(cadJson.error || cadJson.parse_errors || '3D 模型解析失败');
+          }
           setRecognitionFailed(true);
           return;
         }
@@ -679,10 +735,33 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
             <div>
               <Upload className={`w-6 h-6 mx-auto mb-1.5 ${dragOver ? 'text-blue-500' : 'text-slate-600'}`} />
               <p className="text-sm text-slate-600">拖拽文件到此处，或<span className="text-blue-500 font-medium">点击上传</span></p>
-              <p className="text-xs text-slate-600 mt-1">
+              {/* 支持格式直接摊开给用户看，别等传完才报错 */}
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-1">
+                {SUPPORTED_TAGS.map(t => (
+                  <span key={t} className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-medium leading-none">
+                    {t}
+                  </span>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); setShowFmtHelp(v => !v); }}
+                className="mt-2 text-[11px] text-slate-500 hover:text-blue-600 underline underline-offset-2"
+              >
+                {showFmtHelp ? '收起格式说明' : '哪些格式不支持？'}
+              </button>
+              {showFmtHelp && (
+                <div className="mt-1.5 text-left rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-800">
+                  <div className="font-semibold mb-0.5">暂不支持，传了会失败：</div>
+                  <div><b>RAR / 7Z / GZ</b> —— 请改用 <b>ZIP</b> 或 <b>TAR</b> 打包</div>
+                  <div><b>IGES / X_T</b> —— 请在 CAD 里另存为 <b>STEP</b>（.stp / .step）</div>
+                  <div className="mt-1 text-amber-700">单文件 ≤4.5MB；DXF / DWG 若图纸没有尺寸标注，会按图形外框估算</div>
+                </div>
+              )}
+              <p className="text-xs text-slate-500 mt-1.5">
                 {isMobileUa
-                  ? '支持 STP/STEP、DXF、DWG、PDF、图片、压缩包等；微信里可从「聊天记录」选择好友发来的文件'
-                  : '支持 PDF、JPG、PNG、DXF、DWG、STP、STEP、IGS、X_T、ZIP、RAR、7Z 等，也可 Ctrl+V 粘贴图片'}
+                  ? '微信里点上传后，可选择「聊天记录」里好友发来的文件'
+                  : '也可 Ctrl+V 直接粘贴图片'}
               </p>
             </div>
           )}
