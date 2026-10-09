@@ -19,6 +19,16 @@ interface DrawingRecognitionProps {
   }) => void;
   user: any;
   aiData?: any;
+  mode?: 'single' | 'continuous';
+}
+
+interface CompletedResult {
+  id: string;
+  fileName: string;
+  products: Record<string, any>[];
+  isAssembly: boolean;
+  recognitionId?: string;
+  error?: string;
 }
 
 interface PartInfo {
@@ -142,7 +152,7 @@ function buildRecogDataFromParse(parseJson: any, productType: string, source: st
 
 // ==================== Component ====================
 
-export default function DrawingRecognition({ onDrawingData, user }: DrawingRecognitionProps) {
+export default function DrawingRecognition({ onDrawingData, user, mode = 'single' }: DrawingRecognitionProps) {
   // ===== 登录 + 识图额度 =====
   const { quota, checkQuota, referralLink, ensureReferralLink } = useAuth();
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -169,6 +179,17 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
   const [showFmtHelp, setShowFmtHelp] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [productType, setProductType] = useState('挤出');
+  // 连续上传模式：队列 + 已完成结果聚合
+  const isContinuous = mode === 'continuous';
+  const [pendingQueue, setPendingQueue] = useState<File[]>([]);
+  const [completedResults, setCompletedResults] = useState<CompletedResult[]>([]);
+  const [processingQueue, setProcessingQueue] = useState(false);
+  const queueRef = useRef<File[]>([]);
+  const processingRef = useRef(false);
+  const currentFileNameRef = useRef('');
+  const committedThisRunRef = useRef(false);
+  const processNextRef = useRef<() => void>(() => {});
+  const recognizeFileRef = useRef<(file: File) => Promise<void>>(async () => {});
   // 微信/手机端：accept 用 */* 才会出现「从聊天记录选择文件」（详见 use-file-accept）
   const fileAccept = useFileAccept(ALLOWED_EXTENSIONS.join(','));
   const isMobileUa = useIsMobileUa();
@@ -195,8 +216,10 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
     setSelectedProductIdx(idx);
     const product = recogProducts[idx];
     setRecogResult(product);
-    onDrawingData({ recogData: product });
-  }, [recogProducts, onDrawingData]);
+    if (!isContinuous) {
+      onDrawingData({ recogData: product });
+    }
+  }, [recogProducts, onDrawingData, isContinuous]);
 
   // 重置识别状态
   const resetRecognitionState = useCallback(() => {
@@ -212,6 +235,81 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
     setCheckAnswers({});
     setShowCheckDialog(false);
   }, []);
+
+  // ===== 连续上传模式辅助函数 =====
+  const commitResult = useCallback((payload: {
+    recogData: Record<string, any> | null;
+    recogProducts?: Record<string, any>[];
+    isAssembly?: boolean;
+    fileName?: string;
+    recognitionId?: string;
+    error?: string;
+    checkAnswers?: Record<string, any>;
+  }) => {
+    if (isContinuous) {
+      const products = payload.recogProducts && payload.recogProducts.length > 0
+        ? payload.recogProducts
+        : (payload.recogData ? [payload.recogData] : []);
+      setCompletedResults(prev => [...prev, {
+        id: 'res_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        fileName: payload.fileName || currentFileNameRef.current || '',
+        products,
+        isAssembly: payload.isAssembly ?? products.length > 1,
+        recognitionId: payload.recognitionId,
+        error: payload.error,
+      }]);
+      // 当前文件处理完即清空，准备下一份
+      setUploadedFile(null);
+      resetRecognitionState();
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      committedThisRunRef.current = true;
+    } else {
+      onDrawingData(payload as any);
+    }
+  }, [isContinuous, onDrawingData, resetRecognitionState]);
+
+  const proceedToQuote = useCallback(() => {
+    if (!completedResults.length) return;
+    const allProducts: Record<string, any>[] = [];
+    completedResults.forEach(r => allProducts.push(...r.products));
+    const firstFileName = completedResults[0]?.fileName || '';
+    const isAssembly = allProducts.length > 1 || completedResults.some(r => r.isAssembly);
+    onDrawingData({
+      recogData: allProducts[0] || null,
+      recogProducts: allProducts,
+      isAssembly,
+      fileName: firstFileName,
+      recognitionId: completedResults[0]?.recognitionId || 'batch_' + Date.now(),
+    });
+  }, [completedResults, onDrawingData]);
+
+  const processNext = useCallback(async () => {
+    if (processingRef.current) return;
+    if (queueRef.current.length === 0) {
+      setProcessingQueue(false);
+      return;
+    }
+    processingRef.current = true;
+    setProcessingQueue(true);
+    const nextFile = queueRef.current[0];
+    currentFileNameRef.current = nextFile.name;
+    queueRef.current = queueRef.current.slice(1);
+    setPendingQueue(prev => prev.slice(1));
+    setUploadedFile(nextFile);
+    committedThisRunRef.current = false;
+    try {
+      await recognizeFileRef.current(nextFile);
+    } catch (e) {
+      console.warn('[processNext] recognizeFile 异常:', e);
+    }
+    // 若 recognizeFile 内部未提交（出错提前 return），由这里兜底标记失败并继续
+    if (isContinuous && !committedThisRunRef.current) {
+      commitResult({ recogData: null, error: '识别失败', fileName: nextFile.name });
+    }
+    processingRef.current = false;
+    processNext();
+  }, [isContinuous, commitResult]);
+  processNextRef.current = processNext;
 
   // PDF文件在浏览器端用pdf.js转为PNG，再发给AI识别
   const convertPdfToPng = async (pdfFile: File): Promise<File> => {
@@ -388,7 +486,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         checkQuota();
         setStatusMessage(null);
         setRecognizing(false);
-        onDrawingData({ recogData, recognitionId: "dxf_" + Date.now(), fileName: file.name });
+        commitResult({ recogData, recognitionId: "dxf_" + Date.now(), fileName: file.name });
         return;
       }
 
@@ -524,7 +622,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         setIsAssembly(allProducts.length > 1 || allProducts.some(p => p.is_assembly));
         checkQuota();
         setRecognizing(false);
-        onDrawingData({ recogData: allProducts[0], recogProducts: allProducts, isAssembly: allProducts.length > 1, fileName: file.name, recognitionId: "zip_" + Date.now() });
+        commitResult({ recogData: allProducts[0], recogProducts: allProducts, isAssembly: allProducts.length > 1, fileName: file.name, recognitionId: "zip_" + Date.now() });
         return;
       }
 
@@ -565,7 +663,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
           checkQuota();
           setStatusMessage(null);
           setRecognizing(false);
-          onDrawingData({ recogData: parts[0], recogProducts: parts, isAssembly: true, fileName: file.name, recognitionId: "asm_" + Date.now() });
+          commitResult({ recogData: parts[0], recogProducts: parts, isAssembly: true, fileName: file.name, recognitionId: "asm_" + Date.now() });
           launchCheckAsync(file);
           return;
         }
@@ -577,7 +675,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         setStatusMessage(null);
         setRecognizing(false);
         const recognitionId = "cad_" + Date.now();
-        onDrawingData({ recogData, recogProducts: [recogData], isAssembly: false, fileName: file.name, recognitionId });
+        commitResult({ recogData, recogProducts: [recogData], isAssembly: false, fileName: file.name, recognitionId });
         launchCheckAsync(file);
         return;
       }
@@ -618,13 +716,13 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         setRecogProducts(parts);
         setSelectedProductIdx(0);
         setRecogResult(parts[0]);
-        onDrawingData({ recogData: parts[0], recognitionId: "asm_" + Date.now() });
+        commitResult({ recogData: parts[0], recogProducts: parts, isAssembly: true, recognitionId: "asm_" + Date.now(), fileName: file.name });
       } else {
         const recognitionId = json.recognition_id || ("rec_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8));
         if (json.autoFill && d.confidence >= 0.75) {
-          onDrawingData({ recogData: d, recognitionId });
+          commitResult({ recogData: d, recognitionId, fileName: file.name });
         } else {
-          onDrawingData({ recogData: null, recognitionId });
+          commitResult({ recogData: null, recognitionId, fileName: file.name });
         }
       }
       setStatusMessage(null);
@@ -641,22 +739,45 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
       setStatusMessage(null);
     }
   };
+  recognizeFileRef.current = recognizeFile;
 
   const handleFileDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file && isValidFile(file)) {
-      setUploadedFile(file);
-      recognizeFile(file);
+    const files = Array.from(e.dataTransfer.files || []);
+    if (!files.length) return;
+    if (isContinuous) {
+      const valid = files.filter(isValidFile);
+      if (valid.length) {
+        queueRef.current = [...queueRef.current, ...valid];
+        setPendingQueue(prev => [...prev, ...valid]);
+        processNext();
+      }
+    } else {
+      const file = files[0];
+      if (isValidFile(file)) {
+        setUploadedFile(file);
+        recognizeFile(file);
+      }
     }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && isValidFile(file)) {
-      setUploadedFile(file);
-      recognizeFile(file);
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    if (isContinuous) {
+      const valid = files.filter(isValidFile);
+      if (valid.length) {
+        queueRef.current = [...queueRef.current, ...valid];
+        setPendingQueue(prev => [...prev, ...valid]);
+        processNext();
+      }
+    } else {
+      const file = files[0];
+      if (isValidFile(file)) {
+        setUploadedFile(file);
+        recognizeFile(file);
+      }
     }
   };
 
@@ -678,8 +799,14 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
             const ext = '.' + file.name.split('.').pop()?.toLowerCase() || '.png';
             if (ALLOWED_EXTENSIONS.includes(ext) || ext === '.png') {
               const namedFile = new File([file], `pasted_${Date.now()}.png`, { type: file.type });
-              setUploadedFile(namedFile);
-              recognizeFile(namedFile);
+              if (isContinuous) {
+                queueRef.current = [...queueRef.current, namedFile];
+                setPendingQueue(prev => [...prev, namedFile]);
+                processNextRef.current();
+              } else {
+                setUploadedFile(namedFile);
+                recognizeFileRef.current(namedFile);
+              }
             }
           }
           break;
@@ -688,7 +815,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
     };
     document.addEventListener('paste', handlePaste);
     return () => document.removeEventListener('paste', handlePaste);
-  }, []);
+  }, [isContinuous]);
 
   const requestDeepQuote = async () => {
     if (!uploadedFile || deepQuoteLoading) return;
@@ -713,7 +840,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
         setRecogError(null);
         setStatusMessage(null);
         setUploadedFile(null);
-        onDrawingData({ recogData: result.data });
+        commitResult({ recogData: result.data });
       } else {
         setRecogError(result.message || result.error || '深度识别完成，已提交工程师人工报价');
       }
@@ -752,10 +879,11 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
             ref={fileInputRef}
             type="file"
             accept={fileAccept}
+            multiple={isContinuous}
             onChange={handleFileSelect}
             className="sr-only"
           />
-          {uploadedFile ? (
+          {!isContinuous && uploadedFile ? (
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-left">
                 <FileText className="w-5 h-5 text-emerald-500 shrink-0" />
@@ -807,6 +935,61 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
             </div>
           )}
         </div>
+
+        {/* 连续上传模式：队列状态 + 已完成结果 + 去报价按钮 */}
+        {isContinuous && (
+          <div className="mt-3 space-y-2">
+            {uploadedFile && (
+              <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-blue-50 border border-blue-200">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-600 shrink-0" />
+                  <span className="text-sm text-blue-700 truncate">正在识别：{uploadedFile.name}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); removeFile(); }}
+                  className="p-1 rounded-full hover:bg-blue-100 transition-colors shrink-0"
+                >
+                  <X className="w-4 h-4 text-blue-600" />
+                </button>
+              </div>
+            )}
+            {pendingQueue.length > 0 && (
+              <div className="text-sm text-slate-600 px-1">
+                队列中 <b>{pendingQueue.length}</b> 个文件待识别
+              </div>
+            )}
+            {completedResults.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="text-sm font-semibold text-slate-700 px-1">已识别完成</div>
+                {completedResults.map((r) => (
+                  <div key={r.id} className={`px-3 py-2 rounded-lg border text-sm ${r.error ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-slate-800 truncate">{r.fileName || '未命名文件'}</span>
+                      <span className={`text-xs shrink-0 ${r.error ? 'text-red-600' : 'text-emerald-600'}`}>
+                        {r.error ? '失败' : `${r.products.length} 个零件`}
+                      </span>
+                    </div>
+                    {r.error && <div className="text-xs text-red-600 mt-1">{r.error}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+            {completedResults.some(r => r.products.length > 0) && (
+              <button
+                type="button"
+                onClick={proceedToQuote}
+                className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition flex items-center justify-center gap-2"
+              >
+                去零件列表报价
+                <span className="text-blue-100 text-xs">
+                  （共 {completedResults.reduce((s, r) => s + r.products.length, 0)} 个零件）
+                </span>
+              </button>
+            )}
+          </div>
+        )}
+
         <input
           type="text"
           placeholder="备注说明（可选）"
@@ -957,7 +1140,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
-                  onClick={() => onDrawingData({ recogData: recogResult })}
+                  onClick={() => commitResult({ recogData: recogResult, fileName: recogResult?._fileName || currentFileNameRef.current || uploadedFile?.name })}
                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-500 text-white text-sm font-medium hover:bg-emerald-600 transition-colors"
                 >
                   <CheckCircle2 className="w-3 h-3" />
@@ -1081,7 +1264,7 @@ export default function DrawingRecognition({ onDrawingData, user }: DrawingRecog
                   mappedData.surface_treatment = stMap[answers.surface_treatment] || answers.surface_treatment;
                 }
                 if (answers.length_mm) mappedData.length = answers.length_mm;
-                onDrawingData({ recogData: mappedData, checkAnswers: answers });
+                commitResult({ recogData: mappedData, checkAnswers: answers, fileName: uploadedFile?.name });
                 setShowCheckDialog(false);
                 setCheckQuestions([]);
               }}

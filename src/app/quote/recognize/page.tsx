@@ -1,49 +1,48 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Upload, FileText, AlertCircle, Loader2, CheckCircle2, X } from 'lucide-react';
+import { ArrowLeft, Upload } from 'lucide-react';
 import DrawingRecognition from '@/components/DrawingRecognition';
 import TopNavLinks from '@/components/TopNav';
 import { useAuth } from '@/lib/auth-context';
 
 /**
- * /quote/recognize - 图纸识别上传页
- * 用户在首页点"图纸AI识别"跳转到这里，上传图纸后识别
- * 识别完成后：sessionStorage存结果，自动跳转到/quote/parts零件列表页
+ * /quote/recognize - 图纸识别上传页（连续上传模式）
+ * 用户在首页点"图纸AI识别"跳转到这里，可连续上传多个文件，
+ * 系统边识别边排队，用户无需等待单个文件完成即可继续上传。
+ * 全部文件识别完成后点击"去零件列表报价"进入 /quote/parts。
  */
 export default function QuoteRecognizePage() {
   const { user } = useAuth();
   const router = useRouter();
-  const [recogData, setRecogData] = useState<any>(null);
-  const [drawingKey, setDrawingKey] = useState(0);
-  const navigatedRef = useRef(false);
 
   const handleDrawingData = useCallback((data: any) => {
     if (!data) return;
-    setRecogData(data);
-    // 构建零件列表：优先用recogProducts，否则用recogData单件
     const products: any[] = data.recogProducts && data.recogProducts.length > 0
       ? data.recogProducts
       : (data.recogData ? [data.recogData] : []);
     const isAssembly = data.isAssembly ?? products.length > 1;
+    const fileName = data.fileName || '';
+    const recognitionId = data.recognitionId;
+
+    const payload = {
+      products,
+      isAssembly,
+      fileName,
+      recognitionId,
+      createdAt: Date.now(),
+    };
+
     try {
-      const payload = {
-        products,
-        isAssembly,
-        fileName: data.fileName || (data.recogData?._fileName) || '',
-        recognitionId: data.recognitionId,
-        createdAt: Date.now(),
-      };
       sessionStorage.setItem('ai_quote_parts', JSON.stringify(payload));
       sessionStorage.setItem('ai_quote_recog_result', JSON.stringify(data));
     } catch (e) {
       console.error('Failed to save recognition data:', e);
     }
-    if (!navigatedRef.current && products.length > 0) {
-      navigatedRef.current = true;
-      setTimeout(() => router.push('/quote/parts'), 400);
-    }
+
+    // 直接跳转；组件已在连续上传模式下聚合完成
+    router.push('/quote/parts');
   }, [router]);
 
   return (
@@ -68,14 +67,13 @@ export default function QuoteRecognizePage() {
               <Upload size={24} className="text-blue-600" />
               图纸AI识别
             </h1>
-            <p className="text-slate-500 mt-1 text-sm">上传图纸（STP/STEP/DXF/DWG/PDF/图片），AI自动识别零件尺寸参数</p>
+            <p className="text-slate-500 mt-1 text-sm">上传图纸（STP/STEP/DXF/DWG/PDF/图片），可连续添加文件，AI自动识别零件尺寸参数</p>
           </div>
           <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
             <DrawingRecognition
-              key={drawingKey}
+              mode="continuous"
               onDrawingData={handleDrawingData}
               user={user}
-              aiData={recogData}
             />
           </div>
           <div className="mt-4 text-xs text-slate-400 text-center">
