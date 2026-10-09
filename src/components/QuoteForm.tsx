@@ -278,6 +278,25 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
           { name: '电镀' },
         ],
       },
+      '钢板': {
+        label: '钢板',
+        fields: ['thickness', 'length', 'width', 'quantity', 'holes', 'outer_perimeter', 'cut_total_length'],
+        processes: [
+          { name: '无' },
+          { name: '冲压', unit: '次' },
+          { name: '钻孔', unit: '次' },
+          { name: '攻牙', unit: '次' },
+          { name: 'CNC加工', unit: '分钟' },
+          { name: '激光切割', unit: '米' },
+          { name: '折弯', unit: '次' },
+          { name: '抛光' },
+        ],
+        productSurfaceTreatment: [
+          { name: '无' },
+          { name: '喷涂' },
+          { name: '电镀' },
+        ],
+      },
       '不锈钢': {
         label: '不锈钢',
         fields: ['thickness', 'length', 'width', 'quantity', 'holes', 'outer_perimeter', 'cut_total_length'],
@@ -613,7 +632,34 @@ function calcSteelPerimeters(cat: string, width?: number|string, height?: number
 
 
 // 板材单件理论重量(g)：长×宽×厚(mm) × 密度(g/cm³) / 1000
-// 密度：铝板2.7，冷轧板/镀锌板7.85，不锈钢7.93
+// ============================================================
+// 板材材料类别归一化
+// 背景：AI / 零件列表 / 聊天解析给出的材料名五花八门（"钢"、"Q235"、"热轧板"、
+// "冷轧钢板"、"6063"…），而 PRODUCT_TYPES['板材'] 只认 铝板/钢板/冷轧板/不锈钢/镀锌板。
+// 未命中的类名会被切类型的 effect 清回第一个（铝板）⇒ 选钢却按铝报价。
+// 规则按「特殊优先」排序：不锈钢 > 镀锌 > 冷轧/热轧 > 铝 > 钢，
+// 保证"冷轧钢板"归冷轧板、"不锈钢"不被"钢"吃掉。
+// ============================================================
+const SHEET_CATEGORY_RULES: Array<[string, string]> = [
+  ['不锈钢', '不锈钢'], ['304', '不锈钢'], ['201', '不锈钢'], ['316', '不锈钢'], ['430', '不锈钢'],
+  ['镀锌', '镀锌板'], ['白铁', '镀锌板'],
+  ['冷轧', '冷轧板'], ['冷板', '冷轧板'], ['spcc', '冷轧板'],
+  ['热轧', '钢板'],
+  ['铝', '铝板'],
+  ['钢', '钢板'], ['铁板', '钢板'], ['碳钢', '钢板'], ['q235', '钢板'], ['a3', '钢板'], ['锰钢', '钢板'],
+];
+
+export function normalizeSheetCategory(raw: unknown, defaultCat = '铝板'): string {
+  const s = String(raw ?? '').trim();
+  if (!s) return defaultCat;
+  const lower = s.toLowerCase();
+  for (const [kw, cat] of SHEET_CATEGORY_RULES) {
+    if (lower.includes(kw.toLowerCase())) return cat;
+  }
+  return defaultCat;
+}
+
+// 密度：铝板2.7，冷轧板/镀锌板/钢板7.85，不锈钢7.93
 function calcSheetWeightG(materialCategory: string, l: number, w: number, t: number): number | null {
   if (!(l > 0 && w > 0 && t > 0)) return null;
   const density = materialCategory === '铝板' ? 2.7 : materialCategory === '不锈钢' ? 7.93 : 7.85;
@@ -650,6 +696,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
   const [aiSynced, setAiSynced] = useState(false);
   const prevAiDataRef = useRef<AiFormUpdate | null | undefined>(null);
+  // 本轮 aiData 解析出的产品类型 tab key（同步记录，供材料类别分支判断，避免读到旧 state）
+  const resolvedPtRef = useRef<string>('');
+  // 本轮是否真的会切产品类型 tab（切了才需要 preserveCatRef 保护材料类别）
+  const typeWillChangeRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
   // 请求序号：防止旧响应覆盖新结果（防抖并发时，晚返回的中间态请求直接丢弃）
@@ -673,6 +723,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   
   const [productType, setProductType] = useState(initialProductType);
   const [materialCategory, setMaterialCategory] = useState('异型材');
+  // 待应用的材料类别：AI/零件列表预填时先写这里，切产品类型的 effect 就不会把它清回默认值
+  const preserveCatRef = useRef<string | null>(null);
   const [fields, setFields] = useState<Record<string, number | string>>({
     width: '', height: '', length: '', quantity: '',
   });
@@ -822,11 +874,16 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   useEffect(() => {
     const config = PRODUCT_TYPES[productType];
     if (config) {
-      const firstCat = Object.keys(config.materialCategories)[0];
-      setMaterialCategory(firstCat);
-      setStandardCategory(firstCat === '异型材' ? '异型材' : '');
+      const validCats = Object.keys(config.materialCategories);
+      const firstCat = validCats[0];
+      // 预填（AI识别 / 零件列表 / 恢复报价）指定的类别优先，避免被默认类别顶掉
+      const pending = preserveCatRef.current;
+      preserveCatRef.current = null;
+      const nextCat = pending && validCats.includes(pending) ? pending : firstCat;
+      setMaterialCategory(nextCat);
+      setStandardCategory(nextCat === '异型材' ? '异型材' : '');
       if (!skipCategoryResetRef.current) {
-        resetCategoryState(firstCat);
+        resetCategoryState(nextCat);
       }
     }
   }, [productType]);
@@ -1211,6 +1268,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   useEffect(() => {
     if (!aiData || aiData === prevAiDataRef.current) return;
     prevAiDataRef.current = aiData;
+    resolvedPtRef.current = productType; // 默认沿用当前 tab，下面若解析出新产品类型会覆盖
+    typeWillChangeRef.current = false;
 
     // If raw recognition data (snake_case fields), use applyRecogToForm directly
     const raw = aiData as Record<string, any>;
@@ -1233,21 +1292,36 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         'cnc': '挤出', 'stamping': '板材',
       };
       const mapped = ptMap[aiData.productType] || aiData.productType;
-      if (PRODUCT_TYPES[mapped]) setProductType(mapped);
+      if (PRODUCT_TYPES[mapped]) {
+        if (productType !== mapped) typeWillChangeRef.current = true;
+        setProductType(mapped);
+      }
+      resolvedPtRef.current = PRODUCT_TYPES[mapped] ? mapped : '';
     }
 
     // 挤出类材料大类：异型材 / 标准件
-    if (productType === '挤出' || aiData.productType) {
+    // ⚠️ 只在「解析后确实是挤出」时走这段。原写法 `productType === '挤出' || aiData.productType`
+    //    会让所有带 productType 的数据（含板材·钢）都进这里，被强制设成「异型材」⇒ 选钢按铝报价。
+    // 只有真的要切 tab 时才写 preserveCatRef（不切 tab 时没人会覆盖，写了反而污染下次切换）
+    const keep = (cat: string) => { if (typeWillChangeRef.current) preserveCatRef.current = cat; };
+    const resolvedPt = resolvedPtRef.current || productType;
+    if (resolvedPt === '挤出') {
       if (aiData.materialCategory === '标准件') {
+        keep('标准件');
         setMaterialCategory('标准件');
         // 标准件细分类由下方 aiData.standardCategory 分支设置
       } else if (aiData.materialCategory) {
         // 异型材（含 '铝合金'/'铝型材' 等旧值兼容）：唯一细分类直接选中
+        keep('异型材');
         setMaterialCategory('异型材');
         setStandardCategory('异型材');
       }
     } else if (aiData.materialCategory) {
-      setMaterialCategory(aiData.materialCategory);
+      const mc = String(aiData.materialCategory);
+      // 只对板材做归一化（压铸/注塑的类别名里也带"铝"，归一化会串成铝板）
+      const cat = resolvedPt === '板材' ? normalizeSheetCategory(mc) : mc;
+      keep(cat);
+      setMaterialCategory(cat);
     }
 
     // 标准件小类：铝圆棒/铝方管/角铝...
@@ -1317,15 +1391,20 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     const r = loadQuoteData.result || {};
 
     // Restore product type
-    if (p.productType) setProductType(p.productType);
+    let restoredPt = '';
+    if (p.productType) { restoredPt = p.productType; setProductType(p.productType); }
     else if (p.product_type) {
       const typeMap: Record<string, string> = { extrusion: '挤出', sheet: '板材', die_casting: '压铸', injection: '注塑' };
-      setProductType(typeMap[p.product_type] || p.product_type);
+      restoredPt = typeMap[p.product_type] || p.product_type;
+      setProductType(restoredPt);
     }
 
     // Restore material category
-    if (p.materialCategory) setMaterialCategory(p.materialCategory);
-    else if (p.material_category) setMaterialCategory(p.material_category);
+    // 若同时切了产品类型，先把类别写进 preserveCatRef，防止被切类型的 effect 清回默认（铝板）
+    const rawCat = p.materialCategory || p.material_category || '';
+    const restoreCat = (restoredPt === '板材' && rawCat) ? normalizeSheetCategory(rawCat) : rawCat;
+    if (restoreCat && restoredPt && restoredPt !== productType) preserveCatRef.current = restoreCat;
+    if (restoreCat) setMaterialCategory(restoreCat);
     else if (p.standardCategory) setStandardCategory(p.standardCategory);
 
     // Restore fields
@@ -1399,6 +1478,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     const map: Record<string, string> = {
       '铝型材': '挤压铝型材', '铝板': '铝板', '冷轧板': '冷板SPCC',
       '不锈钢': '不锈钢', '镀锌板': '冷板SPCC', '铝': '压铸铝ADC12',
+      // 钢板：与冷轧板同口径（热卷期货价×1.05，密度7.85）
+      '钢板': '冷板SPCC', '钢': '冷板SPCC', '热轧板': '冷板SPCC', '铁板': '冷板SPCC',
       '锌合金': '锌合金ZA-8', 'ABS': 'ABS', 'PP': 'PP', 'PC': 'PC',
       'PA': 'PA', 'POM': 'POM', 'PMMA': 'PMMA',
     };
@@ -1776,12 +1857,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     const isSheet = d.is_sheet_metal === true || d.area_method === 'sheet_metal' || d.product_type === 'sheet_metal';
     if (isSheet) {
       d.product_type = 'sheet_metal';
-      d.material_category = d.material_category || '铝板';
+      // 兜底顺序：snake → camel → '铝板'。原来只看 material_category，
+      // 零件列表传的是 materialCategory(camel)，会被兜底成「铝板」⇒ 选钢按铝报价
+      d.material_category = d.material_category || d.materialCategory || '铝板';
     }
     // 如果当前是板材tab，强制覆盖AI可能返回的错误product_type
     if (productType === '板材' && !isSheet) {
       d.product_type = d.product_type || 'stamping';
-      d.material_category = d.material_category || '铝板';
+      d.material_category = d.material_category || d.materialCategory || '铝板';
     }
     // 产品类型映射
     if (d.product_type) {
@@ -1790,7 +1873,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         zinc_alloy: '压铸', cnc: '挤出', injection: '注塑',
       };
       const mapped = ptMap[String(d.product_type).toLowerCase()] || ptMap[d.product_type];
-      if (mapped && PRODUCT_TYPES[mapped] && productType !== mapped) setProductType(mapped);
+      if (mapped && PRODUCT_TYPES[mapped]) {
+        if (productType !== mapped) typeWillChangeRef.current = true;
+        setProductType(mapped);
+      }
     }
 
     // 型材细分类别（必须在填字段之前处理：resetProfileState 会清空截面字段）
@@ -1810,19 +1896,19 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       setMoldMatches([]);
       setSelectedMoldId(null);
       setUseExistingMold(null);
-      setMaterialCategory(resolvedCat === '异型材' ? '异型材' : '标准件');
+      const profCat = resolvedCat === '异型材' ? '异型材' : '标准件';
+      if (typeWillChangeRef.current) preserveCatRef.current = profCat;
+      setMaterialCategory(profCat);
       setStandardCategory(resolvedCat);
     } else if (d.material_category) {
       // 归一化：挤出铝型材类 → 异型材；板材/压铸等保持各自key
       // 但如果当前是板材tab，不要因为材料含"铝"就跳到异型材
       const mc = String(d.material_category);
-      if (productType === '板材') {
-        // 板材模式下，直接用material_category作为板材的细分类
-        const catMap: Record<string,string> = {
-          '铝板': '铝板', '铝合金': '铝板', '铝': '铝板',
-          '不锈钢': '不锈钢', '冷轧板': '冷轧板', '冷板': '冷轧板', '镀锌板': '镀锌板',
-        };
-        const mapped = catMap[mc] || mc;
+      if (productType === '板材' || isSheet) {
+        // 板材模式：AI 给的材料名五花八门（"钢"/"Q235"/"热轧板"/"冷轧钢板"/"6063"…），
+        // 统一归一化到 铝板/钢板/冷轧板/不锈钢/镀锌板，未命中才兜底铝板
+        const mapped = normalizeSheetCategory(mc);
+        if (typeWillChangeRef.current) preserveCatRef.current = mapped;
         if (mapped) setMaterialCategory(mapped);
       } else if (/铝合金|铝型材|^铝$|挤压|挤出/.test(mc)) {
         setMaterialCategory('异型材');

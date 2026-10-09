@@ -100,7 +100,9 @@ function buildRecogDataFromParse(parseJson: any, productType: string, source: st
     crossSectionArea: parseJson.section_area_mm2,
     die_type: isSheet ? null : dieType,
     num_cavities: (parseJson.is_hollow && !isSheet) ? 1 : 0,
-    material_category: parseJson.material_grade || (isSheet ? '铝板' : ''),
+    // 优先用 AI 判的材料大类；原来这里填的是牌号（如 "Q235"/"6063"），
+    // 大类填成牌号后下游匹配不到 ⇒ 被兜底成铝板（选钢按铝报价的根源之一）
+    material_category: parseJson.material_category || parseJson.material_grade || (isSheet ? '铝板' : ''),
     // 钣金专用字段
     is_sheet_metal: isSheet,
     thickness_mm: parseJson.thickness_mm,
