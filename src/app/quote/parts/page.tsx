@@ -61,7 +61,10 @@ export default function QuotePartsPage() {
   const router = useRouter();
   const [payload, setPayload] = useState<PartsPayload | null>(null);
   const [quotedParts, setQuotedParts] = useState<Set<number>>(new Set());
-  const MATERIAL_OPTIONS = ['6063', '6061', '5052', '6060', '铝（未指定）', '钢', '不锈钢'];
+  // ⚠️ 选项必须是 PRODUCT_TYPES['板材'].materialCategories 的合法类目或铝牌号
+  // （钢板/不锈钢是板材类目；6063 等是铝板牌号）。之前叫「钢」，不是合法类目，
+  // 会被报价页兜底成铝板 ⇒ 选钢按铝报价。10-09 改为「钢板」。
+  const MATERIAL_OPTIONS = ['6063', '6061', '5052', '6060', '铝（未指定）', '钢板', '不锈钢'];
   const [currentMaterial, setCurrentMaterial] = useState<string>('');
   const [materialModalIdx, setMaterialModalIdx] = useState<number | null>(null); // 哪个零件弹出选材料
 
