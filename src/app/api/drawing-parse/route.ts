@@ -10,6 +10,7 @@ const FORMAT_ENDPOINTS: Record<string, string> = {
   '.igs': '/api/parse/iges',
   '.iges': '/api/parse/iges',
   '.x_t': '/api/parse/parasolid',
+  '.x_b': '/api/parse/parasolid',
   '.dwg': '/api/parse/dwg',
   '.dxf': '/api/parse/dxf',
   '.pdf': '/api/parse/pdf',
