@@ -4,7 +4,6 @@ import { Sparkles, Plus, Loader2, CheckCircle2, ChevronDown } from 'lucide-react
 import { useAuth } from '@/lib/auth-context';
 import { calculateStampingMoldFee, calculateLaserCuttingFee, type StampingMoldResult, type LaserCuttingResult } from '@/lib/stamping-mold-calculator';
 import { STEEL_STANDARD_SPECS } from '@/data/steelStandardSpecs';
-import ProcessCompareCard from './ProcessCompareCard';
 
 // ==================== Types ====================
 
@@ -716,7 +715,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const partRaw = sessionStorage.getItem('ai_quote_selected_part');
       if (partRaw) {
         const part = JSON.parse(partRaw);
-        if (part.product_type === 'sheet_metal' || part.product_type === '板材' || part.is_sheet_metal) return '板材';
+        if (part.product_type === 'sheet_metal' || part.is_sheet_metal) return '板材';
       }
     } catch (e) {}
     return '挤出';
@@ -1855,7 +1854,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
   const applyRecogToForm = (d: Record<string, any>) => {
     // 钣金件优先：is_sheet_metal=true 或 area_method=sheet_metal 时强制切板材
-    const isSheet = d.is_sheet_metal === true || d.area_method === 'sheet_metal' || d.product_type === 'sheet_metal' || d.product_type === '板材';
+    const isSheet = d.is_sheet_metal === true || d.area_method === 'sheet_metal' || d.product_type === 'sheet_metal';
     if (isSheet) {
       d.product_type = 'sheet_metal';
       // 兜底顺序：snake → camel → '铝板'。原来只看 material_category，
@@ -1872,7 +1871,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const ptMap: Record<string,string> = {
         extrusion: '挤出', stamping: '板材', sheet_metal: '板材', die_casting: '压铸',
         zinc_alloy: '压铸', cnc: '挤出', injection: '注塑',
-        '挤出': '挤出', '板材': '板材', '压铸': '压铸', '注塑': '注塑', '挤压铝型材': '挤出',
       };
       const mapped = ptMap[String(d.product_type).toLowerCase()] || ptMap[d.product_type];
       if (mapped && PRODUCT_TYPES[mapped]) {
@@ -2400,24 +2398,21 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     <div className="h-full">
       {/* ===== CENTER COLUMN: 参数设置 ===== */}
       <div style={{ overflow: 'auto', padding: '16px 20px', background: '#fff', borderRadius: 12, border: '1px solid #e8ecf1' }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ width: 28, height: 28, borderRadius: 8, background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>⚙️</span>
-          参数设置
-        </div>
-
-        {/* ---- 模具组工具条：点「新建报价」=开一副新模具 ---- */}
-        <div className="flex flex-col gap-2 px-3 py-2 rounded-xl bg-blue-50/70 border border-blue-100 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm text-blue-700 leading-snug">
-            当前为<b>同一副模具</b>：改长度后点长度框旁的<b>＋</b>存入报价池，出单时模具费只算一次。
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e', marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 28, height: 28, borderRadius: 8, background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>⚙️</span>
+            参数设置
           </div>
-          <button
-            type="button"
-            onClick={onNewQuote}
-            className="shrink-0 flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-white border border-blue-300 text-blue-700 text-sm font-semibold hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm w-full sm:w-auto"
-            title="清空表单，开始一副新模具的报价"
-          >
-            <span className="text-sm leading-none">＋</span> 新建报价
-          </button>
+          {onNewQuote && (
+            <button
+              type="button"
+              onClick={onNewQuote}
+              className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 text-slate-600 text-sm font-medium hover:border-blue-300 hover:text-blue-600 transition-all"
+              title="清空表单"
+            >
+              清空
+            </button>
+          )}
         </div>
 
         {/* AI synced indicator */}
@@ -2891,15 +2886,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             </div>
           );
         })()}
-
-        {/* ---- 批量工艺对比（批量优先：模具费分摊+单件成本总账） ---- */}
-        <ProcessCompareCard
-          productType={productType}
-          crossSectionArea={Number(fields.crossSectionArea) || 0}
-          lengthMm={Number(fields.length) || 0}
-          weightKg={calcWeightKg()}
-          quantity={Number(fields.quantity) || 0}
-        />
 
         {/* ---- 冲压模具费明细（板材+识别数据时自动计算） ---- */}
         {productType === '板材' && stampingMoldResult && (() => {

@@ -25,6 +25,18 @@ export default function HomePage() {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // 清空/新建报价：重挂载 QuoteForm 清表单，同时清空首页结果
+  const [formNonce, setFormNonce] = useState(0);
+  const handleNewQuote = () => {
+    setFormNonce(n => n + 1);
+    setResult(null);
+    setParams(null);
+    setProductInfo({ productName: '', productCode: '' });
+    setManualUnitPrice(null);
+    setManualMoldFee(null);
+    setManualMinOrderQty(null);
+  };
+
   const handleSave = async () => {
     if (!user || !result || !params) return;
     setSaving(true);
@@ -68,9 +80,11 @@ export default function HomePage() {
             {/* 左：完整报价表单（与 /quote 同款，免登录即可算价） */}
             <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
               <QuoteForm
+                key={formNonce}
                 onCalculate={(d) => setParams(d as any)}
                 onResult={(r) => setResult(r)}
                 onProductInfoChange={(info) => setProductInfo(info)}
+                onNewQuote={handleNewQuote}
               />
             </div>
 
