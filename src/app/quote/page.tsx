@@ -135,7 +135,7 @@ export default function QuotePage() {
         // 型材【不能】兜底到板材的 unfold_* 字段 —— 否则会把「展开宽」当成「截面宽」显示，
         // 这种错值看起来像个正常数字，用户不会察觉（宁可留空，也不要填一个错值）。
         const isSheetPart = part.is_sheet_metal === true || part._isSheetMetal === true
-                            || part.product_type === 'sheet_metal';
+                            || part.product_type === 'sheet_metal' || part.product_type === '板材';
         // 材料映射：根据零件列表选择的材料，确定材料大类和牌号
         // ⚠️ cat 必须是 PRODUCT_TYPES[productType].materialCategories 里存在的 key，
         //   板材：铝板/冷轧板/钢板/不锈钢/镀锌板；挤出：异型材/标准件。

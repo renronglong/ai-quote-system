@@ -48,6 +48,7 @@ interface PartInfo {
   extrusion_length_mm: number;
   bounding_box_mm: [number, number, number];
   volume_mm3: number;
+  product_type?: string; // 后端 per-part 工艺建议（挤出/板材），装配体拆分时优先于整体选择
 }
 
 // Allowed upload extensions
@@ -568,7 +569,8 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
               }
               if (r.is_assembly && r.parts && r.parts.length > 0) {
                 for (const part of r.parts) {
-                  allProducts.push(buildRecogDataFromParse(part, productType, '装配体零件', fname + ' / ' + (part.product_name || part.part_id)));
+                  const partPt = part.product_type && PRODUCT_TYPES[part.product_type] ? part.product_type : productType;
+                  allProducts.push(buildRecogDataFromParse(part, partPt, '装配体零件', fname + ' / ' + (part.product_name || part.part_id)));
                 }
               } else {
                 allProducts.push(buildRecogDataFromParse(r, productType, '压缩包解析', fname));
@@ -603,7 +605,8 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
             }
             if (parseJson.is_assembly && parseJson.parts && parseJson.parts.length > 0) {
               for (const part of parseJson.parts) {
-                allProducts.push(buildRecogDataFromParse(part, productType, '装配体零件', targetFile.name + ' / ' + (part.product_name || part.part_id)));
+                const partPt = part.product_type && PRODUCT_TYPES[part.product_type] ? part.product_type : productType;
+                allProducts.push(buildRecogDataFromParse(part, partPt, '装配体零件', targetFile.name + ' / ' + (part.product_name || part.part_id)));
               }
             } else {
               allProducts.push(buildRecogDataFromParse(parseJson, productType, '压缩包解析', targetFile.name));
@@ -655,7 +658,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           // 装配体：构建零件列表
           setIsAssembly(true);
           const parts: Record<string, any>[] = cadJson.parts.map((part: PartInfo) =>
-            buildRecogDataFromParse(part, productType, '装配体零件')
+            buildRecogDataFromParse(part, part.product_type && PRODUCT_TYPES[part.product_type] ? part.product_type : productType, '装配体零件')
           );
           setRecogProducts(parts);
           setSelectedProductIdx(0);

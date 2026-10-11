@@ -715,7 +715,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const partRaw = sessionStorage.getItem('ai_quote_selected_part');
       if (partRaw) {
         const part = JSON.parse(partRaw);
-        if (part.product_type === 'sheet_metal' || part.is_sheet_metal) return '板材';
+        if (part.product_type === 'sheet_metal' || part.product_type === '板材' || part.is_sheet_metal) return '板材';
       }
     } catch (e) {}
     return '挤出';
@@ -1854,7 +1854,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
   const applyRecogToForm = (d: Record<string, any>) => {
     // 钣金件优先：is_sheet_metal=true 或 area_method=sheet_metal 时强制切板材
-    const isSheet = d.is_sheet_metal === true || d.area_method === 'sheet_metal' || d.product_type === 'sheet_metal';
+    const isSheet = d.is_sheet_metal === true || d.area_method === 'sheet_metal' || d.product_type === 'sheet_metal' || d.product_type === '板材';
     if (isSheet) {
       d.product_type = 'sheet_metal';
       // 兜底顺序：snake → camel → '铝板'。原来只看 material_category，
@@ -1871,6 +1871,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const ptMap: Record<string,string> = {
         extrusion: '挤出', stamping: '板材', sheet_metal: '板材', die_casting: '压铸',
         zinc_alloy: '压铸', cnc: '挤出', injection: '注塑',
+        '挤出': '挤出', '板材': '板材', '压铸': '压铸', '注塑': '注塑', '挤压铝型材': '挤出',
       };
       const mapped = ptMap[String(d.product_type).toLowerCase()] || ptMap[d.product_type];
       if (mapped && PRODUCT_TYPES[mapped]) {
