@@ -3,6 +3,7 @@ import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth-context';
+import QuickQuote from '@/components/QuickQuote';
 import {
   Upload,
   Calculator,
@@ -12,25 +13,16 @@ import {
   History,
 } from 'lucide-react';
 
-// 报价单示例（让首屏右边那片空白说清"产出什么"，数值为示例）
-const demoRows = [
-  { label: '材料费', value: '¥1.23' },
-  { label: '加工费', value: '¥1.57' },
-  { label: '表面处理费', value: '—' },
-  { label: '包装 + 运输', value: '¥0.04' },
-];
-
 export default function HomePage() {
   const { user } = useAuth();
 
   return (
     <AppLayout>
-      {/* 首屏：左文案 + 右报价单示例（原右侧是一大片空白） */}
+      {/* 首屏：左入口 + 右快速报价估算器 */}
       <section className="mb-8">
         <div className="rounded-2xl bg-gradient-to-br from-blue-50 via-white to-slate-50 border border-gray-100 shadow-sm px-6 py-8 md:px-10 md:py-10">
           <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-            {/* 左：只留入口按钮。原有的大标题 + 一句营销文案（"铝型材·五金加工 /
-                上传图纸秒级出报价 / 免注册试算…"）业主判定无用，已删除。 */}
+            {/* 左：入口按钮。业主判定原大标题+营销文案无用，已删除 */}
             <div>
               <h1 className="text-lg font-semibold text-gray-900 mb-5">AI 智能报价 · 铝型材 / 五金加工</h1>
 
@@ -45,7 +37,7 @@ export default function HomePage() {
                 <Link href="/quote">
                   <Button size="lg" variant="outline" className="border-gray-300 font-semibold px-6">
                     <Calculator className="w-5 h-5 mr-2" />
-                    手动填单
+                    完整报价器
                   </Button>
                 </Link>
                 {user && (
@@ -67,31 +59,9 @@ export default function HomePage() {
               </Link>
             </div>
 
-            {/* 右：报价单示例 */}
+            {/* 右：快速报价估算器（访客免登录即可填数出价） */}
             <div className="lg:justify-self-end w-full max-w-sm mx-auto lg:mx-0">
-              <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-5">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">报价单</p>
-                    <p className="text-xs text-gray-400 mt-0.5">YL-175-3 · 1.5mm 铝板 · 1 件</p>
-                  </div>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 shrink-0">示例</span>
-                </div>
-
-                <div className="space-y-2 text-sm">
-                  {demoRows.map((r) => (
-                    <div key={r.label} className="flex items-center justify-between text-gray-600">
-                      <span>{r.label}</span>
-                      <span className="tabular-nums">{r.value}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-dashed border-gray-200 flex items-baseline justify-between">
-                  <span className="text-sm text-gray-500">含税单价</span>
-                  <span className="text-xl font-bold text-blue-600 tabular-nums">¥4.03</span>
-                </div>
-              </div>
+              <QuickQuote />
             </div>
           </div>
         </div>
