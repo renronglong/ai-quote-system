@@ -64,21 +64,21 @@ export default function HomePage() {
 
   return (
     <AppLayout>
-      <section className="mb-6">
-        <div className="rounded-2xl bg-gradient-to-br from-blue-50 via-white to-slate-50 border border-gray-100 shadow-sm px-6 py-8 md:px-10 md:py-8">
-          <div className="flex items-center justify-between mb-5">
-            <h1 className="text-lg font-semibold text-gray-900">AI 智能报价 · 铝型材 / 五金加工</h1>
+      <section className="mb-4 md:mb-6">
+        <div className="md:rounded-2xl bg-gradient-to-br from-blue-50 via-white to-slate-50 md:border md:border-gray-100 md:shadow-sm px-0 py-0 md:px-10 md:py-8">
+          <div className="flex items-center justify-between mb-4 px-4 md:px-0 pt-4 md:pt-0">
+            <h1 className="text-base md:text-lg font-semibold text-gray-900">AI 智能报价 · 铝型材 / 五金加工</h1>
             <Link
               href="/quote/recognize"
-              className="inline-flex items-center text-blue-600 hover:text-blue-700 text-sm font-medium"
+              className="inline-flex items-center text-blue-600 hover:text-blue-700 text-xs md:text-sm font-medium"
             >
-              上传图纸报价 <ArrowRight className="w-4 h-4 ml-1" />
+              上传图纸 <ArrowRight className="w-4 h-4 ml-1" />
             </Link>
           </div>
 
-          <div className="grid gap-8 lg:grid-cols-2 lg:items-start">
+          <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
             {/* 左：完整报价表单（与 /quote 同款，免登录即可算价） */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+            <div className="bg-white md:rounded-xl md:border md:border-gray-200 md:shadow-sm md:p-4">
               <QuoteForm
                 key={formNonce}
                 onCalculate={(d) => setParams(d as any)}
