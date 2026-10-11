@@ -2288,7 +2288,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   <div key={fieldKey}>
                     <label className="block text-sm text-slate-600 mb-1">
                       {getFieldLabel(productType, fieldKey)}
-                      <span className="ml-1 text-xs text-blue-400">点＋把当前长度存入报价池（同副模具只算一次模具费）</span>
                     </label>
                     <div className="flex gap-1">
                       <input
