@@ -470,6 +470,7 @@ export function calculateDieCasting(input: DieCastingInput): PricingResult {
     packagingCost: round6(packagingCost),
     transportationCost: round6(transportationCost),
     unitCost: round6(unitCost),
+    unitPriceWithTax: round2(unitCost * 1.28),
     totalCost: round2(unitCost * input.quantity),
     breakdown,
     aluminumPrice: {
@@ -589,4 +590,97 @@ function round6(n: number): number {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+// ------------------------------------------------------------
+// 批量优先：工艺路线对比（挤压 vs 压铸）
+// ------------------------------------------------------------
+
+/** 挤出平模一次性模具费参考价（元，gyparts 实价口径） */
+export const MOLD_COST_EXTRUSION_PLAIN = 9200;
+
+/** 简单小件压铸模一次性模具费参考价（元） */
+export const MOLD_COST_DIE_CASTING = 20000;
+
+export interface ProcessRouteComparison {
+  unitPriceWithTax: number | null;  // 单件含税价
+  moldCost: number;                 // 一次性模具费
+  totalCost: number | null;         // 数量件总成本（含模具）
+  unitWithMold: number | null;      // 单件综合成本（含模具分摊）
+}
+
+export interface ProcessComparison {
+  quantity: number;
+  extrusion: ProcessRouteComparison;
+  dieCasting: ProcessRouteComparison;
+  breakEvenQty: number | null;                       // 压铸反超挤压的盈亏平衡件数
+  recommended: 'extrusion' | 'die_casting' | null;   // 批量优先推荐
+  notes: string[];
+}
+
+/**
+ * 按当前数量对比两条开模路线的总账（批量优先原则）。
+ * - 挤出：需截面积+长度（表面默认阳极氧化口径）
+ * - 压铸：需单件重量（未传时用挤压净重兜底）
+ */
+export function compareProcesses(input: {
+  crossSectionArea?: number;
+  lengthMm?: number;
+  weightPerPieceKg?: number;
+  quantity: number;
+  dieCastMoldCost?: number;
+}): ProcessComparison {
+  const qty = Math.max(1, Math.floor(input.quantity || 0));
+
+  let exUnit: number | null = null;
+  let exWeight: number | null = null;
+  if ((input.crossSectionArea ?? 0) > 0 && (input.lengthMm ?? 0) > 0) {
+    const r = calculateExtrusion({
+      productType: 'extrusion',
+      crossSectionArea: input.crossSectionArea as number,
+      length: input.lengthMm as number,
+      surfaceTreatment: '阳极氧化',
+      quantity: qty,
+    });
+    exUnit = r.unitCost;
+    exWeight = r.netWeight ?? null;
+  }
+
+  const w = (input.weightPerPieceKg ?? 0) > 0 ? input.weightPerPieceKg as number : exWeight;
+  let dcUnit: number | null = null;
+  if ((w ?? 0) > 0) {
+    const r = calculateDieCasting({ productType: 'die_casting', weight: w as number, quantity: qty });
+    dcUnit = r.unitPriceWithTax ?? round2(r.unitCost * 1.28);
+  }
+
+  const moldEx = MOLD_COST_EXTRUSION_PLAIN;
+  const moldDc = input.dieCastMoldCost ?? MOLD_COST_DIE_CASTING;
+  const exTotal = exUnit != null ? round2(exUnit * qty + moldEx) : null;
+  const dcTotal = dcUnit != null ? round2(dcUnit * qty + moldDc) : null;
+
+  let bep: number | null = null;
+  if (exUnit != null && dcUnit != null && exUnit > dcUnit) {
+    bep = Math.ceil((moldDc - moldEx) / (exUnit - dcUnit));
+  }
+  const recommended = exTotal != null && dcTotal != null
+    ? (exTotal <= dcTotal ? 'extrusion' : 'die_casting')
+    : null;
+
+  return {
+    quantity: qty,
+    extrusion: {
+      unitPriceWithTax: exUnit, moldCost: moldEx, totalCost: exTotal,
+      unitWithMold: exTotal != null ? round6(exTotal / qty) : null,
+    },
+    dieCasting: {
+      unitPriceWithTax: dcUnit, moldCost: moldDc, totalCost: dcTotal,
+      unitWithMold: dcTotal != null ? round6(dcTotal / qty) : null,
+    },
+    breakEvenQty: bep,
+    recommended,
+    notes: [
+      '表面按阳极氧化口径估算；压铸件为 ADC12 不能阳极氧化，需喷涂/电泳',
+      `模具费为一次性参考价：挤压平模 ¥${moldEx}、压铸 ¥${moldDc}，可按供应商实价调整`,
+    ],
+  };
 }
