@@ -128,6 +128,7 @@ interface QuoteResponse {
   error?: string;
   mold_cost?: number;              // 模具费（元），一次性，不计入单件价
   mold_spec?: string;              // 模具规格，如 Φ297×230 分流模
+  volume_cm3?: number;             // 体积 cm³（纯几何，前端乘密度得重量）
 }
 
 // ============================================================
@@ -732,7 +733,7 @@ function calcExtrusion(
   req: QuoteRequest,
   aluminumPrice: number,
   rules: PricingRules,
-): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number } {
+): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number; volume_cm3: number } {
   const dims = normalizeDims(req.dimensions || { length_mm: 1000, width_mm: 50, height_mm: 25 });
   const notes: string[] = [];
   const breakdown: Record<string, { formula: string; detail: string }> = {};
@@ -1717,7 +1718,7 @@ function calcDieCasting(
   req: QuoteRequest,
   aluminumPrice: number,
   rules: PricingRules,
-): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number } {
+): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number; volume_cm3: number } {
   const volumeCm3 = req.volume_cm3 || 100;
   const notes: string[] = [];
   const breakdown: Record<string, { formula: string; detail: string }> = {};
@@ -1735,12 +1736,14 @@ function calcDieCasting(
   accumulated *= (1 + (rules.die_casting_rates?.['压铸铝ADC12_A380']?.loss_rate || 0.05));
 
   // 3. 模具费（单独列出，不计入单价）
-  let moldTotal = req.mold_cost && req.mold_cost > 0 ? req.mold_cost : 20000;
-  notes.push(`压铸模具费: ${moldTotal}元（一次性，不计入单件价格）`);
-  breakdown['mold'] = {
-    formula: '模具费（一次性，不分摊）',
-    detail: `模具费: ${moldTotal}元（单独列出）`,
-  };
+  let moldTotal = req.mold_cost && req.mold_cost > 0 ? req.mold_cost : 0;
+  if (moldTotal > 0) {
+    notes.push(`压铸模具费: ${moldTotal}元（一次性，不计入单件价格）`);
+    breakdown['mold'] = {
+      formula: '模具费（一次性，不分摊）',
+      detail: `模具费: ${moldTotal}元（单独列出）`,
+    };
+  }
 
   // 4. 表面处理费
   let surfaceCost = 0;
@@ -1795,11 +1798,13 @@ function calcDieCasting(
       total_in_tax: unitPrice,
       weight_per_piece_kg: mat.weight,
       mold_cost: moldTotal,
+      volume_cm3: volumeCm3,
     },
     breakdown,
     weight: mat.weight,
     notes,
     utilizationRate: mat.utilizationRate,
+    volume_cm3: volumeCm3,
   };
 }
 
