@@ -48,7 +48,6 @@ interface PartInfo {
   extrusion_length_mm: number;
   bounding_box_mm: [number, number, number];
   volume_mm3: number;
-  product_type?: string; // 后端 per-part 工艺建议（挤出/板材），装配体拆分时优先于整体选择
 }
 
 // Allowed upload extensions
@@ -139,9 +138,10 @@ function buildRecogDataFromParse(parseJson: any, productType: string, source: st
     punch_holes_total: parseJson.punch_holes_total || 0,
     // 板材下料三件套：后端已算好，这里只做透传（不参与任何计算）
     // 缺失时置 null 而非 0，避免报价页把「没有值」显示成 0
-    unfold_hole_count: parseJson.unfold_hole_count ?? null,
-    unfold_perimeter_mm: parseJson.unfold_perimeter_mm ?? null,
-    cut_total_path_mm: parseJson.cut_total_path_mm ?? null,
+    unfold_hole_count: parseJson.unfold_hole_count ?? parseJson.hole_count ?? null,
+    unfold_perimeter_mm: parseJson.unfold_perimeter_mm ?? parseJson.unfold_outer_perimeter_mm ?? parseJson.outer_perimeter_mm ?? parseJson.perimeter ?? null,
+    outer_perimeter_mm: parseJson.outer_perimeter_mm ?? parseJson.perimeter ?? null,
+    cut_total_path_mm: parseJson.cut_total_path_mm ?? parseJson.cut_total_length_mm ?? parseJson.total_perimeter ?? null,
     notes: `${source}${fileName ? ': ' + fileName : ''}${isSheet ? ` | 钣金折弯件 ${parseJson.unfold_size || ''} ${parseJson.bend_angle_deg || 90}°/R${parseJson.bend_radius_mm || ''}` : ''} | ⚠️仅用于报价估算，不可作为开模依据`,
     _fileName: fileName,
     _partId: parseJson.part_id || parseJson.part_number || '',
@@ -569,8 +569,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
               }
               if (r.is_assembly && r.parts && r.parts.length > 0) {
                 for (const part of r.parts) {
-                  const partPt = part.product_type && PRODUCT_TYPES[part.product_type] ? part.product_type : productType;
-                  allProducts.push(buildRecogDataFromParse(part, partPt, '装配体零件', fname + ' / ' + (part.product_name || part.part_id)));
+                  allProducts.push(buildRecogDataFromParse(part, productType, '装配体零件', fname + ' / ' + (part.product_name || part.part_id)));
                 }
               } else {
                 allProducts.push(buildRecogDataFromParse(r, productType, '压缩包解析', fname));
@@ -605,8 +604,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
             }
             if (parseJson.is_assembly && parseJson.parts && parseJson.parts.length > 0) {
               for (const part of parseJson.parts) {
-                const partPt = part.product_type && PRODUCT_TYPES[part.product_type] ? part.product_type : productType;
-                allProducts.push(buildRecogDataFromParse(part, partPt, '装配体零件', targetFile.name + ' / ' + (part.product_name || part.part_id)));
+                allProducts.push(buildRecogDataFromParse(part, productType, '装配体零件', targetFile.name + ' / ' + (part.product_name || part.part_id)));
               }
             } else {
               allProducts.push(buildRecogDataFromParse(parseJson, productType, '压缩包解析', targetFile.name));
@@ -658,7 +656,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           // 装配体：构建零件列表
           setIsAssembly(true);
           const parts: Record<string, any>[] = cadJson.parts.map((part: PartInfo) =>
-            buildRecogDataFromParse(part, part.product_type && PRODUCT_TYPES[part.product_type] ? part.product_type : productType, '装配体零件')
+            buildRecogDataFromParse(part, productType, '装配体零件')
           );
           setRecogProducts(parts);
           setSelectedProductIdx(0);

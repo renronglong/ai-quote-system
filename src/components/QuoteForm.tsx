@@ -1980,7 +1980,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           if (qty !== null) next.quantity = qty;
           // 孔数：优先用 unfold_hole_count，没有时从 all_holes 过滤（排除折弯圆角）
           // punch_holes_total 默认是 0（冲孔工序参数），不能当孔数用
-          let holes = toNum(d.unfold_hole_count);
+          let holes = toNum(d.unfold_hole_count) ?? toNum(d.hole_count);
           // If unfold_hole_count not available, calculate from all_holes excluding bend radii
           if (holes === null && Array.isArray(d.all_holes) && d.all_holes.length > 0) {
             const bendRadius = toNum(d.bend_radius) || 0;
@@ -1992,9 +1992,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             holes = realHoles.length > 0 ? realHoles.length : null;
           }
           if (holes !== null && holes > 0) next.holes = holes;
-          else if (d.unfold_hole_count === undefined && !Array.isArray(d.all_holes)) next.holes = '';  // 留空
+          else if (d.unfold_hole_count === undefined && d.hole_count === undefined && !Array.isArray(d.all_holes)) next.holes = '';  // 留空
           // 展开外轮廓周长（不含孔）
-          const outerPerimeter = toNum(d.unfold_perimeter_mm) ?? toNum(d.unfold_outer_perimeter_mm) ?? toNum(d.outer_perimeter_mm) ?? toNum(d.outer_perimeter);
+          const outerPerimeter = toNum(d.unfold_perimeter_mm) ?? toNum(d.unfold_outer_perimeter_mm) ?? toNum(d.outer_perimeter_mm) ?? toNum(d.outer_perimeter) ?? toNum(d.perimeter);
           if (outerPerimeter !== null) next.outer_perimeter = outerPerimeter;
           // 含孔下料总路径
           const cutTotalLength = toNum(d.cut_total_path_mm) ?? toNum(d.cut_total_length_mm) ?? toNum(d.cut_total_length) ?? toNum(d.total_perimeter);
