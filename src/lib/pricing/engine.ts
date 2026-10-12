@@ -692,3 +692,36 @@ export const CNC_MACHINE_RATE_CNY_H = 100;
 export function estimateCncCost(timeMin: number, machineRateCnyH: number = CNC_MACHINE_RATE_CNY_H): number {
   return round2((Math.max(0, timeMin) / 60) * machineRateCnyH);
 }
+
+// ==================== 工艺路线判定（材料/表面处理驱动） ====================
+// 后端 /api/cnc/estimate 返回 process_routes（图纸定位）；材料缺失时后端给双路线，
+// 用户在表单选择材料后由本函数在前端完成最终判定。
+export type ProcessRoute = 'extrusion' | 'die_casting' | 'sheet_metal';
+
+const CAST_ALLOY_RE = /ADC\d|A3[689]0|YL\d{3}|ZL1?\d{2}|LM[26]|压铸|铸铝/i;
+const WROUGHT_ALLOY_RE = /\b(1060|3003|5052|6060|6061|6063|6082|2A12|6A02|7075|7A04)\b|变形铝|挤压铝/i;
+const OXY_TREAT_RE = /阳极|氧化/;
+
+export interface ProcessRouteDecision {
+  route: ProcessRoute | null;
+  reason: string;
+}
+
+export function resolveProcessRoute(input: {
+  material?: string | null;
+  surfaceTreatment?: string | null;
+  backendRoutes?: string[] | null;
+  weightG?: number | null;
+}): ProcessRouteDecision {
+  const material = (input.material || '').trim();
+  if (material) {
+    if (CAST_ALLOY_RE.test(material)) return { route: 'die_casting', reason: `材料 ${material} 为压铸铝合金（不能阳极氧化）` };
+    if (WROUGHT_ALLOY_RE.test(material)) return { route: 'extrusion', reason: `材料 ${material} 为变形铝合金（挤压工艺）` };
+  }
+  const st = (input.surfaceTreatment || '').trim();
+  if (OXY_TREAT_RE.test(st)) return { route: 'extrusion', reason: '表面处理为氧化类，压铸件不可行' };
+  const r = input.backendRoutes || [];
+  if (r.length === 1) return { route: r[0] as ProcessRoute, reason: r[0] === 'sheet_metal' ? '薄壁件按板材分条工艺' : '后端按图纸信息定位' };
+  if (input.weightG != null && input.weightG > 3000) return { route: 'extrusion', reason: '单件重量超压铸经济范围(≤3kg)，走挤压' };
+  return { route: null, reason: '图纸无材料/表面处理信息，选择材料后自动判定' };
+}

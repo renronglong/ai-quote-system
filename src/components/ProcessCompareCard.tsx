@@ -1,24 +1,32 @@
 "use client";
 import React from 'react';
-import { compareProcesses } from '@/lib/pricing/engine';
+import { compareProcesses, resolveProcessRoute } from '@/lib/pricing/engine';
 
 /**
- * 批量工艺对比卡（批量优先原则）
- * 数据与判定全部来自报价引擎 compareProcesses()，前端不再维护公式。
+ * 批量工艺对比卡（批量优先 + 材料/体积定位）
+ * - 时间与判定来自后端/引擎：compareProcesses()（前端零公式）
+ * - 路线定位：resolveProcessRoute()（材料牌号 > 表面处理 > 后端图纸路由 > 体积排除）
  */
-
 interface ProcessCompareCardProps {
   productType: string;
-  crossSectionArea?: number; // mm² 挤出截面积
-  lengthMm?: number;         // mm 单件长度
-  weightKg?: number;         // kg 单件重量（净重口径）
-  quantity?: number;         // 件
+  crossSectionArea?: number;
+  lengthMm?: number;
+  weightKg?: number;
+  quantity?: number;
+  materialGrade?: string;
+  materialSurfaceTreatment?: string;
 }
 
-export default function ProcessCompareCard({ productType, crossSectionArea, lengthMm, weightKg, quantity }: ProcessCompareCardProps) {
+export default function ProcessCompareCard({ productType, crossSectionArea, lengthMm, weightKg, quantity, materialGrade, materialSurfaceTreatment }: ProcessCompareCardProps) {
   if (productType !== '挤出' && productType !== '压铸') return null;
   const qty = Math.floor(Number(quantity) || 0);
   if (qty <= 0) return null;
+
+  const decision = resolveProcessRoute({
+    material: materialGrade,
+    surfaceTreatment: materialSurfaceTreatment,
+    weightG: Number(weightKg) > 0 ? Number(weightKg) * 1000 : null,
+  });
 
   const cmp = compareProcesses({
     crossSectionArea: Number(crossSectionArea) || 0,
@@ -42,6 +50,21 @@ export default function ProcessCompareCard({ productType, crossSectionArea, leng
     </div>
   );
 
+  const locate =
+    decision.route === 'die_casting' ? (
+      <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 p-2 text-xs text-amber-900">
+        🧭 <b>路线定位：压铸</b> —— {decision.reason}
+      </div>
+    ) : decision.route === 'extrusion' && decision.reason ? (
+      <div className="mt-2 rounded-lg bg-blue-50 border border-blue-200 p-2 text-xs text-blue-900">
+        🧭 <b>路线定位：挤压</b> —— {decision.reason}
+      </div>
+    ) : decision.route === null ? (
+      <div className="mt-2 rounded-lg bg-slate-50 border border-slate-200 p-2 text-xs text-slate-600">
+        🧭 <b>材料未定，双路线保留</b> —— {decision.reason}
+      </div>
+    ) : null;
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-indigo-200 overflow-hidden">
       <div className="px-3 py-2.5 bg-gradient-to-r from-indigo-50 to-blue-50 flex items-center gap-2 flex-wrap">
@@ -50,14 +73,15 @@ export default function ProcessCompareCard({ productType, crossSectionArea, leng
         <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-xs font-semibold">按 {cmp.quantity.toLocaleString()} 件</span>
         {better && (
           <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">
-            批量优先推荐：{better}
+            批量推荐：{better}
           </span>
         )}
       </div>
       <div className="px-3 pb-3 pt-1 text-sm">
-        <div className="grid grid-cols-3 gap-1 py-1 border-b border-slate-200 text-xs font-semibold text-slate-400">
+        {locate}
+        <div className="grid grid-cols-3 gap-1 py-1 mt-1 border-b border-slate-200 text-xs font-semibold text-slate-400">
           <div />
-          <div className="text-right">挤压（平模 ¥{ex.moldCost.toLocaleString()}）</div>
+          <div className="text-right">挤压（模 ¥{ex.moldCost.toLocaleString()}）</div>
           <div className="text-right">压铸（模 ¥{dc.moldCost.toLocaleString()}）</div>
         </div>
         <Row label="单件价（含税）" ex={fmt(ex.unitPriceWithTax)} dc={dc.unitPriceWithTax != null ? fmt(dc.unitPriceWithTax) : '需单件重量'} />

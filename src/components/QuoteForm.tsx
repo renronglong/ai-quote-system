@@ -4,6 +4,7 @@ import { Sparkles, Plus, Loader2, CheckCircle2, ChevronDown } from 'lucide-react
 import { useAuth } from '@/lib/auth-context';
 import { calculateStampingMoldFee, calculateLaserCuttingFee, type StampingMoldResult, type LaserCuttingResult } from '@/lib/stamping-mold-calculator';
 import { STEEL_STANDARD_SPECS } from '@/data/steelStandardSpecs';
+import ProcessCompareCard from './ProcessCompareCard';
 
 // ==================== Types ====================
 
@@ -2478,6 +2479,19 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             ))}
           </div>
         </div>
+
+        {/* ---- 批量工艺对比（材料定位+批量优先） ---- */}
+        {(productType === '挤出' || productType === '压铸') && (
+          <ProcessCompareCard
+            productType={productType}
+            crossSectionArea={Number(fields.crossSectionArea) || 0}
+            lengthMm={Number(fields.length) || 0}
+            weightKg={calcWeightKg()}
+            quantity={Number(fields.quantity) || 0}
+            materialGrade={materialGrade}
+            materialSurfaceTreatment={materialSurfaceTreatment}
+          />
+        )}
 
         {/* ---- 材料类别 ---- */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
