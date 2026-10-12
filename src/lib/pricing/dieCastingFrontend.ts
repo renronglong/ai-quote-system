@@ -111,8 +111,10 @@ export function tryFrontendDieCasting(
   const matPrice = DC_CONFIG.materialPricePerKg[materialCategory] ?? 22.35;
   const materialCost = round2(weightKg * matPrice);
 
-  // 压铸加工费
-  const castingCost = round2(weightKg * DC_CONFIG.castingRatePerKg);
+  // 压铸加工费：由后端按几何量计算返回（分工确认），前端优先采用；后端未回则兜底计算
+  const castingCost = round2(
+    data?.processing_cost ?? (weightKg * DC_CONFIG.castingRatePerKg),
+  );
 
   // 表面处理费
   let surfaceCost = 0;
@@ -188,8 +190,10 @@ export function tryFrontendDieCasting(
       detail: `${Number(volume).toFixed(1)}cm³×${DC_CONFIG.density[materialCategory]}×${matPrice}元/kg = ${materialCost}元`,
     },
     processing_cost: {
-      formula: `重量×压铸加工费率`,
-      detail: `${weightKg.toFixed(3)}kg×${DC_CONFIG.castingRatePerKg} = ${castingCost}元`,
+      formula: data?.processing_cost != null ? `后端按几何量返回的压铸加工费` : `重量×压铸加工费率（兜底）`,
+      detail: data?.processing_cost != null
+        ? `后端返回加工费 ${castingCost}元`
+        : `${weightKg.toFixed(3)}kg×${DC_CONFIG.castingRatePerKg} = ${castingCost}元`,
     },
     surface_treatment_cost: {
       formula: stFormulas.length ? `表面处理按重量计费` : `无表面处理`,
