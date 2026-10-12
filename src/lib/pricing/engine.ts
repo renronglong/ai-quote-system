@@ -684,3 +684,11 @@ export function compareProcesses(input: {
     ],
   };
 }
+
+// ==================== CNC 加工费（时间×机时费） ====================
+// 后端 /api/cnc/estimate 只输出加工时间；价格换算由前端公式统一负责。
+export const CNC_MACHINE_RATE_CNY_H = 100;
+
+export function estimateCncCost(timeMin: number, machineRateCnyH: number = CNC_MACHINE_RATE_CNY_H): number {
+  return round2((Math.max(0, timeMin) / 60) * machineRateCnyH);
+}
