@@ -3,8 +3,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Sparkles, Plus, Loader2, CheckCircle2, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { calculateStampingMoldFee, calculateLaserCuttingFee, type StampingMoldResult, type LaserCuttingResult } from '@/lib/stamping-mold-calculator';
+import { tryFrontendDieCasting } from '@/lib/pricing/dieCastingFrontend';
 import { STEEL_STANDARD_SPECS } from '@/data/steelStandardSpecs';
-import ProcessCompareCard from './ProcessCompareCard';
 
 // ==================== Types ====================
 
@@ -1814,6 +1814,28 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             min_order_qty: data.min_order_qty || 0,
             min_order_weight_kg: data.min_order_weight_kg || 0,
           };
+
+          // 压铸/锌合金：后端回原始几何(volume_cm3)时，前端按配置单价算价（价格归前端，门控）
+          const feCast = tryFrontendDieCasting(data, payload);
+          if (feCast) {
+            result.material_cost = feCast.material_cost;
+            result.processing_cost = feCast.processing_cost;
+            result.secondary_operations_cost = feCast.secondary_operations_cost;
+            result.surface_treatment_cost = feCast.surface_treatment_cost;
+            result.packaging_cost = feCast.packaging_cost;
+            result.transport_cost = feCast.transport_cost;
+            result.unit_price = feCast.unit_price;
+            result.unit_price_ex_tax = feCast.unit_price_ex_tax;
+            result.unit_price_in_tax = feCast.unit_price_in_tax;
+            result.total_price = feCast.total_price;
+            result.weight_per_piece_kg = feCast.weight_per_piece_kg;
+            result.mold_cost = feCast.mold_cost || result.mold_cost;
+            result.min_order_qty = feCast.min_order_qty || result.min_order_qty;
+            result.min_order_weight_kg = data.min_order_weight_kg || result.min_order_weight_kg;
+            result.breakdown = feCast.breakdown;
+            result.notes = feCast.notes;
+          }
+
           onResult?.(result);
           reportRecognitionFeedback();
           if (onCalculate) {
@@ -2479,19 +2501,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             ))}
           </div>
         </div>
-
-        {/* ---- 批量工艺对比（材料定位+批量优先） ---- */}
-        {(productType === '挤出' || productType === '压铸') && (
-          <ProcessCompareCard
-            productType={productType}
-            crossSectionArea={Number(fields.crossSectionArea) || 0}
-            lengthMm={Number(fields.length) || 0}
-            weightKg={calcWeightKg()}
-            quantity={Number(fields.quantity) || 0}
-            materialGrade={materialGrade}
-            materialSurfaceTreatment={materialSurfaceTreatment}
-          />
-        )}
 
         {/* ---- 材料类别 ---- */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
