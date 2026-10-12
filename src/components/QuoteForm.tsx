@@ -1394,7 +1394,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     let restoredPt = '';
     if (p.productType) { restoredPt = p.productType; setProductType(p.productType); }
     else if (p.product_type) {
-      const typeMap: Record<string, string> = { extrusion: '挤出', sheet: '板材', die_casting: '压铸', injection: '注塑' };
+      const typeMap: Record<string, string> = { extrusion: '挤出', sheet: '板材', die_casting: '压铸', zinc_alloy: '压铸', injection: '注塑' };
       restoredPt = typeMap[p.product_type] || p.product_type;
       setProductType(restoredPt);
     }
