@@ -733,7 +733,7 @@ function calcExtrusion(
   req: QuoteRequest,
   aluminumPrice: number,
   rules: PricingRules,
-): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number; volume_cm3: number } {
+): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number; volume_cm3?: number } {
   const dims = normalizeDims(req.dimensions || { length_mm: 1000, width_mm: 50, height_mm: 25 });
   const notes: string[] = [];
   const breakdown: Record<string, { formula: string; detail: string }> = {};
