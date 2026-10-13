@@ -1,5 +1,5 @@
 import { getAluminumPrice } from '@/lib/pricing/aluminum-price';
-import { getRealtimeBasePrices, RealtimeBasePrices } from '@/lib/pricing/realtime-prices';
+import { getRealtimeBasePrices, getRealtimeFuturesOnly, RealtimeBasePrices } from '@/lib/pricing/realtime-prices';
 import { NextRequest } from 'next/server';
 
 // ============================================================
@@ -130,6 +130,7 @@ interface QuoteResponse {
   weight_per_piece_kg?: number;
   breakdown?: Record<string, { formula: string; detail: string }>;
   aluminum_index?: number;
+  realtime_prices?: { updatedAt: string; sources: Record<string, string>; hotRoll: number; ss304: number; zinc: number; adc12: number; pp: number };
   min_order_met?: boolean;
   min_order_weight_kg?: number;
   min_order_qty?: number;
@@ -2097,10 +2098,12 @@ export async function POST(request: NextRequest) {
       body.aluminum_price_override ? Promise.resolve(body.aluminum_price_override) : getAluminumPrice(23530).then(r => r.price),
       loadPricingRules(),
     ]);
+    // 快路径：只取期货（秒级），先落 REALTIME；完整版（含 ADC12 现货）后台补
     REALTIME = await Promise.race([
-      getRealtimeBasePrices(),
-      new Promise<RealtimeBasePrices>(resolve => setTimeout(() => resolve(REALTIME), 3000)), // 3s 超时兜底，不阻断报价
+      getRealtimeFuturesOnly(),
+      new Promise<RealtimeBasePrices>(resolve => setTimeout(() => resolve(REALTIME), 3500)),
     ]).catch(() => REALTIME);
+    getRealtimeBasePrices().then(rt => { REALTIME = rt; }).catch(() => {});
 
     // 3. 根据产品类型分发计算
     let result: { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number };
@@ -2174,6 +2177,7 @@ export async function POST(request: NextRequest) {
       total_price: totalPrice,
       breakdown: result.breakdown,
       aluminum_index: aluminumPrice,
+      realtime_prices: { updatedAt: REALTIME.updatedAt, sources: REALTIME.sources, hotRoll: REALTIME.hotRoll, ss304: REALTIME.ss304, zinc: REALTIME.zinc, adc12: REALTIME.adc12, pp: REALTIME.pp },
       min_order_met: minOrderMet,
       min_order_weight_kg: minOrderWeightKg || result.costs.min_order_weight_kg || 300,
       material_utilization_rate: result.utilizationRate,
@@ -2231,10 +2235,12 @@ export async function GET(request: NextRequest) {
       body.aluminum_price_override ? Promise.resolve(body.aluminum_price_override) : getAluminumPrice(23530).then(r => r.price),
       loadPricingRules(),
     ]);
+    // 快路径：只取期货（秒级），先落 REALTIME；完整版（含 ADC12 现货）后台补
     REALTIME = await Promise.race([
-      getRealtimeBasePrices(),
-      new Promise<RealtimeBasePrices>(resolve => setTimeout(() => resolve(REALTIME), 3000)), // 3s 超时兜底，不阻断报价
+      getRealtimeFuturesOnly(),
+      new Promise<RealtimeBasePrices>(resolve => setTimeout(() => resolve(REALTIME), 3500)),
     ]).catch(() => REALTIME);
+    getRealtimeBasePrices().then(rt => { REALTIME = rt; }).catch(() => {});
 
     // 3. 根据产品类型分发计算
     let result: { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number };
@@ -2288,6 +2294,7 @@ export async function GET(request: NextRequest) {
       total_price: totalPrice,
       breakdown: result.breakdown,
       aluminum_index: aluminumPrice,
+      realtime_prices: { updatedAt: REALTIME.updatedAt, sources: REALTIME.sources, hotRoll: REALTIME.hotRoll, ss304: REALTIME.ss304, zinc: REALTIME.zinc, adc12: REALTIME.adc12, pp: REALTIME.pp },
       min_order_met: minOrderMet,
       min_order_weight_kg: minOrderWeight,
       material_utilization_rate: result.utilizationRate,

@@ -107,6 +107,7 @@ export async function getRealtimeBasePrices(): Promise<RealtimeBasePrices> {
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) return cached.data;
   const out: RealtimeBasePrices = { ...FALLBACK };
   const sources: Record<string, string> = {};
+  // 先期货（快、结构化），拿到就先缓存返回；ADC12 现货随后尽力补
   try {
     const fut = await fetchFutures();
     const futRec = fut as unknown as Record<string, number>;
@@ -119,19 +120,49 @@ export async function getRealtimeBasePrices(): Promise<RealtimeBasePrices> {
     }
   } catch { /* 回退默认 */ }
   // ADC12：优先现货，失败回退铝期货×0.95，再回退 22000
-  const adc12Spot = await fetchAdc12Spot();
-  if (adc12Spot) {
-    out.adc12 = adc12Spot;
-    sources.adc12 = 'lvdingjia:ADC12';
-  } else {
+  try {
+    const adc12Spot = await Promise.race([
+      fetchAdc12Spot(),
+      new Promise<null>(resolve => setTimeout(() => resolve(null), 4000)),
+    ]);
+    if (adc12Spot) {
+      out.adc12 = adc12Spot;
+      sources.adc12 = 'lvdingjia:ADC12';
+    } else {
+      const alPrice = (out as unknown as Record<string, number>).al;
+      if (typeof alPrice === 'number' && alPrice > 0) {
+        out.adc12 = Math.round(alPrice * 0.95);
+        sources.adc12 = 'sina:AL0×0.95';
+      }
+    }
+  } catch { /* 保持 fallback */ }
+  out.sources = sources;
+  out.updatedAt = new Date().toISOString();
+  cached = { data: out, timestamp: Date.now() };
+  return out;
+}
+
+/** 仅期货部分（快路径）：供「先落期货、现货后补」的场景 */
+export async function getRealtimeFuturesOnly(): Promise<RealtimeBasePrices> {
+  const out: RealtimeBasePrices = { ...FALLBACK };
+  const sources: Record<string, string> = {};
+  try {
+    const fut = await fetchFutures();
+    const futRec = fut as unknown as Record<string, number>;
+    for (const key of ['hotRoll', 'ss304', 'zinc', 'al', 'pp'] as const) {
+      const v = futRec[key];
+      if (typeof v === 'number' && v > 0) {
+        (out as unknown as Record<string, number>)[key] = v;
+        sources[key] = `sina:${FUTURES.find(([k]) => k === key)?.[1] ?? ''}`;
+      }
+    }
     const alPrice = (out as unknown as Record<string, number>).al;
     if (typeof alPrice === 'number' && alPrice > 0) {
       out.adc12 = Math.round(alPrice * 0.95);
       sources.adc12 = 'sina:AL0×0.95';
     }
-  }
+  } catch { /* 保持 fallback */ }
   out.sources = sources;
   out.updatedAt = new Date().toISOString();
-  cached = { data: out, timestamp: Date.now() };
   return out;
 }
