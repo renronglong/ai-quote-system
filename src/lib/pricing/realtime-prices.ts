@@ -40,26 +40,46 @@ const FUTURES = [
   ['pp', '114.ppm', '聚丙烯主连'],
 ] as const;
 
+// 上一次成功取到的值：跨请求保留，避免"本次部分失败"把好值覆盖成默认值
+let lastGood: Partial<Record<'hotRoll' | 'ss304' | 'zinc' | 'al' | 'pp', number>> = {};
+
+async function fetchOneEastmoney(secid: string): Promise<number | null> {
+  const res = await fetch(`https://push2.eastmoney.com/api/qt/stock/get?secid=${secid}&fields=f43,f57,f58`, {
+    headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://quote.eastmoney.com/' },
+    signal: AbortSignal.timeout(6000),
+    cache: 'no-store',
+  });
+  if (!res.ok) return null;
+  const j = await res.json() as { data?: { f43?: number } };
+  const v = j?.data?.f43;
+  return typeof v === 'number' && v > 0 ? v : null;
+}
+
 // 主源：东方财富 push2（JSON、全球 CDN，Vercel 海外可达）
 async function fetchFuturesEastmoney(): Promise<Partial<RealtimeBasePrices>> {
   const out: Partial<RealtimeBasePrices> = {};
   const sources: Record<string, string> = {};
-  await Promise.all(FUTURES.map(async ([key, secid]) => {
-    try {
-      const res = await fetch(`https://push2.eastmoney.com/api/qt/stock/get?secid=${secid}&fields=f43,f57,f58`, {
-        headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://quote.eastmoney.com/' },
-        signal: AbortSignal.timeout(5000),
-        cache: 'no-store',
-      });
-      if (!res.ok) return;
-      const j = await res.json() as { data?: { f43?: number } };
-      const v = j?.data?.f43;
-      if (typeof v === 'number' && v > 0) {
-        (out as Record<string, number>)[key] = v;
-        sources[key] = `eastmoney:${secid}`;
-      }
-    } catch { /* 单品种失败不影响其余 */ }
-  }));
+  const vals: Partial<Record<string, number>> = {};
+  // 两轮：先并发取一轮，缺的再补一轮
+  for (let round = 0; round < 2; round++) {
+    const todo = FUTURES.filter(([k]) => vals[k] == null);
+    if (!todo.length) break;
+    await Promise.all(todo.map(async ([key, secid]) => {
+      const v = await fetchOneEastmoney(secid).catch(() => null);
+      if (v != null) vals[key] = v;
+    }));
+  }
+  for (const [key, secid] of FUTURES) {
+    const v = vals[key];
+    if (v != null) {
+      (out as Record<string, number>)[key] = v;
+      (lastGood as Record<string, number>)[key] = v;
+      sources[key] = `eastmoney:${secid}`;
+    } else if (lastGood[key] != null) {
+      (out as Record<string, number>)[key] = lastGood[key] as number;
+      sources[key] = 'lastGood';
+    }
+  }
   (out as Record<string, unknown>).sources = sources;
   return out;
 }
