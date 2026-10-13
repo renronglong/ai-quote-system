@@ -33,15 +33,40 @@ const CACHE_DURATION = 2 * 60 * 60 * 1000; // 2 小时
 let cached: { data: RealtimeBasePrices; timestamp: number } | null = null;
 
 const FUTURES = [
-  ['hotRoll', 'nf_HC0'],
-  ['ss304', 'nf_SS0'],
-  ['zinc', 'nf_ZN0'],
-  ['al', 'nf_AL0'],
-  ['pp', 'nf_PP0'],
+  ['hotRoll', '113.hcm', '热卷主连'],
+  ['ss304', '113.ssm', '不锈钢主连'],
+  ['zinc', '113.znm', '沪锌主连'],
+  ['al', '113.alm', '沪铝主连'],
+  ['pp', '114.ppm', '聚丙烯主连'],
 ] as const;
 
-async function fetchFutures(): Promise<Partial<RealtimeBasePrices>> {
-  const symbols = FUTURES.map(([, s]) => s).join(',');
+// 主源：东方财富 push2（JSON、全球 CDN，Vercel 海外可达）
+async function fetchFuturesEastmoney(): Promise<Partial<RealtimeBasePrices>> {
+  const out: Partial<RealtimeBasePrices> = {};
+  const sources: Record<string, string> = {};
+  await Promise.all(FUTURES.map(async ([key, secid]) => {
+    try {
+      const res = await fetch(`https://push2.eastmoney.com/api/qt/stock/get?secid=${secid}&fields=f43,f57,f58`, {
+        headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://quote.eastmoney.com/' },
+        signal: AbortSignal.timeout(5000),
+        cache: 'no-store',
+      });
+      if (!res.ok) return;
+      const j = await res.json() as { data?: { f43?: number } };
+      const v = j?.data?.f43;
+      if (typeof v === 'number' && v > 0) {
+        (out as Record<string, number>)[key] = v;
+        sources[key] = `eastmoney:${secid}`;
+      }
+    } catch { /* 单品种失败不影响其余 */ }
+  }));
+  (out as Record<string, unknown>).sources = sources;
+  return out;
+}
+
+// 备源：新浪期货（海外 IP 可能返回空）
+async function fetchFuturesSina(): Promise<Partial<RealtimeBasePrices>> {
+  const symbols = ['nf_HC0', 'nf_SS0', 'nf_ZN0', 'nf_AL0', 'nf_PP0'].join(',');
   const res = await fetch(`https://hq.sinajs.cn/list=${symbols}`, {
     headers: { Referer: 'https://finance.sina.com.cn', 'User-Agent': 'Mozilla/5.0' },
     signal: AbortSignal.timeout(8000),
@@ -58,7 +83,9 @@ async function fetchFutures(): Promise<Partial<RealtimeBasePrices>> {
     // nf_ 格式: 0名称 1时间 2开盘 3最高 4最低 ... 8最新价 9结算 10昨结算
     const last = parseFloat(parts[8]) || parseFloat(parts[9]) || parseFloat(parts[10]);
     if (!isNaN(last) && last > 0) {
-      const key = FUTURES.find(([, s]) => s === sym)?.[0];
+      const key = ['nf_HC0', 'nf_SS0', 'nf_ZN0', 'nf_AL0', 'nf_PP0'].indexOf(sym) >= 0
+        ? (['hotRoll', 'ss304', 'zinc', 'al', 'pp'] as const)[['nf_HC0', 'nf_SS0', 'nf_ZN0', 'nf_AL0', 'nf_PP0'].indexOf(sym)]
+        : undefined;
       if (key) {
         (out as unknown as Record<string, number>)[key] = last;
         sources[key] = `sina:${sym}`;
@@ -67,6 +94,21 @@ async function fetchFutures(): Promise<Partial<RealtimeBasePrices>> {
   }
   (out as Record<string, unknown>).sources = sources;
   return out;
+}
+
+async function fetchFutures(): Promise<Partial<RealtimeBasePrices>> {
+  const em = await fetchFuturesEastmoney();
+  const got = Object.keys(em.sources ?? {}).length;
+  if (got >= 3) return em;
+  // 东财品种缺失/失败 → 新浪补齐
+  try {
+    const sina = await fetchFuturesSina();
+    const merged = { ...sina, ...em } as Partial<RealtimeBasePrices>;
+    merged.sources = { ...(sina.sources ?? {}), ...(em.sources ?? {}) };
+    return merged;
+  } catch {
+    return em;
+  }
 }
 
 // lvdingjia ADC12/压铸铝锭现货（解析失败返回 null，由调用方回退）
