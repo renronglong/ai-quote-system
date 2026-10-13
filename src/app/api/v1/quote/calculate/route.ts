@@ -2101,7 +2101,7 @@ export async function POST(request: NextRequest) {
     // 快路径：只取期货（秒级），先落 REALTIME；完整版（含 ADC12 现货）后台补
     REALTIME = await Promise.race([
       getRealtimeFuturesOnly(),
-      new Promise<RealtimeBasePrices>(resolve => setTimeout(() => resolve(REALTIME), 3500)),
+      new Promise<RealtimeBasePrices>(resolve => setTimeout(() => resolve(REALTIME), 6000)),
     ]).catch(() => REALTIME);
     getRealtimeBasePrices().then(rt => { REALTIME = rt; }).catch(() => {});
 
@@ -2238,7 +2238,7 @@ export async function GET(request: NextRequest) {
     // 快路径：只取期货（秒级），先落 REALTIME；完整版（含 ADC12 现货）后台补
     REALTIME = await Promise.race([
       getRealtimeFuturesOnly(),
-      new Promise<RealtimeBasePrices>(resolve => setTimeout(() => resolve(REALTIME), 3500)),
+      new Promise<RealtimeBasePrices>(resolve => setTimeout(() => resolve(REALTIME), 6000)),
     ]).catch(() => REALTIME);
     getRealtimeBasePrices().then(rt => { REALTIME = rt; }).catch(() => {});
 

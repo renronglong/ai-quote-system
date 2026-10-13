@@ -157,7 +157,7 @@ export async function getRealtimeBasePrices(): Promise<RealtimeBasePrices> {
       const v = futRec[key];
       if (typeof v === 'number' && v > 0) {
         (out as unknown as Record<string, number>)[key] = v;
-        sources[key] = `sina:${FUTURES.find(([k]) => k === key)?.[1] ?? ''}`;
+        sources[key] = (fut.sources as Record<string, string> | undefined)?.[key] ?? 'futures';
       }
     }
   } catch { /* 回退默认 */ }
@@ -195,7 +195,7 @@ export async function getRealtimeFuturesOnly(): Promise<RealtimeBasePrices> {
       const v = futRec[key];
       if (typeof v === 'number' && v > 0) {
         (out as unknown as Record<string, number>)[key] = v;
-        sources[key] = `sina:${FUTURES.find(([k]) => k === key)?.[1] ?? ''}`;
+        sources[key] = (fut.sources as Record<string, string> | undefined)?.[key] ?? 'futures';
       }
     }
     const alPrice = (out as unknown as Record<string, number>).al;
