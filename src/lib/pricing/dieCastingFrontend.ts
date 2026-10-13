@@ -52,10 +52,13 @@ export const DC_CONFIG = {
     '抛光': 0.5,   // 元/件
     '除披锋': 0.3, // 元/件
   } as Record<string, number>,
-  // 模具费估算（分工#5：按产品尺寸，无穴数输入时按最大外廓）
+  // 模具费（分工#5：按 process_rates·铝压铸 口径 —— 简单压铸模 3万/套、复杂压铸模 10万/套）
+  // ⚠️ 门槛值待业主校准；判定：体积 > 200cm³ 或 最大外廓 > 300mm → 复杂模
   mold: {
-    base: 8000,
-    perMaxDimCm: 60, // 元/cm（max(L,W)）
+    simple: 30000,
+    complex: 100000,
+    volumeThresholdCm3: 200,
+    dimThresholdMm: 300,
   },
   // 利润 / 税（待校准）
   margin: 1.10,
@@ -159,13 +162,24 @@ export function tryFrontendDieCasting(
   // 模具费（分工#5 前端算；无尺寸时回退后端原值）
   let moldCost = 0;
   const size = data?.dimensions ?? payload?.dimensions;
-  if (size && (size.l || size.length) && (size.w || size.width)) {
-    const L = Number(size.l ?? size.length ?? 0);
-    const W = Number(size.w ?? size.width ?? 0);
-    const maxDim = Math.max(L, W);
-    moldCost = round2(DC_CONFIG.mold.base + maxDim * DC_CONFIG.mold.perMaxDimCm);
+  const volCm3 = Number(volume) || Number(data?.volume_cm3) || 0;
+  if (size || volCm3 > 0) {
+    const L = Number(size?.length_mm ?? size?.l ?? size?.length ?? 0);
+    const W = Number(size?.width_mm ?? size?.w ?? size?.width ?? 0);
+    const H = Number(size?.height_mm ?? size?.h ?? size?.height ?? 0);
+    const maxDim = Math.max(L, W, H);
+    const isComplex = volCm3 > DC_CONFIG.mold.volumeThresholdCm3 || maxDim > DC_CONFIG.mold.dimThresholdMm;
+    moldCost = round2(isComplex ? DC_CONFIG.mold.complex : DC_CONFIG.mold.simple);
   } else if (data?.mold_cost) {
     moldCost = round2(data.mold_cost);
+  }
+  // CNC 加工时间：后端给 cnc_time_min 且工序里没填 CNC 时，按分钟计费
+  const cncMinFromApi = Number(data?.cnc_time_min ?? payload?.cnc_time_min ?? 0);
+  if (cncMinFromApi > 0 && !(Number(feats?.cncMinutes ?? 0) > 0)) {
+    const rate = DC_CONFIG.secondary['CNC加工'];
+    const c = round2(cncMinFromApi * rate);
+    secondaryCost += c;
+    secParts.push(`CNC加工×${cncMinFromApi}分钟×${rate}=${c}(后端cnc_time_min)`);
   }
 
   // 单件成本（模具费一次性，不计入单件成本）

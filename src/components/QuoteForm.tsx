@@ -123,6 +123,27 @@ export interface ProductTypeConfig {
 
 const ALL_COLORS_OXIDATION = ['本色', '红色', '黑色', '金色', '铁灰色'];
 
+// 铸造（原压铸铝）材料型号：铝合金 / 锌合金 两类
+export const CASTING_GRADES: Record<string, { g: string; label: string; d: string }[]> = {
+  '铝': [
+    { g: 'ADC12', label: 'ADC12/A383', d: 'ρ2.74' },
+    { g: 'A380', label: 'A380', d: 'ρ2.71' },
+    { g: 'A360', label: 'A360', d: 'ρ2.63' },
+    { g: 'AlSi9Mg', label: 'AlSi9Mg', d: 'ρ2.67' },
+  ],
+  '锌合金': [
+    { g: 'Zamak3', label: 'Zamak3(3号)', d: 'ρ6.6' },
+    { g: 'Zamak5', label: 'Zamak5(5号)', d: 'ρ6.7' },
+    { g: 'ZA-8', label: 'ZA-8', d: 'ρ6.3' },
+  ],
+};
+
+// 铸造牌号密度 g/cm³（净重 = 体积 × 密度）
+export const CASTING_GRADE_DENSITY: Record<string, number> = {
+  'ADC12': 2.74, 'A380': 2.71, 'A360': 2.63, 'AlSi9Mg': 2.67,
+  'Zamak3': 6.6, 'Zamak5': 6.7, 'ZA-8': 6.3,
+};
+
 export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
   '挤出': {
     label: '挤出铝型材',
@@ -339,12 +360,12 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
     },
   },
   '压铸': {
-    label: '压铸铝',
+    label: '铸造',
     icon: '◈',
     materialCategories: {
       '铝': {
-        label: '铝',
-        fields: ['quantity', 'netWeight', 'productSize'],
+        label: '铝合金',
+        fields: ['length', 'width', 'height', 'volume', 'netWeight', 'cncTime', 'quantity'],
         processes: [
           { name: '无' },
           { name: '开合' },
@@ -363,7 +384,7 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
       },
       '锌合金': {
         label: '锌合金',
-        fields: ['quantity', 'netWeight', 'productSize'],
+        fields: ['length', 'width', 'height', 'volume', 'netWeight', 'cncTime', 'quantity'],
         processes: [
           { name: '无' },
           { name: '开合' },
@@ -441,6 +462,8 @@ const FIELD_LABELS: Record<string, string> = {
   die_type: '模具类型',
   thickness: '厚度(mm)',
   productSize: '产品尺寸(长×宽×高mm)',
+  volume: '体积(cm³)',
+  cncTime: 'CNC加工时间(分钟)',
   quantity: '数量(件)',
   meterWeight: '米重(kg/m)',
   crossSectionArea: '截面积(mm²)',
@@ -449,6 +472,7 @@ const FIELD_LABELS: Record<string, string> = {
 
 // 按产品类型覆盖字段标签
 const FIELD_LABEL_OVERRIDES: Record<string, Record<string, string>> = {
+  '压铸': { length: '长(mm)', width: '宽(mm)', height: '高(mm)', volume: '体积(cm³)', cncTime: 'CNC加工时间(分钟)' },
   '板材': { length: '展开长 (mm)', width: '展开宽 (mm)', holes: '孔数 (个)', outer_perimeter: '展开外轮廓周长 (mm)', cut_total_length: '含孔下料总路径 (mm)' },
 };
 
@@ -1219,6 +1243,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const handleMaterialCategoryChange = (mc: string) => {
     setMaterialCategory(mc);
     resetCategoryState(mc);
+    // 铸造：切换铝合金/锌合金时给默认材料型号（后续可改）
+    if (productType === '压铸') {
+      setMaterialGrade(mc === '锌合金' ? 'Zamak3' : 'ADC12');
+    }
     // 异型材是唯一细分类，直接选中，免去多余的二次点击；标准件则需再选具体种类
     setStandardCategory(mc === '异型材' ? '异型材' : '');
     setMoldMatches([]);
@@ -1647,6 +1675,22 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       if (parsed) return { length_mm: parsed.l, width_mm: parsed.w, wall_thickness_mm: thickness || undefined };
     }
     if (productType === '压铸' || productType === '注塑') {
+      const num2 = (v: unknown): number | undefined => {
+        const n = typeof v === 'number' ? v : parseFloat(String(v));
+        return Number.isFinite(n) && n > 0 ? n : undefined;
+      };
+      const cL = num2(fields.length);
+      const cW = num2(fields.width);
+      const cH = num2(fields.height);
+      if (cL || cW || cH || num2(fields.volume)) {
+        return {
+          length_mm: cL || 0,
+          width_mm: cW || 0,
+          height_mm: cH || undefined,
+          volume_cm3: num2(fields.volume),
+          cnc_time_min: num2(fields.cncTime),
+        };
+      }
       if (parsed) return { length_mm: parsed.l, width_mm: parsed.w, height_mm: parsed.h || undefined };
     }
     return undefined;
@@ -1759,6 +1803,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       if (dimensions) {
         if (productType === '挤出') (dimensions as any).material_size_type = materialSizeType;
         payload.dimensions = dimensions;
+      }
+      // 铸造：体积与 CNC 加工时间直接上送（后端按 volume_cm3 计价；原逻辑只收到默认值 50cm³）
+      if (productType === '压铸') {
+        const cv = parseFloat(String(fields.volume ?? '')) || 0;
+        const ct = parseFloat(String(fields.cncTime ?? '')) || 0;
+        if (cv > 0) payload.volume_cm3 = cv;
+        if (ct > 0) payload.cnc_time_min = ct;
+        if (!payload.material.grade) payload.material.grade = materialGrade || 'ADC12';
       }
       if (weightKg !== undefined) payload.weight_per_piece_kg = weightKg;
       if (surfaceTreatmentPayload) payload.surface_treatment = surfaceTreatmentPayload;
@@ -2223,6 +2275,35 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         {pairs.map((pair, pi) => (
           <div key={pi} className={`grid ${pair.length === 2 ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
             {pair.map(fieldKey => {
+              // 铸造·体积：改体积自动联动净重（净重=体积×密度）
+              if (fieldKey === 'volume' && productType === '压铸') {
+                const gKey = materialGrade || (CASTING_GRADES[materialCategory]?.[0]?.g ?? 'ADC12');
+                const dv = CASTING_GRADE_DENSITY[gKey] ?? 2.7;
+                const vv = parseFloat(String(fields.volume ?? '')) || 0;
+                return (
+                  <div key={fieldKey}>
+                    <label className="block text-sm text-slate-600 mb-1">
+                      {getFieldLabel(productType, fieldKey)}
+                      {vv > 0 && <span className="ml-1 text-xs text-blue-500">→ 净重 {Math.round(vv * dv)} g</span>}
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      aria-label={getFieldLabel(productType, fieldKey)}
+                      value={(fields[fieldKey] as number | string) ?? ''}
+                      onChange={e => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setFields(prev => ({
+                          ...prev,
+                          volume: val,
+                          netWeight: val > 0 ? Math.round(val * dv) : prev.netWeight,
+                        }));
+                      }}
+                      className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+                    />
+                  </div>
+                );
+              }
               if (fieldKey === 'productSize') {
                 return (
                   <div key={fieldKey}>
@@ -2554,6 +2635,46 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             <div className="mt-1.5 text-xs text-slate-600">默认 5052；整板规格 2440×1220mm，按展开尺寸排版算材料费</div>
           </div>
         )}
+
+        {/* ---- 铸造材料型号（铝合金 / 锌合金） ---- */}
+        {productType === '压铸' && (() => {
+          const grades = CASTING_GRADES[materialCategory] || [];
+          if (!grades.length) return null;
+          const cur = materialGrade || grades[0].g;
+          const dens = CASTING_GRADE_DENSITY[cur] ?? 2.7;
+          const vol = parseFloat(fields.volume as string) || 0;
+          const pick = (g: string) => {
+            setMaterialGrade(g);
+            const v = parseFloat(fields.volume as string) || 0;
+            if (v > 0) {
+              setFields(prev => ({ ...prev, netWeight: Math.round(v * (CASTING_GRADE_DENSITY[g] ?? 2.7)) }));
+            }
+          };
+          return (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+              <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wide">
+                材料型号 <span className="normal-case text-slate-600">（密度 {dens} g/cm³{vol > 0 ? ` → 净重约 ${Math.round(vol * dens)} g` : ''}）</span>
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {grades.map(opt => (
+                  <button
+                    key={opt.g}
+                    type="button"
+                    onClick={() => pick(opt.g)}
+                    className={`px-2.5 py-1 rounded-lg border text-sm transition-all duration-200 ${
+                      cur === opt.g
+                        ? 'bg-blue-50 border-blue-300 text-blue-700 font-semibold'
+                        : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {opt.label} <span className="opacity-60">{opt.d}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-1.5 text-xs text-slate-600">净重 = 体积(cm³) × 密度；改型号或改体积都会自动重算</div>
+            </div>
+          );
+        })()}
 
         {/* ---- 标准件种类选择 (仅挤出·标准件；异型材唯一分类无需再点) ---- */}
         {productType === '挤出' && materialCategory === '标准件' && (() => {
