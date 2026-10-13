@@ -4,6 +4,7 @@ import { Sparkles, Plus, Loader2, CheckCircle2, ChevronDown } from 'lucide-react
 import { useAuth } from '@/lib/auth-context';
 import { calculateStampingMoldFee, calculateLaserCuttingFee, type StampingMoldResult, type LaserCuttingResult } from '@/lib/stamping-mold-calculator';
 import { tryFrontendDieCasting } from '@/lib/pricing/dieCastingFrontend';
+import { adviseCastingMachine } from '@/lib/pricing/castingMachine';
 import { STEEL_STANDARD_SPECS } from '@/data/steelStandardSpecs';
 
 // ==================== Types ====================
@@ -2471,6 +2472,40 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             })}
           </div>
         ))}
+        {/* 铸造：推荐机台 + 一模穴数（按《压铸机参数表》） */}
+        {productType === '压铸' && (() => {
+          const cL = parseFloat(String(fields.length ?? '')) || 0;
+          const cW = parseFloat(String(fields.width ?? '')) || 0;
+          if (!(cL > 0) || !(cW > 0)) return null;
+          const gKey = materialGrade || (CASTING_GRADES[materialCategory]?.[0]?.g ?? 'ADC12');
+          const dens = CASTING_GRADE_DENSITY[gKey] ?? 2.7;
+          const adv = adviseCastingMachine({
+            lengthMm: cL,
+            widthMm: cW,
+            volumeCm3: parseFloat(String(fields.volume ?? '')) || undefined,
+            density: dens,
+            materialCategory,
+          });
+          if (!adv || !adv.machine) return (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              机台推荐：{adv?.reason || '参数不足'}
+            </div>
+          );
+          return (
+            <div className="rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-xs text-slate-700 space-y-1">
+              <div className="font-semibold text-blue-700 text-sm">
+                推荐机台 {adv.machine.ton}（锁模力 {adv.machine.clampKn} kN）· 一模 {adv.cavities} 穴
+              </div>
+              <div>单穴投影 {adv.projPerCavityCm2}cm²（含浇排）· 总投影 {adv.totalProjCm2}/{adv.machine.maxProjCm2}cm²</div>
+              {adv.shotPerPieceKg > 0 && (
+                <div>单件合金 {adv.shotPerPieceKg}kg（含浇排）· 一模射料 {adv.totalShotKg}kg / 机器上限 {adv.machine.shotKg?.[1]}kg{adv.machine.shotKg?.[1] === 999 ? '+' : ''}</div>
+              )}
+              <div>模具最大外形 {adv.machine.moldSize} · 厚度 {adv.machine.moldThickness}mm · 模具参考重量 {adv.machine.moldWeight}</div>
+              <div className="text-slate-500">{adv.reason}；可选：{adv.alternatives.map(a => `${a.ton}/${a.cavities}穴`).join('、')}</div>
+            </div>
+          );
+        })()}
+
         {/* 板材：长×宽×厚自动算单件理论重量 */}
         {productType === '板材' && (() => {
           const bL = parseFloat(fields.length as string) || 0;
