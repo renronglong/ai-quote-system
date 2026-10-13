@@ -1,4 +1,5 @@
 import { getAluminumPrice } from '@/lib/pricing/aluminum-price';
+import { getRealtimeBasePrices, RealtimeBasePrices } from '@/lib/pricing/realtime-prices';
 import { NextRequest } from 'next/server';
 
 // ============================================================
@@ -16,6 +17,18 @@ const DEFAULT_HOT_ROLL_PRICE = 3800;
 
 // ---- 默认模具钢价（元/吨），H13均价约18000 ----
 const DEFAULT_DIE_STEEL_PRICE = 18000;
+
+// ---- 实时基准价（新浪期货 + lvdingjia ADC12；公式不变，仅替换基准价） ----
+// 每次请求开始时刷新；数据源失败时保持 FALLBACK（与下方 DEFAULT_* 一致），报价不阻断
+let REALTIME: RealtimeBasePrices = {
+  hotRoll: DEFAULT_HOT_ROLL_PRICE,
+  ss304: DEFAULT_STEEL_304_PRICE,
+  zinc: 24000,
+  adc12: 22000,
+  pp: 9300,
+  updatedAt: 'init',
+  sources: {},
+};
 
 // ---- 模具钢密度（吨/m³），H13工具钢约7.85 ----
 const DIE_STEEL_DENSITY = 7.85;
@@ -394,11 +407,11 @@ function calcSheetMaterialCost(
     detailStr = `${aluminumPrice} + ${premium} = ${r2(pricePerTon)} 元/吨`;
   } else if (category === '冷板SPCC' || category === '冷板' || category === '冷轧板' || category === '镀锌板'
              || category === '钢板' || category === '钢' || category === '热轧板' || category === '铁板') {
-    // 钢板/热轧板：与冷轧板同口径（热卷期货价 × 1.05，密度 7.85）
+    // 钢板/热轧板：与冷轧板同口径（热卷期货价 × 1.05，密度 7.85）—— 热卷基准价为实时（新浪 nf_HC0）
     density = matRule['冷板SPCC']?.density || 7.85;
-    pricePerTon = DEFAULT_HOT_ROLL_PRICE * 1.05;
-    formulaStr = '热卷期货价 × 1.05 × 密度 × 体积';
-    detailStr = `${DEFAULT_HOT_ROLL_PRICE} × 1.05 = ${r2(pricePerTon)} 元/吨`;
+    pricePerTon = REALTIME.hotRoll * 1.05;
+    formulaStr = '热卷期货价(实时) × 1.05 × 密度 × 体积';
+    detailStr = `${REALTIME.hotRoll} × 1.05 = ${r2(pricePerTon)} 元/吨 [${REALTIME.sources.hotRoll ?? 'fallback'}]`;
   } else if (category === '不锈钢') {
     density = matRule['不锈钢']?.density || 7.93; // 不锈钢7.93 g/cm³（304约7.93）
     const grades = matRule['不锈钢']?.grades || {};
@@ -409,9 +422,9 @@ function calcSheetMaterialCost(
         break;
       }
     }
-    pricePerTon = DEFAULT_STEEL_304_PRICE * ratio * 1.05;
-    formulaStr = `不锈钢304基准价 × ${ratio} × 1.05 × 密度 × 体积`;
-    detailStr = `${DEFAULT_STEEL_304_PRICE} × ${ratio} × 1.05 = ${r2(pricePerTon)} 元/吨`;
+    pricePerTon = REALTIME.ss304 * ratio * 1.05;
+    formulaStr = `不锈钢304基准价(实时) × ${ratio} × 1.05 × 密度 × 体积`;
+    detailStr = `${REALTIME.ss304} × ${ratio} × 1.05 = ${r2(pricePerTon)} 元/吨 [${REALTIME.sources.ss304 ?? 'fallback'}]`;
   }
 
   // 体积（cm³）→ 重量（kg）= 体积cm³ × 密度 / 1000
@@ -462,24 +475,32 @@ function calcVolumetricMaterialCost(
 
   if (category.includes('铝') || category.includes('ADC') || category.includes('压铸铝')) {
     density = matRule['压铸铝ADC12']?.density || matRule['铝板']?.density || 2.7;
-    const matPricePerTon = matRule['压铸铝ADC12']?.price_per_ton || aluminumPrice * 0.95;
+    // 实时优先：lvdingjia ADC12 现货 → 铝期货×0.95 → 规则表 → 铝锭价×0.95
+    const matPricePerTon = REALTIME.adc12 || matRule['压铸铝ADC12']?.price_per_ton || aluminumPrice * 0.95;
     pricePerKg = matPricePerTon / 1000;
-    formulaStr = '体积 × 密度 × 材料单价';
-    detailStr = `${volumeCm3}cm³ × ${density}g/cm³ × ${r2(pricePerKg)}元/kg`;
+    formulaStr = '体积 × 密度 × 材料单价(实时ADC12)';
+    detailStr = `${volumeCm3}cm³ × ${density}g/cm³ × ${r2(pricePerKg)}元/kg [${REALTIME.sources.adc12 ?? 'fallback'} ${matPricePerTon}元/吨]`;
   } else if (category.includes('锌')) {
     density = matRule['锌合金ZA-8']?.density || 6.3;
-    const matPricePerTon = matRule['锌合金ZA-8']?.price_per_ton || 24000;
+    // 实时优先：沪锌连续(nf_ZN0) → 规则表 → 24000
+    const matPricePerTon = REALTIME.zinc || matRule['锌合金ZA-8']?.price_per_ton || 24000;
     pricePerKg = matPricePerTon / 1000;
-    formulaStr = '体积 × 密度 × 锌合金单价';
-    detailStr = `${volumeCm3}cm³ × ${density}g/cm³ × ${r2(pricePerKg)}元/kg`;
+    formulaStr = '体积 × 密度 × 锌合金单价(实时沪锌)';
+    detailStr = `${volumeCm3}cm³ × ${density}g/cm³ × ${r2(pricePerKg)}元/kg [${REALTIME.sources.zinc ?? 'fallback'} ${matPricePerTon}元/吨]`;
   } else {
-    // 塑料类
+    // 塑料类：PP 接实时聚丙烯期货；其余（ABS/PC/PA/POM/PMMA）无期货源，暂用区间中值
     const plasticKey = category;
     const priceRange = matRule[plasticKey]?.price_range || [12, 18];
     density = matRule[plasticKey]?.density || 1.1;
-    pricePerKg = midOfRange(priceRange);
-    formulaStr = `体积 × 密度 × ${category}单价`;
-    detailStr = `${volumeCm3}cm³ × ${density}g/cm³ × ${r2(pricePerKg)}元/kg`;
+    if (category.includes('PP') || category.includes('聚丙烯')) {
+      pricePerKg = REALTIME.pp / 1000;
+      formulaStr = `体积 × 密度 × ${category}单价(实时聚丙烯期货)`;
+      detailStr = `${volumeCm3}cm³ × ${density}g/cm³ × ${r2(pricePerKg)}元/kg [${REALTIME.sources.pp ?? 'fallback'} ${REALTIME.pp}元/吨]`;
+    } else {
+      pricePerKg = midOfRange(priceRange);
+      formulaStr = `体积 × 密度 × ${category}单价`;
+      detailStr = `${volumeCm3}cm³ × ${density}g/cm³ × ${r2(pricePerKg)}元/kg [区间中值，无实时源]`;
+    }
   }
 
   const weightKg = volumeCm3 * density / 1000;
@@ -2071,11 +2092,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. 并行加载：铝锭价 + 报价规则
+    // 2. 并行加载：铝锭价 + 报价规则 + 实时基准价（热卷/不锈钢/锌/ADC12/PP，2h缓存，失败回退默认）
     const [aluminumPrice, rules] = await Promise.all([
       body.aluminum_price_override ? Promise.resolve(body.aluminum_price_override) : getAluminumPrice(23530).then(r => r.price),
       loadPricingRules(),
     ]);
+    REALTIME = await Promise.race([
+      getRealtimeBasePrices(),
+      new Promise<RealtimeBasePrices>(resolve => setTimeout(() => resolve(REALTIME), 3000)), // 3s 超时兜底，不阻断报价
+    ]).catch(() => REALTIME);
 
     // 3. 根据产品类型分发计算
     let result: { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number };
@@ -2201,11 +2226,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 2. 并行加载：铝锭价 + 报价规则
+    // 2. 并行加载：铝锭价 + 报价规则 + 实时基准价（热卷/不锈钢/锌/ADC12/PP，2h缓存，失败回退默认）
     const [aluminumPrice, rules] = await Promise.all([
       body.aluminum_price_override ? Promise.resolve(body.aluminum_price_override) : getAluminumPrice(23530).then(r => r.price),
       loadPricingRules(),
     ]);
+    REALTIME = await Promise.race([
+      getRealtimeBasePrices(),
+      new Promise<RealtimeBasePrices>(resolve => setTimeout(() => resolve(REALTIME), 3000)), // 3s 超时兜底，不阻断报价
+    ]).catch(() => REALTIME);
 
     // 3. 根据产品类型分发计算
     let result: { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number };
