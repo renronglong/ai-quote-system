@@ -135,7 +135,7 @@ export default function QuotePage() {
         // 型材【不能】兜底到板材的 unfold_* 字段 —— 否则会把「展开宽」当成「截面宽」显示，
         // 这种错值看起来像个正常数字，用户不会察觉（宁可留空，也不要填一个错值）。
         const isSheetPart = part.is_sheet_metal === true || part._isSheetMetal === true
-                            || part.product_type === 'sheet_metal' || part.product_type === '板材';
+                            || part.product_type === 'sheet_metal';
         // 材料映射：根据零件列表选择的材料，确定材料大类和牌号
         // ⚠️ cat 必须是 PRODUCT_TYPES[productType].materialCategories 里存在的 key，
         //   板材：铝板/冷轧板/钢板/不锈钢/镀锌板；挤出：异型材/标准件。
@@ -187,6 +187,29 @@ export default function QuotePage() {
           material_category: matCat,
           material_grade: matGrade,
         };
+        // 零件列表弹窗是「产品大类 → 材料类别 → 子件」三级选定（业主 2026-10-14），
+        // 用户已明确选定的，一律以用户选择为准，不要用识别结果反推（否则选 ADC12 会落到板材·铝板）
+        if (part._material_pt) {
+          const PT_EN: Record<string, string> = {
+            '挤出': 'extrusion', '板材': 'sheet_metal', '压铸': 'die_casting',
+            '注塑': 'injection', '钢材': 'steel_standard',
+          };
+          const zh = String(part._material_pt);
+          mappedData.productType = zh;
+          mappedData.product_type = PT_EN[zh] || mappedData.product_type;
+          mappedData.is_sheet_metal = zh === '板材';
+          mappedData._isSheetMetal = zh === '板材';
+          mappedData.materialCategory = part._material_cat || matCat;
+          mappedData.material_category = part._material_cat || matCat;
+          mappedData.materialGrade = part._material_child || matGrade;
+          mappedData.material_grade = part._material_child || matGrade;
+          // 挤出标准件/钢材型钢的「子件」= 细分类别（铝圆管 / 圆钢 …）
+          if (zh === '挤出') {
+            mappedData.profile_category = part._material_child
+              || (mappedData.materialCategory === '标准件' ? '' : '异型材');
+          }
+          if (zh === '钢材' && part._material_child) mappedData.profile_category = part._material_child;
+        }
         // 延迟调用，让 QuoteForm 先完成 productType 切换后的 resetCategoryState
         setTimeout(() => handleFormUpdate(mappedData), 500);
         // 设置productName/productCode（兼容多种字段名）

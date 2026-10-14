@@ -9,7 +9,7 @@ import {
 import TopNavLinks from '@/components/TopNav';
 import { useAuth } from '@/lib/auth-context';
 import { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
-import { normalizeSheetCategory, PRODUCT_TYPES } from '@/components/QuoteForm';
+import { normalizeSheetCategory, PRODUCT_TYPES, CASTING_GRADES } from '@/components/QuoteForm';
 
 interface PartData {
   _partName?: string;
@@ -171,19 +171,40 @@ export default function QuotePartsPage() {
   //   挤出铝型材：异型材/标准件；板材：铝板/冷轧板/钢板/不锈钢/镀锌板；
   //   铸造：铝合金/锌合金；注塑：ABS/PP/PC/PA/POM/PMMA；钢材：钢材标准件
   //   与报价页材料完全同源（遍历 PRODUCT_TYPES），首页改这里自动跟。
-  // 按首页五大产品项分组展示（业主 2026-10-14）
-  const MATERIAL_GROUPS: { ptKey: string; ptLabel: string; items: string[] }[] = (() => {
-    const groups: { ptKey: string; ptLabel: string; items: string[] }[] = [];
+  // 按首页五大产品项分组 + 子件钻取（业主 2026-10-14：与首页层级完全一致）
+  // 层级：产品大类（挤出铝型材/板材/铸造/注塑/钢材） → 材料类别 → 子件（种类/牌号）；无子件的类目点击即选
+  const SHEET_AL_GRADES = [
+    { label: '1060 纯铝', value: '1060' },
+    { label: '3003 防锈', value: '3003' },
+    { label: '5052 镁铝', value: '5052' },
+    { label: '5083 海洋级', value: '5083' },
+    { label: '7075 航空铝', value: '7075' },
+  ];
+  const MATERIAL_CHILDREN: Record<string, Record<string, { label: string; value: string }[]>> = {
+    '挤出': {
+      '标准件': ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管', '铝方管'].map(k => ({ label: k, value: k })),
+    },
+    '板材': { '铝板': SHEET_AL_GRADES },
+    '压铸': {
+      '铝': (CASTING_GRADES['铝'] || []).map(x => ({ label: x.label, value: x.g })),
+      '锌合金': (CASTING_GRADES['锌合金'] || []).map(x => ({ label: x.label, value: x.g })),
+    },
+    '钢材': {
+      '钢标准件': ['圆钢', '方钢', '六角钢', '角钢', '圆钢管', '方管', '槽钢', '工字钢'].map(k => ({ label: k, value: k })),
+    },
+  };
+  const MATERIAL_GROUPS: { ptKey: string; ptLabel: string; cats: { key: string; label: string; children?: { label: string; value: string }[] }[] }[] = (() => {
+    const groups: { ptKey: string; ptLabel: string; cats: { key: string; label: string; children?: { label: string; value: string }[] }[] }[] = [];
     for (const [ptKey, cfg] of Object.entries(PRODUCT_TYPES)) {
-      const items: string[] = [];
-      for (const cat of Object.values(cfg.materialCategories ?? {})) {
-        if (cat.label && !items.includes(cat.label)) items.push(cat.label);
-      }
-      if (items.length) groups.push({ ptKey, ptLabel: cfg.label, items });
+      const cats = Object.entries(cfg.materialCategories ?? {})
+        .filter(([, c]) => !!c.label)
+        .map(([key, c]) => ({ key, label: c.label, children: MATERIAL_CHILDREN[ptKey]?.[key] }));
+      if (cats.length) groups.push({ ptKey, ptLabel: cfg.label, cats });
     }
     return groups;
   })();
   const [materialModalIdx, setMaterialModalIdx] = useState<number | null>(null); // 哪个零件弹出选材料
+  const [materialModalCat, setMaterialModalCat] = useState<{ ptKey: string; ptLabel: string; key: string; label: string; children: { label: string; value: string }[] } | null>(null); // 已钻取到的材料类别
   // 批量生成报价相关状态
   const [batchGenerating, setBatchGenerating] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0, success: 0, skipped: 0 });
@@ -246,7 +267,8 @@ export default function QuotePartsPage() {
     if (part._failed) return;
     const effectiveMaterial = part.material_grade;
     if (!effectiveMaterial) {
-      // 弹出材料选择弹窗
+      // 弹出材料选择弹窗（每次都从「五大类」顶层开始）
+      setMaterialModalCat(null);
       setMaterialModalIdx(idx);
       return;
     }
@@ -261,15 +283,23 @@ export default function QuotePartsPage() {
     router.push('/quote?from=parts');
   };
 
-  const handleModalMaterialSelect = (material: string) => {
+  // 选中材料：material=展示用牌号；ptKey/catKey/child 用于把「大类/类别/子件」原样带进报价页
+  const handleModalMaterialSelect = (material: string, ptKey?: string, catKey?: string, childVal?: string) => {
     if (materialModalIdx === null || !payload) return;
     // 更新该零件的材料并跳转
     const updatedProducts = [...payload.products];
-    updatedProducts[materialModalIdx] = { ...updatedProducts[materialModalIdx], material_grade: material };
+    updatedProducts[materialModalIdx] = {
+      ...updatedProducts[materialModalIdx],
+      material_grade: material,
+      _material_pt: ptKey || '',
+      _material_cat: catKey || '',
+      _material_child: childVal || '',
+    };
     const updatedPayload = { ...payload, products: updatedProducts };
     sessionStorage.setItem('ai_quote_parts', JSON.stringify(updatedPayload));
     setPayload(updatedPayload);
     setMaterialModalIdx(null);
+    setMaterialModalCat(null);
     navigateToQuote(materialModalIdx, material);
   };
 
@@ -656,33 +686,66 @@ export default function QuotePartsPage() {
             const mp = payload.products[materialModalIdx];
             const mpName = getPartName(mp, materialModalIdx);
             return (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setMaterialModalIdx(null)}>
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setMaterialModalIdx(null); setMaterialModalCat(null); }}>
                 <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-base font-semibold text-slate-800">选择材料</h3>
-                    <button onClick={() => setMaterialModalIdx(null)} className="text-slate-400 hover:text-slate-600">
+                    <button onClick={() => { setMaterialModalIdx(null); setMaterialModalCat(null); }} className="text-slate-400 hover:text-slate-600">
                       <X size={20} />
                     </button>
                   </div>
                   <p className="text-sm text-slate-500 mb-3">零件 <b>{mpName}</b> 需要选择材料才能报价</p>
-                  <div className="max-h-[60vh] overflow-y-auto space-y-3 pr-1">
-                    {MATERIAL_GROUPS.map(g => (
-                      <div key={g.ptKey}>
-                        <div className="text-xs font-semibold text-slate-500 mb-1.5">{g.ptLabel}</div>
-                        <div className="grid grid-cols-3 gap-2">
-                          {g.items.map(m => (
+                  {materialModalCat ? (() => {
+                    const c = materialModalCat;
+                    return (
+                      <div>
+                        <button
+                          onClick={() => setMaterialModalCat(null)}
+                          className="mb-3 text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                        >
+                          ← 返回 · {c.ptLabel}
+                        </button>
+                        <div className="text-xs font-semibold text-slate-500 mb-1.5">{c.ptLabel} › {c.label}</div>
+                        <div className="max-h-[60vh] overflow-y-auto grid grid-cols-3 gap-2 pr-1">
+                          {c.children.map(ch => (
                             <button
-                              key={g.ptKey + '-' + m}
-                              onClick={() => handleModalMaterialSelect(m)}
+                              key={c.ptKey + '-' + c.key + '-' + ch.value}
+                              onClick={() => handleModalMaterialSelect(ch.value, c.ptKey, c.key, ch.value)}
                               className="px-2 py-2 text-sm rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition text-slate-700 font-medium"
                             >
-                              {m}
+                              {ch.label}
                             </button>
                           ))}
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })() : (
+                    <div className="max-h-[60vh] overflow-y-auto space-y-3 pr-1">
+                      {MATERIAL_GROUPS.map(g => (
+                        <div key={g.ptKey}>
+                          <div className="text-xs font-semibold text-slate-500 mb-1.5">{g.ptLabel}</div>
+                          <div className="grid grid-cols-3 gap-2">
+                            {g.cats.map(c => (
+                              <button
+                                key={g.ptKey + '-' + c.key}
+                                onClick={() => {
+                                  if (c.children && c.children.length) {
+                                    setMaterialModalCat({ ptKey: g.ptKey, ptLabel: g.ptLabel, key: c.key, label: c.label, children: c.children });
+                                  } else {
+                                    handleModalMaterialSelect(c.label, g.ptKey, c.key, '');
+                                  }
+                                }}
+                                className="px-2 py-2 text-sm rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition text-slate-700 font-medium flex items-center justify-center gap-0.5"
+                              >
+                                {c.label}
+                                {c.children && c.children.length ? <span className="text-[10px] text-slate-400">›</span> : null}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             );
