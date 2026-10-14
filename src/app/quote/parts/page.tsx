@@ -171,14 +171,17 @@ export default function QuotePartsPage() {
   //   挤出铝型材：异型材/标准件；板材：铝板/冷轧板/钢板/不锈钢/镀锌板；
   //   铸造：铝合金/锌合金；注塑：ABS/PP/PC/PA/POM/PMMA；钢材：钢材标准件
   //   与报价页材料完全同源（遍历 PRODUCT_TYPES），首页改这里自动跟。
-  const MATERIAL_OPTIONS: string[] = (() => {
-    const opts: string[] = [];
-    for (const cfg of Object.values(PRODUCT_TYPES)) {
+  // 按首页五大产品项分组展示（业主 2026-10-14）
+  const MATERIAL_GROUPS: { ptKey: string; ptLabel: string; items: string[] }[] = (() => {
+    const groups: { ptKey: string; ptLabel: string; items: string[] }[] = [];
+    for (const [ptKey, cfg] of Object.entries(PRODUCT_TYPES)) {
+      const items: string[] = [];
       for (const cat of Object.values(cfg.materialCategories ?? {})) {
-        if (cat.label && !opts.includes(cat.label)) opts.push(cat.label);
+        if (cat.label && !items.includes(cat.label)) items.push(cat.label);
       }
+      if (items.length) groups.push({ ptKey, ptLabel: cfg.label, items });
     }
-    return opts;
+    return groups;
   })();
   const [materialModalIdx, setMaterialModalIdx] = useState<number | null>(null); // 哪个零件弹出选材料
   // 批量生成报价相关状态
@@ -661,16 +664,23 @@ export default function QuotePartsPage() {
                       <X size={20} />
                     </button>
                   </div>
-                  <p className="text-sm text-slate-500 mb-4">零件 <b>{mpName}</b> 需要选择材料才能报价</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {MATERIAL_OPTIONS.map(m => (
-                      <button
-                        key={m}
-                        onClick={() => handleModalMaterialSelect(m)}
-                        className="px-3 py-2.5 text-sm rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition text-slate-700 font-medium"
-                      >
-                        {m}
-                      </button>
+                  <p className="text-sm text-slate-500 mb-3">零件 <b>{mpName}</b> 需要选择材料才能报价</p>
+                  <div className="max-h-[60vh] overflow-y-auto space-y-3 pr-1">
+                    {MATERIAL_GROUPS.map(g => (
+                      <div key={g.ptKey}>
+                        <div className="text-xs font-semibold text-slate-500 mb-1.5">{g.ptLabel}</div>
+                        <div className="grid grid-cols-3 gap-2">
+                          {g.items.map(m => (
+                            <button
+                              key={g.ptKey + '-' + m}
+                              onClick={() => handleModalMaterialSelect(m)}
+                              className="px-2 py-2 text-sm rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition text-slate-700 font-medium"
+                            >
+                              {m}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
