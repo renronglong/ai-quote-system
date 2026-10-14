@@ -38,9 +38,11 @@ export const CASTING_MACHINES: CastingMachine[] = [
 ];
 
 // 浇排系统系数（浇道+溢流+料饼占铸件投影/重量的比例）
-export const RUNNER_FACTOR: Record<string, number> = { '铝': 0.5, '锌合金': 0.3 };
-// 常用穴数（向下取）
-const ALLOWED_CAVITIES = [1, 2, 4, 6, 8];
+// 业主 2026-10-14 定案：统一按 0.5（锌合金暂不单独区分）
+export const RUNNER_FACTOR: Record<string, number> = { '铝': 0.5, '锌合金': 0.5 };
+export const DEFAULT_RUNNER_FACTOR = 0.5;
+// 常用穴数（向下取）；业主 2026-10-14 定案：上限 32 穴
+const ALLOWED_CAVITIES = [1, 2, 4, 6, 8, 12, 16, 24, 32];
 // 模内排列余量：单边留边 50mm，件间间距 25mm
 const EDGE_MM = 50;
 const GAP_MM = 25;
@@ -72,7 +74,7 @@ export function adviseCastingMachine(params: {
 }): MachineAdvice | null {
   const { lengthMm, widthMm, volumeCm3, density, materialCategory } = params;
   if (!(lengthMm > 0) || !(widthMm > 0)) return null;
-  const k = RUNNER_FACTOR[materialCategory] ?? 0.5;
+  const k = RUNNER_FACTOR[materialCategory] ?? DEFAULT_RUNNER_FACTOR;
   const a1 = (lengthMm * widthMm) / 100; // cm²
   const perCavity = a1 * (1 + k);
   const pieceKg = volumeCm3 && volumeCm3 > 0 ? (volumeCm3 * density / 1000) * (1 + k) : 0;
