@@ -84,10 +84,26 @@ function getAccentClasses(accent: string) {
   return map[accent] || map.blue;
 }
 
+// 清洗价格名称中可能混入的 HTML 残留（如 `.htm" title="今日南海铝锭`）
+function cleanName(raw: string): string {
+  let s = raw;
+  // 去掉 HTML 标签及其属性残留
+  s = s.replace(/<[^>]*>?/g, '');
+  // 去掉被截断的属性片段（如 .htm" title=" 或 href= 等）
+  s = s.replace(/[\w./-]+\.(?:htm|html|aspx?|php)[^"']*/gi, '');
+  s = s.replace(/(?:title|href|src|class|data-[\w-]+)\s*=\s*["'][^"']*/gi, '');
+  // 去掉引号、反斜杠等残留符号
+  s = s.replace(/[\"'`\\<>]/g, '');
+  // 去掉首尾空白和多余符号
+  s = s.replace(/^[\s:：,，.。·|]+|[\s:：,，.。·|]+$/g, '');
+  return s.trim();
+}
+
 function PriceCard({ item }: { item: PriceItem }) {
   const { value, direction, display } = parseChange(item.change);
   const colors = getCardColor(direction);
   const price = parseInt(item.price);
+  const name = cleanName(item.name);
 
   return (
     <div className={`relative overflow-hidden rounded-xl border ${colors.border} ${colors.bg} p-5 transition-all hover:shadow-md hover:-translate-y-0.5 group`}>
@@ -98,8 +114,8 @@ function PriceCard({ item }: { item: PriceItem }) {
 
       <div className="pl-3">
         {/* 名称 */}
-        <div className="text-sm text-slate-600 font-medium mb-3 truncate" title={item.name}>
-          {item.name}
+        <div className="text-sm text-slate-600 font-medium mb-3 truncate" title={name}>
+          {name}
         </div>
 
         {/* 价格 */}
@@ -212,16 +228,17 @@ export default function MarketPage() {
 
   if (data?.prices) {
     for (const item of data.prices) {
+      const cleanItem = { ...item, name: cleanName(item.name) };
       let matched = false;
       for (const section of PRICE_SECTIONS) {
-        if (section.keywords.some((kw) => item.name.includes(kw))) {
+        if (section.keywords.some((kw) => cleanItem.name.includes(kw))) {
           if (!categorized[section.title]) categorized[section.title] = [];
-          categorized[section.title].push(item);
+          categorized[section.title].push(cleanItem);
           matched = true;
           break;
         }
       }
-      if (!matched) uncategorized.push(item);
+      if (!matched) uncategorized.push(cleanItem);
     }
   }
 

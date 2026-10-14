@@ -14,6 +14,7 @@ const PUBLIC_PATHS = [
   'inventory',
   'contact',
   'help',
+  'faq',
   'terms',
   'privacy',
 ];

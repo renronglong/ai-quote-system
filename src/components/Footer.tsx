@@ -30,9 +30,9 @@ export default function Footer() {
             <h3 className="text-white font-semibold mb-4">帮助支持</h3>
             <ul className="space-y-2 text-sm">
               <li><Link href="/contact" className="inline-block py-1 hover:text-white transition-colors">联系我们</Link></li>
-              <li><a href="#" className="inline-block py-1 hover:text-white transition-colors">使用指南</a></li>
-              <li><a href="#" className="inline-block py-1 hover:text-white transition-colors">常见问题</a></li>
-              <li><a href="#" className="inline-block py-1 hover:text-white transition-colors">隐私政策</a></li>
+              <li><Link href="/help" className="inline-block py-1 hover:text-white transition-colors">使用指南</Link></li>
+              <li><Link href="/faq" className="inline-block py-1 hover:text-white transition-colors">常见问题</Link></li>
+              <li><Link href="/privacy" className="inline-block py-1 hover:text-white transition-colors">隐私政策</Link></li>
             </ul>
           </div>
           <div>
@@ -58,7 +58,7 @@ export default function Footer() {
             © {new Date().getFullYear()} 碧利制造 gyparts.cn. All rights reserved.
           </p>
           <div className="flex items-center gap-4 text-sm text-gray-500">
-            <a href="#" className="inline-block py-1 hover:text-white transition-colors">粤ICP备XXXXXXXX号</a>
+            <span>佛山碧利制造 · 专业的铝型材加工报价平台</span>
           </div>
         </div>
       </div>
