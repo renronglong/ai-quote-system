@@ -751,6 +751,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [materialCategory, setMaterialCategory] = useState('异型材');
   // 待应用的材料类别：AI/零件列表预填时先写这里，切产品类型的 effect 就不会把它清回默认值
   const preserveCatRef = useRef<string | null>(null);
+  // 同上，但保护「细分类别」（标准件种类 / 钢材型钢）：切产品类型会把它清成空
+  const preserveStdCatRef = useRef<string | null>(null);
   const [fields, setFields] = useState<Record<string, number | string>>({
     width: '', height: '', length: '', quantity: '',
   });
@@ -907,7 +909,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       preserveCatRef.current = null;
       const nextCat = pending && validCats.includes(pending) ? pending : firstCat;
       setMaterialCategory(nextCat);
-      setStandardCategory(nextCat === '异型材' ? '异型材' : '');
+      // 细分类别（铝圆管/圆钢…）同样要保住，否则切完 tab 就被清成空
+      const pendingStd = preserveStdCatRef.current;
+      preserveStdCatRef.current = null;
+      setStandardCategory(pendingStd || (nextCat === '异型材' ? '异型材' : ''));
       if (!skipCategoryResetRef.current) {
         resetCategoryState(nextCat);
       }
@@ -1980,7 +1985,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       setUseExistingMold(null);
       const profCat = resolvedCat === '异型材' ? '异型材'
         : (ptZh === '钢材' ? '钢标准件' : '标准件');
-      if (typeWillChangeRef.current) preserveCatRef.current = profCat;
+      if (typeWillChangeRef.current) {
+        preserveCatRef.current = profCat;
+        preserveStdCatRef.current = resolvedCat;
+      }
       setMaterialCategory(profCat);
       setStandardCategory(resolvedCat);
     } else if (d.material_category) {
