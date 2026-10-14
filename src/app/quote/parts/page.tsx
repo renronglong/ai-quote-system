@@ -167,16 +167,15 @@ export default function QuotePartsPage() {
   const { user } = useAuth();
   const [payload, setPayload] = useState<PartsPayload | null>(null);
   const [quotedParts, setQuotedParts] = useState<Set<number>>(new Set());
-  // ⚠️ 选项直接关联首页五大产品项（PRODUCT_TYPES），与报价页材料保持一致（业主 2026-10-14）：
-  //   挤出铝型材 → 有实时价的牌号（6063/6061/5052；6060 无价已删）
-  //   板材 → materialCategories（铝板/冷轧板/钢板/不锈钢/镀锌板）
-  //   铸造 → materialCategories（铝合金/锌合金；注塑待开发不列）
-  //   旧数据里的「钢」「铝（未指定）」由 normalizeSheetCategory 兜底。
+  // ⚠️ 选项 = 首页五大产品项下「所有材料类目」的并集（业主 2026-10-14：全部关联）：
+  //   挤出铝型材：异型材/标准件；板材：铝板/冷轧板/钢板/不锈钢/镀锌板；
+  //   铸造：铝合金/锌合金；注塑：ABS/PP/PC/PA/POM/PMMA；钢材：钢材标准件
+  //   与报价页材料完全同源（遍历 PRODUCT_TYPES），首页改这里自动跟。
   const MATERIAL_OPTIONS: string[] = (() => {
-    const opts = ['6063', '6061', '5052'];
-    for (const key of ['板材', '压铸']) {
-      for (const cfg of Object.values(PRODUCT_TYPES[key]?.materialCategories ?? {})) {
-        if (cfg.label && !opts.includes(cfg.label)) opts.push(cfg.label);
+    const opts: string[] = [];
+    for (const cfg of Object.values(PRODUCT_TYPES)) {
+      for (const cat of Object.values(cfg.materialCategories ?? {})) {
+        if (cat.label && !opts.includes(cat.label)) opts.push(cat.label);
       }
     }
     return opts;
