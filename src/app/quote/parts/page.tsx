@@ -275,8 +275,10 @@ export default function QuotePartsPage() {
     navigateToQuote(idx, effectiveMaterial);
   };
 
-  const navigateToQuote = (idx: number, material: string) => {
-    const part = payload!.products[idx];
+  // partOverride：弹窗里刚写入 _material_* 的新零件对象（setPayload 是异步的，
+  // 直接用 payload 会拿到更新前的旧对象 ⇒ 选的大类/类别/子件带不进报价页）
+  const navigateToQuote = (idx: number, material: string, partOverride?: PartData) => {
+    const part = partOverride || payload!.products[idx];
     const partToStore = { ...part, material_grade: material };
     sessionStorage.setItem('ai_quote_selected_idx', String(idx));
     sessionStorage.setItem('ai_quote_selected_part', JSON.stringify(partToStore));
@@ -300,7 +302,7 @@ export default function QuotePartsPage() {
     setPayload(updatedPayload);
     setMaterialModalIdx(null);
     setMaterialModalCat(null);
-    navigateToQuote(materialModalIdx, material);
+    navigateToQuote(materialModalIdx, material, updatedProducts[materialModalIdx]);
   };
 
   // 批量生成报价：点击"立即生成"先弹出零件明细，用户手工勾选要生成的零件
