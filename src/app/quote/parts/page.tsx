@@ -9,7 +9,7 @@ import {
 import TopNavLinks from '@/components/TopNav';
 import { useAuth } from '@/lib/auth-context';
 import { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
-import { normalizeSheetCategory } from '@/components/QuoteForm';
+import { normalizeSheetCategory, PRODUCT_TYPES } from '@/components/QuoteForm';
 
 interface PartData {
   _partName?: string;
@@ -167,11 +167,20 @@ export default function QuotePartsPage() {
   const { user } = useAuth();
   const [payload, setPayload] = useState<PartsPayload | null>(null);
   const [quotedParts, setQuotedParts] = useState<Set<number>>(new Set());
-  // ⚠️ 选项必须能被报价页映射成合法材料大类：
-  //   板材类目 = 铝板 / 冷轧板 / 钢板 / 不锈钢 / 镀锌板（见 PRODUCT_TYPES['板材'].materialCategories）
-  //   铝板这一项用牌号细化（6063/6061/5052/6060/未指定），其余直接给类目名。
-  //   「钢」不是合法类目（10-09 已改为「钢板」）；旧数据里的「钢」由 normalizeSheetCategory 兜底。
-  const MATERIAL_OPTIONS = ['6063', '6061', '5052', '6060', '铝（未指定）', '钢板', '冷轧板', '镀锌板', '不锈钢'];
+  // ⚠️ 选项直接关联首页五大产品项（PRODUCT_TYPES），与报价页材料保持一致（业主 2026-10-14）：
+  //   挤出铝型材 → 有实时价的牌号（6063/6061/5052；6060 无价已删）
+  //   板材 → materialCategories（铝板/冷轧板/钢板/不锈钢/镀锌板）
+  //   铸造 → materialCategories（铝合金/锌合金；注塑待开发不列）
+  //   旧数据里的「钢」「铝（未指定）」由 normalizeSheetCategory 兜底。
+  const MATERIAL_OPTIONS: string[] = (() => {
+    const opts = ['6063', '6061', '5052'];
+    for (const key of ['板材', '压铸']) {
+      for (const cfg of Object.values(PRODUCT_TYPES[key]?.materialCategories ?? {})) {
+        if (cfg.label && !opts.includes(cfg.label)) opts.push(cfg.label);
+      }
+    }
+    return opts;
+  })();
   const [materialModalIdx, setMaterialModalIdx] = useState<number | null>(null); // 哪个零件弹出选材料
   // 批量生成报价相关状态
   const [batchGenerating, setBatchGenerating] = useState(false);
