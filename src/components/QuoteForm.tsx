@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth-context';
 import { calculateStampingMoldFee, calculateLaserCuttingFee, type StampingMoldResult, type LaserCuttingResult } from '@/lib/stamping-mold-calculator';
 import { tryFrontendDieCasting } from '@/lib/pricing/dieCastingFrontend';
 import { adviseCastingMachine } from '@/lib/pricing/castingMachine';
+import { calcProjVolumeMm3 } from '@/lib/pricing/cncMachining';
 import { STEEL_STANDARD_SPECS } from '@/data/steelStandardSpecs';
 
 // ==================== Types ====================
@@ -753,6 +754,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const preserveCatRef = useRef<string | null>(null);
   // 同上，但保护「细分类别」（标准件种类 / 钢材型钢）：切产品类型会把它清成空
   const preserveStdCatRef = useRef<string | null>(null);
+  // CNC 机加几何量（后端 A 识图输出，业主 2026-10-15 定案）：
+  // 刀路 / 空行程 air_travel_mm / 装夹次数 blank_model.clamp_count / 净体积 / 毛坯。
+  // 有刀路 → 节拍自动算；没有 → 退回手填分钟。 null = 当前无 CNC 几何数据
+  const [cncMachiningData, setCncMachiningData] = useState<Record<string, number | boolean | undefined> | null>(null);
   const [fields, setFields] = useState<Record<string, number | string>>({
     width: '', height: '', length: '', quantity: '',
   });
@@ -1615,6 +1620,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     }
     if (tappedHoles) result.tapped_holes = tappedHoles;
     if (cncTime) result.cnc_time = cncTime;
+    // CNC 机加几何量（A 识图输出）：有刀路 → 后端按节拍自动算，没有 → 退回手填分钟
+    if (cncMachiningData) result.cnc_machining = cncMachiningData;
     if (bendCount !== undefined) result.bend_count = bendCount;
     return result;
   };
@@ -2118,6 +2125,47 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       return next;
     });
     }
+    // CNC 机加几何量（后端 A 识图输出 → 节拍自动算，业主 2026-10-15 定案）
+    // 兼容命名：tool_path_mm / air_travel_mm / blank_model.clamp_count / side_axes / 净·毛坯体积
+    {
+      const num = (v: unknown): number | undefined => {
+        const n = typeof v === 'number' ? v : parseFloat(String(v ?? ''));
+        return Number.isFinite(n) && n > 0 ? n : undefined;
+      };
+      const dAny = d as Record<string, any>;
+      const blank = (dAny.blank_model || {}) as Record<string, any>;
+      const toolPathMm = num(dAny.tool_path_mm) ?? num(dAny.toolPathMm) ?? num(dAny.cnc_tool_path_mm);
+      const airTravelMm = num(dAny.air_travel_mm) ?? num(dAny.airTravelMm);
+      const clampCount = num(blank.clamp_count) ?? num(dAny.clamp_count) ?? num(dAny.clampCount);
+      const netVolumeMm3 = num(dAny.net_volume_mm3) ?? num(dAny.netVolumeMm3) ?? num(blank.net_volume_mm3);
+      const blankAreaMm2 = num(dAny.blank_area_mm2) ?? num(blank.area_mm2);
+      const blankLenMm = num(dAny.blank_len_mm) ?? num(blank.length_mm);
+      const blankVolumeMm3 = num(dAny.blank_volume_mm3) ?? num(blank.volume_mm3)
+        ?? (blankAreaMm2 && blankLenMm ? blankAreaMm2 * blankLenMm : undefined);
+      const sideAxes = num(dAny.side_axes) ?? num(blank.side_axes);
+      const hasCncGeo = !!(toolPathMm || airTravelMm || clampCount || netVolumeMm3 || blankVolumeMm3 || sideAxes);
+      if (hasCncGeo) {
+        const isExtrusion = ptZh === '挤出' || (!ptZh && productType === '挤出');
+        // 外廓：约定 outer_*_mm 优先，兜底 width/height/length（挤出的包围盒正好=截面×长度）
+        const outerL = num(dAny.outer_l_mm) ?? num(dAny.length_mm) ?? num(d.length);
+        const outerW = num(dAny.outer_w_mm) ?? num(dAny.width_mm) ?? num(d.width);
+        const outerH = num(dAny.outer_h_mm) ?? num(dAny.height_mm) ?? num(d.height);
+        const projVolumeMm3 = calcProjVolumeMm3({ isExtrusion, outerLMm: outerL, outerWMm: outerW, outerHMm: outerH, netVolumeMm3 });
+        setCncMachiningData({
+          tool_path_mm: toolPathMm,
+          air_travel_mm: airTravelMm,
+          clamp_count: clampCount ?? (sideAxes !== undefined ? 1 + sideAxes : undefined),
+          net_volume_mm3: netVolumeMm3,
+          blank_volume_mm3: blankVolumeMm3,
+          proj_volume_mm3: projVolumeMm3 > 0 ? projVolumeMm3 : undefined,
+          side_axes: sideAxes,
+          is_extrusion: isExtrusion,
+        });
+      } else {
+        setCncMachiningData(null);
+      }
+    }
+
     if (d.material_grade) setMaterialGrade(d.material_grade);
     if (d.surface_treatment && d.surface_treatment !== '无') {
       // 归一化到表单表面处理选项
