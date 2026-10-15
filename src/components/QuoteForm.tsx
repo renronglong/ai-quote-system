@@ -2230,12 +2230,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     // A 在零件级给的工艺判定：structure_v2.type === 'cnc_machined' 即明确要走 CNC（不依赖孔数）
     const cncStructType = String((d as any).structure_v2?.type || (d as any).process?.structure_v2?.type || '');
     const isCncMachinedPart = cncStructType === 'cnc_machined';
+    // A 的零件级判定 cnc_applicable=true：明确要走 CNC（不依赖孔数/structure_v2；0827-2 属此类）
+    const cncApplicable = (d as any).cnc_applicable === true || (d as any).process?.cnc_applicable === true;
     // 有刀路时后端按自动节拍算，此时不要把「整件工时」填进分钟框（装配体下沉值是整件合计，填了会误导）
     const hasToolPath = (toNum(d.tool_path_mm) ?? toNum(d.toolpath_mm) ?? toNum(d.toolPathMm) ?? 0) > 0;
     const cncMinutes = hasToolPath ? null : machiningTime;
     const hasCncData = isSheetPart
       ? (cncTotalHoles > 0 || (Array.isArray(cncHoles) && cncHoles.length > 0))
-      : ((cncHoles && Array.isArray(cncHoles) && cncHoles.length > 0) || cncTotalHoles > 0 || !!machiningTime || isCncMachinedPart);
+      : ((cncHoles && Array.isArray(cncHoles) && cncHoles.length > 0) || cncTotalHoles > 0 || !!machiningTime || isCncMachinedPart || cncApplicable);
     if (hasCncData) {
       setProcesses(prev => {
         const existingNames = new Set(prev.map(p => p.name));

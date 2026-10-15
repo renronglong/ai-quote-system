@@ -153,6 +153,13 @@ function buildRecogDataFromParse(parseJson: any, productType: string, source: st
     blank_volume_mm3: parseJson.blank_volume_mm3 ?? null,
     removal_volume_mm3: parseJson.removal_volume_mm3 ?? null,
     side_axes: parseJson.side_axes ?? null,
+    // A 2026-10-15 新增的「逐件工时」信号：cnc_applicable 明确该零件要不要走 CNC，
+    // cnc_cycle_time_min 是后端算的单件节拍（⚠️ 仅作参考/备用，计价仍按刀路自算，业主 10-15 定案）
+    cnc_applicable: parseJson.cnc_applicable ?? null,
+    cnc_cycle_time_min: parseJson.cnc_cycle_time_min ?? null,
+    cnc_machining_seconds: parseJson.cnc_machining_seconds ?? null,
+    cnc_process: parseJson.cnc_process ?? null,
+    cnc_estimate: parseJson.cnc_estimate || null,
     notes: `${source}${fileName ? ': ' + fileName : ''}${isSheet ? ` | 钣金折弯件 ${parseJson.unfold_size || ''} ${parseJson.bend_angle_deg || 90}°/R${parseJson.bend_radius_mm || ''}` : ''} | ⚠️仅用于报价估算，不可作为开模依据`,
     _fileName: fileName,
     _partId: parseJson.part_id || parseJson.part_number || '',
