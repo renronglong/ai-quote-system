@@ -71,14 +71,34 @@ function extractPricesFromLvdingjia(html: string, material: string): PriceItem[]
   return prices;
 }
 
+// 清洗抓取到的名称：去掉 HTML 标签/属性残留与引号等符号
+function cleanScrapedName(raw: string): string {
+  let s = raw;
+  s = s.replace(/<[^>]*>?/g, '');
+  s = s.replace(/[\w./-]+\.(?:htm|html|aspx?|php)[^"']*/gi, '');
+  s = s.replace(/(?:title|href|src|class|data-[\w-]+)\s*=\s*["'][^"']*/gi, '');
+  s = s.replace(/["'`\\<>]/g, '');
+  s = s.replace(/^[\s:：,，.。·|]+|[\s:：,，.。·|]+$/g, '');
+  return s.trim();
+}
+
+// 判断名称是否干净（无 HTML/URL 残留特征）
+function isCleanName(name: string): boolean {
+  if (!/[\u4e00-\u9fa5]/.test(name)) return false;
+  return !/[="'\\/]|https?:|\.com|\.cn|\.htm|\.(?:json|js|css)/i.test(name);
+}
+
 function extractPricesWithRegex(html: string, _material: string): PriceItem[] {
   const prices: PriceItem[] = [];
+  const seen = new Set<string>();
   const generalRegex = /([^\d\n]{2,20}?)\s*(?:均价|价格|参考价|报价|中间价)\s*[:：]?\s*(\d{4,6})\s*(?:元\/吨|元\/千克)?/g;
   let match;
   while ((match = generalRegex.exec(html)) !== null) {
-    const name = match[1].trim().replace(/[<>]/g, '');
+    const name = cleanScrapedName(match[1]);
     const price = parseInt(match[2]);
-    if (name.length >= 2 && !isNaN(price) && price > 1000 && price < 500000) {
+    const key = `${name}|${price}`;
+    if (name.length >= 2 && isCleanName(name) && !seen.has(key) && !isNaN(price) && price > 1000 && price < 500000) {
+      seen.add(key);
       prices.push({ name, price: String(price), change: '→0', source: 'web', unit: '元/吨' });
     }
   }
@@ -110,14 +130,21 @@ const priceCache = new Map<string, PriceCache>();
 const CACHE_DURATION = 2 * 60 * 60 * 1000;
 
 function buildDataField(prices: PriceItem[], material?: string) {
-  // 优先取"南海铝锭(含票)"作为铝型材主显示价；找不到再降级到数组第一个
+  // 归一化括号后匹配主参考价；铝型材优先"南海铝锭(含票)"，
+  // 任何情况下不允许"无票/不含票"价格混入主参考价
+  const norm = (n: string) => n.replace(/[（]/g, '(').replace(/[）]/g, ')');
   let primary = prices[0];
   if (material === '铝型材') {
-    const nanhai = prices.find(p => p.name.includes('南海铝锭(含票)') || p.name === '南海铝锭');
-    if (nanhai) primary = nanhai;
+    const hasTicket = prices.find(p => norm(p.name).includes('南海铝锭(含票)'));
+    if (hasTicket) primary = hasTicket;
+    else {
+      const anyNanhai = prices.find(p => norm(p.name).includes('南海铝锭') && !/无票|不含票/.test(norm(p.name)));
+      if (anyNanhai) primary = anyNanhai;
+      else primary = prices.find(p => !/无票|不含票/.test(norm(p.name))) || prices[0];
+    }
   }
   if (material === '压铸铝') {
-    const adc12 = prices.find(p => p.name.includes('标准ADC12') || p.name.includes('ADC12'));
+    const adc12 = prices.find(p => norm(p.name).includes('标准ADC12') || norm(p.name).includes('ADC12'));
     if (adc12) primary = adc12;
   }
   if (!primary) return null;
@@ -136,9 +163,12 @@ async function savePricesToDb(material: string, prices: PriceItem[]): Promise<vo
   try {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const today = new Date().toISOString().split('T')[0];
-    const rows = prices.map(p => ({
+    // 只把干净名称写入数据库，避免脏数据污染当日行情
+    const cleanRows = prices.filter(p => isCleanName(cleanScrapedName(p.name)));
+    if (cleanRows.length === 0) return;
+    const rows = cleanRows.map(p => ({
       material,
-      name: p.name,
+      name: cleanScrapedName(p.name),
       price: parseInt(p.price),
       change_amount: parseInt(p.change.replace(/[↑↓→]/g, '')) || 0,
       source: p.source,
