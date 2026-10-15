@@ -218,8 +218,6 @@ export default function MarketPage() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 5 * 60 * 1000);
-    return () => clearInterval(interval);
   }, []);
 
   // 按板块分类价格项
@@ -414,7 +412,7 @@ export default function MarketPage() {
                 </span>
               </div>
               <span>
-                每 5 分钟自动刷新 · 数据仅供参考，实际以市场行情为准
+                数据仅供参考，实际以市场行情为准
               </span>
             </div>
           </div>
