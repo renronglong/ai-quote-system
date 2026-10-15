@@ -2183,6 +2183,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       if (mappedSt) {
         setMaterialSurfaceTreatment(mappedSt);
         setProductSurfaceTreatment(mappedSt);
+        // 必须同步表单选中态：否则 chips 显示「无」、费用却按识别值收、报价单表面处理为空（三处对不上）。
+        // camelCase 分支（上文 surfaceTreatment）一直有这一步，snake 分支之前漏了。
+        setSurfaceTreatment(mappedSt);
       }
     }
     // 工序：支持字符串格式 "锯切,冲压(3次)" 和 数组格式 ["激光切割","折弯"]
