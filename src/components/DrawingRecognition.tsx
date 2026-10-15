@@ -241,6 +241,10 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
   const committedThisRunRef = useRef(false);
   const processNextRef = useRef<() => void>(() => {});
   const recognizeFileRef = useRef<(file: File) => Promise<void>>(async () => {});
+  // 最近一次入库的结果 id + AI 确认抽屉正在修订的目标 id
+  // （P0-2：识别成功即入库，/api/check 的确认答案必须合并回该条，而不是再 push 一条）
+  const lastCommitIdRef = useRef<string | null>(null);
+  const checkTargetIdRef = useRef<string | null>(null);
   // 微信/手机端：accept 用 */* 才会出现「从聊天记录选择文件」（详见 use-file-accept）
   const fileAccept = useFileAccept(ALLOWED_EXTENSIONS.join(','));
   const isMobileUa = useIsMobileUa();
@@ -308,13 +312,36 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
     recognitionId?: string;
     error?: string;
     checkAnswers?: Record<string, any>;
+    patchId?: string;
   }) => {
     if (isContinuous) {
       const products = payload.recogProducts && payload.recogProducts.length > 0
         ? payload.recogProducts
         : (payload.recogData ? [payload.recogData] : []);
+      // 修订模式（AI 确认抽屉回填）：把确认答案合并进已入库记录的第一个零件，
+      // 不再新增记录 —— 否则同一文件在「已识别完成」里出现两条、零件数翻倍（P0-2）
+      if (payload.patchId) {
+        let patched = false;
+        setCompletedResults(prev => prev.map(r => {
+          if (r.id !== payload.patchId || patched) return r;
+          patched = true;
+          const base = r.products[0] || {};
+          const patch = Object.fromEntries(
+            Object.entries(payload.recogData || {}).filter(([, v]) => v !== undefined && v !== null && v !== '')
+          );
+          return { ...r, products: [{ ...base, ...patch }], error: undefined };
+        }));
+        if (patched) {
+          if (fileInputRef.current) fileInputRef.current.value = '';
+          committedThisRunRef.current = true;
+          return;
+        }
+        // 目标记录不存在（极端情况）：退回新增，至少不丢用户确认的参数
+      }
+      const id = 'res_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      lastCommitIdRef.current = id;
       setCompletedResults(prev => [...prev, {
-        id: 'res_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        id,
         fileName: payload.fileName || currentFileNameRef.current || '',
         products,
         isAssembly: payload.isAssembly ?? products.length > 1,
@@ -402,6 +429,8 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
 
   // 异步发起完整性检查（不阻塞主流程）
   const launchCheckAsync = useCallback((file: File) => {
+    // 快照「刚入库的那条结果」：抽屉确认时把答案合并回它，而不是新增一条（P0-2）
+    checkTargetIdRef.current = lastCommitIdRef.current;
     setTimeout(async () => {
       try {
         const checkFd = new FormData();
@@ -1253,7 +1282,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
         )}
       </div>
       {/* ===== AI确认对话框（右侧抽屉，不遮挡零件列表） ===== */}
-      <Sheet open={showCheckDialog && checkQuestions.length > 0} onOpenChange={(open) => { if (!open) { setShowCheckDialog(false); setCheckQuestions([]); } }}>
+      <Sheet open={showCheckDialog && checkQuestions.length > 0} onOpenChange={(open) => { if (!open) { setShowCheckDialog(false); setCheckQuestions([]); checkTargetIdRef.current = null; } }}>
         <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col gap-0 transition-transform duration-300 data-[state=closed]:translate-x-full data-[state=open]:translate-x-0">
           <SheetHeader className="shrink-0 border-b border-blue-100 bg-blue-50/60">
             <div className="flex items-center gap-2">
@@ -1267,7 +1296,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {checkQuestions.map((q: any, idx: number) => (
             <div key={idx} className="bg-white rounded-lg p-3 border border-blue-100">
-              <div className="text-sm text-gray-700 mb-2">{String(q.question || '').replace(/^请+/, '请')}</div>
+              <div className="text-sm text-gray-700 mb-2">{String(q.question || '').replace(/^请+/, '请').replace('请图纸中无法识别材料，选择铝合金牌号', '图纸中未能识别材料，请选择铝合金牌号')}</div>
               {q.input_type === 'select' && (
                 <select
                   className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"
@@ -1355,9 +1384,10 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
                   mappedData.surface_treatment = stMap[answers.surface_treatment] || answers.surface_treatment;
                 }
                 if (answers.length_mm) mappedData.length = answers.length_mm;
-                commitResult({ recogData: mappedData, checkAnswers: answers, fileName: uploadedFile?.name });
+                commitResult({ recogData: mappedData, checkAnswers: answers, fileName: uploadedFile?.name, patchId: checkTargetIdRef.current || undefined });
                 setShowCheckDialog(false);
                 setCheckQuestions([]);
+                checkTargetIdRef.current = null;
               }}
             >
               确认并填入
@@ -1365,7 +1395,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
             <button
               type="button"
               className="px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition"
-              onClick={() => { setShowCheckDialog(false); setCheckQuestions([]); }}
+              onClick={() => { setShowCheckDialog(false); setCheckQuestions([]); checkTargetIdRef.current = null; }}
             >
               跳过
             </button>
