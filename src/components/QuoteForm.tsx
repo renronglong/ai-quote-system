@@ -2134,7 +2134,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       };
       const dAny = d as Record<string, any>;
       const blank = (dAny.blank_model || {}) as Record<string, any>;
-      const toolPathMm = num(dAny.tool_path_mm) ?? num(dAny.toolPathMm) ?? num(dAny.cnc_tool_path_mm);
+      const toolPathMm = num(dAny.tool_path_mm) ?? num(dAny.toolpath_mm) ?? num(dAny.toolPathMm) ?? num(dAny.cnc_tool_path_mm);
       const airTravelMm = num(dAny.air_travel_mm) ?? num(dAny.airTravelMm);
       const clampCount = num(blank.clamp_count) ?? num(dAny.clamp_count) ?? num(dAny.clampCount);
       const netVolumeMm3 = num(dAny.net_volume_mm3) ?? num(dAny.netVolumeMm3) ?? num(blank.net_volume_mm3);
@@ -2227,18 +2227,22 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       ? (toNum(d.cnc_total_holes) ?? 0)
       : (toNum(d.cnc_total_holes) ?? toNum(d.all_holes_total) ?? 0);
     const machiningTime = toNum(d.machining_time_min) || d.process?.machining_time_min;
-    // 钣金件：仅当is_cnc=true的孔>0时加CNC；cnc_total_holes=0说明所有孔都是挤压工艺孔，不加CNC
-    // （后端machining_time可能错误把侧向挤压工艺孔计入，钣金件不以此为依据）
+    // A 在零件级给的工艺判定：structure_v2.type === 'cnc_machined' 即明确要走 CNC（不依赖孔数）
+    const cncStructType = String((d as any).structure_v2?.type || (d as any).process?.structure_v2?.type || '');
+    const isCncMachinedPart = cncStructType === 'cnc_machined';
+    // 有刀路时后端按自动节拍算，此时不要把「整件工时」填进分钟框（装配体下沉值是整件合计，填了会误导）
+    const hasToolPath = (toNum(d.tool_path_mm) ?? toNum(d.toolpath_mm) ?? toNum(d.toolPathMm) ?? 0) > 0;
+    const cncMinutes = hasToolPath ? null : machiningTime;
     const hasCncData = isSheetPart
       ? (cncTotalHoles > 0 || (Array.isArray(cncHoles) && cncHoles.length > 0))
-      : ((cncHoles && Array.isArray(cncHoles) && cncHoles.length > 0) || cncTotalHoles > 0 || !!machiningTime);
+      : ((cncHoles && Array.isArray(cncHoles) && cncHoles.length > 0) || cncTotalHoles > 0 || !!machiningTime || isCncMachinedPart);
     if (hasCncData) {
       setProcesses(prev => {
         const existingNames = new Set(prev.map(p => p.name));
         const newProcs = [];
         if (!existingNames.has('CNC加工')) {
           const cncProc: any = { name: 'CNC加工' };
-          if (machiningTime) cncProc.subParams = { minutes: machiningTime };
+          if (cncMinutes) cncProc.subParams = { minutes: cncMinutes };
           // ⚠️ 孔数 ≠ 工时：钣金件不做「孔数→分钟」换算，否则 9 个冲压孔会被当成 9 分钟 CNC 计费
           else if (cncTotalHoles > 0 && !isSheetPart) cncProc.quantity = cncTotalHoles;
           newProcs.push(cncProc);

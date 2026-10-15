@@ -142,6 +142,17 @@ function buildRecogDataFromParse(parseJson: any, productType: string, source: st
     unfold_perimeter_mm: parseJson.unfold_perimeter_mm ?? parseJson.unfold_outer_perimeter_mm ?? parseJson.outer_perimeter_mm ?? parseJson.perimeter ?? null,
     outer_perimeter_mm: parseJson.outer_perimeter_mm ?? parseJson.perimeter ?? null,
     cut_total_path_mm: parseJson.cut_total_path_mm ?? parseJson.cut_total_length_mm ?? parseJson.total_perimeter ?? null,
+    // CNC 机加几何量（A 识图 v2.4+ 输出）—— 不透传的话报价页自动节拍永远算不出来
+    // ⚠️ 后端实际字段名是 toolpath_mm（无下划线分隔），这里同时写成标准名 tool_path_mm 供下游读取
+    structure_v2: parseJson.structure_v2 || null,
+    toolpath_mm: parseJson.toolpath_mm ?? parseJson.tool_path_mm ?? null,
+    tool_path_mm: parseJson.toolpath_mm ?? parseJson.tool_path_mm ?? null,
+    air_travel_mm: parseJson.air_travel_mm ?? null,
+    clamp_count: parseJson.clamp_count ?? null,
+    projection_volume_mm3: parseJson.projection_volume_mm3 ?? null,
+    blank_volume_mm3: parseJson.blank_volume_mm3 ?? null,
+    removal_volume_mm3: parseJson.removal_volume_mm3 ?? null,
+    side_axes: parseJson.side_axes ?? null,
     notes: `${source}${fileName ? ': ' + fileName : ''}${isSheet ? ` | 钣金折弯件 ${parseJson.unfold_size || ''} ${parseJson.bend_angle_deg || 90}°/R${parseJson.bend_radius_mm || ''}` : ''} | ⚠️仅用于报价估算，不可作为开模依据`,
     _fileName: fileName,
     _partId: parseJson.part_id || parseJson.part_number || '',
@@ -149,6 +160,34 @@ function buildRecogDataFromParse(parseJson: any, productType: string, source: st
     _partName: resolvedProductName,
     _isSheetMetal: isSheet,
   };
+}
+
+/**
+ * 装配体：把顶层的 CNC 信号下沉到零件上。
+ * 后端 A 把 cnc_total_holes / machining_time_min / cnc_holes 只放在整件顶层，
+ * parts[i] 里恒为 0 / 缺失 ⇒ 报价页判定「无 CNC」⇒ 只走锯切，加工费只剩 0.01。
+ * 仅当「恰好一个」零件被判 cnc_machined 时才把整件的孔数与工时给它；
+ * 多个 cnc_machined 零件则都不下沉（避免同一笔整件工时被重复计到每个零件上）。
+ */
+function mergeTopCncIntoParts(cadJson: any): any[] {
+  const raw: any[] = cadJson.parts || [];
+  const topCncHoles = Number(cadJson.cnc_total_holes) || 0;
+  const topMachMin = Number(cadJson.machining_time_min) || null;
+  const topCncHoleList = cadJson.cnc_holes || null;
+  const cncIdxList: number[] = raw.reduce((acc: number[], p: any, i: number) => {
+    if (p?.structure_v2?.type === 'cnc_machined') acc.push(i);
+    return acc;
+  }, []);
+  const soleCncIdx = cncIdxList.length === 1 ? cncIdxList[0] : -1;
+  return raw.map((p: any, idx: number) => {
+    if (idx !== soleCncIdx) return p;
+    const merged: any = { ...p };
+    if (!(merged.cnc_total_holes > 0) && topCncHoles > 0) merged.cnc_total_holes = topCncHoles;
+    if (merged.machining_time_min == null && topMachMin != null) merged.machining_time_min = topMachMin;
+    if (!merged.cnc_holes && topCncHoleList) merged.cnc_holes = topCncHoleList;
+    merged._cnc_from_assembly = true;
+    return merged;
+  });
 }
 
 // ==================== Component ====================
@@ -603,7 +642,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
               continue;
             }
             if (parseJson.is_assembly && parseJson.parts && parseJson.parts.length > 0) {
-              for (const part of parseJson.parts) {
+              for (const part of mergeTopCncIntoParts(parseJson)) {
                 allProducts.push(buildRecogDataFromParse(part, productType, '装配体零件', targetFile.name + ' / ' + (part.product_name || part.part_id)));
               }
             } else {
@@ -655,7 +694,11 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
         if (cadJson.is_assembly && cadJson.parts && cadJson.parts.length > 0) {
           // 装配体：构建零件列表
           setIsAssembly(true);
-          const parts: Record<string, any>[] = cadJson.parts.map((part: PartInfo) =>
+          // 顶层 CNC 信号下沉：A 把 cnc_total_holes / machining_time_min / cnc_holes 只放在整件顶层，
+          // parts[i] 里恒为 0 / 缺失 ⇒ 报价页判定「无 CNC」⇒ 只走锯切，加工费只剩 0.01。
+          // 仅当「恰好一个」零件被判 cnc_machined 时才把整件的孔数与工时给它；
+          // 多个 cnc_machined 零件则都不下沉（避免同一笔整件工时被重复计到每个零件上）。
+          const parts: Record<string, any>[] = mergeTopCncIntoParts(cadJson).map((part: PartInfo) =>
             buildRecogDataFromParse(part, productType, '装配体零件')
           );
           setRecogProducts(parts);
