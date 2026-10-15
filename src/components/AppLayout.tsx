@@ -29,6 +29,7 @@ import {
   Handshake,
   UserCircle,
   UserCheck,
+  Upload,
 } from 'lucide-react';
 
 interface NavItem {
@@ -254,6 +255,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <main className="flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full">
         {children}
       </main>
+
+      {/* 悬浮上传入口：登录态全站常驻（含移动端，桌面显示文字） */}
+      {user && (
+        <Link
+          href="/quote/recognize"
+          title="上传图纸 AI 识别"
+          className="fixed bottom-5 right-5 z-30 inline-flex items-center gap-2 rounded-full bg-blue-600 px-4 py-3 text-white shadow-lg shadow-blue-600/30 transition hover:bg-blue-700 active:scale-95"
+        >
+          <Upload className="w-5 h-5 shrink-0" />
+          <span className="text-sm font-semibold hidden sm:inline">上传图纸</span>
+        </Link>
+      )}
 
       {/* 页脚 */}
       <Footer />

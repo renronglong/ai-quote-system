@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Upload, FileText, X, Loader2, AlertTriangle, User, CheckCircle2, Share2, Package } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { PRODUCT_TYPES } from './QuoteForm';
 import { useFileAccept, useIsMobileUa } from '@/lib/use-file-accept';
 import { loadPdfJs } from '@/lib/pdfjs';
@@ -212,6 +213,9 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
   const [dragOver, setDragOver] = useState(false);
   const [recognizing, setRecognizing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  // 识别等待态：已用秒数 + 渐进进度（伪进度封顶 90%，避免「假 100%」）
+  const [elapsedSec, setElapsedSec] = useState(0);
+  const [recogProgress, setRecogProgress] = useState(0);
   const [recogResult, setRecogResult] = useState<Record<string, any> | null>(null);
   const [recogProducts, setRecogProducts] = useState<Record<string, any>[]>([]);
   const [selectedProductIdx, setSelectedProductIdx] = useState(0);
@@ -240,6 +244,18 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
   // 微信/手机端：accept 用 */* 才会出现「从聊天记录选择文件」（详见 use-file-accept）
   const fileAccept = useFileAccept(ALLOWED_EXTENSIONS.join(','));
   const isMobileUa = useIsMobileUa();
+
+  // 识别等待态计时 + 渐进进度条：recognizing 期间每 500ms 刷新，
+  // 进度前快后慢封顶 90%（真实完成由 recognizing 熄灭表示，不假装 100%）
+  useEffect(() => {
+    if (!recognizing) { setElapsedSec(0); setRecogProgress(0); return; }
+    const t0 = Date.now();
+    const timer = setInterval(() => {
+      setElapsedSec((Date.now() - t0) / 1000);
+      setRecogProgress(p => (p >= 90 ? 90 : p + Math.max(1.2, (90 - p) * 0.16)));
+    }, 500);
+    return () => clearInterval(timer);
+  }, [recognizing]);
 
   // ===== Helper =====
   const isValidFile = (file: File): boolean => {
@@ -955,6 +971,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
             <div>
               <Upload className={`w-6 h-6 mx-auto mb-1.5 ${dragOver ? 'text-blue-500' : 'text-slate-600'}`} />
               <p className="text-sm text-slate-600">拖拽文件到此处，或<span className="text-blue-500 font-medium">点击上传</span></p>
+              <p className="text-xs text-slate-500 mt-1">STEP / DXF / DWG / PDF 均可，AI 自动读尺寸、板厚、孔位</p>
               {/* 支持格式直接摊开给用户看，别等传完才报错 */}
               <div className="mt-2 flex flex-wrap items-center justify-center gap-1">
                 {SUPPORTED_TAGS.map(t => (
@@ -1013,17 +1030,20 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
             {completedResults.length > 0 && (
               <div className="space-y-1.5">
                 <div className="text-sm font-semibold text-slate-700 px-1">已识别完成</div>
-                {completedResults.map((r) => (
-                  <div key={r.id} className={`px-3 py-2 rounded-lg border text-sm ${r.error ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'}`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-slate-800 truncate">{r.fileName || '未命名文件'}</span>
-                      <span className={`text-xs shrink-0 ${r.error ? 'text-red-600' : 'text-emerald-600'}`}>
-                        {r.error ? '失败' : `${r.products.length} 个零件`}
-                      </span>
+                {/* 零件卡横排：文件名 + 零件数 + 失败原因，窄屏自动换行 */}
+                <div className="flex flex-wrap gap-1.5">
+                  {completedResults.map((r) => (
+                    <div key={r.id} className={`flex-1 min-w-[190px] px-3 py-2 rounded-lg border text-sm ${r.error ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-slate-800 truncate">{r.fileName || '未命名文件'}</span>
+                        <span className={`text-xs shrink-0 ${r.error ? 'text-red-600' : 'text-emerald-600'}`}>
+                          {r.error ? '失败' : `${r.products.length} 个零件`}
+                        </span>
+                      </div>
+                      {r.error && <div className="text-xs text-red-600 mt-1">{r.error}</div>}
                     </div>
-                    {r.error && <div className="text-xs text-red-600 mt-1">{r.error}</div>}
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             )}
             {completedResults.some(r => r.products.length > 0) && (
@@ -1049,11 +1069,26 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           className="w-full mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
         />
 
-        {/* 识别中 + 进度提示 */}
+        {/* 识别中 + 进度提示（进度条 + 已用秒数；超 30s 告知图纸较大仍在解析） */}
         {(recognizing || statusMessage) && (
-          <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 text-blue-600 text-sm">
-            <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-            <span>{statusMessage || '处理中...'}</span>
+          <div className="mt-2 px-3 py-2.5 rounded-lg bg-blue-50 border border-blue-200">
+            <div className="flex items-center gap-2 text-sm text-blue-700">
+              <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+              <span className="font-semibold shrink-0">AI 解析中（已用 {elapsedSec.toFixed(1)}s）</span>
+              {statusMessage && <span className="ml-auto text-xs text-blue-500 truncate max-w-[52%]">{statusMessage}</span>}
+            </div>
+            <div className="mt-1.5 h-1.5 rounded-full bg-blue-100 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-blue-500 transition-all duration-500 ease-out"
+                style={{ width: `${recogProgress}%` }}
+              />
+            </div>
+            {elapsedSec >= 30 && (
+              <div className="mt-1.5 flex items-center gap-1 text-xs text-amber-600">
+                <AlertTriangle className="w-3 h-3 shrink-0" />
+                图纸较大，仍在解析，请稍候（通常 1 分钟内完成）
+              </div>
+            )}
           </div>
         )}
 
@@ -1217,15 +1252,19 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           </div>
         )}
       </div>
-      {/* ===== AI确认对话框 ===== */}
-      {showCheckDialog && checkQuestions.length > 0 && (
-        <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50/80 p-4 space-y-3">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center">
-              <span className="text-white text-sm font-bold">AI</span>
+      {/* ===== AI确认对话框（右侧抽屉，不遮挡零件列表） ===== */}
+      <Sheet open={showCheckDialog && checkQuestions.length > 0} onOpenChange={(open) => { if (!open) { setShowCheckDialog(false); setCheckQuestions([]); } }}>
+        <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col gap-0 transition-transform duration-300 data-[state=closed]:translate-x-full data-[state=open]:translate-x-0">
+          <SheetHeader className="shrink-0 border-b border-blue-100 bg-blue-50/60">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center">
+                <span className="text-white text-sm font-bold">AI</span>
+              </div>
+              <SheetTitle className="text-sm text-blue-800">需要确认以下信息</SheetTitle>
             </div>
-            <span className="text-sm font-semibold text-blue-800">需要确认以下信息</span>
-          </div>
+            <SheetDescription className="text-xs text-blue-600">填写后点「确认并填入」，参数将自动进入报价表</SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {checkQuestions.map((q: any, idx: number) => (
             <div key={idx} className="bg-white rounded-lg p-3 border border-blue-100">
               <div className="text-sm text-gray-700 mb-2">{String(q.question || '').replace(/^请+/, '请')}</div>
@@ -1295,7 +1334,8 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
               )}
             </div>
           ))}
-          <div className="flex gap-2 pt-1">
+          </div>
+          <SheetFooter className="shrink-0 border-t border-gray-100 gap-2 sm:flex-row">
             <button
               type="button"
               className="flex-1 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition"
@@ -1329,9 +1369,9 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
             >
               跳过
             </button>
-          </div>
-        </div>
-      )}
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
       {/* ===== 登录提示弹窗 ===== */}
       {showLoginModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
