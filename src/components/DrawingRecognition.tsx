@@ -228,6 +228,9 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
   const [isAssembly, setIsAssembly] = useState(false);
   const [copiedInvite, setCopiedInvite] = useState(false);
   const [showFmtHelp, setShowFmtHelp] = useState(false);
+  // 粘贴反馈：成功入队/被拦截都要说一声，不静默
+  const [pasteHint, setPasteHint] = useState<{ ok: boolean; text: string } | null>(null);
+  const pasteHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [productType, setProductType] = useState('挤出');
   // 连续上传模式：队列 + 已完成结果聚合
@@ -884,33 +887,95 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
   };
 
   // ==================== Paste Support ====================
+  // 覆盖四类真实粘贴场景，成功/失败都有提示，不静默：
+  // ① 截图/复制的图片（items 里 kind=file、image/*，可多张一起粘）
+  // ② 从文件夹复制的图纸文件（kind=file，type 常为空/octet-stream，如 .stp/.dxf/.pdf）
+  // ③ 从网页/聊天窗口复制的图片（只有 text/html 里的 data:URI，没有文件项）
+  // ④ text/plain 是 data:image URL（部分看图软件复制出来的形态）
   useEffect(() => {
-    const handlePaste = (e: ClipboardEvent) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      for (const item of items) {
-        if (item.type.startsWith('image/')) {
-          const file = item.getAsFile();
-          if (file) {
-            const ext = '.' + file.name.split('.').pop()?.toLowerCase() || '.png';
-            if (ALLOWED_EXTENSIONS.includes(ext) || ext === '.png') {
-              const namedFile = new File([file], `pasted_${Date.now()}.png`, { type: file.type });
-              if (isContinuous) {
-                queueRef.current = [...queueRef.current, namedFile];
-                setPendingQueue(prev => [...prev, namedFile]);
-                processNextRef.current();
-              } else {
-                setUploadedFile(namedFile);
-                recognizeFileRef.current(namedFile);
-              }
-            }
-          }
-          break;
+    const showHint = (ok: boolean, text: string, ms = 5000) => {
+      setPasteHint({ ok, text });
+      if (pasteHintTimerRef.current) clearTimeout(pasteHintTimerRef.current);
+      pasteHintTimerRef.current = setTimeout(() => setPasteHint(null), ms);
+    };
+    // 截图在剪贴板里文件名统一是 image.png，多张会重名 → 规范成 pasted_xxx.png
+    const normalizeName = (f: File): File => {
+      const generic = /^image\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name) || !/\.[a-z0-9]{2,5}$/i.test(f.name);
+      if (f.type.startsWith('image/') && generic) {
+        const ext = (f.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+        return new File([f], `pasted_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.${ext}`, { type: f.type });
+      }
+      return f;
+    };
+    const feedFiles = (raw: File[], source: string) => {
+      const valid: File[] = [];
+      let firstBlock: string | null = null;
+      for (const f of raw) {
+        const err = preflightError(f);
+        if (err) { if (!firstBlock) firstBlock = err; continue; }
+        if (!isValidFile(f)) {
+          if (!firstBlock) firstBlock = `「${f.name}」不是支持的图纸格式（支持 STP/STEP/DXF/DWG/PDF/JPG/PNG/ZIP 等）`;
+          continue;
         }
+        valid.push(normalizeName(f));
+      }
+      if (valid.length) {
+        if (isContinuous) {
+          queueRef.current = [...queueRef.current, ...valid];
+          setPendingQueue(prev => [...prev, ...valid]);
+          processNextRef.current();
+        } else {
+          setUploadedFile(valid[0]);
+          recognizeFileRef.current(valid[0]);
+        }
+        showHint(true, `已粘贴 ${valid.length} 个文件（${source}），加入识别队列`);
+      } else if (firstBlock) {
+        showHint(false, firstBlock);
+      } else {
+        showHint(false, '剪贴板里没有可识别的图片或图纸文件');
       }
     };
+    const dataUriToFile = async (uri: string): Promise<File | null> => {
+      try {
+        const blob = await (await fetch(uri)).blob();
+        if (!blob.size) return null;
+        return new File([blob], `pasted_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.png`, { type: blob.type || 'image/png' });
+      } catch { return null; }
+    };
+
+    const handlePaste = (e: ClipboardEvent) => {
+      const dt = e.clipboardData;
+      if (!dt) return;
+      // ①②：文件项（截图图片 / 复制的图纸文件），全部收下
+      const files: File[] = [];
+      for (const item of Array.from(dt.items || [])) {
+        if (item.kind === 'file') {
+          const f = item.getAsFile();
+          if (f) files.push(f);
+        }
+      }
+      if (files.length) { feedFiles(files, '剪贴板'); return; }
+      // ③：text/html 里的 data:URI 图片
+      const html = dt.getData('text/html') || '';
+      const m = html.match(/<img[^>]+src=["'](data:image\/[^"']+)["']/i);
+      if (m) {
+        dataUriToFile(m[1]).then(f => f ? feedFiles([f], '剪贴板图片') : showHint(false, '剪贴板图片解析失败，请另存为文件后再上传'));
+        return;
+      }
+      // ④：text/plain 是 data:image URL
+      const text = (dt.getData('text/plain') || '').trim();
+      if (/^data:image\//i.test(text)) {
+        dataUriToFile(text).then(f => f && feedFiles([f], '剪贴板图片'));
+        return;
+      }
+      // 纯文本等：说清支持什么，但不 preventDefault（输入框照常可粘文字）
+      if (text) showHint(false, '剪贴板里没有可识别的图片或图纸（可粘截图，或先在文件夹复制文件再 Ctrl+V）', 4000);
+    };
     document.addEventListener('paste', handlePaste);
-    return () => document.removeEventListener('paste', handlePaste);
+    return () => {
+      document.removeEventListener('paste', handlePaste);
+      if (pasteHintTimerRef.current) clearTimeout(pasteHintTimerRef.current);
+    };
   }, [isContinuous]);
 
   const requestDeepQuote = async () => {
@@ -1024,10 +1089,18 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
                   <div className="mt-1 text-amber-700">单文件 ≤4.5MB；DXF / DWG 若图纸没有尺寸标注，会按图形外框估算</div>
                 </div>
               )}
+              {pasteHint && (
+                <div className={`mt-2 flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-left text-xs font-medium ${pasteHint.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                  {pasteHint.ok
+                    ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                    : <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}
+                  <span>{pasteHint.text}</span>
+                </div>
+              )}
               <p className="text-xs text-slate-500 mt-1.5">
                 {isMobileUa
                   ? '微信里点上传后，可选择「聊天记录」里好友发来的文件'
-                  : '也可 Ctrl+V 直接粘贴图片'}
+                  : '也可 Ctrl+V 粘贴截图、图片，或先复制图纸文件再 Ctrl+V'}
               </p>
             </div>
           )}

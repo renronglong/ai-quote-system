@@ -45,14 +45,14 @@ const PRICE_SECTIONS = [
   },
   {
     title: '铝型材',
-    subtitle: '电泳 · 喷涂 · 磨砂',
-    keywords: ['电泳铝', '喷涂铝', '磨砂铝'],
+    subtitle: '电泳 · 喷涂 · 磨砂 · 圆管',
+    keywords: ['电泳铝', '喷涂铝', '磨砂铝', '铝圆管', '圆管'],
     accent: 'emerald',
   },
   {
     title: '压铸铝',
     subtitle: 'ADC12 系列',
-    keywords: ['ADC12', '压铸铝', '铝圆管'],
+    keywords: ['ADC12', '压铸铝'],
     accent: 'orange',
   },
 ];

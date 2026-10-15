@@ -1,8 +1,8 @@
 "use client";
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Upload } from 'lucide-react';
+import { ArrowLeft, Upload, Share2 } from 'lucide-react';
 import DrawingRecognition from '@/components/DrawingRecognition';
 import TopNavLinks from '@/components/TopNav';
 import { useAuth } from '@/lib/auth-context';
@@ -45,6 +45,26 @@ export default function QuoteRecognizePage() {
     router.push('/quote/parts');
   }, [router]);
 
+  // 手机上传入口：复制当前页链接（发微信文件传输助手 / 手机浏览器打开）
+  const [linkCopied, setLinkCopied] = useState(false);
+  const copyPageLink = async () => {
+    const url = typeof window !== 'undefined' ? window.location.href : 'https://www.gyparts.cn/quote/recognize';
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch { /* ignore */ }
+      document.body.removeChild(ta);
+    }
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 overflow-x-hidden">
       <TopNavLinks />
@@ -75,6 +95,37 @@ export default function QuoteRecognizePage() {
               onDrawingData={handleDrawingData}
               user={user}
             />
+          </div>
+          {/* 手机上传入口：桌面端展示二维码引导微信上传；手机端自身就是目标页，不显示 */}
+          <div className="mt-4 hidden sm:block rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-start gap-4">
+              <img
+                src="/qr-recognize.png"
+                alt="扫码打开图纸识别页"
+                width={88}
+                height={88}
+                className="h-[88px] w-[88px] shrink-0 rounded-lg border border-slate-100"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold text-slate-700">手机微信上传图纸</div>
+                <ol className="mt-1 space-y-0.5 text-xs leading-relaxed text-slate-500 list-decimal list-inside">
+                  <li>微信「扫一扫」二维码，在微信里打开本页</li>
+                  <li>点上方「上传图纸」→ 选「从聊天记录中选择文件」</li>
+                  <li>好友发来的 STP / DXF / PDF 可直接选，识别结果同账号同步</li>
+                </ol>
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={copyPageLink}
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+                  >
+                    <Share2 size={13} />
+                    {linkCopied ? '链接已复制' : '复制链接'}
+                  </button>
+                  <span className="text-[11px] text-slate-400">也可发到微信「文件传输助手」，手机点开即传</span>
+                </div>
+              </div>
+            </div>
           </div>
           <div className="mt-4 text-xs text-slate-400 text-center">
             支持格式：STP/STEP · DXF · DWG（导出DXF后解析）· PDF · JPG/PNG图片
