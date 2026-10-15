@@ -66,19 +66,27 @@ export default function HomePage() {
     <AppLayout>
       <section className="mb-4 md:mb-6">
         <div className="md:rounded-2xl bg-gradient-to-br from-blue-50 via-white to-slate-50 md:border md:border-gray-100 md:shadow-sm px-0 py-0 md:px-10 md:py-8">
-          <div className="flex items-center justify-between mb-4 px-4 md:px-0 pt-4 md:pt-0">
+          <div className="flex items-center justify-between mb-4 px-4 md:px-0 pt-4 md:pt-0 gap-2">
             <h1 className="text-base md:text-lg font-semibold text-gray-900">AI 智能报价 · 铝型材 / 五金加工</h1>
-            <Link
-              href="/quote/recognize"
-              className="inline-flex items-center text-blue-600 hover:text-blue-700 text-xs md:text-sm font-medium"
-            >
-              上传图纸 <ArrowRight className="w-4 h-4 ml-1" />
-            </Link>
+            <div className="flex items-center gap-2 shrink-0">
+              <Link
+                href="/quote/recognize"
+                className="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white text-xs md:text-sm font-semibold rounded-lg px-3 py-1.5 md:px-4 md:py-2 transition-colors shadow-sm"
+              >
+                上传图纸 <ArrowRight className="w-4 h-4 ml-1" />
+              </Link>
+              <a
+                href="#quote-form"
+                className="inline-flex items-center border border-gray-300 bg-white hover:bg-gray-50 text-slate-600 text-xs md:text-sm font-semibold rounded-lg px-3 py-1.5 md:px-4 md:py-2 transition-colors"
+              >
+                手动报价
+              </a>
+            </div>
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
             {/* 左：完整报价表单（与 /quote 同款，免登录即可算价） */}
-            <div className="bg-white md:rounded-xl md:border md:border-gray-200 md:shadow-sm md:p-4">
+            <div id="quote-form" className="bg-white md:rounded-xl md:border md:border-gray-200 md:shadow-sm md:p-4 scroll-mt-20">
               <QuoteForm
                 key={formNonce}
                 onCalculate={(d) => setParams(d as any)}
@@ -88,8 +96,8 @@ export default function HomePage() {
               />
             </div>
 
-            {/* 右：结果面板（与 /quote 同款） */}
-            <div>
+            {/* 右：结果面板 + 保存入口（sticky 常驻，滚动表单时结果不丢） */}
+            <div className="lg:sticky lg:top-4 space-y-3">
               <ResultPanel
                 pricingResult={result}
                 aluminumPrice={null}
@@ -117,34 +125,32 @@ export default function HomePage() {
                 onExportPDF={undefined}
                 hideActions={true}
               />
+
+              {/* 登录态 / 保存入口（移入右栏，跟随结果常驻） */}
+              {user ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    onClick={handleSave}
+                    disabled={saving || !result}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                  >
+                    {saving ? '保存中…' : saveSuccess ? '已保存 ✓' : '保存此报价'}
+                  </Button>
+                  <Link href="/history">
+                    <Button variant="outline" className="border-gray-300 font-semibold">
+                      <History className="w-4 h-4 mr-1" />我的报价
+                    </Button>
+                  </Link>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">
+                  登录后可保存报价、查看历史记录 ·
+                  <Link href="/login" className="text-blue-600 hover:text-blue-700 font-medium ml-1">登录</Link>
+                </p>
+              )}
             </div>
           </div>
         </div>
-      </section>
-
-      {/* 登录态 / 保存入口 */}
-      <section className="mb-6">
-        {user ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              onClick={handleSave}
-              disabled={saving || !result}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
-            >
-              {saving ? '保存中…' : saveSuccess ? '已保存 ✓' : '保存此报价'}
-            </Button>
-            <Link href="/history">
-              <Button variant="outline" className="border-gray-300 font-semibold">
-                <History className="w-4 h-4 mr-1" />我的报价
-              </Button>
-            </Link>
-          </div>
-        ) : (
-          <p className="text-sm text-gray-500">
-            登录后可保存报价、查看历史记录 ·
-            <Link href="/login" className="text-blue-600 hover:text-blue-700 font-medium ml-1">登录</Link>
-          </p>
-        )}
       </section>
 
       {/* 供应商入口：一条横幅 */}

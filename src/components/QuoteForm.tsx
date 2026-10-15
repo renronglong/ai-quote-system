@@ -1248,6 +1248,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   };
 
   const handleProductTypeChange = (pt: string) => {
+    // 注塑尚未上线：不可选中，点击仅提示
+    if (pt === '注塑') return;
     setProductType(pt);
     if (pt === '板材') setMaterialGrade('5052');
   };
@@ -2661,6 +2663,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           </div>
         </div>
 
+        {/* ---- STEP 1 选材料与模具（Tab + 材料类别 + 牌号/型号 + 标准件 + 模具匹配） ---- */}
+        <StepCard n={1} title="选材料与模具" hint="先选类型，再填尺寸搜模具">
         {/* ---- 产品类型 Tab栏 ---- */}
         <div className="border-b border-gray-200">
           {/* flex-wrap + shrink-0：手机端窄，若不换行会把「挤出铝型材」挤成竖排单字 */}
@@ -2670,8 +2674,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 key={key}
                 type="button"
                 onClick={() => handleProductTypeChange(key)}
+                title={key === '注塑' ? '注塑报价即将上线，敬请期待' : undefined}
                 className={`relative shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
-                  productType === key
+                  key === '注塑'
+                    ? 'text-slate-300 cursor-not-allowed'
+                    : productType === key
                     ? 'text-blue-600'
                     : 'text-slate-600 hover:text-gray-700 hover:bg-gray-50'
                 }`}
@@ -2681,7 +2688,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   <span className="hidden sm:inline text-base">{cfg.icon}</span>
                   {cfg.label}
                   {key === '注塑' && (
-                    <span className="ml-0.5 px-1 py-0.5 rounded bg-amber-100 text-amber-600 text-[11px] font-normal leading-none">待开发</span>
+                    <span className="ml-0.5 px-1 py-0.5 rounded bg-amber-100 text-amber-600 text-[11px] font-normal leading-none">即将上线</span>
                   )}
                 </span>
                 {productType === key && (
@@ -3230,9 +3237,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         })()}
 
 
-                {/* ---- 基本参数 ---- */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-          <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wide">基本参数</label>
+                </StepCard>
+
+        {/* ---- STEP 2 基本参数 ---- */}
+        <StepCard n={2} title="基本参数" hint="长度/数量必填，米重可点 + 自动算">
+        <div className="space-y-2">
           {renderFields()}
         </div>
 
@@ -3306,18 +3315,20 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           );
         })()}
 
+        </StepCard>
+
+        {/* ---- STEP 3 工艺与表面 ---- */}
+        <StepCard n={3} title="工艺与表面处理" hint="按需点选，可多选">
         {/* ---- 加工工艺（合并工艺+表面处理+参数） ---- */}
         {categoryConfig && (
-          <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.06)', border: '1px solid #f3f4f6', padding: 12 }}>
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>加工工艺</label>
-
+          <div>
             {/* === 上半部分：2列 grid === */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
 
               {/* 左列 - 工艺选择 */}
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#2563eb', marginBottom: 8 }}>工艺选择</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                   {categoryConfig.processes.map(proc => {
                     const isNone = proc.name === '无';
                     const isSelected = isNone ? processes.length === 0 : processes.some(p => p.name === proc.name);
@@ -3351,7 +3362,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               {(showMaterialSurface || showProductSurface) && (
                 <div style={{ borderLeft: '1px solid #e5e7eb', paddingLeft: 16 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#2563eb', marginBottom: 8 }}>表面处理</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                     {getSurfaceTreatmentOptions().map(o => {
                       const isSelected = surfaceTreatment === o.name;
                       return (
@@ -3588,7 +3599,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   {surfaceTreatment && surfaceTreatment !== '无' && getSurfaceColorOptions().length > 0 && (
                     <div key="color_card" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>颜色选择</div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
                         {getSurfaceColorOptions().map(colorName => {
                           const isSel = surfaceColor === colorName;
                           return (
@@ -3696,6 +3707,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           </div>
         )}
 
+        {/* ---- STEP 3 选材料与模具 / 基本参数 / 工艺与表面 分组结束 ---- */}
+        </StepCard>
+
         {/* Loading indicator */}
         {loading && (
           <div className="flex items-center justify-center gap-2 py-2 text-sm text-blue-500">
@@ -3709,6 +3723,20 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 }
 
 // ==================== Custom Select Component ====================
+
+// 报价表单分区卡片：STEP 1 选材料与模具 / STEP 2 基本参数 / STEP 3 工艺与表面
+function StepCard({ n, title, hint, children }: { n: number; title: string; hint?: string; children: any }) {
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+      <div className="flex items-center gap-2 mb-2.5">
+        <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center shrink-0">{n}</span>
+        <span className="text-sm font-semibold text-slate-700">{title}</span>
+        {hint && <span className="text-xs text-slate-400 ml-auto">{hint}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
 
 function CustomSelect({ value, options, onChange }: { value: string; options: string[]; onChange: (val: string) => void }) {
   const [open, setOpen] = useState(false);

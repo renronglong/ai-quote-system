@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  Percent, FileText, CheckCircle2, Loader2, Save, AlertTriangle,
+  Percent, FileText, CheckCircle2, Loader2, Save, AlertTriangle, Calculator,
 } from 'lucide-react';
 import type { PricingResult } from '@/components/QuoteForm';
 
@@ -357,8 +357,15 @@ export function ResultPanel({ pricingResult, aluminumPrice, productName, product
       )}
 
       {isPlaceholder && (
-        <div className="flex items-center justify-center py-3">
-          <p className="text-sm text-gray-300">请填写参数，系统将自动计算报价</p>
+        <div className="flex flex-col items-center justify-center gap-2 py-6 text-center">
+          <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
+            <Calculator className="w-5 h-5 text-blue-400" />
+          </div>
+          <p className="text-sm font-semibold text-slate-500">报价结果将显示在这里</p>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            ① 上传图纸，AI 自动识别参数<br />
+            ② 或按左侧「①选材料 → ②填参数 → ③选工艺」手动填写
+          </p>
         </div>
       )}
     </div>
