@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, FileText, Layers, CheckCircle2,
+  ArrowLeft, FileText, Layers, CheckCircle2, Upload,
   ChevronRight, ArrowRight, Package, Ruler, Box, Info, AlertCircle, Loader2, X, Zap
 } from 'lucide-react';
 import TopNavLinks from '@/components/TopNav';
@@ -497,25 +497,32 @@ export default function QuotePartsPage() {
       </div>
       <main className="flex-1 min-h-0 overflow-y-auto">
         <div className="max-w-4xl mx-auto p-6">
-          {/* 顶部导航 */}
+          {/* 顶部导航：「识别结果」只是标签，降档；重新上传是高频主动作（每次传新图纸都走它）给实心蓝按钮；
+              手动报价是另一套流程，保持文字链；与卡片「进入报价」同属主要动作，分区域不打架 */}
           <div className="mb-6">
-            <div className="flex items-center gap-2 text-sm mb-3">
-              <Link href="/quote/recognize" className="inline-flex items-center gap-1 text-slate-500 hover:text-slate-700">
-                <ArrowLeft size={14} /> 重新上传
-              </Link>
-              <span className="text-slate-300">|</span>
-              <Link href="/quote" className="text-slate-500 hover:text-slate-700">手动报价</Link>
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 mb-3">
+              <div className="min-w-0">
+                <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                  <Layers size={20} className="text-blue-600" />
+                  {isAssembly ? '装配体零件列表' : '识别结果'}
+                </h1>
+                <p className="text-slate-500 mt-1 text-sm">
+                  {isAssembly
+                    ? `识别到 ${totalParts} 个零件，点击零件卡片开始逐个报价`
+                    : '图纸识别完成，点击进入报价'}
+                  {payload.fileName && <span className="text-slate-400 ml-1">· {payload.fileName}</span>}
+                </p>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                <Link href="/quote" className="text-sm text-slate-500 hover:text-slate-700">手动报价</Link>
+                <Link
+                  href="/quote/recognize"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition"
+                >
+                  <Upload size={15} /> 重新上传
+                </Link>
+              </div>
             </div>
-            <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-              <Layers size={24} className="text-blue-600" />
-              {isAssembly ? '装配体零件列表' : '识别结果'}
-            </h1>
-            <p className="text-slate-500 mt-1 text-sm">
-              {isAssembly
-                ? `识别到 ${totalParts} 个零件，点击零件卡片开始逐个报价`
-                : '图纸识别完成，点击进入报价'}
-              {payload.fileName && <span className="text-slate-400 ml-1">· {payload.fileName}</span>}
-            </p>
           </div>
 
           {/* 批量生成报价 */}
@@ -532,7 +539,7 @@ export default function QuotePartsPage() {
               <button
                 onClick={openBatchModal}
                 disabled={batchGenerating}
-                className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition"
+                className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-blue-600 text-blue-700 bg-white text-sm font-medium hover:bg-blue-50 disabled:opacity-60 disabled:cursor-not-allowed transition"
               >
                 {batchGenerating ? (
                   <><Loader2 size={15} className="animate-spin" /> 生成中 {batchProgress.done}/{batchProgress.total}</>
@@ -663,14 +670,14 @@ export default function QuotePartsPage() {
                           </span>
                         </div>
                       )}
-                      <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
+                      <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
                         {isQuoted ? (
-                          <span className="inline-flex items-center gap-1 text-emerald-600 text-sm font-medium">
-                            <CheckCircle2 size={14} /> 已报价
+                          <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700 text-sm font-medium">
+                            <CheckCircle2 size={14} /> 已报价 · 查看
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-blue-600 font-semibold text-sm group-hover:text-blue-700">
-                            点击进入报价 <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
+                          <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-medium group-hover:bg-blue-700 transition">
+                            进入报价 <ChevronRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
                           </span>
                         )}
                         {p.material_grade ? <span className="text-slate-500 truncate ml-2 text-xs">材质: {p.material_grade}</span>
