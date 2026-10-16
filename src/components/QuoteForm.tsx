@@ -146,6 +146,23 @@ export const CASTING_GRADE_DENSITY: Record<string, number> = {
   'Zamak3': 6.6, 'Zamak5': 6.7, 'ZA-8': 6.3,
 };
 
+// 铝板牌号全集（板材·铝板）——报价页 chips / AI 预填归一化共用同一份；
+// 与零件列表材料弹窗 SHEET_AL_GRADES、后端加价表（1/3/5/7 系）三处同源。
+// 业主 2026-10-16 定案：铝板不需要 6063（6063 是挤压型材牌号，不属铝板）。
+// AI 识别 / 确认抽屉可能带入 6063 等无效牌号 → 预填时归一到默认 5052，
+// 否则 chips 无高亮、导出单材质与计价口径不一致（后端加价本就回落 5系默认 +3000，金额不变）。
+export const SHEET_AL_GRADES = [
+  { g: '1060', label: '1060 纯铝', add: '+1000' },
+  { g: '3003', label: '3003 防锈', add: '+2000' },
+  { g: '5052', label: '5052 镁铝', add: '+3000' },
+  { g: '5083', label: '5083 海洋级', add: '+3000' },
+  { g: '7075', label: '7075 航空铝', add: '+4000' },
+] as const;
+const SHEET_AL_GRADE_SET: readonly string[] = SHEET_AL_GRADES.map(x => x.g);
+/** 板材·铝板的牌号归一化：无效牌号（如 6063）→ 默认 5052；有效牌号原样返回 */
+const normalizeAlSheetGrade = (grade: string): string =>
+  (SHEET_AL_GRADE_SET.includes(grade) ? grade : '5052');
+
 export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
   '挤出': {
     label: '挤出铝型材',
@@ -1383,7 +1400,18 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       }
     }
 
-    if (aiData.materialGrade) setMaterialGrade(aiData.materialGrade);
+    if (aiData.materialGrade) {
+      // 铝板牌号归一化：AI/抽屉带入 6063 等无效牌号（型材牌号）→ 默认 5052，
+      // 保证 chips 高亮 / 计价口径 / 导出单材质三处一致（价格不变，6063 本就回落 5系默认加价）
+      let g = String(aiData.materialGrade);
+      if (resolvedPt === '板材') {
+        const cat = resolvedPt === '板材'
+          ? normalizeSheetCategory(String(aiData.materialCategory || materialCategory || '铝板'))
+          : String(aiData.materialCategory || materialCategory || '');
+        if (cat === '铝板') g = normalizeAlSheetGrade(g);
+      }
+      setMaterialGrade(g);
+    }
     // 产品名称/编号（camelCase）
     if (aiData.productName) setProductName(aiData.productName);
     if (aiData.productCode) setProductCode(aiData.productCode);
@@ -1982,6 +2010,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       '方管': '铝方管', '圆管': '铝圆管', '六角棒': '铝六角棒', '六角管': '铝六角管',
     };
     let resolvedCat = '';
+    // 本次解析出的「材料类别」落地值（供下方牌号归一化判断是不是 板材·铝板）
+    let resolvedMatCat = '';
     if (d.profile_category) {
       resolvedCat = VALID_CATS.includes(d.profile_category)
         ? d.profile_category
@@ -1994,6 +2024,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       setUseExistingMold(null);
       const profCat = resolvedCat === '异型材' ? '异型材'
         : (ptZh === '钢材' ? '钢标准件' : '标准件');
+      resolvedMatCat = profCat;
       if (typeWillChangeRef.current) {
         preserveCatRef.current = profCat;
         preserveStdCatRef.current = resolvedCat;
@@ -2008,14 +2039,16 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const cfg = PRODUCT_TYPES[ptZh] || PRODUCT_TYPES[productType];
       if (cfg && cfg.materialCategories[mc]) {
         if (typeWillChangeRef.current) preserveCatRef.current = mc;
+        resolvedMatCat = mc;
         setMaterialCategory(mc);
       } else if ((ptZh || productType) === '板材' || isSheet) {
         // 板材模式：AI 给的材料名五花八门（"钢"/"Q235"/"热轧板"/"冷轧钢板"/"6063"…），
         // 统一归一化到 铝板/钢板/冷轧板/不锈钢/镀锌板，未命中才兜底铝板
         const mapped = normalizeSheetCategory(mc);
         if (typeWillChangeRef.current) preserveCatRef.current = mapped;
-        if (mapped) setMaterialCategory(mapped);
+        if (mapped) { resolvedMatCat = mapped; setMaterialCategory(mapped); }
       } else if ((ptZh || productType) === '挤出' && /铝合金|铝型材|^铝$|铝板|挤压|挤出/.test(mc)) {
+        resolvedMatCat = '异型材';
         setMaterialCategory('异型材');
         setStandardCategory('异型材');
       } else {
@@ -2168,7 +2201,17 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       }
     }
 
-    if (d.material_grade) setMaterialGrade(d.material_grade);
+    if (d.material_grade) {
+      // 铝板牌号归一化（业主 2026-10-16 定案：铝板不需要 6063，6063 属型材牌号）：
+      // AI 识别 / 确认抽屉可能带入 6063 等无效牌号 → 归一到默认 5052，
+      // 保证 chips 高亮 / 计价口径 / 导出单材质三处一致
+      // （价格不变：后端加价表匹配不到 6063 本就回落 5系默认 +3000）
+      let g = String(d.material_grade);
+      const effPt = ptZh || productType;
+      const effCat = resolvedMatCat || String(d.material_category || '');
+      if (effPt === '板材' && effCat === '铝板') g = normalizeAlSheetGrade(g);
+      setMaterialGrade(g);
+    }
     if (d.surface_treatment && d.surface_treatment !== '无') {
       // 归一化到表单表面处理选项
       const st = String(d.surface_treatment);
@@ -2730,13 +2773,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               铝板牌号 <span className="normal-case text-slate-600">（铝锭价+牌号加价，元/吨）</span>
             </label>
             <div className="flex flex-wrap gap-1.5">
-              {([
-                { g: '1060', label: '1060 纯铝', add: '+1000' },
-                { g: '3003', label: '3003 防锈', add: '+2000' },
-                { g: '5052', label: '5052 镁铝', add: '+3000' },
-                { g: '5083', label: '5083 海洋级', add: '+3000' },
-                { g: '7075', label: '7075 航空铝', add: '+4000' },
-              ] as const).map(opt => (
+              {SHEET_AL_GRADES.map(opt => (
                 <button
                   key={opt.g}
                   type="button"
