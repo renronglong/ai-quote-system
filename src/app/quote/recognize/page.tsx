@@ -2,7 +2,7 @@
 import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Upload, Share2 } from 'lucide-react';
+import { Share2 } from 'lucide-react';
 import DrawingRecognition from '@/components/DrawingRecognition';
 import TopNavLinks from '@/components/TopNav';
 import { useAuth } from '@/lib/auth-context';
@@ -79,15 +79,11 @@ export default function QuoteRecognizePage() {
       </div>
       <main className="flex-1 min-h-0 flex items-center justify-center p-6">
         <div className="w-full max-w-xl">
-          <div className="mb-6">
-            <Link href="/quote" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 mb-3 py-2 -ml-2 px-2 rounded-lg hover:bg-gray-100">
-              <ArrowLeft size={16} /> 返回手动报价
-            </Link>
-            <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-              <Upload size={24} className="text-blue-600" />
-              图纸AI识别
-            </h1>
-            <p className="text-slate-500 mt-1 text-sm">上传图纸（STP/STEP/DXF/DWG/PDF/图片），可连续添加文件，AI自动识别零件尺寸参数</p>
+          {/* 手动报价是逃生口：降为右上角小字链，不占页面领头位。
+              本页领头直接给上传区——零件列表页的「重新上传」按钮就是落到这里，
+              传新图纸是最高频动作，不能让人先看一行装饰性大标题 */}
+          <div className="mb-3 flex justify-end">
+            <Link href="/quote" className="text-xs text-slate-400 hover:text-slate-600">手动报价</Link>
           </div>
           <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
             <DrawingRecognition
