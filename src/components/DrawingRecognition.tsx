@@ -57,7 +57,8 @@ const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.dxf', '.dwg', '.s
 // 图片扩展名 — 触发AI识别
 const AI_RECOG_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf', '.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t', '.zip', '.rar', '.7z', '.tar', '.gz'];
 // 上传区直接展示的能力标签（与实测结果一致，别再写支持但实际不支持）
-const SUPPORTED_TAGS = ['STP', 'STEP', 'DXF', 'DWG', 'PDF', 'JPG', 'PNG', 'ZIP', 'RAR', '7Z', 'TAR'];
+// X_T（Parasolid）2026-10-16 实测已可解析（P2-19 前漏标）
+const SUPPORTED_TAGS = ['STP', 'STEP', 'X_T', 'DXF', 'DWG', 'PDF', 'JPG', 'PNG', 'ZIP', 'RAR', '7Z', 'TAR'];
 
 // CAD扩展名 — 本地解析或转发
 const CAD_EXTS = ['.dxf', '.dwg', '.step', '.stp', '.igs'];
@@ -70,6 +71,12 @@ const MAX_FILE_BYTES = 4.5 * 1024 * 1024;
 const FORMAT_BLOCKED: Record<string, string> = {
   '.gz': 'GZ 压缩包解压后会丢失图纸扩展名（服务端解出的是无后缀文件名，识别不出来）。请改用 ZIP / TAR，或打包成 .tar.gz。',
 };
+
+// P2-18：识别成功但置信度未过自动填报阈值（needs_human / handoff_reason）的零件标记。
+// 数据仍会提交进零件列表（不再丢弃成「0 个零件」死路），由用户在报价页人工核对。
+const isLowConfidencePart = (p: any): boolean =>
+  !!p && (p.needs_human === true || !!p.handoff_reason ||
+    (typeof p.confidence === 'number' && p.confidence > 0 && p.confidence < 0.75));
 
 const processToProductType: Record<string, string> = {
   '挤压铝型材': '挤出', '板材': '板材', '铝板': '板材',
@@ -737,7 +744,8 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           } else if (ext === '.igs' || ext === '.iges') {
             setRecogError('IGES 格式暂不支持解析。请在 CAD 里把文件另存为 STEP（.stp / .step）后再上传。');
           } else if (ext === '.x_t') {
-            setRecogError('X_T（Parasolid）格式暂不支持解析。请在 CAD 里把文件另存为 STEP（.stp / .step）后再上传。');
+            // X_T（Parasolid）实测已可解析（2026-10-16）；走到这里说明是该文件自身解析失败，别再误导「格式不支持」
+            setRecogError('X_T 解析失败，请确认文件未损坏，或在 CAD 里另存为 STEP（.stp / .step）后重试。');
           } else {
             setRecogError(cadJson.error || cadJson.parse_errors || '3D 模型解析失败');
           }
@@ -785,8 +793,9 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
       fd.append('file', fileToSend);
       const apiEndpoint = productType === '板材' ? '/api/recognize-sheet' : '/api/recognize-drawing';
       const aiController = new AbortController();
-      // 后端 /api/recognize-drawing 的 maxDuration 是 120s，前端 60s 就掐断会白等一场
-      const aiTimeout = setTimeout(() => aiController.abort(), 110000);
+      // 后端 /api/recognize-drawing 的 maxDuration 是 120s；实测豆包视觉单次耗时 86~115s 大幅波动
+      // （P1-9：原 110s 会把服务端本可成功的请求掐掉报「识别失败」）——前端设 115s，覆盖实测全部样本，留 5s 给服务端硬上限前的返回
+      const aiTimeout = setTimeout(() => aiController.abort(), 115000);
       const resp = await fetch(apiEndpoint + '?userId=' + user!.id, { method: 'POST', body: fd, signal: aiController.signal });
       clearTimeout(aiTimeout);
       const json = await resp.json();
@@ -818,11 +827,11 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
         commitResult({ recogData: parts[0], recogProducts: parts, isAssembly: true, recognitionId: "asm_" + Date.now(), fileName: file.name });
       } else {
         const recognitionId = json.recognition_id || ("rec_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8));
-        if (json.autoFill && d.confidence >= 0.75) {
-          commitResult({ recogData: d, recognitionId, fileName: file.name });
-        } else {
-          commitResult({ recogData: null, recognitionId, fileName: file.name });
-        }
+        // P2-18：低置信度（autoFill=false）时也提交识别数据，不再丢弃成「0 个零件」无入口死路。
+        // needs_human / handoff_reason 随数据带上，识别页卡片标「待确认」，用户带参进报价页人工核对。
+        // 仅当 data 完全为空（一个字段都没识别出）时才保持 recogData:null。
+        const hasData = !!d && Object.keys(d).some(k => d[k] !== null && d[k] !== undefined && d[k] !== '');
+        commitResult({ recogData: hasData ? d : null, recognitionId, fileName: file.name });
       }
       setStatusMessage(null);
       setRecognizing(false);
@@ -1085,7 +1094,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
                 <div className="mt-1.5 text-left rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-800">
                   <div className="font-semibold mb-0.5">暂不支持，传了会失败：</div>
                   <div><b>GZ</b> —— 解压后会丢扩展名，请改用 <b>ZIP</b> / <b>TAR</b> / <b>.tar.gz</b></div>
-                  <div><b>IGES / X_T</b> —— 请在 CAD 里另存为 <b>STEP</b>（.stp / .step）</div>
+                  <div><b>IGES</b>（.igs / .iges）—— 暂不支持解析，请在 CAD 里另存为 <b>STEP</b>（.stp / .step）</div>
                   <div className="mt-1 text-amber-700">单文件 ≤4.5MB；DXF / DWG 若图纸没有尺寸标注，会按图形外框估算</div>
                 </div>
               )}
@@ -1138,11 +1147,16 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
                     <div key={r.id} className={`flex-1 min-w-[190px] px-3 py-2 rounded-lg border text-sm ${r.error ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'}`}>
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-medium text-slate-800 truncate">{r.fileName || '未命名文件'}</span>
-                        <span className={`text-xs shrink-0 ${r.error ? 'text-red-600' : 'text-emerald-600'}`}>
-                          {r.error ? '失败' : `${r.products.length} 个零件`}
+                        <span className={`text-xs shrink-0 ${r.error ? 'text-red-600' : isLowConfidencePart(r.products[0]) ? 'text-amber-600' : 'text-emerald-600'}`}>
+                          {r.error ? '失败' : `${r.products.length} 个零件${isLowConfidencePart(r.products[0]) ? ' · 待确认' : ''}`}
                         </span>
                       </div>
                       {r.error && <div className="text-xs text-red-600 mt-1">{r.error}</div>}
+                      {!r.error && isLowConfidencePart(r.products[0]) && (
+                        <div className="text-xs text-amber-600 mt-1">
+                          {(r.products[0] && r.products[0].handoff_reason) || '识别置信度不足，参数请人工核对后再使用'}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
