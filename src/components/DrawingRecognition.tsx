@@ -57,8 +57,7 @@ const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.dxf', '.dwg', '.s
 // 图片扩展名 — 触发AI识别
 const AI_RECOG_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf', '.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t', '.zip', '.rar', '.7z', '.tar', '.gz'];
 // 上传区直接展示的能力标签（与实测结果一致，别再写支持但实际不支持）
-// X_T（Parasolid）2026-10-16 实测已可解析（P2-19 前漏标）
-const SUPPORTED_TAGS = ['STP', 'STEP', 'X_T', 'DXF', 'DWG', 'PDF', 'JPG', 'PNG', 'ZIP', 'RAR', '7Z', 'TAR'];
+const SUPPORTED_TAGS = ['STP', 'STEP', 'DXF', 'DWG', 'PDF', 'JPG', 'PNG', 'ZIP', 'RAR', '7Z', 'TAR'];
 
 // CAD扩展名 — 本地解析或转发
 const CAD_EXTS = ['.dxf', '.dwg', '.step', '.stp', '.igs'];
@@ -71,12 +70,6 @@ const MAX_FILE_BYTES = 4.5 * 1024 * 1024;
 const FORMAT_BLOCKED: Record<string, string> = {
   '.gz': 'GZ 压缩包解压后会丢失图纸扩展名（服务端解出的是无后缀文件名，识别不出来）。请改用 ZIP / TAR，或打包成 .tar.gz。',
 };
-
-// P2-18：识别成功但置信度未过自动填报阈值（needs_human / handoff_reason）的零件标记。
-// 数据仍会提交进零件列表（不再丢弃成「0 个零件」死路），由用户在报价页人工核对。
-const isLowConfidencePart = (p: any): boolean =>
-  !!p && (p.needs_human === true || !!p.handoff_reason ||
-    (typeof p.confidence === 'number' && p.confidence > 0 && p.confidence < 0.75));
 
 const processToProductType: Record<string, string> = {
   '挤压铝型材': '挤出', '板材': '板材', '铝板': '板材',
@@ -235,9 +228,6 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
   const [isAssembly, setIsAssembly] = useState(false);
   const [copiedInvite, setCopiedInvite] = useState(false);
   const [showFmtHelp, setShowFmtHelp] = useState(false);
-  // 粘贴反馈：成功入队/被拦截都要说一声，不静默
-  const [pasteHint, setPasteHint] = useState<{ ok: boolean; text: string } | null>(null);
-  const pasteHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [productType, setProductType] = useState('挤出');
   // 连续上传模式：队列 + 已完成结果聚合
@@ -538,33 +528,37 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           setRecognitionFailed(true);
           return;
         }
-        // 从 dimensions 计算展开尺寸
+        // 展开尺寸：优先消费后端解析器给出的 flat_pattern 权威值；
+        // dimensions 启发式仅作为 flat_pattern 缺失时的兜底（0409 实测：
+        // 旧启发式把 406.4+43.12 误算成 449.52，且宽当成 43.12 而非 240.17）。
+        const fp = dxfJson.flat_pattern || null;
         const dims = dxfJson.drawing_dimensions || [];
         const hDims = dims.filter((d: any) => d.direction === '水平').map((d: any) => d.measurement_mm);
         const vDims = dims.filter((d: any) => d.direction === '垂直').map((d: any) => d.measurement_mm);
         const maxH = hDims.length ? Math.max(...hDims) : 0;
         const maxV = vDims.length ? Math.max(...vDims) : 0;
-        // 后端现在会在标注缺失时回填外框值，并在每条 dimension 上标 source=bbox_fallback。
-        // 这种情况下不能跟用户说是「图纸标注」，得如实标成外框估算。
-        const fromBbox = dims.some((d: any) => d && d.source === 'bbox_fallback');
-        let sizeSource = fromBbox ? '图形外框估算（图纸无尺寸标注）' : '图纸标注';
-        let unfoldL = maxH;
-        let unfoldW = maxV;
-        if (maxH <= 0 || maxV <= 0) {
-          // 图纸没有尺寸标注（国内常见：导出 DXF 丢了标注实体）→ 退回图形外框 bbox 估算
-          const bb = (dxfJson.unit && dxfJson.unit.bbox_mm) || dxfJson.bbox_mm;
-          if (Array.isArray(bb) && bb.length >= 2 && bb[0] > 0 && bb[1] > 0) {
-            unfoldL = Math.round(Number(bb[0]) * 100) / 100;
-            unfoldW = Math.round(Number(bb[1]) * 100) / 100;
-            sizeSource = '图形外框估算（图纸无尺寸标注）';
+        let unfoldL = fp && fp.flat_length_mm > 0 ? Math.round(fp.flat_length_mm * 100) / 100 : 0;
+        let unfoldW = fp && fp.flat_width_mm > 0 ? Math.round(fp.flat_width_mm * 100) / 100 : 0;
+        const thickness = fp && fp.thickness_mm > 0 ? Math.round(fp.thickness_mm * 100) / 100 : null;
+        // flat_pattern 缺失 → 退回原 dimensions / 外框启发式兜底
+        if (!unfoldL || !unfoldW) {
+          unfoldL = maxH;
+          unfoldW = maxV;
+          if (maxH > 0 && maxV > 0) {
+            const vCount: Record<number, number> = {};
+            vDims.forEach((v: number) => { const k = Math.round(v * 10); vCount[k] = (vCount[k] || 0) + 1; });
+            const bodyH = Math.max(...Object.entries(vCount).filter(([, c]) => c >= 2).map(([k]) => Number(k) / 10), 0);
+            const bendExt = vDims.filter((v: number) => Math.abs(v - bodyH) > bodyH * 0.3 && Math.abs(v - maxV) < 1);
+            const bendVal = bendExt.length ? Math.max(...bendExt) : 0;
+            unfoldL = Math.round((maxH + bendVal) * 100) / 100;
+          } else {
+            // 图纸没有尺寸标注（国内常见：导出 DXF 丢了标注实体）→ 退回图形外框 bbox 估算
+            const bb = (dxfJson.unit && dxfJson.unit.bbox_mm) || dxfJson.bbox_mm;
+            if (Array.isArray(bb) && bb.length >= 2 && bb[0] > 0 && bb[1] > 0) {
+              unfoldL = Math.round(Number(bb[0]) * 100) / 100;
+              unfoldW = Math.round(Number(bb[1]) * 100) / 100;
+            }
           }
-        } else {
-          const vCount: Record<number, number> = {};
-          vDims.forEach((v: number) => { const k = Math.round(v * 10); vCount[k] = (vCount[k] || 0) + 1; });
-          const bodyH = Math.max(...Object.entries(vCount).filter(([, c]) => c >= 2).map(([k]) => Number(k) / 10), 0);
-          const bendExt = vDims.filter((v: number) => Math.abs(v - bodyH) > bodyH * 0.3 && Math.abs(v - maxV) < 1);
-          const bendVal = bendExt.length ? Math.max(...bendExt) : 0;
-          unfoldL = Math.round((maxH + bendVal) * 100) / 100;
         }
         if (unfoldL <= 0 || unfoldW <= 0) {
           setRecogError(`${extLabel}解析成功但未读到任何尺寸：图纸里既没有尺寸标注、外框也为空。请在 CAD 里补齐标注后重新上传，或直接手动填单报价。`);
@@ -574,15 +568,25 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
         const holes = dxfJson.hole_groups || [];
         const totalHoles = dxfJson.hole_count || holes.reduce((s: number, h: any) => s + h.count, 0);
         const holeDesc = holes.map((h: any) => `Ø${h.diameter_mm}×${h.count}`).join(' + ');
+        // 预埋：展开外轮廓周长（后端 flat_pattern.outline_perimeter_mm 上线后自动生效；当前解析器未给则为 undefined）
+        const outlinePerimeter = fp && fp.outline_perimeter_mm > 0 ? Math.round(fp.outline_perimeter_mm * 100) / 100 : undefined;
         const recogData: Record<string, any> = {
           confidence: null,
           product_type: productType === '板材' ? 'stamping' : productType,
+          // DXF 展开尺寸即板材，置位确保下游 isSheetPart 按板材路由（否则 'stamping' 会被误判/跳过）
+          is_sheet_metal: true,
           material_category: '铝板',
           unfold_length: unfoldL,
           unfold_width: unfoldW,
+          // parts 页 buildPartPayload 只读 _mm 后缀键，补发打通链路
+          unfold_length_mm: unfoldL,
+          unfold_width_mm: unfoldW,
+          thickness: thickness,
+          thickness_mm: thickness,
+          // 受管键：后端给出 outline_perimeter_mm 后自动流入报价页，无需再改前端
+          unfold_perimeter_mm: outlinePerimeter,
           hole_count: totalHoles,
-          thickness: null,
-          notes: `${extLabel}解析 | 展开${unfoldL}×${unfoldW}mm（${sizeSource}） | 孔: ${holeDesc || '无'} | ⚠️仅用于报价估算，不可作为开模依据`,
+          notes: `${extLabel}解析 | 展开${unfoldL}×${unfoldW}mm（flat_pattern 权威值） | 厚度${thickness ?? '未知'}mm | 孔: ${holeDesc || '无'} | ⚠️仅用于报价估算，不可作为开模依据`,
         };
         setRecogResult(recogData);
         checkQuota();
@@ -744,8 +748,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           } else if (ext === '.igs' || ext === '.iges') {
             setRecogError('IGES 格式暂不支持解析。请在 CAD 里把文件另存为 STEP（.stp / .step）后再上传。');
           } else if (ext === '.x_t') {
-            // X_T（Parasolid）实测已可解析（2026-10-16）；走到这里说明是该文件自身解析失败，别再误导「格式不支持」
-            setRecogError('X_T 解析失败，请确认文件未损坏，或在 CAD 里另存为 STEP（.stp / .step）后重试。');
+            setRecogError('X_T（Parasolid）格式暂不支持解析。请在 CAD 里把文件另存为 STEP（.stp / .step）后再上传。');
           } else {
             setRecogError(cadJson.error || cadJson.parse_errors || '3D 模型解析失败');
           }
@@ -793,9 +796,8 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
       fd.append('file', fileToSend);
       const apiEndpoint = productType === '板材' ? '/api/recognize-sheet' : '/api/recognize-drawing';
       const aiController = new AbortController();
-      // 后端 /api/recognize-drawing 的 maxDuration 是 120s；实测豆包视觉单次耗时 86~115s 大幅波动
-      // （P1-9：原 110s 会把服务端本可成功的请求掐掉报「识别失败」）——前端设 115s，覆盖实测全部样本，留 5s 给服务端硬上限前的返回
-      const aiTimeout = setTimeout(() => aiController.abort(), 115000);
+      // 后端 /api/recognize-drawing 的 maxDuration 是 120s，前端 60s 就掐断会白等一场
+      const aiTimeout = setTimeout(() => aiController.abort(), 110000);
       const resp = await fetch(apiEndpoint + '?userId=' + user!.id, { method: 'POST', body: fd, signal: aiController.signal });
       clearTimeout(aiTimeout);
       const json = await resp.json();
@@ -827,11 +829,11 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
         commitResult({ recogData: parts[0], recogProducts: parts, isAssembly: true, recognitionId: "asm_" + Date.now(), fileName: file.name });
       } else {
         const recognitionId = json.recognition_id || ("rec_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8));
-        // P2-18：低置信度（autoFill=false）时也提交识别数据，不再丢弃成「0 个零件」无入口死路。
-        // needs_human / handoff_reason 随数据带上，识别页卡片标「待确认」，用户带参进报价页人工核对。
-        // 仅当 data 完全为空（一个字段都没识别出）时才保持 recogData:null。
-        const hasData = !!d && Object.keys(d).some(k => d[k] !== null && d[k] !== undefined && d[k] !== '');
-        commitResult({ recogData: hasData ? d : null, recognitionId, fileName: file.name });
+        if (json.autoFill && d.confidence >= 0.75) {
+          commitResult({ recogData: d, recognitionId, fileName: file.name });
+        } else {
+          commitResult({ recogData: null, recognitionId, fileName: file.name });
+        }
       }
       setStatusMessage(null);
       setRecognizing(false);
@@ -896,95 +898,33 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
   };
 
   // ==================== Paste Support ====================
-  // 覆盖四类真实粘贴场景，成功/失败都有提示，不静默：
-  // ① 截图/复制的图片（items 里 kind=file、image/*，可多张一起粘）
-  // ② 从文件夹复制的图纸文件（kind=file，type 常为空/octet-stream，如 .stp/.dxf/.pdf）
-  // ③ 从网页/聊天窗口复制的图片（只有 text/html 里的 data:URI，没有文件项）
-  // ④ text/plain 是 data:image URL（部分看图软件复制出来的形态）
   useEffect(() => {
-    const showHint = (ok: boolean, text: string, ms = 5000) => {
-      setPasteHint({ ok, text });
-      if (pasteHintTimerRef.current) clearTimeout(pasteHintTimerRef.current);
-      pasteHintTimerRef.current = setTimeout(() => setPasteHint(null), ms);
-    };
-    // 截图在剪贴板里文件名统一是 image.png，多张会重名 → 规范成 pasted_xxx.png
-    const normalizeName = (f: File): File => {
-      const generic = /^image\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name) || !/\.[a-z0-9]{2,5}$/i.test(f.name);
-      if (f.type.startsWith('image/') && generic) {
-        const ext = (f.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
-        return new File([f], `pasted_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.${ext}`, { type: f.type });
-      }
-      return f;
-    };
-    const feedFiles = (raw: File[], source: string) => {
-      const valid: File[] = [];
-      let firstBlock: string | null = null;
-      for (const f of raw) {
-        const err = preflightError(f);
-        if (err) { if (!firstBlock) firstBlock = err; continue; }
-        if (!isValidFile(f)) {
-          if (!firstBlock) firstBlock = `「${f.name}」不是支持的图纸格式（支持 STP/STEP/DXF/DWG/PDF/JPG/PNG/ZIP 等）`;
-          continue;
-        }
-        valid.push(normalizeName(f));
-      }
-      if (valid.length) {
-        if (isContinuous) {
-          queueRef.current = [...queueRef.current, ...valid];
-          setPendingQueue(prev => [...prev, ...valid]);
-          processNextRef.current();
-        } else {
-          setUploadedFile(valid[0]);
-          recognizeFileRef.current(valid[0]);
-        }
-        showHint(true, `已粘贴 ${valid.length} 个文件（${source}），加入识别队列`);
-      } else if (firstBlock) {
-        showHint(false, firstBlock);
-      } else {
-        showHint(false, '剪贴板里没有可识别的图片或图纸文件');
-      }
-    };
-    const dataUriToFile = async (uri: string): Promise<File | null> => {
-      try {
-        const blob = await (await fetch(uri)).blob();
-        if (!blob.size) return null;
-        return new File([blob], `pasted_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.png`, { type: blob.type || 'image/png' });
-      } catch { return null; }
-    };
-
     const handlePaste = (e: ClipboardEvent) => {
-      const dt = e.clipboardData;
-      if (!dt) return;
-      // ①②：文件项（截图图片 / 复制的图纸文件），全部收下
-      const files: File[] = [];
-      for (const item of Array.from(dt.items || [])) {
-        if (item.kind === 'file') {
-          const f = item.getAsFile();
-          if (f) files.push(f);
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            const ext = '.' + file.name.split('.').pop()?.toLowerCase() || '.png';
+            if (ALLOWED_EXTENSIONS.includes(ext) || ext === '.png') {
+              const namedFile = new File([file], `pasted_${Date.now()}.png`, { type: file.type });
+              if (isContinuous) {
+                queueRef.current = [...queueRef.current, namedFile];
+                setPendingQueue(prev => [...prev, namedFile]);
+                processNextRef.current();
+              } else {
+                setUploadedFile(namedFile);
+                recognizeFileRef.current(namedFile);
+              }
+            }
+          }
+          break;
         }
       }
-      if (files.length) { feedFiles(files, '剪贴板'); return; }
-      // ③：text/html 里的 data:URI 图片
-      const html = dt.getData('text/html') || '';
-      const m = html.match(/<img[^>]+src=["'](data:image\/[^"']+)["']/i);
-      if (m) {
-        dataUriToFile(m[1]).then(f => f ? feedFiles([f], '剪贴板图片') : showHint(false, '剪贴板图片解析失败，请另存为文件后再上传'));
-        return;
-      }
-      // ④：text/plain 是 data:image URL
-      const text = (dt.getData('text/plain') || '').trim();
-      if (/^data:image\//i.test(text)) {
-        dataUriToFile(text).then(f => f && feedFiles([f], '剪贴板图片'));
-        return;
-      }
-      // 纯文本等：说清支持什么，但不 preventDefault（输入框照常可粘文字）
-      if (text) showHint(false, '剪贴板里没有可识别的图片或图纸（可粘截图，或先在文件夹复制文件再 Ctrl+V）', 4000);
     };
     document.addEventListener('paste', handlePaste);
-    return () => {
-      document.removeEventListener('paste', handlePaste);
-      if (pasteHintTimerRef.current) clearTimeout(pasteHintTimerRef.current);
-    };
+    return () => document.removeEventListener('paste', handlePaste);
   }, [isContinuous]);
 
   const requestDeepQuote = async () => {
@@ -1094,22 +1034,14 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
                 <div className="mt-1.5 text-left rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-800">
                   <div className="font-semibold mb-0.5">暂不支持，传了会失败：</div>
                   <div><b>GZ</b> —— 解压后会丢扩展名，请改用 <b>ZIP</b> / <b>TAR</b> / <b>.tar.gz</b></div>
-                  <div><b>IGES</b>（.igs / .iges）—— 暂不支持解析，请在 CAD 里另存为 <b>STEP</b>（.stp / .step）</div>
+                  <div><b>IGES / X_T</b> —— 请在 CAD 里另存为 <b>STEP</b>（.stp / .step）</div>
                   <div className="mt-1 text-amber-700">单文件 ≤4.5MB；DXF / DWG 若图纸没有尺寸标注，会按图形外框估算</div>
-                </div>
-              )}
-              {pasteHint && (
-                <div className={`mt-2 flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-left text-xs font-medium ${pasteHint.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
-                  {pasteHint.ok
-                    ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                    : <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}
-                  <span>{pasteHint.text}</span>
                 </div>
               )}
               <p className="text-xs text-slate-500 mt-1.5">
                 {isMobileUa
                   ? '微信里点上传后，可选择「聊天记录」里好友发来的文件'
-                  : '也可 Ctrl+V 粘贴截图、图片，或先复制图纸文件再 Ctrl+V'}
+                  : '也可 Ctrl+V 直接粘贴图片'}
               </p>
             </div>
           )}
@@ -1147,16 +1079,11 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
                     <div key={r.id} className={`flex-1 min-w-[190px] px-3 py-2 rounded-lg border text-sm ${r.error ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'}`}>
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-medium text-slate-800 truncate">{r.fileName || '未命名文件'}</span>
-                        <span className={`text-xs shrink-0 ${r.error ? 'text-red-600' : isLowConfidencePart(r.products[0]) ? 'text-amber-600' : 'text-emerald-600'}`}>
-                          {r.error ? '失败' : `${r.products.length} 个零件${isLowConfidencePart(r.products[0]) ? ' · 待确认' : ''}`}
+                        <span className={`text-xs shrink-0 ${r.error ? 'text-red-600' : 'text-emerald-600'}`}>
+                          {r.error ? '失败' : `${r.products.length} 个零件`}
                         </span>
                       </div>
                       {r.error && <div className="text-xs text-red-600 mt-1">{r.error}</div>}
-                      {!r.error && isLowConfidencePart(r.products[0]) && (
-                        <div className="text-xs text-amber-600 mt-1">
-                          {(r.products[0] && r.products[0].handoff_reason) || '识别置信度不足，参数请人工核对后再使用'}
-                        </div>
-                      )}
                     </div>
                   ))}
                 </div>
