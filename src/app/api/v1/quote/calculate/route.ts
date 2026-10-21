@@ -1,6 +1,4 @@
 import { getAluminumPrice } from '@/lib/pricing/aluminum-price';
-import { getRealtimeBasePrices, getRealtimeFuturesOnly, RealtimeBasePrices } from '@/lib/pricing/realtime-prices';
-import { calcCncCycleMin } from '@/lib/pricing/cncMachining';
 import { NextRequest } from 'next/server';
 
 // ============================================================
@@ -18,18 +16,6 @@ const DEFAULT_HOT_ROLL_PRICE = 3800;
 
 // ---- 默认模具钢价（元/吨），H13均价约18000 ----
 const DEFAULT_DIE_STEEL_PRICE = 18000;
-
-// ---- 实时基准价（新浪期货 + lvdingjia ADC12；公式不变，仅替换基准价） ----
-// 每次请求开始时刷新；数据源失败时保持 FALLBACK（与下方 DEFAULT_* 一致），报价不阻断
-let REALTIME: RealtimeBasePrices = {
-  hotRoll: DEFAULT_HOT_ROLL_PRICE,
-  ss304: DEFAULT_STEEL_304_PRICE,
-  zinc: 24000,
-  adc12: 22000,
-  pp: 9300,
-  updatedAt: 'init',
-  sources: {},
-};
 
 // ---- 模具钢密度（吨/m³），H13工具钢约7.85 ----
 const DIE_STEEL_DENSITY = 7.85;
@@ -93,29 +79,12 @@ interface QuoteRequest {
     cut_count?: number;  // 锯切次数（铝型材）
     stamping_tonnage?: string;   // 冲压吨位（如 '<=35T', '45T', '200T双轴' 等）
     stamping_count?: number;     // 冲次数量
-    cnc_time?: { minutes: number }; // CNC/车加工时间（手填分钟，无刀路时退回）
-    cnc_machining?: {               // CNC 机加几何量（后端 A 识图输出，业主 2026-10-15 定案）
-      tool_path_mm?: number;        // 刀路合计（有值 → 节拍自动算，优先于手填分钟）
-      air_travel_mm?: number;       // 空行程（后端 air_travel_mm）
-      clamp_count?: number;         // 装夹次数（后端 blank_model.clamp_count）
-      net_volume_mm3?: number;      // CAD 净体积
-      blank_volume_mm3?: number;    // 毛坯体积（材料费按毛坯口径）
-      proj_volume_mm3?: number;     // 投影体积（前端自算）
-      side_axes?: number;           // 侧向轴数（展示用）
-      is_extrusion?: boolean;       // 是否挤压件（挂挤出大类 = true）
-    };
+    cnc_time?: { minutes: number }; // CNC/车加工时间
     bend_count?: number;    // 折弯刀数（钣金）
   } | null;
   aluminum_price_override?: number; // 铝锭价覆盖值（元/吨）
   weight_per_piece_kg?: number;     // 单件重量，不填则根据体积×密度估算
   mold_cost?: number;               // 模具费（元），可选
-  laser_cutting_fee?: number;          // 前端计算的激光切割费（元/件），可选
-  laser_cutting_detail?: {             // 激光切割费明细（可选）
-    cutting_fee: number;
-    piercing_fee: number;
-    unit_price: number;
-    pierce_rate: number;
-  };
   use_existing_mold?: boolean;          // 使用已有模具（模具费为0）
   product_name?: string;            // 产品名称（可选，用于保存报价记录）
   product_code?: string;            // 产品编号（可选，用于保存报价记录）
@@ -141,11 +110,9 @@ interface QuoteResponse {
   weight_per_piece_kg?: number;
   breakdown?: Record<string, { formula: string; detail: string }>;
   aluminum_index?: number;
-  realtime_prices?: { updatedAt: string; sources: Record<string, string>; hotRoll: number; ss304: number; zinc: number; adc12: number; pp: number };
   min_order_met?: boolean;
   min_order_weight_kg?: number;
   min_order_qty?: number;
-  min_order_value?: number;        // 最小起订金额（元），用于板材
   material_utilization_rate?: number; // 材料利用率(0-1)
   notes?: string[];
   product_name?: string;
@@ -153,7 +120,6 @@ interface QuoteResponse {
   error?: string;
   mold_cost?: number;              // 模具费（元），一次性，不计入单件价
   mold_spec?: string;              // 模具规格，如 Φ297×230 分流模
-  volume_cm3?: number;             // 体积 cm³（纯几何，前端乘密度得重量）
 }
 
 // ============================================================
@@ -302,10 +268,6 @@ const DEFAULT_PRICING_RULES: PricingRules = {
 // ============================================================
 
 /** 安全地四舍五入到两位小数 */
-function r4(n: number): number {
-  return Math.round(n * 10000) / 10000;
-}
-
 function r2(n: number): number {
   return Math.round(n * 100) / 100;
 }
@@ -394,7 +356,7 @@ function calcSheetMaterialCost(
   dimensions: NonNullable<QuoteRequest['dimensions']>,
   aluminumPrice: number,
   rules: PricingRules,
-): { cost: number; weight: number; rawWeight: number; formula: string; detail: string; utilizationRate?: number; sheetPrice?: number; nestingQty?: number } {
+): { cost: number; weight: number; rawWeight: number; formula: string; detail: string; utilizationRate?: number } {
   const { length_mm, width_mm } = dimensions;
   // 板材厚度优先使用 wall_thickness_mm，其次 height_mm（兼容旧格式）
   const t = dimensions.wall_thickness_mm || dimensions.height_mm || 2;
@@ -418,16 +380,14 @@ function calcSheetMaterialCost(
         break;
       }
     }
-    pricePerTon = aluminumPrice + premium; // 牌号加价是固定金额（元/吨），不是百分比
-    formulaStr = '(铝锭价 + 牌号加价) × 密度 × 体积';
-    detailStr = `${aluminumPrice} + ${premium} = ${r2(pricePerTon)} 元/吨`;
-  } else if (category === '冷板SPCC' || category === '冷板' || category === '冷轧板' || category === '镀锌板'
-             || category === '钢板' || category === '钢' || category === '热轧板' || category === '铁板') {
-    // 钢板/热轧板：与冷轧板同口径（热卷期货价 × 1.05，密度 7.85）—— 热卷基准价为实时（新浪 nf_HC0）
+    pricePerTon = aluminumPrice * (1 + premium / 1000);
+    formulaStr = '铝锭价 × (1 + 牌号加价/1000) × 密度 × 体积';
+    detailStr = `${aluminumPrice} × (1 + ${premium}/1000) = ${r2(pricePerTon)} 元/吨`;
+  } else if (category === '冷板SPCC' || category === '冷板' || category === '冷轧板' || category === '镀锌板') {
     density = matRule['冷板SPCC']?.density || 7.85;
-    pricePerTon = REALTIME.hotRoll * 1.05;
-    formulaStr = '热卷期货价(实时) × 1.05 × 密度 × 体积';
-    detailStr = `${REALTIME.hotRoll} × 1.05 = ${r2(pricePerTon)} 元/吨 [${REALTIME.sources.hotRoll ?? 'fallback'}]`;
+    pricePerTon = DEFAULT_HOT_ROLL_PRICE * 1.05;
+    formulaStr = '热卷期货价 × 1.05 × 密度 × 体积';
+    detailStr = `${DEFAULT_HOT_ROLL_PRICE} × 1.05 = ${r2(pricePerTon)} 元/吨`;
   } else if (category === '不锈钢') {
     density = matRule['不锈钢']?.density || 7.93; // 不锈钢7.93 g/cm³（304约7.93）
     const grades = matRule['不锈钢']?.grades || {};
@@ -438,9 +398,9 @@ function calcSheetMaterialCost(
         break;
       }
     }
-    pricePerTon = REALTIME.ss304 * ratio * 1.05;
-    formulaStr = `不锈钢304基准价(实时) × ${ratio} × 1.05 × 密度 × 体积`;
-    detailStr = `${REALTIME.ss304} × ${ratio} × 1.05 = ${r2(pricePerTon)} 元/吨 [${REALTIME.sources.ss304 ?? 'fallback'}]`;
+    pricePerTon = DEFAULT_STEEL_304_PRICE * ratio * 1.05;
+    formulaStr = `不锈钢304基准价 × ${ratio} × 1.05 × 密度 × 体积`;
+    detailStr = `${DEFAULT_STEEL_304_PRICE} × ${ratio} × 1.05 = ${r2(pricePerTon)} 元/吨`;
   }
 
   // 体积（cm³）→ 重量（kg）= 体积cm³ × 密度 / 1000
@@ -461,7 +421,8 @@ function calcSheetMaterialCost(
   const nestingQty = Math.max(1, n1, n2);
   const materialCost = sheetPrice / nestingQty;
 
-  detailStr += ` | 整张${sheetSize.length_mm}×${sheetSize.width_mm}×${t}mm = ${r2(sheetWeightKg)}kg → 整板${r2(sheetPrice)}元；展开件${length_mm}×${width_mm}排版 ${nestingQty}件/张 → 单件材料费 ${r2(materialCost)}元`;
+  const netMaterialCost = weightKg * pricePerTon / 1000; // 净重材料参考价（展示用）
+  detailStr += ` | 整张${sheetSize.length_mm}×${sheetSize.width_mm}×${t}mm = ${r2(sheetWeightKg)}kg → 整板${r2(sheetPrice)}元；展开件${length_mm}×${width_mm}排版 ${nestingQty}件/张 → 单件材料费 ${r2(materialCost)}元（净重参考 ${r2(netMaterialCost)}元，单件 ${r2(weightKg)}kg）`;
 
   return {
     cost: r2(materialCost),
@@ -469,8 +430,6 @@ function calcSheetMaterialCost(
     rawWeight: weightKg,
     formula: formulaStr,
     detail: detailStr,
-    sheetPrice: r2(sheetPrice),
-    nestingQty: nestingQty,
   };
 }
 
@@ -482,7 +441,7 @@ function calcVolumetricMaterialCost(
   volumeCm3: number,
   aluminumPrice: number,
   rules: PricingRules,
-): { cost: number; weight: number; rawWeight: number; formula: string; detail: string; utilizationRate?: number; sheetPrice?: number; nestingQty?: number } {
+): { cost: number; weight: number; rawWeight: number; formula: string; detail: string; utilizationRate?: number } {
   const matRule = rules.material_prices;
   let density = 2.7;
   let pricePerKg = 0;
@@ -491,32 +450,24 @@ function calcVolumetricMaterialCost(
 
   if (category.includes('铝') || category.includes('ADC') || category.includes('压铸铝')) {
     density = matRule['压铸铝ADC12']?.density || matRule['铝板']?.density || 2.7;
-    // 实时优先：lvdingjia ADC12 现货 → 铝期货×0.95 → 规则表 → 铝锭价×0.95
-    const matPricePerTon = REALTIME.adc12 || matRule['压铸铝ADC12']?.price_per_ton || aluminumPrice * 0.95;
+    const matPricePerTon = matRule['压铸铝ADC12']?.price_per_ton || aluminumPrice * 0.95;
     pricePerKg = matPricePerTon / 1000;
-    formulaStr = '体积 × 密度 × 材料单价(实时ADC12)';
-    detailStr = `${volumeCm3}cm³ × ${density}g/cm³ × ${r2(pricePerKg)}元/kg [${REALTIME.sources.adc12 ?? 'fallback'} ${matPricePerTon}元/吨]`;
+    formulaStr = '体积 × 密度 × 材料单价';
+    detailStr = `${volumeCm3}cm³ × ${density}g/cm³ × ${r2(pricePerKg)}元/kg`;
   } else if (category.includes('锌')) {
     density = matRule['锌合金ZA-8']?.density || 6.3;
-    // 实时优先：沪锌连续(nf_ZN0) → 规则表 → 24000
-    const matPricePerTon = REALTIME.zinc || matRule['锌合金ZA-8']?.price_per_ton || 24000;
+    const matPricePerTon = matRule['锌合金ZA-8']?.price_per_ton || 24000;
     pricePerKg = matPricePerTon / 1000;
-    formulaStr = '体积 × 密度 × 锌合金单价(实时沪锌)';
-    detailStr = `${volumeCm3}cm³ × ${density}g/cm³ × ${r2(pricePerKg)}元/kg [${REALTIME.sources.zinc ?? 'fallback'} ${matPricePerTon}元/吨]`;
+    formulaStr = '体积 × 密度 × 锌合金单价';
+    detailStr = `${volumeCm3}cm³ × ${density}g/cm³ × ${r2(pricePerKg)}元/kg`;
   } else {
-    // 塑料类：PP 接实时聚丙烯期货；其余（ABS/PC/PA/POM/PMMA）无期货源，暂用区间中值
+    // 塑料类
     const plasticKey = category;
     const priceRange = matRule[plasticKey]?.price_range || [12, 18];
     density = matRule[plasticKey]?.density || 1.1;
-    if (category.includes('PP') || category.includes('聚丙烯')) {
-      pricePerKg = REALTIME.pp / 1000;
-      formulaStr = `体积 × 密度 × ${category}单价(实时聚丙烯期货)`;
-      detailStr = `${volumeCm3}cm³ × ${density}g/cm³ × ${r2(pricePerKg)}元/kg [${REALTIME.sources.pp ?? 'fallback'} ${REALTIME.pp}元/吨]`;
-    } else {
-      pricePerKg = midOfRange(priceRange);
-      formulaStr = `体积 × 密度 × ${category}单价`;
-      detailStr = `${volumeCm3}cm³ × ${density}g/cm³ × ${r2(pricePerKg)}元/kg [区间中值，无实时源]`;
-    }
+    pricePerKg = midOfRange(priceRange);
+    formulaStr = `体积 × 密度 × ${category}单价`;
+    detailStr = `${volumeCm3}cm³ × ${density}g/cm³ × ${r2(pricePerKg)}元/kg`;
   }
 
   const weightKg = volumeCm3 * density / 1000;
@@ -690,7 +641,7 @@ function calcExtrusionMaterialCost(
   aluminumPrice: number,
   rules: PricingRules,
   weightOverride?: number,
-): { cost: number; weight: number; rawWeight: number; formula: string; detail: string; utilizationRate?: number; sheetPrice?: number; nestingQty?: number } {
+): { cost: number; weight: number; rawWeight: number; formula: string; detail: string; utilizationRate?: number } {
   const matRule = rules.material_prices['挤压铝型材'] || {};
   const extrusionFeePerTon = matRule.extrusion_fee_per_ton || 3000;
   
@@ -770,7 +721,7 @@ function calcExtrusion(
   req: QuoteRequest,
   aluminumPrice: number,
   rules: PricingRules,
-): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number; volume_cm3?: number } {
+): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number } {
   const dims = normalizeDims(req.dimensions || { length_mm: 1000, width_mm: 50, height_mm: 25 });
   const notes: string[] = [];
   const breakdown: Record<string, { formula: string; detail: string }> = {};
@@ -875,7 +826,7 @@ function calcExtrusion(
       // 方/扁棒、角铝、方管、异型材：矩形对角线
       diagonal = Math.sqrt(W * W + H_dim * H_dim);
     }
-    let phiDiag = diagonal * 1.1 + 90;
+    let phiDiag = diagonal * 1.1 + 80;
     let dieDiameter = STANDARD_DIE_SIZES.find(s => s >= phiDiag) || STANDARD_DIE_SIZES[STANDARD_DIE_SIZES.length - 1];
     if (phiDiag <= 140) dieDiameter = 139;
 
@@ -1088,6 +1039,7 @@ function calcExtrusion(
   let surfaceCost = 0;
   let packagingCost = 0;
   let transportCost = 0;
+  let managementFee = 0;
   let profitFee = 0;
 
   // 冲压附加费（仅体积附加，与是否选冲压工序无关，仅用于表面处理费计算）
@@ -1175,7 +1127,7 @@ function calcExtrusion(
     applySurfaceCost(useLongRate);
 
     if (req.process) {
-      const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions || {});
+      const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions);
       if (sec.cost > 0 && sec.detail && sec.detail !== '无二次加工') {
         const opsCount = countSecondaryOps(req.process);
         const perOpCostWithLoss = r2((sec.cost / opsCount) * 1.03);
@@ -1211,6 +1163,7 @@ function calcExtrusion(
 
     profitFee = r2(accumulated * 0.05);
     accumulated += profitFee;
+    managementFee = 0;
     breakdown['management_profit'] = {
       formula: '合计 × 5%(利润)',
       detail: `利润: ${profitFee}元`,
@@ -1255,6 +1208,7 @@ function calcExtrusion(
       secondary_operations_cost: r2(totalSecondaryCost),
       packaging_cost: packagingCost,
       transport_cost: transportCost,
+      management_fee: r2(managementFee + profitFee),
       unit_price: unitPrice,
       unit_price_ex_tax: r2(preTaxPrice),
       unit_price_in_tax: unitPrice,
@@ -1286,8 +1240,6 @@ function calcSheetProcessingFee(
   volumeCm3: number,
   materialCategory: string,
   rules: PricingRules,
-  stampingTonnage?: string,
-  stampingCount?: number,
 ): { cost: number; tonnage: number; baseFee: number; sizeSurcharge: number; volumeSurcharge: number; formula: string; detail: string } {
   const { length_mm, width_mm } = dimensions;
   // 板材厚度优先使用 wall_thickness_mm，其次 height_mm
@@ -1306,37 +1258,23 @@ function calcSheetProcessingFee(
   const tonnage = (perimeter * t * shearStrength) / 1000; // 单位：kN → 换算为吨(近似)
   const tonnageT = tonnage / 10; // 简化换算
 
-  // 吨位档位单价（业主定案：吨位档由前端 9 档下拉选，单价表见 process_rates['冲压吨位费率']）
-  const tonnageRates: Record<string, number> = rules.process_rates?.['冲压吨位费率']?.rates || {};
-  let tierRate = 0;
-  let tierLabel = '';
-  if (stampingTonnage) {
-    const key = stampingTonnage.replace('<=', '≤');
-    if (tonnageRates[key] != null) { tierRate = Number(tonnageRates[key]); tierLabel = key; }
-  }
-  if (!(tierRate > 0)) {
-    // 兜底：前端未传吨位档时，按几何估算的吨位落档（硬编码标准费率，避免远程配置键名不一致）
-    const rateEntries: [number, number][] = [
-      [35, 0.10],   // ≤35T
-      [45, 0.24],   // 45T
-      [60, 0.30],   // 60T
-      [80, 0.40],   // 80T
-      [110, 0.50],  // 110T
-      [160, 0.60],  // 160T
-      [200, 1.00],  // 200T
-      [400, 1.80],  // 250T双轴
-    ];
-    tierRate = 0.30;
-    for (const [limit, rate] of rateEntries) {
-      if (tonnageT <= limit) { tierRate = rate as number; break; }
-    }
-    tierLabel = `估算${r2(tonnageT)}T`;
+  // 根据吨位选择费率（硬编码标准费率，避免远程配置键名不一致问题）
+  let baseFee = 0.3;
+  const rateEntries: [number, number][] = [
+    [35, 0.10],   // ≤35T
+    [45, 0.24],   // 45T
+    [60, 0.30],   // 60T
+    [80, 0.40],   // 80T
+    [110, 0.50],  // 110T
+    [160, 0.60],  // 160T
+    [200, 1.00],  // 200T
+    [400, 1.80],  // 250T双轴
+  ];
+  for (const [limit, rate] of rateEntries) {
+    if (tonnageT <= limit) { baseFee = rate as number; break; }
   }
 
-  // 工序数量：前端「冲压」工序的次数量（= 折弯道数，业主 2026-09-28 定案口径）
-  const ops = Math.max(1, Math.floor(stampingCount || 1));
-
-  // 尺寸附加费（保留：表面处理费公式会用 stampingSurcharge）
+  // 尺寸附加费
   const maxDim = Math.max(length_mm, width_mm);
   let sizeSurcharge = 0;
   if (maxDim > 100) {
@@ -1347,17 +1285,16 @@ function calcSheetProcessingFee(
   const volumeMm3 = volumeCm3 * 1000; // cm³ → mm³
   const volumeSurcharge = volumeMm3 * 0.00000003;
 
-  // 业主定案口径：冲压加工费 = 工序数量 × 吨位档位单价（只有这两个乘数）
-  const processingCost = tierRate * ops;
+  const processingCost = baseFee + sizeSurcharge + volumeSurcharge;
 
   return {
     cost: r2(processingCost),
     tonnage: r2(tonnageT),
-    baseFee: r2(tierRate),
+    baseFee: r2(baseFee),
     sizeSurcharge: r2(sizeSurcharge),
     volumeSurcharge: r2(volumeSurcharge),
-    formula: '工序数量 × 吨位档位单价',
-    detail: `工序${ops}次 × ${tierLabel}档单价${tierRate}元/次 = ${r2(processingCost)}元`,
+    formula: '冲压吨位基数 + 尺寸附加费 + 体积附加费',
+    detail: `吨位${r2(tonnageT)}T→基数${baseFee}元 + 尺寸附加${r2(sizeSurcharge)}元 + 体积附加${r2(volumeSurcharge)}元`,
   };
 }
 
@@ -1493,7 +1430,6 @@ function calcSecondaryOperationsCost(
   rules: PricingRules,
   materialCost = 0,
   dims: { length_mm?: number; width_mm?: number; height_mm?: number } = {},
-  skipHoles = false,
 ): { cost: number; formula: string; detail: string } {
   let totalCost = 0;
   const details: string[] = [];
@@ -1501,9 +1437,7 @@ function calcSecondaryOperationsCost(
   const cncRates = rules.cnc_rates || {};
 
   // 钻孔费（按≤35T冲压公式：基数0.10 + 长度附加 + 体积附加）
-  // skipHoles：钣金件专用 —— 钣金件的孔在冲压复合模里与落料一次冲完（方案B 由激光切割路径+穿孔费覆盖），
-  //            再收「钻孔费」属重复计费，故钣金引擎传 true 跳过。
-  if (!skipHoles && process.holes && process.holes.count > 0) {
+  if (process.holes && process.holes.count > 0) {
     const baseRate = 0.10;
     const lengthMm = dims.length_mm || 0;
     const widthMm = dims.width_mm || 0;
@@ -1562,33 +1496,14 @@ function calcSecondaryOperationsCost(
 
   // 折弯费在板材主引擎中按工序累计（×1.03×1.03），此处不重复计
 
-  // CNC/车加工：节拍 × 机时费率 + 材料费的10%（2026-08-30 龙哥规则；2026-10-15 定案：10% 附加保留，
-  // 分钟来源优先「A 给刀路 → 自动节拍」，没有刀路退回手填分钟，价格公式不变）
-  const cncMach = process.cnc_machining;
-  const hasCncAuto = !!cncMach && (cncMach.tool_path_mm || 0) > 0;
-  if ((process.cnc_time && process.cnc_time.minutes > 0) || hasCncAuto) {
-    const MACHINE_RATE_PER_HOUR = 60;      // 元/h（B 填配置项，默认按交付卡 08-27）
-    const CNC_RATE_PER_MIN = MACHINE_RATE_PER_HOUR / 60; // = 1 元/分，与原值一致不改价
-    let cycleMin: number;
-    let srcLabel: string;
-    if (hasCncAuto) {
-      const cyc = calcCncCycleMin({
-        toolPathMm: cncMach!.tool_path_mm,
-        airTravelMm: cncMach!.air_travel_mm,
-        clampCount: cncMach!.clamp_count,
-        projVolumeMm3: cncMach!.proj_volume_mm3,
-      });
-      cycleMin = cyc.cycleMin;
-      srcLabel = `刀路自动: 切削${r4(cyc.cuttingMin)}+空行程${r4(cyc.airMin)}+装夹${r4(cyc.clampMin)}`;
-    } else {
-      cycleMin = process.cnc_time!.minutes;
-      srcLabel = '手填分钟';
-    }
-    const timeCost = r2(cycleMin * CNC_RATE_PER_MIN);
+  // CNC/车加工：时间费 1元/分钟 + 材料费的10%（2026-08-30 龙哥规则）
+  if (process.cnc_time && process.cnc_time.minutes > 0) {
+    const CNC_RATE_PER_MIN = 1; // 元/分钟
+    const timeCost = r2(process.cnc_time.minutes * CNC_RATE_PER_MIN);
     const cncSurcharge = materialCost > 0 ? r2(materialCost * 0.1) : 0;
     const cncTotal = r2(timeCost + cncSurcharge);
     totalCost += cncTotal;
-    details.push(`CNC/车加工: 节拍${r4(cycleMin)}分(${srcLabel})×${CNC_RATE_PER_MIN}元/分=${timeCost}元${cncSurcharge > 0 ? ` + 材料费×10%=${cncSurcharge}元` : ''} = ${cncTotal}元`);
+    details.push(`CNC/车加工: ${process.cnc_time.minutes}分钟×1元/分=${timeCost}元${cncSurcharge > 0 ? ` + 材料费×10%=${cncSurcharge}元` : ''} = ${cncTotal}元`);
     formulaParts.push(cncSurcharge > 0 ? 'CNC/车加工(工时+材料×10%)' : 'CNC/车加工(工时)');
   }
 
@@ -1630,25 +1545,12 @@ function calcSheetMetal(
   const t = dims.wall_thickness_mm || dims.height_mm || 2;
   const cutPerimeter = 2 * (dims.length_mm + dims.width_mm); // 展开外形周长 mm
   let proc: { cost: number; formula: string; detail: string; sizeSurcharge: number; volumeSurcharge: number };
-  if (req.laser_cutting_fee != null && req.laser_cutting_fee > 0) {
-    // 优先使用前端计算的激光切割费（前端使用业主报价单口径：查表单价 + cut_total_path_mm）
-    const detail = req.laser_cutting_detail;
-    const cutFee = detail?.cutting_fee ?? 0;
-    const pierceFee = detail?.piercing_fee ?? 0;
-    const unitPrice = detail?.unit_price ?? 0;
-    const pierceRate = detail?.pierce_rate ?? 0;
-    proc = {
-      cost: req.laser_cutting_fee,
-      formula: `激光切割：切割长度×单价${unitPrice}元/米 + 穿孔${pierceRate}元/孔`,
-      detail: `前端计价：切割费¥${cutFee} + 穿孔费¥${pierceFee} = ¥${req.laser_cutting_fee}元`,
-      sizeSurcharge: 0, volumeSurcharge: 0,
-    };
-  } else if (hasLaser) {
-    // 后端兜底：前端未传时（工序含激光切割但无前端计价数据）使用旧公式
+  if (hasLaser) {
     const cat = req.material.category;
     const ratePerMeterPerMm = cat.includes('铝') ? 4 : cat.includes('不锈钢') ? 2.5 : 1.5; // 元/米/mm板厚
     const cutLengthM = cutPerimeter / 1000;
     const laserCost = r2(cutLengthM * t * ratePerMeterPerMm);
+    // 穿孔费 0.1元/孔（外形起割点1个 + 内孔 holes+tapped_holes）
     const pierceCount = 1 + (req.process?.holes?.count || 0) + (req.process?.tapped_holes?.count || 0);
     const pierceCost = r2(pierceCount * 0.1);
     const totalLaser = r2(laserCost + pierceCost);
@@ -1659,12 +1561,7 @@ function calcSheetMetal(
       sizeSurcharge: 0, volumeSurcharge: 0,
     };
   } else {
-    // 冲压加工费 = 工序数量 × 吨位档位单价：吨位档取前端下拉，工序数取前端「冲压」工序次数量
-    proc = calcSheetProcessingFee(
-      dims, volumeCm3, req.material.category, rules,
-      req.process?.stamping_tonnage,
-      req.process?.stamping_count,
-    );
+    proc = calcSheetProcessingFee(dims, volumeCm3, req.material.category, rules);
   }
   breakdown['processing'] = { formula: proc.formula, detail: proc.detail };
 
@@ -1692,10 +1589,9 @@ function calcSheetMetal(
   }
 
   // 5. 二次加工费
-  // 钣金件跳过「钻孔费」：孔在冲压复合模里与落料一次冲完（激光方案由切割路径+穿孔费覆盖），再收属重复计
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions || {}, true);
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions);
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
@@ -1727,21 +1623,6 @@ function calcSheetMetal(
     detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
   };
 
-  // 板材最小起订量：按整板算，总价值≥3000 元
-  const minOrderValue = 3000; // 元
-  const sheetPrice = mat.sheetPrice || 0;
-  const nestingQty = mat.nestingQty || 1;
-  let minOrderQty = 0;
-  if (sheetPrice > 0) {
-    const sheetsNeeded = Math.ceil(minOrderValue / sheetPrice); // 需要的整板数
-    minOrderQty = sheetsNeeded * nestingQty; // 整板数 × 每件排版数
-  } else if (unitPrice > 0) {
-    minOrderQty = Math.ceil(minOrderValue / unitPrice);
-  }
-  if (minOrderQty > 0) {
-    notes.push(`最小起订量: ${minOrderQty}件（按整板${sheetPrice}元/张×${nestingQty}件/张，总价值≥${minOrderValue}元）`);
-  }
-
   return {
     costs: {
       material_cost: mat.cost,
@@ -1750,14 +1631,13 @@ function calcSheetMetal(
       secondary_operations_cost: r2(secondaryCost),
       packaging_cost: packagingCost,
       transport_cost: transportCost,
+      management_fee: managementFee,
       unit_price: unitPrice,
       unit_price_ex_tax: r2(preTaxPrice),
       unit_price_in_tax: unitPrice,
       total_ex_tax: r2(preTaxPrice),
       total_in_tax: unitPrice,
       weight_per_piece_kg: mat.weight,
-      min_order_qty: minOrderQty,
-      min_order_value: minOrderValue,
     },
     breakdown,
     weight: mat.weight,
@@ -1774,7 +1654,7 @@ function calcDieCasting(
   req: QuoteRequest,
   aluminumPrice: number,
   rules: PricingRules,
-): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number; volume_cm3: number } {
+): { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number } {
   const volumeCm3 = req.volume_cm3 || 100;
   const notes: string[] = [];
   const breakdown: Record<string, { formula: string; detail: string }> = {};
@@ -1792,14 +1672,12 @@ function calcDieCasting(
   accumulated *= (1 + (rules.die_casting_rates?.['压铸铝ADC12_A380']?.loss_rate || 0.05));
 
   // 3. 模具费（单独列出，不计入单价）
-  let moldTotal = req.mold_cost && req.mold_cost > 0 ? req.mold_cost : 0;
-  if (moldTotal > 0) {
-    notes.push(`压铸模具费: ${moldTotal}元（一次性，不计入单件价格）`);
-    breakdown['mold'] = {
-      formula: '模具费（一次性，不分摊）',
-      detail: `模具费: ${moldTotal}元（单独列出）`,
-    };
-  }
+  let moldTotal = req.mold_cost && req.mold_cost > 0 ? req.mold_cost : 20000;
+  notes.push(`压铸模具费: ${moldTotal}元（一次性，不计入单件价格）`);
+  breakdown['mold'] = {
+    formula: '模具费（一次性，不分摊）',
+    detail: `模具费: ${moldTotal}元（单独列出）`,
+  };
 
   // 4. 表面处理费
   let surfaceCost = 0;
@@ -1813,7 +1691,7 @@ function calcDieCasting(
   // 5. 二次加工费
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions || {});
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions);
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
@@ -1847,6 +1725,7 @@ function calcDieCasting(
       secondary_operations_cost: r2(secondaryCost),
       packaging_cost: packagingCost,
       transport_cost: transportCost,
+      management_fee: managementFee,
       unit_price: unitPrice,
       unit_price_ex_tax: r2(preTaxPrice),
       unit_price_in_tax: unitPrice,
@@ -1854,13 +1733,11 @@ function calcDieCasting(
       total_in_tax: unitPrice,
       weight_per_piece_kg: mat.weight,
       mold_cost: moldTotal,
-      volume_cm3: volumeCm3,
     },
     breakdown,
     weight: mat.weight,
     notes,
     utilizationRate: mat.utilizationRate,
-    volume_cm3: volumeCm3,
   };
 }
 
@@ -1909,7 +1786,7 @@ function calcZincAlloy(
   // 5. 二次加工费
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions || {});
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions);
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
@@ -1943,6 +1820,7 @@ function calcZincAlloy(
       secondary_operations_cost: r2(secondaryCost),
       packaging_cost: packagingCost,
       transport_cost: transportCost,
+      management_fee: managementFee,
       unit_price: unitPrice,
       unit_price_ex_tax: r2(preTaxPrice),
       unit_price_in_tax: unitPrice,
@@ -2005,7 +1883,7 @@ function calcInjection(
   // 5. 二次加工费
   let secondaryCost = 0;
   if (req.process) {
-    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions || {});
+    const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions);
     secondaryCost = sec.cost;
     accumulated += secondaryCost;
     breakdown['secondary'] = { formula: sec.formula, detail: sec.detail };
@@ -2039,6 +1917,7 @@ function calcInjection(
       secondary_operations_cost: r2(secondaryCost),
       packaging_cost: packagingCost,
       transport_cost: transportCost,
+      management_fee: managementFee,
       unit_price: unitPrice,
       unit_price_ex_tax: r2(preTaxPrice),
       unit_price_in_tax: unitPrice,
@@ -2127,154 +2006,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. 并行加载：铝锭价 + 报价规则 + 实时基准价（热卷/不锈钢/锌/ADC12/PP，2h缓存，失败回退默认）
+    // 2. 并行加载：铝锭价 + 报价规则
     const [aluminumPrice, rules] = await Promise.all([
       body.aluminum_price_override ? Promise.resolve(body.aluminum_price_override) : getAluminumPrice(23530).then(r => r.price),
       loadPricingRules(),
     ]);
-    // 快路径：只取期货（秒级），先落 REALTIME；完整版（含 ADC12 现货）后台补
-    REALTIME = await Promise.race([
-      getRealtimeFuturesOnly(),
-      new Promise<RealtimeBasePrices>(resolve => setTimeout(() => resolve(REALTIME), 6000)),
-    ]).catch(() => REALTIME);
-    getRealtimeBasePrices().then(rt => { REALTIME = rt; }).catch(() => {});
-
-    // 3. 根据产品类型分发计算
-    let result: { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number };
-
-    switch (body.product_type) {
-      case 'sheet_metal':
-        result = calcSheetMetal(body, aluminumPrice, rules);
-        break;
-      case 'die_casting':
-        result = calcDieCasting(body, aluminumPrice, rules);
-        break;
-      case 'zinc_alloy':
-        result = calcZincAlloy(body, aluminumPrice, rules);
-        break;
-      case 'injection':
-        result = calcInjection(body, aluminumPrice, rules);
-        break;
-      case 'extrusion':
-        result = calcExtrusion(body, aluminumPrice, rules);
-        break;
-      default:
-        return Response.json(
-          { success: false, error: `未知产品类型: ${body.product_type}` } as QuoteResponse,
-          { status: 400, headers: CORS_HEADERS },
-        );
-    }
-
-    // 4. 计算总价
-    const unitPrice = result.costs.unit_price || 0;
-    const totalPrice = r2(unitPrice * body.quantity);
-    const exTaxUnit = result.costs.unit_price_ex_tax || unitPrice;
-    const inTaxUnit = result.costs.unit_price_in_tax || unitPrice;
-    result.costs.unit_price_ex_tax = exTaxUnit;
-    result.costs.unit_price_in_tax = inTaxUnit;
-    result.costs.total_ex_tax = r2(exTaxUnit * body.quantity);
-    result.costs.total_in_tax = r2(inTaxUnit * body.quantity);
-
-    // 5. 最低订单量检查
-    // 板材：按总价值 3000 元；其他类型：按模具规格分档重量（300/500/1000kg）
-    let minOrderMet = true;
-    let minOrderNote = '';
-    let minOrderWeightKg = 0;
-
-    if (body.product_type === 'sheet_metal') {
-      // 板材按总价值检查
-      const minOrderValue = result.costs.min_order_value || 3000;
-      const minOrderQty = result.costs.min_order_qty || 0;
-      minOrderMet = body.quantity >= minOrderQty;
-      if (!minOrderMet) {
-        minOrderNote = `订单数量 ${body.quantity}件 未达到最小起订量 ${minOrderQty}件（按总价值${minOrderValue}元换算）`;
-      }
-    } else {
-      // 其他类型按重量检查
-      const totalWeight = result.weight * body.quantity;
-      minOrderWeightKg = result.costs.min_order_weight_kg || 300;
-      minOrderMet = totalWeight >= minOrderWeightKg;
-      if (!minOrderMet) {
-        minOrderNote = `订单总重量 ${r2(totalWeight)}kg 未达到最低起订量 ${minOrderWeightKg}kg`;
-      }
-    }
-
-    if (!minOrderMet) {
-      result.notes.push(minOrderNote);
-    }
-
-    // 6. 构造响应
-    const response: QuoteResponse = {
-      success: true,
-      quotation_id: generateQuotationId(),
-      ...result.costs,
-      total_price: totalPrice,
-      breakdown: result.breakdown,
-      aluminum_index: aluminumPrice,
-      realtime_prices: { updatedAt: REALTIME.updatedAt, sources: REALTIME.sources, hotRoll: REALTIME.hotRoll, ss304: REALTIME.ss304, zinc: REALTIME.zinc, adc12: REALTIME.adc12, pp: REALTIME.pp },
-      min_order_met: minOrderMet,
-      min_order_weight_kg: minOrderWeightKg || result.costs.min_order_weight_kg || 300,
-      material_utilization_rate: result.utilizationRate,
-      notes: result.notes,
-      product_name: body.product_name,
-      product_code: body.product_code,
-    };
-
-    // 返回 {"Response": data} 格式，与插件输出参数 "Response"(Object) 名称匹配
-    return Response.json(response, { headers: CORS_HEADERS });
-
-  } catch (error) {
-    console.error('[quote/calculate] Error:', error);
-    return Response.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : '报价计算失败',
-      } as QuoteResponse,
-      { status: 500, headers: CORS_HEADERS },
-    );
-  }
-}
-
-// ============================================================
-export async function GET(request: NextRequest) {
-  // 支持 Coze 插件通过 GET + Query 参数调用
-  // 参数格式: ?RequestBody={"product_type":"sheet_metal",...}
-  try {
-    const requestBodyStr = request.nextUrl.searchParams.get('RequestBody');
-    
-    if (!requestBodyStr) {
-      // 没有 RequestBody 参数时返回 API 说明
-      return Response.json({
-        endpoint: '/api/v1/quote/calculate',
-        method: 'GET/POST',
-        description: '制造业零配件报价计算引擎 v1 — Coze Bot 专用',
-        usage: 'GET /api/v1/quote/calculate?RequestBody={...}',
-        supported_product_types: ['sheet_metal', 'die_casting', 'zinc_alloy', 'injection', 'extrusion'],
-      }, { headers: CORS_HEADERS });
-    }
-
-    const body: QuoteRequest = JSON.parse(decodeURIComponent(requestBodyStr));
-
-    // 1. 请求校验
-    const validationError = validateRequest(body);
-    if (validationError) {
-      return Response.json(
-        { success: false, error: validationError } as QuoteResponse,
-        { status: 400, headers: CORS_HEADERS },
-      );
-    }
-
-    // 2. 并行加载：铝锭价 + 报价规则 + 实时基准价（热卷/不锈钢/锌/ADC12/PP，2h缓存，失败回退默认）
-    const [aluminumPrice, rules] = await Promise.all([
-      body.aluminum_price_override ? Promise.resolve(body.aluminum_price_override) : getAluminumPrice(23530).then(r => r.price),
-      loadPricingRules(),
-    ]);
-    // 快路径：只取期货（秒级），先落 REALTIME；完整版（含 ADC12 现货）后台补
-    REALTIME = await Promise.race([
-      getRealtimeFuturesOnly(),
-      new Promise<RealtimeBasePrices>(resolve => setTimeout(() => resolve(REALTIME), 6000)),
-    ]).catch(() => REALTIME);
-    getRealtimeBasePrices().then(rt => { REALTIME = rt; }).catch(() => {});
 
     // 3. 根据产品类型分发计算
     let result: { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number };
@@ -2328,7 +2064,116 @@ export async function GET(request: NextRequest) {
       total_price: totalPrice,
       breakdown: result.breakdown,
       aluminum_index: aluminumPrice,
-      realtime_prices: { updatedAt: REALTIME.updatedAt, sources: REALTIME.sources, hotRoll: REALTIME.hotRoll, ss304: REALTIME.ss304, zinc: REALTIME.zinc, adc12: REALTIME.adc12, pp: REALTIME.pp },
+      min_order_met: minOrderMet,
+      min_order_weight_kg: minOrderWeight,
+      material_utilization_rate: result.utilizationRate,
+      notes: result.notes,
+      product_name: body.product_name,
+      product_code: body.product_code,
+    };
+
+    // 返回 {"Response": data} 格式，与插件输出参数 "Response"(Object) 名称匹配
+    return Response.json(response, { headers: CORS_HEADERS });
+
+  } catch (error) {
+    console.error('[quote/calculate] Error:', error);
+    return Response.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : '报价计算失败',
+      } as QuoteResponse,
+      { status: 500, headers: CORS_HEADERS },
+    );
+  }
+}
+
+// ============================================================
+export async function GET(request: NextRequest) {
+  // 支持 Coze 插件通过 GET + Query 参数调用
+  // 参数格式: ?RequestBody={"product_type":"sheet_metal",...}
+  try {
+    const requestBodyStr = request.nextUrl.searchParams.get('RequestBody');
+    
+    if (!requestBodyStr) {
+      // 没有 RequestBody 参数时返回 API 说明
+      return Response.json({
+        endpoint: '/api/v1/quote/calculate',
+        method: 'GET/POST',
+        description: '制造业零配件报价计算引擎 v1 — Coze Bot 专用',
+        usage: 'GET /api/v1/quote/calculate?RequestBody={...}',
+        supported_product_types: ['sheet_metal', 'die_casting', 'zinc_alloy', 'injection', 'extrusion'],
+      }, { headers: CORS_HEADERS });
+    }
+
+    const body: QuoteRequest = JSON.parse(decodeURIComponent(requestBodyStr));
+
+    // 1. 请求校验
+    const validationError = validateRequest(body);
+    if (validationError) {
+      return Response.json(
+        { success: false, error: validationError } as QuoteResponse,
+        { status: 400, headers: CORS_HEADERS },
+      );
+    }
+
+    // 2. 并行加载：铝锭价 + 报价规则
+    const [aluminumPrice, rules] = await Promise.all([
+      body.aluminum_price_override ? Promise.resolve(body.aluminum_price_override) : getAluminumPrice(23530).then(r => r.price),
+      loadPricingRules(),
+    ]);
+
+    // 3. 根据产品类型分发计算
+    let result: { costs: Partial<QuoteResponse>; breakdown: Record<string, { formula: string; detail: string }>; weight: number; notes: string[]; utilizationRate?: number };
+
+    switch (body.product_type) {
+      case 'sheet_metal':
+        result = calcSheetMetal(body, aluminumPrice, rules);
+        break;
+      case 'die_casting':
+        result = calcDieCasting(body, aluminumPrice, rules);
+        break;
+      case 'zinc_alloy':
+        result = calcZincAlloy(body, aluminumPrice, rules);
+        break;
+      case 'injection':
+        result = calcInjection(body, aluminumPrice, rules);
+        break;
+      case 'extrusion':
+        result = calcExtrusion(body, aluminumPrice, rules);
+        break;
+      default:
+        return Response.json(
+          { success: false, error: `未知产品类型: ${body.product_type}` } as QuoteResponse,
+          { status: 400, headers: CORS_HEADERS },
+        );
+    }
+
+    // 4. 计算总价
+    const unitPrice = result.costs.unit_price || 0;
+    const totalPrice = r2(unitPrice * body.quantity);
+    const exTaxUnit = result.costs.unit_price_ex_tax || unitPrice;
+    const inTaxUnit = result.costs.unit_price_in_tax || unitPrice;
+    result.costs.unit_price_ex_tax = exTaxUnit;
+    result.costs.unit_price_in_tax = inTaxUnit;
+    result.costs.total_ex_tax = r2(exTaxUnit * body.quantity);
+    result.costs.total_in_tax = r2(inTaxUnit * body.quantity);
+
+    // 5. 最低订单量检查（按模具规格分档：300/500/1000kg）
+    const totalWeight = result.weight * body.quantity;
+    const minOrderWeight = result.costs.min_order_weight_kg || 300;
+    const minOrderMet = totalWeight >= minOrderWeight;
+    if (!minOrderMet) {
+      result.notes.push(`订单总重量 ${r2(totalWeight)}kg 未达到最低起订量 ${minOrderWeight}kg`);
+    }
+
+    // 6. 构造响应
+    const response: QuoteResponse = {
+      success: true,
+      quotation_id: generateQuotationId(),
+      ...result.costs,
+      total_price: totalPrice,
+      breakdown: result.breakdown,
+      aluminum_index: aluminumPrice,
       min_order_met: minOrderMet,
       min_order_weight_kg: minOrderWeight,
       material_utilization_rate: result.utilizationRate,

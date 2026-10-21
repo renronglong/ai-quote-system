@@ -1,4 +1,5 @@
 'use client';
+
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -10,7 +11,6 @@ import {
 } from '@/components/ui/sheet';
 import { useAuth } from '@/lib/auth-context';
 import TopNavLinks from '@/components/TopNav';
-import Footer from '@/components/Footer';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Home,
@@ -29,7 +29,6 @@ import {
   Handshake,
   UserCircle,
   UserCheck,
-  Upload,
 } from 'lucide-react';
 
 interface NavItem {
@@ -44,8 +43,7 @@ interface NavGroup {
   items: NavItem[];
 }
 
-// 未登录时在菜单里隐藏「需要登录才能用」的入口（点进去只会被弹回登录页）
-const GUEST_HIDDEN_HREFS = ['/products', '/inquiries', '/profile'];
+
 
 // 移动端汉堡菜单 / 头像下拉 使用
 const navGroups: NavGroup[] = [
@@ -54,6 +52,7 @@ const navGroups: NavGroup[] = [
     items: [
       { label: '首页', href: '/', icon: <Home className="w-5 h-5" /> },
       { label: 'AI报价', href: '/quote', icon: <FileText className="w-5 h-5" /> },
+      { label: '模具报价', href: '/mold-quote', icon: <Settings className="w-5 h-5" /> },
       { label: '产品管理', href: '/products', icon: <Package className="w-5 h-5" /> },
       { label: '询价管理', href: '/inquiries', icon: <MessageSquare className="w-5 h-5" /> },
       { label: '供应商', href: '/suppliers', icon: <Building2 className="w-5 h-5" /> },
@@ -91,54 +90,54 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [user, pathname]);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-100">
       {/* 顶部导航栏 */}
-      <header className="bg-white border-b sticky top-0 z-40 shadow-sm">
-        <div className="flex items-center justify-between px-4 h-16 max-w-7xl mx-auto w-full">
+      <header className="bg-white border-b sticky top-0 z-40">
+        <div className="flex items-center justify-between px-4 h-16">
           {/* Logo */}
           <div className="flex items-center gap-4">
             <Link href="/" className="flex items-center gap-2">
-              <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center shadow-md">
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
                 <Package className="w-5 h-5 text-white" />
               </div>
-              <span className="font-bold text-xl text-gray-900 hidden sm:inline tracking-tight">
-                碧利制造 · AI报价系统
+              <span className="font-bold text-lg text-gray-900 hidden sm:inline">
+                AI报价系统
               </span>
             </Link>
           </div>
 
-          {/* 桌面端导航 */}
+          {/* 桌面端导航：全站统一平铺入口 */}
           <div className="hidden lg:block">
             <TopNavLinks />
           </div>
 
           {/* 右侧操作区 */}
           <div className="flex items-center gap-3">
-            {/* 积分显示 */}
+            {/* 积分显示（登录用户） */}
             {user && (
-              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 rounded-full border border-amber-200">
-                <Coins className="w-4 h-4 text-amber-600" />
-                <span className="text-sm font-medium text-amber-700">
-                  {credits.toFixed(0)} 积分
-                </span>
-              </div>
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 rounded-full border border-amber-200">
+              <Coins className="w-4 h-4 text-amber-600" />
+              <span className="text-sm font-medium text-amber-700">
+                {credits.toFixed(0)} 积分
+              </span>
+            </div>
             )}
 
-            {/* 登录状态：移动端也要露出「登录」（原来 hidden md:flex 导致手机上完全看不到登录入口） */}
+            {/* 桌面端：未登录显示 登录/注册 按钮；已登录显示头像+下拉菜单 */}
             {!user ? (
-              <div className="flex items-center gap-2">
-                <Link href="/login"><Button variant="outline" size="sm" className="border-gray-300">登录</Button></Link>
-                <Link href="/register" className="hidden sm:inline-flex"><Button size="sm" className="bg-blue-600 hover:bg-blue-700 shadow-sm">注册</Button></Link>
+              <div className="hidden md:flex items-center gap-2">
+                <Link href="/login"><Button variant="outline" size="sm">登录</Button></Link>
+                <Link href="/register"><Button size="sm" className="bg-blue-600 hover:bg-blue-700">注册</Button></Link>
               </div>
             ) : (
-              <div className="relative">
+              <div className="relative hidden md:block">
                 <button
                   onClick={() => setUserMenuOpen(v => !v)}
                   className="flex items-center gap-1.5 rounded-full hover:bg-gray-100 py-1 pl-1 pr-2 transition-colors"
                 >
                   <Avatar className="w-8 h-8">
                     <AvatarImage src="" />
-                    <AvatarFallback className="bg-blue-100 text-blue-600 font-medium">
+                    <AvatarFallback className="bg-blue-100 text-blue-600">
                       {(user?.phone || 'U').slice(-1)}
                     </AvatarFallback>
                   </Avatar>
@@ -146,27 +145,28 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </button>
                 {userMenuOpen && (
                   <>
+                    {/* 点击外部关闭 */}
                     <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
                     <div className="absolute top-full right-0 pt-2 z-50 w-56">
-                      <div className="bg-white rounded-xl shadow-lg border py-1 overflow-hidden">
-                        <div className="px-4 py-3 border-b bg-gray-50">
-                          <p className="text-sm font-semibold text-gray-900 truncate">{user.company_name || '已登录用户'}</p>
+                      <div className="bg-white rounded-lg shadow-lg border py-1">
+                        <div className="px-4 py-2 border-b">
+                          <p className="text-sm font-medium text-gray-900 truncate">{user.company_name || '已登录用户'}</p>
                           <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
                             <Coins className="w-3.5 h-3.5 text-amber-600" />{credits.toFixed(0)} 积分
                           </p>
                         </div>
-                        <Link href="/products" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors"><Package className="w-4 h-4" />产品管理</Link>
-                        <Link href="/inquiries" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors"><MessageSquare className="w-4 h-4" />询价管理</Link>
-                        <Link href="/supplier" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors"><Handshake className="w-4 h-4" />供应商工作台</Link>
-                        <Link href="/profile" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors"><UserCircle className="w-4 h-4" />公司资料</Link>
+                        <Link href="/products" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><Package className="w-4 h-4" />产品管理</Link>
+                        <Link href="/inquiries" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><MessageSquare className="w-4 h-4" />询价管理</Link>
+                        <Link href="/supplier" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><Handshake className="w-4 h-4" />供应商工作台</Link>
+                        <Link href="/profile" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><UserCircle className="w-4 h-4" />公司资料</Link>
                         {isAdmin && (<>
-                          <div className="h-px bg-gray-100 my-1" />
-                          <Link href="/admin/tasks" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors"><FileText className="w-4 h-4" />任务管理</Link>
-                          <Link href="/admin/users" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors"><Users className="w-4 h-4" />用户管理</Link>
-                          <Link href="/admin/customers" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors"><UserCheck className="w-4 h-4" />客户管理</Link>
+                        <div className="h-px bg-gray-100 my-1" />
+                        <Link href="/admin/tasks" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><FileText className="w-4 h-4" />任务管理</Link>
+                        <Link href="/admin/users" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><Users className="w-4 h-4" />用户管理</Link>
+                        <Link href="/admin/customers" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"><UserCheck className="w-4 h-4" />客户管理</Link>
                         </>)}
                         <div className="h-px bg-gray-100 my-1" />
-                        <button onClick={() => { setUserMenuOpen(false); signOut(); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors">
+                        <button onClick={() => { setUserMenuOpen(false); signOut(); }} className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50">
                           <LogOut className="w-4 h-4" />退出登录
                         </button>
                       </div>
@@ -179,8 +179,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             {/* 移动端菜单 */}
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="打开菜单" title="打开菜单"
-                        className="md:hidden h-11 w-11 shrink-0">
+                <Button variant="ghost" size="icon" className="md:hidden">
                   <List className="w-5 h-5" />
                 </Button>
               </SheetTrigger>
@@ -198,17 +197,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                       {user && <p className="text-xs text-gray-500">{user.company_name || user.phone}</p>}
                     </div>
                   </div>
+
                   <div className="h-px bg-gray-200" />
-                  {navGroups
-                    .map(g => ({
-                      ...g,
-                      items: g.items.filter(it =>
-                        (!it.adminOnly || isAdmin) &&
-                        (!!user || !GUEST_HIDDEN_HREFS.includes(it.href))
-                      ),
-                    }))
-                    .filter(g => g.items.length > 0)
-                    .map((group) => (
+
+                  {navGroups.filter(g => !(g.items[0]?.adminOnly) || isAdmin).map((group) => (
                     <div key={group.label}>
                       <p className="px-2 text-xs font-medium text-gray-500 uppercase mb-2">
                         {group.label}
@@ -219,9 +211,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                             key={item.href}
                             href={item.href}
                             onClick={() => setMobileOpen(false)}
-                            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm ${
                               pathname === item.href
-                                ? 'bg-blue-50 text-blue-600 font-medium'
+                                ? 'bg-blue-50 text-blue-600'
                                 : 'text-gray-600 hover:bg-gray-50'
                             }`}
                           >
@@ -232,7 +224,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                       </div>
                     </div>
                   ))}
+
                   <div className="h-px bg-gray-200 mt-auto" />
+
                   {user ? (
                     <Button variant="ghost" className="justify-start text-red-600" onClick={() => signOut()}>
                       <LogOut className="w-4 h-4 mr-2" />
@@ -252,24 +246,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* 主内容区 */}
-      <main className="flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full">
+      <main className="p-4 md:p-6 max-w-7xl mx-auto">
         {children}
       </main>
-
-      {/* 悬浮上传入口：登录态全站常驻（含移动端，桌面显示文字） */}
-      {user && (
-        <Link
-          href="/quote/recognize"
-          title="上传图纸 AI 识别"
-          className="fixed bottom-5 right-5 z-30 inline-flex items-center gap-2 rounded-full bg-blue-600 px-4 py-3 text-white shadow-lg shadow-blue-600/30 transition hover:bg-blue-700 active:scale-95"
-        >
-          <Upload className="w-5 h-5 shrink-0" />
-          <span className="text-sm font-semibold hidden sm:inline">上传图纸</span>
-        </Link>
-      )}
-
-      {/* 页脚 */}
-      <Footer />
     </div>
   );
 }

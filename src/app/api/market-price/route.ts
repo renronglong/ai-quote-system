@@ -1,8 +1,4 @@
 import { NextRequest } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jotgxnhueagbsvfeepic.supabase.co';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 interface PriceSource { keywords: string[]; sources: string[]; unit: string }
 interface PriceItem { name: string; price: string; change: string; source: string; unit: string }
@@ -13,6 +9,7 @@ const MATERIAL_SOURCES: Record<string, PriceSource> = {
   '不锈钢': { keywords: ['不锈钢304价格 今日'], sources: ['https://www.smm.cn', 'https://www.51bxg.com'], unit: '元/吨' },
   '压铸铝': { keywords: ['ADC12价格', '压铸铝合金价格'], sources: ['https://www.lvdingjia.com/'], unit: '元/吨' },
   '塑胶': { keywords: ['工程塑料ABS价格', 'PP塑料价格 今日'], sources: ['https://plas.chem99.com'], unit: '元/吨' },
+  '模具钢': { keywords: ['H13模具钢价格', '模具钢价格 今日'], sources: ['https://www.smm.cn', 'https://www.51bxg.com'], unit: '元/吨' },
 };
 
 const LVDINGJIA_ITEMS: Record<string, string[]> = {
@@ -32,6 +29,7 @@ function matchMaterial(query: string): string | null {
     '不锈钢304': '不锈钢', '304': '不锈钢',
     '压铸': '压铸铝', 'ADC12': '压铸铝',
     '塑料': '塑胶', 'ABS': '塑胶', 'PP': '塑胶', '工程塑料': '塑胶',
+    '模具钢': '模具钢', 'H13': '模具钢', 'P20': '模具钢', '718H': '模具钢',
   };
   for (const [k, v] of Object.entries(aliases)) { if (q.includes(k.toLowerCase())) return v; }
   return null;
@@ -71,34 +69,14 @@ function extractPricesFromLvdingjia(html: string, material: string): PriceItem[]
   return prices;
 }
 
-// 清洗抓取到的名称：去掉 HTML 标签/属性残留与引号等符号
-function cleanScrapedName(raw: string): string {
-  let s = raw;
-  s = s.replace(/<[^>]*>?/g, '');
-  s = s.replace(/[\w./-]+\.(?:htm|html|aspx?|php)[^"']*/gi, '');
-  s = s.replace(/(?:title|href|src|class|data-[\w-]+)\s*=\s*["'][^"']*/gi, '');
-  s = s.replace(/["'`\\<>]/g, '');
-  s = s.replace(/^[\s:：,，.。·|]+|[\s:：,，.。·|]+$/g, '');
-  return s.trim();
-}
-
-// 判断名称是否干净（无 HTML/URL 残留特征）
-function isCleanName(name: string): boolean {
-  if (!/[\u4e00-\u9fa5]/.test(name)) return false;
-  return !/[="'\\/]|https?:|\.com|\.cn|\.htm|\.(?:json|js|css)/i.test(name);
-}
-
 function extractPricesWithRegex(html: string, _material: string): PriceItem[] {
   const prices: PriceItem[] = [];
-  const seen = new Set<string>();
   const generalRegex = /([^\d\n]{2,20}?)\s*(?:均价|价格|参考价|报价|中间价)\s*[:：]?\s*(\d{4,6})\s*(?:元\/吨|元\/千克)?/g;
   let match;
   while ((match = generalRegex.exec(html)) !== null) {
-    const name = cleanScrapedName(match[1]);
+    const name = match[1].trim().replace(/[<>]/g, '');
     const price = parseInt(match[2]);
-    const key = `${name}|${price}`;
-    if (name.length >= 2 && isCleanName(name) && !seen.has(key) && !isNaN(price) && price > 1000 && price < 500000) {
-      seen.add(key);
+    if (name.length >= 2 && !isNaN(price) && price > 1000 && price < 500000) {
       prices.push({ name, price: String(price), change: '→0', source: 'web', unit: '元/吨' });
     }
   }
@@ -129,58 +107,13 @@ interface PriceCache { data: PriceItem[]; timestamp: number; material: string }
 const priceCache = new Map<string, PriceCache>();
 const CACHE_DURATION = 2 * 60 * 60 * 1000;
 
-function buildDataField(prices: PriceItem[], material?: string) {
-  // 归一化括号后匹配主参考价；铝型材优先"南海铝锭(含票)"，
-  // 任何情况下不允许"无票/不含票"价格混入主参考价
-  const norm = (n: string) => n.replace(/[（]/g, '(').replace(/[）]/g, ')');
-  let primary = prices[0];
-  if (material === '铝型材') {
-    const hasTicket = prices.find(p => norm(p.name).includes('南海铝锭(含票)'));
-    if (hasTicket) primary = hasTicket;
-    else {
-      const anyNanhai = prices.find(p => norm(p.name).includes('南海铝锭') && !/无票|不含票/.test(norm(p.name)));
-      if (anyNanhai) primary = anyNanhai;
-      else primary = prices.find(p => !/无票|不含票/.test(norm(p.name))) || prices[0];
-    }
-  }
-  if (material === '压铸铝') {
-    const adc12 = prices.find(p => norm(p.name).includes('标准ADC12') || norm(p.name).includes('ADC12'));
-    if (adc12) primary = adc12;
-  }
+function buildDataField(prices: PriceItem[]) {
+  const primary = prices[0];
   if (!primary) return null;
   const raw = parseInt(primary.change.replace(/[↑↓→]/g, '')) || 0;
   const isDown = primary.change.includes('↓');
   const signed = isDown ? -raw : raw;
-  // 涨跌幅基于前一日收盘价计算（price - change = 昨收价）
-  const prevClose = parseInt(primary.price) - signed;
-  return { price: parseInt(primary.price), change: signed, changePercent: prevClose > 0 ? (signed / prevClose * 100) : 0, primaryName: primary.name };
-}
-
-
-// 将价格数据写入数据库
-async function savePricesToDb(material: string, prices: PriceItem[]): Promise<void> {
-  if (!supabaseServiceKey) return;
-  try {
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const today = new Date().toISOString().split('T')[0];
-    // 只把干净名称写入数据库，避免脏数据污染当日行情
-    const cleanRows = prices.filter(p => isCleanName(cleanScrapedName(p.name)));
-    if (cleanRows.length === 0) return;
-    const rows = cleanRows.map(p => ({
-      material,
-      name: cleanScrapedName(p.name),
-      price: parseInt(p.price),
-      change_amount: parseInt(p.change.replace(/[↑↓→]/g, '')) || 0,
-      source: p.source,
-      price_date: today,
-    }));
-    const { error } = await supabase
-      .from('material_prices')
-      .upsert(rows, { onConflict: 'material,name,price_date' });
-    if (error) console.error('[market-price] 数据库写入失败:', error);
-  } catch (err) {
-    console.error('[market-price] 数据库写入异常:', err);
-  }
+  return { price: parseInt(primary.price), change: signed, changePercent: primary.price ? (signed / parseInt(primary.price) * 100) : 0 };
 }
 
 export async function GET(request: NextRequest) {
@@ -190,46 +123,9 @@ export async function GET(request: NextRequest) {
   const mm = matchMaterial(mq);
   if (!mm) return Response.json({ success: false, error: `不支持的材质: ${mq}`, supportedMaterials: Object.keys(MATERIAL_SOURCES) });
 
-  // 优先从数据库读取今日价格
-  const forceRefresh = sp.get('refresh') === '1';
-  if (!forceRefresh) {
-    try {
-      const supabase = createClient(supabaseUrl, supabaseServiceKey);
-      const today = new Date().toISOString().split('T')[0];
-      const { data: dbPrices, error } = await supabase
-        .from('material_prices')
-        .select('*')
-        .eq('material', mm)
-        .eq('price_date', today)
-        .order('created_at', { ascending: false });
-      
-      if (!error && dbPrices && dbPrices.length > 0) {
-        const prices: PriceItem[] = dbPrices.map((row: any) => ({
-          name: row.name,
-          price: String(row.price),
-          change: row.change_amount > 0 ? `↑${row.change_amount}` : row.change_amount < 0 ? `↓${Math.abs(row.change_amount)}` : '→0',
-          source: row.source || 'lvdingjia.com',
-          unit: '元/吨',
-        }));
-        return Response.json({ 
-          success: true, 
-          material: mm, 
-          prices, 
-          cached: true,
-          fromDb: true,
-          updatedAt: dbPrices[0].created_at,
-          data: buildDataField(prices, mm)
-        });
-      }
-    } catch (err) {
-      console.error('[market-price] 数据库读取失败:', err);
-    }
-  }
-
-  // 降级到实时抓取
   const cached = priceCache.get(mm);
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-    return Response.json({ success: true, material: mm, prices: cached.data, cached: true, updatedAt: new Date(cached.timestamp).toISOString(), data: buildDataField(cached.data, mm) });
+    return Response.json({ success: true, material: mm, prices: cached.data, cached: true, updatedAt: new Date(cached.timestamp).toISOString(), data: buildDataField(cached.data) });
   }
 
   try {
@@ -242,8 +138,7 @@ export async function GET(request: NextRequest) {
 
     if (pricedData.length > 0) {
       priceCache.set(mm, { data: pricedData, timestamp: Date.now(), material: mm });
-      await savePricesToDb(mm, pricedData);  // 写入数据库
-      return Response.json({ success: true, material: mm, prices: pricedData, cached: false, updatedAt: new Date().toISOString(), data: buildDataField(pricedData, mm) });
+      return Response.json({ success: true, material: mm, prices: pricedData, cached: false, updatedAt: new Date().toISOString(), data: buildDataField(pricedData) });
     }
     return Response.json({ success: false, material: mm, prices: [], error: '未查询到价格数据' });
   } catch (error) {
