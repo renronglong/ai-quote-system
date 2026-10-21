@@ -578,6 +578,13 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           : '铝板';
         // 预埋：展开外轮廓周长（后端 flat_pattern.outline_perimeter_mm 上线后自动生效；当前解析器未给则为 undefined）
         const outlinePerimeter = fp && fp.outline_perimeter_mm > 0 ? Math.round(fp.outline_perimeter_mm * 100) / 100 : undefined;
+        // 含孔下料总路径（业主激光口径：cut_total_path_mm 已含孔，不可再叠加孔周长）
+        // 后端给的是两个分开的量：外轮廓 outline_perimeter_mm + 孔周长 hole_perimeter_mm
+        // 缺了这一步的话，激光费只能退回 2×(长+宽) 的矩形估算（0409 实测：1229mm vs 真实 1382mm）
+        const holePerimeter = fp && fp.hole_perimeter_mm > 0 ? Math.round(fp.hole_perimeter_mm * 100) / 100 : 0;
+        const cutTotalPath = outlinePerimeter && (outlinePerimeter + holePerimeter) > 0
+          ? Math.round((outlinePerimeter + holePerimeter) * 100) / 100
+          : undefined;
         const recogData: Record<string, any> = {
           confidence: null,
           product_type: productType === '板材' ? 'stamping' : productType,
@@ -594,6 +601,10 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           thickness_mm: thickness,
           // 受管键：后端给出 outline_perimeter_mm 后自动流入报价页，无需再改前端
           unfold_perimeter_mm: outlinePerimeter,
+          // 含孔下料总路径 = 外轮廓 + 孔周长（激光切割费按这个算，业主 2026-10-21 定案）
+          cut_total_path_mm: cutTotalPath,
+          cut_total_length_mm: cutTotalPath,
+          cut_total_length: cutTotalPath,
           hole_count: totalHoles,
           // 标题栏里的零件名/图号带上，零件列表与报价单才有名字（原来只靠文件名）
           product_name: dxfJson.titleblock?.part_name || '',
