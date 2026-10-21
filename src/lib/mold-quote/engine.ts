@@ -148,7 +148,7 @@ function calcForMaterial(
 ): {
   materialParams: MaterialParam;
   layout: LayoutResult;
-  frameFee: number; sliderFee: number; sliderMachining: number; coreSteel: number; cavityProcess: number; runnerFee: number;
+  frameFee: number; sliderFee: number; sliderSteel: number; sliderMachining: number; coreSteel: number; cavityProcess: number; runnerFee: number;
   subtotal: number; total: number;
   warnings: string[];
 } {
@@ -211,7 +211,7 @@ function calcForMaterial(
   return {
     materialParams: mat,
     layout,
-    frameFee, sliderFee, sliderMachining, coreSteel, cavityProcess, runnerFee,
+    frameFee, sliderFee, sliderSteel, sliderMachining, coreSteel, cavityProcess, runnerFee,
     subtotal, total,
     warnings,
   };
@@ -247,7 +247,7 @@ export function calcMoldQuote(rawInput: Partial<MoldQuoteInput>): MoldQuoteResul
     },
     {
       item: '② 滑块费',
-      calculation: `${main.layout.sliderCount}个 × (滑块钢料 ¥${round2(main.sliderFee / Math.max(main.layout.sliderCount, 1)).toLocaleString()} + 加工 ¥${round2(main.sliderMachining).toLocaleString()} + 标准件 ¥${SLIDER_STD_PART})`,
+      calculation: `${main.layout.sliderCount}个 × (滑块钢料 ¥${round2(main.sliderSteel).toLocaleString()} + 加工 ¥${round2(main.sliderMachining).toLocaleString()} + 标准件 ¥${SLIDER_STD_PART})`,
       amount: round2(main.sliderFee),
     },
     {
@@ -257,8 +257,7 @@ export function calcMoldQuote(rawInput: Partial<MoldQuoteInput>): MoldQuoteResul
     },
     {
       item: '④ 型腔加工',
-      calculation: `¥${main.materialParams.cavityFee}×${cavityMultiplierLabel(input)} × ${main.layout.cavityCount}穴`,
-      amount: round2(main.cavityProcess),
+      calculation: `¥${main.materialParams.cavityFee}×${cavityMultiplierLabel(input)} × ${main.layout.cavityCount}穴`,      amount: round2(main.cavityProcess),
     },
     {
       item: '⑤ 浇道费',
@@ -305,5 +304,5 @@ export function calcMoldQuote(rawInput: Partial<MoldQuoteInput>): MoldQuoteResul
 
 function cavityMultiplierLabel(input: MoldQuoteInput): string {
   const projArea = (input.L * input.W) / 100;
-  return projArea <= 50 ? '×1' : projArea <= 150 ? '×1.5' : projArea <= 400 ? '×2' : '×3';
+  return projArea <= 50 ? '1' : projArea <= 150 ? '1.5' : projArea <= 400 ? '2' : '3';
 }

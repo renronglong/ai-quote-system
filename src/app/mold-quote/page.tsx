@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { LogOut } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
@@ -45,11 +45,9 @@ export default function MoldQuotePage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // 模架规格随产品尺寸变化自动推荐（未手改时）
-  useEffect(() => {
-    const rec = recommendMoldFrame(form.L, form.W).spec;
-    setMoldFrame(rec);
-  }, [form.L, form.W]);
+  // 模架默认 2535（与 08-27 基准一致）；尺寸变化不自动覆盖用户选择，
+  // 「按尺寸推荐」按钮为显式推荐动作
+  const recSpec = useMemo(() => recommendMoldFrame(form.L, form.W).spec, [form.L, form.W]);
 
   // ---- 实时计算 ----
   const result = useMemo(() => {
@@ -237,17 +235,22 @@ export default function MoldQuotePage() {
               </div>
               <div>
                 <Label>模架规格（12规格查表）</Label>
-                <Select value={moldFrame} onValueChange={(v) => { setMoldFrame(v); setSaved(false); }}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {MOLD_FRAMES.map((f) => (
-                      <SelectItem key={f.spec} value={f.spec}>
-                        {f.spec}（{f.size} · {f.weightKg}kg）
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-[11px] text-gray-400 mt-1">按 L×W 自动推荐，可手改</p>
+                <div className="flex gap-2">
+                  <Select value={moldFrame} onValueChange={(v) => { setMoldFrame(v); setSaved(false); }}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {MOLD_FRAMES.map((f) => (
+                        <SelectItem key={f.spec} value={f.spec}>
+                          {f.spec}（{f.size} · {f.weightKg}kg）
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button variant="outline" type="button" onClick={() => { setMoldFrame(recSpec); setSaved(false); }}>
+                    按尺寸推荐
+                  </Button>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1">默认 2535（与 08-27 基准一致）；推荐规格 {recSpec}，可手改</p>
               </div>
               <div className="col-span-2">
                 <Label>市场钢板价（元/kg · 模架费联动）</Label>
