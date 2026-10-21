@@ -568,6 +568,14 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
         const holes = dxfJson.hole_groups || [];
         const totalHoles = dxfJson.hole_count || holes.reduce((s: number, h: any) => s + h.count, 0);
         const holeDesc = holes.map((h: any) => `Ø${h.diameter_mm}×${h.count}`).join(' + ');
+        // 材料：后端给了牌号（如 5052 / 3003 / 304），这里按牌号归一到板材合法类目
+        // （原来是硬编码「铝板」——图纸是不锈钢/冷轧板时会被按铝报价，材料单价直接错档）
+        const rawMat = String(dxfJson.material_grade || dxfJson.classification?.material || '');
+        const normCat = /不锈钢|304|201|316|430/i.test(rawMat) ? '不锈钢'
+          : /镀锌|白铁|SGCC/i.test(rawMat) ? '镀锌板'
+          : /冷轧|SPCC/i.test(rawMat) ? '冷轧板'
+          : /(^|[^合])钢|Q235|Q195|A3/i.test(rawMat) ? '钢板'
+          : '铝板';
         // 预埋：展开外轮廓周长（后端 flat_pattern.outline_perimeter_mm 上线后自动生效；当前解析器未给则为 undefined）
         const outlinePerimeter = fp && fp.outline_perimeter_mm > 0 ? Math.round(fp.outline_perimeter_mm * 100) / 100 : undefined;
         const recogData: Record<string, any> = {
@@ -575,7 +583,8 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           product_type: productType === '板材' ? 'stamping' : productType,
           // DXF 展开尺寸即板材，置位确保下游 isSheetPart 按板材路由（否则 'stamping' 会被误判/跳过）
           is_sheet_metal: true,
-          material_category: '铝板',
+          material_category: normCat,
+          material_grade: dxfJson.material_grade || '',
           unfold_length: unfoldL,
           unfold_width: unfoldW,
           // parts 页 buildPartPayload 只读 _mm 后缀键，补发打通链路
@@ -586,6 +595,9 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           // 受管键：后端给出 outline_perimeter_mm 后自动流入报价页，无需再改前端
           unfold_perimeter_mm: outlinePerimeter,
           hole_count: totalHoles,
+          // 标题栏里的零件名/图号带上，零件列表与报价单才有名字（原来只靠文件名）
+          product_name: dxfJson.titleblock?.part_name || '',
+          product_code: dxfJson.titleblock?.drawing_number || '',
           notes: `${extLabel}解析 | 展开${unfoldL}×${unfoldW}mm（flat_pattern 权威值） | 厚度${thickness ?? '未知'}mm | 孔: ${holeDesc || '无'} | ⚠️仅用于报价估算，不可作为开模依据`,
         };
         setRecogResult(recogData);
