@@ -1,4 +1,5 @@
 import { getAluminumPrice } from '@/lib/pricing/aluminum-price';
+import { calcMoldQuote } from '@/lib/mold-quote/engine';
 import { NextRequest } from 'next/server';
 
 // ============================================================
@@ -1650,6 +1651,32 @@ function calcSheetMetal(
 // 主计算引擎 — 压铸铝
 // ============================================================
 
+/**
+ * 按产品 L/W/H + 材质，用压铸/注塑模具报价引擎核算一次性模具费。
+ * 模架默认 2535（与 08-27 基准一致）、市场钢板价默认 ¥7/kg（随行情可调）。
+ * 尺寸不全时返回 null（由调用方回退默认值）。
+ */
+function calcCastingMoldFee(
+  req: QuoteRequest,
+  material: '铝压铸' | '锌合金压铸' | '塑料注塑',
+): number | null {
+  const L = req.dimensions?.length_mm || 0;
+  const W = req.dimensions?.width_mm || 0;
+  const H = req.dimensions?.height_mm || 0;
+  if (L <= 0 || W <= 0 || H <= 0) return null;
+  const r = calcMoldQuote({
+    L, W, H,
+    netWeightG: req.dimensions?.net_weight_g || 0,
+    removalVolume: 0,
+    cncCycleMin: 0,
+    sideCount: 2,
+    material,
+    moldFrame: '2535',
+    steelPrice: 7,
+  });
+  return r.success ? Math.round(r.total) : null;
+}
+
 function calcDieCasting(
   req: QuoteRequest,
   aluminumPrice: number,
@@ -1671,9 +1698,10 @@ function calcDieCasting(
   let accumulated = mat.cost + proc.cost;
   accumulated *= (1 + (rules.die_casting_rates?.['压铸铝ADC12_A380']?.loss_rate || 0.05));
 
-  // 3. 模具费（单独列出，不计入单价）
-  let moldTotal = req.mold_cost && req.mold_cost > 0 ? req.mold_cost : 20000;
-  notes.push(`压铸模具费: ${moldTotal}元（一次性，不计入单件价格）`);
+  // 3. 模具费（单独列出，不计入单价；按产品尺寸×材质自动核算，可去模具报价页精算）
+  const moldAuto = calcCastingMoldFee(req, '铝压铸');
+  let moldTotal = req.mold_cost && req.mold_cost > 0 ? req.mold_cost : (moldAuto ?? 20000);
+  notes.push(`压铸模具费: ${moldTotal}元（一次性，不计入单件价格${moldAuto ? '；按L×W×H×H13自动核算，模架2535，钢板价¥7/kg' : ''}）`);
   breakdown['mold'] = {
     formula: '模具费（一次性，不分摊）',
     detail: `模具费: ${moldTotal}元（单独列出）`,
@@ -1767,7 +1795,7 @@ function calcZincAlloy(
   accumulated *= (1 + (rules.die_casting_rates?.['锌合金压铸']?.loss_rate || 0.06));
 
   // 3. 模具费（单独列出，不计入单价）
-  let moldTotal = req.mold_cost && req.mold_cost > 0 ? req.mold_cost : 25000;
+  let moldTotal = req.mold_cost && req.mold_cost > 0 ? req.mold_cost : (calcCastingMoldFee(req, '锌合金压铸') ?? 25000);
   notes.push(`锌合金模具费: ${moldTotal}元（一次性，不计入单件价格）`);
   breakdown['mold'] = {
     formula: '模具费（一次性，不分摊）',
@@ -1864,7 +1892,7 @@ function calcInjection(
   accumulated *= (1 + lossRate);
 
   // 3. 模具费（单独列出，不计入单价）
-  let moldTotal = req.mold_cost && req.mold_cost > 0 ? req.mold_cost : 18000;
+  let moldTotal = req.mold_cost && req.mold_cost > 0 ? req.mold_cost : (calcCastingMoldFee(req, '塑料注塑') ?? 18000);
   notes.push(`注塑模具费: ${moldTotal}元（一次性，不计入单件价格）`);
   breakdown['mold'] = {
     formula: '模具费（一次性，不分摊）',
