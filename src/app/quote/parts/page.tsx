@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, FileText, Layers, CheckCircle2, Upload,
+  ArrowLeft, FileText, Layers, CheckCircle2, Upload, Pencil,
   ChevronRight, ArrowRight, Package, Ruler, Box, Info, AlertCircle, Loader2, X, Zap
 } from 'lucide-react';
 import TopNavLinks from '@/components/TopNav';
@@ -275,6 +275,27 @@ export default function QuotePartsPage() {
     navigateToQuote(idx, effectiveMaterial);
   };
 
+  // 改材质：已选过材料的零件，点「改材质」按钮重新弹选择弹窗（卡片点击仍是进报价页，两者不冲突）。
+  // 若该零件此前选过大类›类别且该类别有子件，直接钻取到子件层，少点一次。
+  const openChangeMaterial = (idx: number) => {
+    if (!payload) return;
+    const part = payload.products[idx];
+    if (part?._failed) return;
+    const ptKey = String(part._material_pt || '');
+    const catKey = String(part._material_cat || '');
+    if (ptKey && catKey) {
+      const g = MATERIAL_GROUPS.find(gr => gr.ptKey === ptKey);
+      const c = g?.cats.find(ct => ct.key === catKey);
+      if (g && c && c.children && c.children.length) {
+        setMaterialModalCat({ ptKey: g.ptKey, ptLabel: g.ptLabel, key: c.key, label: c.label, children: c.children });
+        setMaterialModalIdx(idx);
+        return;
+      }
+    }
+    setMaterialModalCat(null);
+    setMaterialModalIdx(idx);
+  };
+
   // partOverride：弹窗里刚写入 _material_* 的新零件对象（setPayload 是异步的，
   // 直接用 payload 会拿到更新前的旧对象 ⇒ 选的大类/类别/子件带不进报价页）
   const navigateToQuote = (idx: number, material: string, partOverride?: PartData) => {
@@ -285,13 +306,17 @@ export default function QuotePartsPage() {
     router.push('/quote?from=parts');
   };
 
-  // 选中材料：material=展示用牌号；ptKey/catKey/child 用于把「大类/类别/子件」原样带进报价页
+  // 选中材料：material=展示用牌号；ptKey/catKey/child 用于把「大类/类别/子件」原样带进报价页。
+  // 改材质模式（零件此前已有材料）：选择后就地生效、留在本页；若已报价过则作废绿色✓，需重新报价。
+  // 首次选材料模式（原行为）：选择后写入并直接跳转报价页。
   const handleModalMaterialSelect = (material: string, ptKey?: string, catKey?: string, childVal?: string) => {
     if (materialModalIdx === null || !payload) return;
-    // 更新该零件的材料并跳转
+    const targetIdx = materialModalIdx;
+    const hadMaterial = String(payload.products[targetIdx]?.material_grade || '').trim() !== '';
+    // 更新该零件的材料
     const updatedProducts = [...payload.products];
-    updatedProducts[materialModalIdx] = {
-      ...updatedProducts[materialModalIdx],
+    updatedProducts[targetIdx] = {
+      ...updatedProducts[targetIdx],
       material_grade: material,
       _material_pt: ptKey || '',
       _material_cat: catKey || '',
@@ -302,7 +327,22 @@ export default function QuotePartsPage() {
     setPayload(updatedPayload);
     setMaterialModalIdx(null);
     setMaterialModalCat(null);
-    navigateToQuote(materialModalIdx, material, updatedProducts[materialModalIdx]);
+    if (hadMaterial) {
+      // 材质已变更：作废旧的「已报价」标记（旧报价是按旧材质算的），状态与会话存储同步清除
+      setQuotedParts(prev => {
+        if (!prev.has(targetIdx)) return prev;
+        const next = new Set(prev);
+        next.delete(targetIdx);
+        try {
+          const existing = sessionStorage.getItem('ai_quote_batch_quoted');
+          const arr: number[] = existing ? JSON.parse(existing) : [];
+          sessionStorage.setItem('ai_quote_batch_quoted', JSON.stringify(arr.filter((i: number) => i !== targetIdx)));
+        } catch (_e) { /* ignore */ }
+        return next;
+      });
+      return;
+    }
+    navigateToQuote(targetIdx, material, updatedProducts[targetIdx]);
   };
 
   // 批量生成报价：点击"立即生成"先弹出零件明细，用户手工勾选要生成的零件
@@ -616,10 +656,15 @@ export default function QuotePartsPage() {
               const isFailed = p._failed;
 
               return (
-                <button
+                <div
                   key={idx}
-                  onClick={() => handlePartClick(idx)}
-                  disabled={isFailed}
+                  role="button"
+                  tabIndex={isFailed ? -1 : 0}
+                  onClick={() => { if (!isFailed) handlePartClick(idx); }}
+                  onKeyDown={(e) => {
+                    if (isFailed) return;
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handlePartClick(idx); }
+                  }}
                   className={`text-left bg-white rounded-xl border p-4 shadow-sm transition-all group
                     ${isFailed ? 'opacity-50 cursor-not-allowed border-red-200 bg-red-50' :
                       isQuoted ? 'border-emerald-200 hover:shadow-md hover:border-emerald-300' :
@@ -680,12 +725,33 @@ export default function QuotePartsPage() {
                             进入报价 <ChevronRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
                           </span>
                         )}
-                        {p.material_grade ? <span className="text-slate-500 truncate ml-2 text-xs">材质: {p.material_grade}</span>
-                          : <span className="text-amber-400 truncate ml-2 text-xs">材质: 待选择</span>}
+                        {p.material_grade ? (
+                          <span className="flex items-center gap-1 ml-2 min-w-0 shrink-0">
+                            <span className="text-slate-500 truncate text-xs">材质: {p.material_grade}</span>
+                            <button
+                              type="button"
+                              aria-label={`修改 ${getPartName(p, idx)} 的材质`}
+                              title="修改材质"
+                              onClick={(e) => { e.stopPropagation(); openChangeMaterial(idx); }}
+                              className="shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            aria-label={`为 ${getPartName(p, idx)} 选择材质`}
+                            onClick={(e) => { e.stopPropagation(); openChangeMaterial(idx); }}
+                            className="shrink-0 inline-flex items-center gap-1 ml-2 text-amber-500 hover:text-amber-600 text-xs font-medium transition"
+                          >
+                            材质: 待选择 <Pencil size={11} />
+                          </button>
+                        )}
                       </div>
                     </>
                   )}
-                </button>
+                </div>
               );
             })}
           </div>
@@ -694,16 +760,21 @@ export default function QuotePartsPage() {
           {materialModalIdx !== null && payload && (() => {
             const mp = payload.products[materialModalIdx];
             const mpName = getPartName(mp, materialModalIdx);
+            const isChangeMode = String(mp?.material_grade || '').trim() !== '';
             return (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setMaterialModalIdx(null); setMaterialModalCat(null); }}>
                 <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-base font-semibold text-slate-800">选择材料</h3>
+                    <h3 className="text-base font-semibold text-slate-800">{isChangeMode ? '修改材料' : '选择材料'}</h3>
                     <button onClick={() => { setMaterialModalIdx(null); setMaterialModalCat(null); }} className="text-slate-400 hover:text-slate-600">
                       <X size={20} />
                     </button>
                   </div>
-                  <p className="text-sm text-slate-500 mb-3">零件 <b>{mpName}</b> 需要选择材料才能报价</p>
+                  <p className="text-sm text-slate-500 mb-3">
+                    {isChangeMode
+                      ? <>零件 <b>{mpName}</b> 当前材质 <b>{mp.material_grade}</b>，点击选择新材质后立即生效</>
+                      : <>零件 <b>{mpName}</b> 需要选择材料才能报价</>}
+                  </p>
                   {materialModalCat ? (() => {
                     const c = materialModalCat;
                     return (
