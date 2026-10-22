@@ -70,15 +70,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: '请先登录后再查看客户' }, { status: 403 });
     }
     const isAdmin = !!adminPhone;
-    let ownerUserId: string | null = null;
-    if (!isAdmin) {
-      const { data: u } = await getSupabase()
-        .from('users')
-        .select('id')
-        .eq('phone', userPhone)
-        .maybeSingle();
-      ownerUserId = u?.id ?? null;
-    }
+    // 归属账号（管理员也要按自己的 id 过滤：员工导入的客户老板同样看不到 —— 业主 2026-10-22）
+    const { data: me } = await getSupabase()
+      .from('users')
+      .select('id')
+      .eq('phone', userPhone)
+      .maybeSingle();
+    const myUserId: string | null = me?.id ?? null;
 
     const { searchParams } = new URL(request.url);
     const keyword = searchParams.get('keyword') || '';
@@ -93,8 +91,13 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false });
 
     if (!isAdmin) {
-      // 员工：只能读自己导入的客户（ownerUserId 为空则一条都读不到，不泄露共享库）
-      query = query.eq('user_id', ownerUserId);
+      // 员工：只能读自己导入的客户（myUserId 为空则一条都读不到，不泄露共享库）
+      query = query.eq('user_id', myUserId);
+    } else if (myUserId) {
+      // 管理员：共享客户库（user_id 为空的历史数据）+ 本人导入的；员工导入的不出现在老板列表里
+      query = query.or(`user_id.is.null,user_id.eq.${myUserId}`);
+    } else {
+      query = query.is('user_id', null);
     }
 
     if (keyword.trim()) {
