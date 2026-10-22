@@ -10,7 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Download, Trash2, FileText, History, CheckCircle2, FileSpreadsheet, Percent, Pencil, Upload, AlertCircle, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { getAdminToken, getUserToken } from '@/lib/auth-context';
+import { getAdminToken } from '@/lib/auth-context';
 
 // 有效数字取整：单价3位，模具费/起订量2位
 function sigfig(n: number, digits: number): number {
@@ -172,8 +172,9 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
   const [importRows, setImportRows] = useState<any[]>([]);
   const [importFile, setImportFile] = useState<string>('');
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{ success: number; fail: number; errors: string[] } | null>(null);
+  const [importResult, setImportResult] = useState<{ success: number; fail: number; errors: string[]; local?: boolean } | null>(null);
   const [importError, setImportError] = useState('');
+  const [importIsAdmin, setImportIsAdmin] = useState(false); // 打开弹窗时判定（管理员→服务端共享库；员工→仅本机）
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const reload = async () => {
@@ -390,8 +391,6 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
   // 客户名称/统一社会信用代码/地址/电话/开户行名称/银行账号/电子邮箱/客户分类/简码/联系人）
   // 兼容早期 7 列模板（客户编号/公司名称/联系人/电话/地址/邮箱/备注）。
   // 管理员 / 员工任一凭证即可导入（业主 2026-10-22：开放给员工账号，数据按账号隔离）
-  const [tokenReady, setTokenReady] = useState(false);
-  useEffect(() => { setTokenReady(!!(getAdminToken() || getUserToken())); }, []);
 
   /** 归一化列名后按别名取单元格值（空返回 ''） */
   const pickByAlias = (obj: Record<string, any>, aliases: string[]): string => {
@@ -486,47 +485,55 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
     reader.readAsArrayBuffer(file);
   };
 
+  /** 把解析出的客户写入本机客户档案（导出报价单的客户下拉读 localStorage，按浏览器/账号隔离） */
+  const writeLocalCustomers = (): number => {
+    const KEY = 'gyparts_customer_profiles';
+    const list = JSON.parse(localStorage.getItem(KEY) || '[]');
+    for (const it of importRows) {
+      if (!it?.company_name) continue;
+      const rec = {
+        name: String(it.company_name),
+        contact: String(it.contact_name || ''),
+        phone: String(it.phone || ''),
+        address: String(it.address || ''),
+        qq: '',
+      };
+      const i = list.findIndex((x: any) => x.name === rec.name);
+      if (i >= 0) list[i] = { ...list[i], ...rec }; else list.unshift(rec);
+    }
+    localStorage.setItem(KEY, JSON.stringify(list.slice(0, 200)));
+    return importRows.length;
+  };
+
   const runImport = async () => {
     if (!importRows.length) return;
     setImporting(true);
     setImportError('');
     setImportResult(null);
     try {
-      const res = await fetch('/api/customers/batch-upload', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-admin-token': getAdminToken() || '',
-          'x-user-token': getUserToken() || '',
-        },
-        body: JSON.stringify({ items: importRows }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setImportError(data?.error || '导入失败');
-        return;
-      }
-      const d = data.data || {};
-      setImportResult({ success: d.success_count || 0, fail: d.fail_count || 0, errors: d.errors || [] });
-      // 同步到本机客户档案（导出报价单的客户下拉读 localStorage，天然按账号/浏览器隔离）
-      if ((d.success_count || 0) > 0) {
-        try {
-          const KEY = 'gyparts_customer_profiles';
-          const list = JSON.parse(localStorage.getItem(KEY) || '[]');
-          for (const it of importRows) {
-            if (!it?.company_name) continue;
-            const rec = {
-              name: String(it.company_name),
-              contact: String(it.contact_name || ''),
-              phone: String(it.phone || ''),
-              address: String(it.address || ''),
-              qq: '',
-            };
-            const i = list.findIndex((x: any) => x.name === rec.name);
-            if (i >= 0) list[i] = { ...list[i], ...rec }; else list.unshift(rec);
-          }
-          localStorage.setItem(KEY, JSON.stringify(list.slice(0, 50)));
-        } catch { /* ignore */ }
+      if (importIsAdmin) {
+        // 管理员：写入服务端共享客户库，并同步本机
+        const res = await fetch('/api/customers/batch-upload', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-admin-token': getAdminToken() || '',
+          },
+          body: JSON.stringify({ items: importRows }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          setImportError(data?.error || '导入失败');
+          return;
+        }
+        const d = data.data || {};
+        setImportResult({ success: d.success_count || 0, fail: d.fail_count || 0, errors: d.errors || [], local: false });
+        if ((d.success_count || 0) > 0) writeLocalCustomers();
+      } else {
+        // 员工：仅写本机（customers.user_id 外键指向 auth.users 与自建用户表不通，无法按账号落服务端；
+        // 本机存储天然按账号隔离，导出报价单下拉直接可用）
+        const n = writeLocalCustomers();
+        setImportResult({ success: n, fail: 0, errors: [], local: true });
       }
     } catch (err: any) {
       setImportError('导入失败：' + (err?.message || '请重试'));
@@ -583,7 +590,7 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
                   variant="outline"
                   size="sm"
                   className="h-7 px-2.5 gap-1.5 text-xs"
-                  onClick={() => { resetImport(); setImportOpen(true); }}
+                  onClick={() => { resetImport(); setImportIsAdmin(!!getAdminToken()); setImportOpen(true); }}
                 >
                   <Upload className="w-3.5 h-3.5" />
                   导入客户
@@ -674,105 +681,125 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
 
         {/* 批量导入客户弹窗（业主 2026-10-22） */}
         <Dialog open={importOpen} onOpenChange={(o) => { if (!importing) { setImportOpen(o); if (!o) resetImport(); } }}>
-          <DialogContent className="sm:max-w-[520px]">
+          <DialogContent className="sm:max-w-[560px]">
             <DialogHeader>
-              <DialogTitle>批量导入客户</DialogTitle>
+              <DialogTitle className="flex items-center gap-2">
+                <Upload className="w-4 h-4 text-blue-600" /> 批量导入客户
+              </DialogTitle>
             </DialogHeader>
-            <div className="space-y-3 py-1">
+
+            {/* 账号模式说明 */}
+            <div className={`flex items-start gap-2 px-3 py-2 rounded-lg text-[11px] leading-relaxed ${importIsAdmin ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}`}>
+              {importIsAdmin
+                ? <><CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" /> 管理员账号：导入的客户进入共享客户库（后台「客户管理」可见），并同步到本机供导出报价单使用。</>
+                : <><CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" /> 员工账号：导入的客户仅保存在本机，供你本人导出报价单使用，他人（含管理员）不可见。</>}
+            </div>
+
+            <div className="space-y-3">
               {/* 1. 下载模板 */}
-              <div className="p-3 bg-gray-50 rounded-lg">
-                <div className="text-xs font-medium text-gray-700 mb-1.5">1. 下载模板</div>
-                <a
-                  href="/customer_import_template.xlsx"
-                  download="客户信息导入模板.xlsx"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border border-gray-200 bg-white text-blue-600 hover:bg-blue-50 transition-colors"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                  下载 Excel 模板
-                </a>
-                <div className="text-[11px] text-gray-500 mt-1.5 leading-relaxed">
-                  表头：客户名称 / 统一社会信用代码·纳税人识别号 / 地址 / 电话 / 开户行名称 / 银行账号 / 电子邮箱 / 客户分类 / 简码 / 联系人。
-                  仅「客户名称」必填；重复导入按「简码/客户编号」更新，不产生重复记录。
+              <div className="flex items-start gap-3">
+                <span className="shrink-0 w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center mt-0.5">1</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium text-gray-700 mb-1.5">下载模板</div>
+                  <a
+                    href="/customer_import_template.xlsx"
+                    download="客户信息导入模板.xlsx"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-gray-200 bg-white text-blue-600 hover:bg-blue-50 hover:border-blue-300 transition-colors"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    下载 Excel 模板
+                  </a>
+                  <div className="text-[11px] text-gray-400 mt-1 leading-relaxed">
+                    列：客户名称 · 信用代码/税号 · 地址 · 电话 · 开户行 · 银行账号 · 邮箱 · 客户分类 · 简码 · 联系人（仅客户名称必填）
+                  </div>
                 </div>
               </div>
 
               {/* 2. 选择文件 */}
-              <div>
-                <div className="text-xs font-medium text-gray-700 mb-1.5">2. 选择填好的 Excel</div>
-                <div
-                  className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-blue-400 hover:bg-gray-50 transition-colors"
-                  onClick={() => importInputRef.current?.click()}
-                >
-                  <input
-                    ref={importInputRef}
-                    type="file"
-                    accept=".xlsx,.xls"
-                    className="hidden"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) parseCustomerFile(f); }}
-                  />
-                  {importRows.length > 0 ? (
-                    <div className="flex flex-col items-center gap-1">
-                      <CheckCircle2 className="w-6 h-6 text-green-500" />
-                      <span className="text-sm text-gray-700">{importFile}</span>
-                      <span className="text-xs text-gray-500">已解析 {importRows.length} 条 · 点击重新选择</span>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center gap-1">
-                      <Upload className="w-6 h-6 text-gray-400" />
-                      <span className="text-sm text-gray-500">点击选择 .xlsx / .xls 文件</span>
-                    </div>
-                  )}
+              <div className="flex items-start gap-3">
+                <span className="shrink-0 w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center mt-0.5">2</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium text-gray-700 mb-1.5">选择填好的 Excel</div>
+                  <div
+                    className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
+                      importRows.length > 0 ? 'border-green-400 bg-green-50/60' : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
+                    }`}
+                    onClick={() => importInputRef.current?.click()}
+                  >
+                    <input
+                      ref={importInputRef}
+                      type="file"
+                      accept=".xlsx,.xls"
+                      className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) parseCustomerFile(f); }}
+                    />
+                    {importRows.length > 0 ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />
+                        <span className="text-sm text-gray-700 truncate max-w-[280px]">{importFile}</span>
+                        <span className="text-xs text-gray-500">已解析 {importRows.length} 条 · 点击重选</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-2">
+                        <Upload className="w-4 h-4 text-gray-400" />
+                        <span className="text-sm text-gray-500">点击选择 .xlsx / .xls 文件</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
               {/* 3. 预览 */}
               {importRows.length > 0 && (
-                <div className="max-h-[180px] overflow-y-auto border border-gray-200 rounded-lg">
-                  <table className="w-full text-[11px]">
-                    <thead className="bg-gray-50 text-gray-600">
-                      <tr>
-                        <th className="text-left px-2 py-1.5 font-medium">客户名称</th>
-                        <th className="text-left px-2 py-1.5 font-medium">联系人</th>
-                        <th className="text-left px-2 py-1.5 font-medium">电话</th>
-                        <th className="text-left px-2 py-1.5 font-medium">地址</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {importRows.slice(0, 20).map((r, i) => (
-                        <tr key={i} className="border-t border-gray-100">
-                          <td className="px-2 py-1 truncate">{r.company_name}</td>
-                          <td className="px-2 py-1 truncate">{r.contact_name || '-'}</td>
-                          <td className="px-2 py-1 truncate">{r.phone || '-'}</td>
-                          <td className="px-2 py-1 truncate">{r.address || '-'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {importRows.length > 20 && (
-                    <div className="text-[11px] text-gray-400 px-2 py-1">…共 {importRows.length} 条，以上仅预览前 20 条</div>
-                  )}
+                <div className="flex items-start gap-3">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center mt-0.5">3</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium text-gray-700 mb-1.5">确认预览</div>
+                    <div className="max-h-[190px] overflow-y-auto rounded-lg border border-gray-200">
+                      <table className="w-full text-[11px]">
+                        <thead className="bg-slate-100 text-slate-600 sticky top-0">
+                          <tr>
+                            <th className="text-left px-2.5 py-1.5 font-medium w-[26%]">客户名称</th>
+                            <th className="text-left px-2 py-1.5 font-medium w-[13%]">联系人</th>
+                            <th className="text-left px-2 py-1.5 font-medium w-[16%]">电话</th>
+                            <th className="text-left px-2 py-1.5 font-medium">地址</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importRows.slice(0, 20).map((r, i) => (
+                            <tr key={i} className={`border-t border-gray-100 ${i % 2 ? 'bg-gray-50/60' : 'bg-white'}`}>
+                              <td className="px-2.5 py-1 truncate text-gray-800" title={r.company_name}>{r.company_name}</td>
+                              <td className="px-2 py-1 truncate text-gray-600">{r.contact_name || '-'}</td>
+                              <td className="px-2 py-1 truncate text-gray-600">{r.phone || '-'}</td>
+                              <td className="px-2 py-1 truncate text-gray-500" title={r.address}>{r.address || '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {importRows.length > 20 && (
+                        <div className="text-[11px] text-gray-400 px-2.5 py-1 bg-white border-t border-gray-100">…共 {importRows.length} 条，仅预览前 20 条</div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
 
-              {!tokenReady && (
-                <div className="flex items-start gap-2 p-2.5 bg-amber-50 text-amber-700 rounded-lg text-[11px] leading-relaxed">
-                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                  未检测到登录凭证，请先登录（员工账号导入的客户只归属本人，他人看不到）。
-                </div>
-              )}
               {importError && (
-                <div className="flex items-start gap-2 p-2.5 bg-red-50 text-red-700 rounded-lg text-[11px] leading-relaxed">
-                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                  {importError}
+                <div className="flex items-start gap-2 p-2.5 bg-red-50 border border-red-100 text-red-700 rounded-lg text-xs leading-relaxed">
+                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span>{importError}</span>
                 </div>
               )}
               {importResult && (
-                <div className="p-2.5 bg-gray-50 rounded-lg text-[11px] text-gray-700 leading-relaxed">
-                  导入完成：成功 <b className="text-green-600">{importResult.success}</b> 条
-                  {importResult.fail > 0 && <>，失败 <b className="text-red-600">{importResult.fail}</b> 条</>}。
+                <div className={`p-3 rounded-lg text-xs leading-relaxed border ${importResult.fail > 0 ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'}`}>
+                  <div className="flex items-center gap-1.5 font-medium">
+                    <CheckCircle2 className="w-4 h-4" />
+                    导入完成：成功 <b>{importResult.success}</b> 条{importResult.fail > 0 && <>，失败 <b className="text-red-600">{importResult.fail}</b> 条</>}
+                  </div>
+                  {importResult.local && <div className="mt-0.5 text-[11px] opacity-80">已写入本机客户档案，导出报价单时可直接选用。</div>}
                   {importResult.errors.length > 0 && (
-                    <div className="mt-1 max-h-[100px] overflow-y-auto text-red-600">
-                      {importResult.errors.slice(0, 10).map((e, i) => <div key={i}>{e}</div>)}
+                    <div className="mt-1.5 max-h-[90px] overflow-y-auto text-red-600 space-y-0.5">
+                      {importResult.errors.slice(0, 8).map((e, i) => <div key={i}>· {e}</div>)}
                     </div>
                   )}
                 </div>
@@ -786,7 +813,7 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
                 size="sm"
                 className="gap-1.5"
                 onClick={runImport}
-                disabled={importing || importRows.length === 0 || !tokenReady || !!importResult}
+                disabled={importing || importRows.length === 0 || !!importResult}
               >
                 {importing ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> 导入中…</> : <>开始导入{importRows.length ? `（${importRows.length}）` : ''}</>}
               </Button>

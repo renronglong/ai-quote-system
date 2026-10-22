@@ -52,7 +52,7 @@ function saveCustomer(c: CustomerInfo) {
   if (!c.name) return;
   const list = loadCustomers().filter((x) => x.name !== c.name);
   list.unshift(c);
-  localStorage.setItem(CUST_KEY, JSON.stringify(list.slice(0, 50)));
+  localStorage.setItem(CUST_KEY, JSON.stringify(list.slice(0, 200)));
 }
 function nextQuoteNo(): string {
   const today = new Date();

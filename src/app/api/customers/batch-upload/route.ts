@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { verifyAdminToken, verifyUserToken } from '@/lib/admin';
+import { verifyAdminToken } from '@/lib/admin';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jotgxnhueagbsvfeepic.supabase.co';
 const supabaseServiceKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpvdGd4bmh1ZWFnYnN2ZmVlcGljIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MzUwMjEyMywiZXhwIjoyMDk5MDc4MTIzfQ.dSfa-90iQd4jVhpuvNAgqKPqBdzfXPqgYqpxpHl71Fo';
@@ -12,30 +12,17 @@ function getSupabase() {
 }
 
 /**
- * 调用方鉴权（业主 2026-10-22 定案：客户批量导入开放给员工账号）
- * - x-admin-token：管理员（手机号白名单），可写入共享客户库，行为同旧版
- * - x-user-token ：员工（任意已登录账号），导入的客户只挂在自己 user_id 下，只能看到自己的
- * 员工身份由 token 里的手机号反查 users 表取 id，**不信任请求体传的 user_id**（防冒用他人身份导入）。
+ * 服务端导入仅限管理员（写共享客户库）。
+ * 员工账号的客户由前端直接写本机（localStorage），不落服务端 —— 业主 2026-10-22：
+ * ① 各自只能看自己的；② 老板也不看员工的。本机的 user_id 列有外键指向 auth.users，
+ * 而本系统用户在自建 users 表（两套 ID 不通），无法按账号落库，故员工数据仅存本机。
  */
-async function verifyCaller(req: Request): Promise<{ ok: boolean; phone?: string; userId?: string | null; isAdmin?: boolean; error?: string }> {
+function verifyAdminOnly(req: Request): { ok: boolean; error?: string } {
   const adminTok = req.headers.get('x-admin-token') || '';
-  const userTok = req.headers.get('x-user-token') || '';
-
-  const adminPhone = verifyAdminToken(adminTok); // 白名单校验在 lib 内
-  const phone = adminPhone || verifyUserToken(userTok);
-  if (!phone) {
-    return { ok: false, error: adminTok || userTok ? '凭证无效或已过期，请重新登录' : '请先登录后再导入' };
+  if (!verifyAdminToken(adminTok)) {
+    return { ok: false, error: '员工账号的客户仅保存在本机，无需上传；共享客户库仅管理员可写入' };
   }
-
-  // 反查 users.id，作为数据归属（user_id）
-  const supabase = getSupabase();
-  const { data: u } = await supabase
-    .from('users')
-    .select('id')
-    .eq('phone', phone)
-    .maybeSingle();
-
-  return { ok: true, phone, userId: u?.id ?? null, isAdmin: !!adminPhone };
+  return { ok: true };
 }
 
 // Generate a unique customer code: KH + 6-digit sequential number
@@ -61,12 +48,10 @@ async function generateCustomerCode(supabase: ReturnType<typeof getSupabase>, of
 
 export async function POST(request: Request) {
   try {
-    const caller = await verifyCaller(request);
-    if (!caller.ok) {
-      return NextResponse.json({ error: caller.error }, { status: 403 });
+    const adminOk = verifyAdminOnly(request);
+    if (!adminOk.ok) {
+      return NextResponse.json({ error: adminOk.error }, { status: 403 });
     }
-    const isAdmin = !!caller.isAdmin;
-    const ownerUserId = caller.userId ?? null;
 
     const body = await request.json();
     const items: any[] = body.items;
@@ -101,10 +86,8 @@ export async function POST(request: Request) {
       const email = item.email?.trim() || null;
       const remarks = item.remarks?.trim() || null;
 
-      // 员工导入：不采用模板里的「简码/客户编号」当 customer_code
-      // （该列全局唯一，两个员工用了同一个简码会互相撞车），改为自动生成 KH######，
-      // 去重按 (user_id + company_name)，重复导入是更新本人那条，不会新增重复记录。
-      let customerCode = isAdmin ? (item.customer_code?.trim() || '') : '';
+      // 模板里的「简码/客户编号」可作 customer_code（全局唯一，重复导入按编号更新，不产生重复记录）
+      let customerCode = item.customer_code?.trim() || '';
 
       // If no customer_code provided, auto-generate one
       if (!customerCode) {
@@ -120,29 +103,16 @@ export async function POST(request: Request) {
         address: address,
         email: email,
         remarks: remarks,
-        // 归属：员工导入挂自己 user_id（RLS「users read own」保证只能看自己的）；管理员导入为共享客户库
-        user_id: ownerUserId,
+        // 注意：user_id 列外键指向 auth.users（与本系统自建 users 表不通），不可写入，保持 null = 共享库
         updated_at: new Date().toISOString(),
       };
 
-      // 查询已存在记录：管理员按 customer_code（全局唯一）；员工按 (user_id + company_name)
-      let existing: any = null;
-      if (isAdmin) {
-        const r = await supabase
-          .from('customers')
-          .select('id')
-          .eq('customer_code', customerCode)
-          .maybeSingle();
-        existing = r.data;
-      } else if (ownerUserId) {
-        const r = await supabase
-          .from('customers')
-          .select('id')
-          .eq('user_id', ownerUserId)
-          .eq('company_name', companyName)
-          .maybeSingle();
-        existing = r.data;
-      }
+      // Upsert by customer_code (unique constraint)
+      const { data: existing } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('customer_code', customerCode)
+        .maybeSingle();
 
       if (existing) {
         // Update existing record
@@ -171,12 +141,17 @@ export async function POST(request: Request) {
       }
     }
 
+    // 同类错误合并（40 行同一个外键错会刷成一面红墙，合并成「xx错误 × 40」）
+    const errCount: Record<string, number> = {};
+    errors.forEach(e => { errCount[e] = (errCount[e] || 0) + 1; });
+    const mergedErrors = Object.entries(errCount).map(([msg, n]) => (n > 1 ? `${msg}（共 ${n} 行）` : msg));
+
     return NextResponse.json({
       success: true,
       data: {
         success_count: successCount,
         fail_count: failCount,
-        errors,
+        errors: mergedErrors,
       },
     });
   } catch (err: any) {
