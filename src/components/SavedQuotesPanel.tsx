@@ -8,9 +8,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Download, Trash2, FileText, History, CheckCircle2, FileSpreadsheet, Percent, Pencil, Upload, AlertCircle, Loader2 } from 'lucide-react';
+import { Download, Trash2, FileText, History, CheckCircle2, FileSpreadsheet, Percent, Pencil, Upload, AlertCircle, Loader2, Lock } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { getAdminToken } from '@/lib/auth-context';
+
 
 // 有效数字取整：单价3位，模具费/起订量2位
 function sigfig(n: number, digits: number): number {
@@ -172,9 +172,8 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
   const [importRows, setImportRows] = useState<any[]>([]);
   const [importFile, setImportFile] = useState<string>('');
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{ success: number; fail: number; errors: string[]; local?: boolean } | null>(null);
+  const [importResult, setImportResult] = useState<{ success: number; fail: number; errors: string[] } | null>(null);
   const [importError, setImportError] = useState('');
-  const [importIsAdmin, setImportIsAdmin] = useState(false); // 打开弹窗时判定（管理员→服务端共享库；员工→仅本机）
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const reload = async () => {
@@ -511,30 +510,11 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
     setImportError('');
     setImportResult(null);
     try {
-      if (importIsAdmin) {
-        // 管理员：写入服务端共享客户库，并同步本机
-        const res = await fetch('/api/customers/batch-upload', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-admin-token': getAdminToken() || '',
-          },
-          body: JSON.stringify({ items: importRows }),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-          setImportError(data?.error || '导入失败');
-          return;
-        }
-        const d = data.data || {};
-        setImportResult({ success: d.success_count || 0, fail: d.fail_count || 0, errors: d.errors || [], local: false });
-        if ((d.success_count || 0) > 0) writeLocalCustomers();
-      } else {
-        // 员工：仅写本机（customers.user_id 外键指向 auth.users 与自建用户表不通，无法按账号落服务端；
-        // 本机存储天然按账号隔离，导出报价单下拉直接可用）
-        const n = writeLocalCustomers();
-        setImportResult({ success: n, fail: 0, errors: [], local: true });
-      }
+      // 统一本机导入（业主 2026-10-22：保密要求 —— 客户信息仅本人可见，任何账号都无法查看他人的）
+      // customers 表 user_id 外键指向 auth.users，与自建用户表不通，服务端无法按账号归属存储；
+      // 本机客户档案（gyparts_customer_profiles）正是导出报价单客户下拉的数据源，天然按账号/浏览器隔离。
+      const n = writeLocalCustomers();
+      setImportResult({ success: n, fail: 0, errors: [] });
     } catch (err: any) {
       setImportError('导入失败：' + (err?.message || '请重试'));
     } finally {
@@ -590,7 +570,7 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
                   variant="outline"
                   size="sm"
                   className="h-7 px-2.5 gap-1.5 text-xs"
-                  onClick={() => { resetImport(); setImportIsAdmin(!!getAdminToken()); setImportOpen(true); }}
+                  onClick={() => { resetImport(); setImportOpen(true); }}
                 >
                   <Upload className="w-3.5 h-3.5" />
                   导入客户
@@ -681,18 +661,20 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
 
         {/* 批量导入客户弹窗（业主 2026-10-22） */}
         <Dialog open={importOpen} onOpenChange={(o) => { if (!importing) { setImportOpen(o); if (!o) resetImport(); } }}>
-          <DialogContent className="sm:max-w-[560px]">
+          <DialogContent className="sm:max-w-[680px]">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Upload className="w-4 h-4 text-blue-600" /> 批量导入客户
               </DialogTitle>
             </DialogHeader>
 
-            {/* 账号模式说明 */}
-            <div className={`flex items-start gap-2 px-3 py-2 rounded-lg text-[11px] leading-relaxed ${importIsAdmin ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}`}>
-              {importIsAdmin
-                ? <><CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" /> 管理员账号：导入的客户进入共享客户库（后台「客户管理」可见），并同步到本机供导出报价单使用。</>
-                : <><CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" /> 员工账号：导入的客户仅保存在本机，供你本人导出报价单使用，他人（含管理员）不可见。</>}
+            {/* 保密说明（业主 2026-10-22：导入的客户仅本人可见，不存在共享库） */}
+            <div className="flex items-start gap-2 px-3 py-2 rounded-lg text-[11px] leading-relaxed bg-slate-50 border border-slate-200 text-slate-600">
+              <Lock className="w-3.5 h-3.5 mt-0.5 shrink-0 text-slate-500" />
+              <span>
+                <b>保密说明：</b>您导入的客户信息仅保存在您本机、<b>仅您本人可见</b>。其他任何账号（包括管理员）都无法查看，
+                也不会被共享或挪作他用。导出报价单时，客户下拉仅显示您自己保存的客户。
+              </span>
             </div>
 
             <div className="space-y-3">
@@ -796,7 +778,7 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
                     <CheckCircle2 className="w-4 h-4" />
                     导入完成：成功 <b>{importResult.success}</b> 条{importResult.fail > 0 && <>，失败 <b className="text-red-600">{importResult.fail}</b> 条</>}
                   </div>
-                  {importResult.local && <div className="mt-0.5 text-[11px] opacity-80">已写入本机客户档案，导出报价单时可直接选用。</div>}
+                  {importResult.errors.length === 0 && <div className="mt-0.5 text-[11px] opacity-80">已写入本机客户档案，导出报价单时可直接选用，仅本人可见。</div>}
                   {importResult.errors.length > 0 && (
                     <div className="mt-1.5 max-h-[90px] overflow-y-auto text-red-600 space-y-0.5">
                       {importResult.errors.slice(0, 8).map((e, i) => <div key={i}>· {e}</div>)}
