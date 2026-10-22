@@ -404,19 +404,31 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
           )}
 
           {quotes.length > 0 && (
-            <div className="flex items-center justify-between mb-2">
-              <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer py-2 -my-2">
+            <div className="flex items-center justify-between mb-2 gap-2">
+              <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer py-2 -my-2 shrink-0">
                 <Checkbox
                   checked={quotes.length > 0 && selectedIds.size === quotes.length}
                   onCheckedChange={toggleSelectAll}
                 />
                 全选
               </label>
-              {selectedIds.size > 0 && (
-                <Button variant="ghost" size="sm" onClick={handleDeleteSelected} className="text-red-500 hover:text-red-600 text-xs h-7">
-                  删除选中
+              <div className="flex items-center gap-1.5 shrink-0">
+                {selectedIds.size > 0 && (
+                  <Button variant="ghost" size="sm" onClick={handleDeleteSelected} className="text-red-500 hover:text-red-600 text-xs h-7">
+                    删除选中
+                  </Button>
+                )}
+                {/* 导出按钮置顶（业主 2026-10-22：放底部要滚动才看得见） */}
+                <Button
+                  size="sm"
+                  className="h-7 px-2.5 gap-1.5 text-xs"
+                  disabled={selectedIds.size === 0}
+                  onClick={openExportDialog}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  导出报价单{selectedIds.size > 0 ? `（${selectedIds.size}）` : ''}
                 </Button>
-              )}
+              </div>
             </div>
           )}
 
@@ -490,17 +502,8 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
           })}
         </div>
 
-        {/* 批量导出 */}
-        <div className="pt-3 border-t border-gray-200 mt-3">
-          <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
-            <Button
-              className="w-full gap-2"
-              disabled={selectedIds.size === 0}
-              onClick={openExportDialog}
-            >
-              <Download className="w-4 h-4" />
-              批量导出报价单（{selectedIds.size}）
-            </Button>
+        {/* 批量导出弹窗（触发按钮已上移到列表顶部的全选行，此处仅保留 Dialog 本体） */}
+        <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
             <DialogContent className="sm:max-w-[420px]">
               <DialogHeader>
                 <DialogTitle>导出报价单</DialogTitle>
@@ -591,8 +594,7 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
                 </Button>
               </div>
             </DialogContent>
-          </Dialog>
-        </div>
+        </Dialog>
 
         {/* 删除确认弹窗（P1-2：不可逆操作二次确认） */}
         <Dialog open={deleteTarget !== null} onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}>
