@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
 } from '@/components/ui/sheet';
@@ -8,7 +8,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Download, Trash2, FileText, History, CheckCircle2, FileSpreadsheet, Percent, Pencil } from 'lucide-react';
+import { Download, Trash2, FileText, History, CheckCircle2, FileSpreadsheet, Percent, Pencil, Upload, AlertCircle, Loader2 } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { getAdminToken } from '@/lib/auth-context';
 
 // 有效数字取整：单价3位，模具费/起订量2位
 function sigfig(n: number, digits: number): number {
@@ -165,6 +167,14 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
   const [exportSuccess, setExportSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null); // 待确认删除的报价 id
+  // ===== 批量导入客户（业主 2026-10-22：模板 /customer_import_template.xlsx）=====
+  const [importOpen, setImportOpen] = useState(false);
+  const [importRows, setImportRows] = useState<any[]>([]);
+  const [importFile, setImportFile] = useState<string>('');
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ success: number; fail: number; errors: string[] } | null>(null);
+  const [importError, setImportError] = useState('');
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const reload = async () => {
     if (!userId) return;
@@ -375,6 +385,131 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
     setExportDialogOpen(true);
   };
 
+  // ==================== 批量导入客户 ====================
+  // 模板：/customer_import_template.xlsx（业主 2026-10-22 版 10 列：
+  // 客户名称/统一社会信用代码/地址/电话/开户行名称/银行账号/电子邮箱/客户分类/简码/联系人）
+  // 兼容早期 7 列模板（客户编号/公司名称/联系人/电话/地址/邮箱/备注）。
+  const [adminTokenReady, setAdminTokenReady] = useState(false);
+  useEffect(() => { setAdminTokenReady(!!getAdminToken()); }, []);
+
+  /** 归一化列名后按别名取单元格值（空返回 ''） */
+  const pickByAlias = (obj: Record<string, any>, aliases: string[]): string => {
+    const norm = (s: any) => String(s ?? '').replace(/\s/g, '').toLowerCase();
+    for (const [k, v] of Object.entries(obj)) {
+      const hk = norm(k);
+      if (aliases.some(a => hk.includes(norm(a)))) return String(v ?? '').trim();
+    }
+    return '';
+  };
+
+  const resetImport = () => {
+    setImportRows([]);
+    setImportFile('');
+    setImportResult(null);
+    setImportError('');
+    if (importInputRef.current) importInputRef.current.value = '';
+  };
+
+  const parseCustomerFile = (file: File) => {
+    setImportFile(file.name);
+    setImportResult(null);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const wb = XLSX.read(data, { type: 'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
+        // 找表头行（前 5 行内含「客户名称 / 公司名称 / 客户编号」的那一行）
+        let hIdx = -1;
+        for (let i = 0; i < Math.min(rows.length, 5); i++) {
+          const joined = (rows[i] || []).map(c => String(c ?? '')).join('');
+          if (/客户名称|公司名称|客户编号/.test(joined)) { hIdx = i; break; }
+        }
+        if (hIdx < 0) {
+          setImportError('未识别到表头，请确保首行包含「客户名称」列');
+          setImportRows([]);
+          return;
+        }
+        const headers = (rows[hIdx] || []).map(c => String(c ?? '').trim());
+        const items: any[] = [];
+        for (let r = hIdx + 1; r < rows.length; r++) {
+          const row = rows[r] || [];
+          if (!row.length) continue;
+          const obj: Record<string, any> = {};
+          headers.forEach((h, ci) => { if (h) obj[h] = row[ci]; });
+          const company_name = pickByAlias(obj, ['客户名称', '公司名称', '客户单位', '单位名称']);
+          if (!company_name) continue; // 空行 / 无客户名跳过
+          const contact_name = pickByAlias(obj, ['联系人']);
+          const phone = pickByAlias(obj, ['电话', '手机']);
+          const address = pickByAlias(obj, ['地址']);
+          const email = pickByAlias(obj, ['电子邮箱', '邮箱', '邮件']);
+          const taxNo = pickByAlias(obj, ['信用代码', '识别号', '税号']);
+          const bankName = pickByAlias(obj, ['开户行']);
+          const bankAccount = pickByAlias(obj, ['银行账号', '银行帐号', '账号', '帐号']);
+          const category = pickByAlias(obj, ['客户分类', '分类']);
+          const shortCode = pickByAlias(obj, ['简码', '客户编号', '客户代码']);
+          const oldRemark = pickByAlias(obj, ['备注']);
+          // 开票信息客户表无独立列（税号/开户行/账号/分类/简码）→ 合并进备注保留，不丢数据
+          const extra = [
+            taxNo ? `税号:${taxNo}` : '',
+            bankName ? `开户行:${bankName}` : '',
+            bankAccount ? `银行账号:${bankAccount}` : '',
+            category ? `客户分类:${category}` : '',
+            shortCode ? `简码:${shortCode}` : '',
+          ].filter(Boolean).join('；');
+          const remarks = [oldRemark, extra].filter(Boolean).join('；');
+          items.push({
+            company_name,
+            contact_name: contact_name || undefined,
+            phone: phone || undefined,
+            address: address || undefined,
+            email: email || undefined,
+            remarks: remarks || undefined,
+            // 有简码/客户编号则作为唯一编码（重复导入按编号更新，不产生重复记录）；否则后端自动生成 KH######
+            customer_code: shortCode || undefined,
+          });
+        }
+        if (!items.length) {
+          setImportError('未解析到有效数据行（「客户名称」列不能为空）');
+          setImportRows([]);
+          return;
+        }
+        setImportRows(items);
+        setImportError('');
+      } catch (err: any) {
+        setImportError('解析失败：' + (err?.message || '文件格式有误'));
+        setImportRows([]);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const runImport = async () => {
+    if (!importRows.length) return;
+    setImporting(true);
+    setImportError('');
+    setImportResult(null);
+    try {
+      const res = await fetch('/api/customers/batch-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-token': getAdminToken() || '' },
+        body: JSON.stringify({ items: importRows }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setImportError(data?.error || '导入失败');
+        return;
+      }
+      const d = data.data || {};
+      setImportResult({ success: d.success_count || 0, fail: d.fail_count || 0, errors: d.errors || [] });
+    } catch (err: any) {
+      setImportError('导入失败：' + (err?.message || '请重试'));
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const fmt = (v: any) => {
     if (v == null || isNaN(v)) return '¥0.00';
     return `¥${Number(v).toFixed(2)}`;
@@ -418,6 +553,16 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
                     删除选中
                   </Button>
                 )}
+                {/* 导入客户（业主 2026-10-22） */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2.5 gap-1.5 text-xs"
+                  onClick={() => { resetImport(); setImportOpen(true); }}
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  导入客户
+                </Button>
                 {/* 导出按钮置顶（业主 2026-10-22：放底部要滚动才看得见） */}
                 <Button
                   size="sm"
@@ -501,6 +646,128 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
             );
           })}
         </div>
+
+        {/* 批量导入客户弹窗（业主 2026-10-22） */}
+        <Dialog open={importOpen} onOpenChange={(o) => { if (!importing) { setImportOpen(o); if (!o) resetImport(); } }}>
+          <DialogContent className="sm:max-w-[520px]">
+            <DialogHeader>
+              <DialogTitle>批量导入客户</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-1">
+              {/* 1. 下载模板 */}
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <div className="text-xs font-medium text-gray-700 mb-1.5">1. 下载模板</div>
+                <a
+                  href="/customer_import_template.xlsx"
+                  download="客户信息导入模板.xlsx"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border border-gray-200 bg-white text-blue-600 hover:bg-blue-50 transition-colors"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  下载 Excel 模板
+                </a>
+                <div className="text-[11px] text-gray-500 mt-1.5 leading-relaxed">
+                  表头：客户名称 / 统一社会信用代码·纳税人识别号 / 地址 / 电话 / 开户行名称 / 银行账号 / 电子邮箱 / 客户分类 / 简码 / 联系人。
+                  仅「客户名称」必填；重复导入按「简码/客户编号」更新，不产生重复记录。
+                </div>
+              </div>
+
+              {/* 2. 选择文件 */}
+              <div>
+                <div className="text-xs font-medium text-gray-700 mb-1.5">2. 选择填好的 Excel</div>
+                <div
+                  className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-blue-400 hover:bg-gray-50 transition-colors"
+                  onClick={() => importInputRef.current?.click()}
+                >
+                  <input
+                    ref={importInputRef}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    className="hidden"
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) parseCustomerFile(f); }}
+                  />
+                  {importRows.length > 0 ? (
+                    <div className="flex flex-col items-center gap-1">
+                      <CheckCircle2 className="w-6 h-6 text-green-500" />
+                      <span className="text-sm text-gray-700">{importFile}</span>
+                      <span className="text-xs text-gray-500">已解析 {importRows.length} 条 · 点击重新选择</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-1">
+                      <Upload className="w-6 h-6 text-gray-400" />
+                      <span className="text-sm text-gray-500">点击选择 .xlsx / .xls 文件</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 3. 预览 */}
+              {importRows.length > 0 && (
+                <div className="max-h-[180px] overflow-y-auto border border-gray-200 rounded-lg">
+                  <table className="w-full text-[11px]">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr>
+                        <th className="text-left px-2 py-1.5 font-medium">客户名称</th>
+                        <th className="text-left px-2 py-1.5 font-medium">联系人</th>
+                        <th className="text-left px-2 py-1.5 font-medium">电话</th>
+                        <th className="text-left px-2 py-1.5 font-medium">地址</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importRows.slice(0, 20).map((r, i) => (
+                        <tr key={i} className="border-t border-gray-100">
+                          <td className="px-2 py-1 truncate">{r.company_name}</td>
+                          <td className="px-2 py-1 truncate">{r.contact_name || '-'}</td>
+                          <td className="px-2 py-1 truncate">{r.phone || '-'}</td>
+                          <td className="px-2 py-1 truncate">{r.address || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {importRows.length > 20 && (
+                    <div className="text-[11px] text-gray-400 px-2 py-1">…共 {importRows.length} 条，以上仅预览前 20 条</div>
+                  )}
+                </div>
+              )}
+
+              {!adminTokenReady && (
+                <div className="flex items-start gap-2 p-2.5 bg-amber-50 text-amber-700 rounded-lg text-[11px] leading-relaxed">
+                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  当前账号未持有管理员凭证，导入会被后端拒绝（客户库仅管理员账号可写入）。
+                </div>
+              )}
+              {importError && (
+                <div className="flex items-start gap-2 p-2.5 bg-red-50 text-red-700 rounded-lg text-[11px] leading-relaxed">
+                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  {importError}
+                </div>
+              )}
+              {importResult && (
+                <div className="p-2.5 bg-gray-50 rounded-lg text-[11px] text-gray-700 leading-relaxed">
+                  导入完成：成功 <b className="text-green-600">{importResult.success}</b> 条
+                  {importResult.fail > 0 && <>，失败 <b className="text-red-600">{importResult.fail}</b> 条</>}。
+                  {importResult.errors.length > 0 && (
+                    <div className="mt-1 max-h-[100px] overflow-y-auto text-red-600">
+                      {importResult.errors.slice(0, 10).map((e, i) => <div key={i}>{e}</div>)}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 mt-2">
+              <Button variant="ghost" size="sm" onClick={() => { setImportOpen(false); resetImport(); }} disabled={importing}>
+                关闭
+              </Button>
+              <Button
+                size="sm"
+                className="gap-1.5"
+                onClick={runImport}
+                disabled={importing || importRows.length === 0 || !adminTokenReady || !!importResult}
+              >
+                {importing ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> 导入中…</> : <>开始导入{importRows.length ? `（${importRows.length}）` : ''}</>}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* 批量导出弹窗（触发按钮已上移到列表顶部的全选行，此处仅保留 Dialog 本体） */}
         <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
