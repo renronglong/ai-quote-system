@@ -10,7 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Download, Trash2, FileText, History, CheckCircle2, FileSpreadsheet, Percent, Pencil, Upload, AlertCircle, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { getAdminToken } from '@/lib/auth-context';
+import { getAdminToken, getUserToken } from '@/lib/auth-context';
 
 // 有效数字取整：单价3位，模具费/起订量2位
 function sigfig(n: number, digits: number): number {
@@ -389,8 +389,9 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
   // 模板：/customer_import_template.xlsx（业主 2026-10-22 版 10 列：
   // 客户名称/统一社会信用代码/地址/电话/开户行名称/银行账号/电子邮箱/客户分类/简码/联系人）
   // 兼容早期 7 列模板（客户编号/公司名称/联系人/电话/地址/邮箱/备注）。
-  const [adminTokenReady, setAdminTokenReady] = useState(false);
-  useEffect(() => { setAdminTokenReady(!!getAdminToken()); }, []);
+  // 管理员 / 员工任一凭证即可导入（业主 2026-10-22：开放给员工账号，数据按账号隔离）
+  const [tokenReady, setTokenReady] = useState(false);
+  useEffect(() => { setTokenReady(!!(getAdminToken() || getUserToken())); }, []);
 
   /** 归一化列名后按别名取单元格值（空返回 ''） */
   const pickByAlias = (obj: Record<string, any>, aliases: string[]): string => {
@@ -493,7 +494,11 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
     try {
       const res = await fetch('/api/customers/batch-upload', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-token': getAdminToken() || '' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-token': getAdminToken() || '',
+          'x-user-token': getUserToken() || '',
+        },
         body: JSON.stringify({ items: importRows }),
       });
       const data = await res.json();
@@ -503,6 +508,26 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
       }
       const d = data.data || {};
       setImportResult({ success: d.success_count || 0, fail: d.fail_count || 0, errors: d.errors || [] });
+      // 同步到本机客户档案（导出报价单的客户下拉读 localStorage，天然按账号/浏览器隔离）
+      if ((d.success_count || 0) > 0) {
+        try {
+          const KEY = 'gyparts_customer_profiles';
+          const list = JSON.parse(localStorage.getItem(KEY) || '[]');
+          for (const it of importRows) {
+            if (!it?.company_name) continue;
+            const rec = {
+              name: String(it.company_name),
+              contact: String(it.contact_name || ''),
+              phone: String(it.phone || ''),
+              address: String(it.address || ''),
+              qq: '',
+            };
+            const i = list.findIndex((x: any) => x.name === rec.name);
+            if (i >= 0) list[i] = { ...list[i], ...rec }; else list.unshift(rec);
+          }
+          localStorage.setItem(KEY, JSON.stringify(list.slice(0, 50)));
+        } catch { /* ignore */ }
+      }
     } catch (err: any) {
       setImportError('导入失败：' + (err?.message || '请重试'));
     } finally {
@@ -729,10 +754,10 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
                 </div>
               )}
 
-              {!adminTokenReady && (
+              {!tokenReady && (
                 <div className="flex items-start gap-2 p-2.5 bg-amber-50 text-amber-700 rounded-lg text-[11px] leading-relaxed">
                   <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                  当前账号未持有管理员凭证，导入会被后端拒绝（客户库仅管理员账号可写入）。
+                  未检测到登录凭证，请先登录（员工账号导入的客户只归属本人，他人看不到）。
                 </div>
               )}
               {importError && (
@@ -761,7 +786,7 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
                 size="sm"
                 className="gap-1.5"
                 onClick={runImport}
-                disabled={importing || importRows.length === 0 || !adminTokenReady || !!importResult}
+                disabled={importing || importRows.length === 0 || !tokenReady || !!importResult}
               >
                 {importing ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> 导入中…</> : <>开始导入{importRows.length ? `（${importRows.length}）` : ''}</>}
               </Button>

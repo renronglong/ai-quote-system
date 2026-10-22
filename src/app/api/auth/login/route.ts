@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { isAdminPhone, signAdminToken } from '@/lib/admin';
+import { isAdminPhone, signAdminToken, signUserToken } from '@/lib/admin';
 import { verifyPassword, isLegacyPlaintext, hashPassword } from '@/lib/password';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jotgxnhueagbsvfeepic.supabase.co';
@@ -51,6 +51,8 @@ export async function POST(request: Request) {
         is_admin: admin,
       },
       admin_token: admin ? signAdminToken(userData.phone) : undefined,
+      // 员工 token：所有登录成功的账号都签发（业主 2026-10-22：客户批量导入开放给员工账号）
+      user_token: signUserToken(userData.phone),
     });
   } catch (err) {
     console.error('[Login] 登录异常:', err);

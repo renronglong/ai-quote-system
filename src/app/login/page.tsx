@@ -99,6 +99,10 @@ export default function LoginPage() {
       } else {
         try { sessionStorage.removeItem('admin_token'); } catch { /* ignore */ }
       }
+      // 员工token（所有登录账号都发，供客户批量导入等接口使用）
+      if (data.user_token) {
+        try { sessionStorage.setItem('user_token', data.user_token); localStorage.setItem('user_token', data.user_token); } catch { /* ignore */ }
+      }
 
       // 记住密码处理
       if (remember) {

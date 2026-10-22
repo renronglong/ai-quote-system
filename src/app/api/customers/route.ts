@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { verifyAdminToken, verifyUserToken } from '@/lib/admin';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jotgxnhueagbsvfeepic.supabase.co';
 const supabaseServiceKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpvdGd4bmh1ZWFnYnN2ZmVlcGljIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MzUwMjEyMywiZXhwIjoyMDk5MDc4MTIzfQ.dSfa-90iQd4jVhpuvNAgqKPqBdzfXPqgYqpxpHl71Fo';
@@ -62,9 +63,21 @@ async function generateCustomerCode(supabase: ReturnType<typeof getSupabase>): P
 // GET /api/customers - list customers with optional search
 export async function GET(request: Request) {
   try {
-    const admin = verifyAdmin(request);
-    if (!admin.ok) {
-      return NextResponse.json({ error: admin.error }, { status: 403 });
+    // 管理员（白名单）看全部；员工（已登录）只看自己 user_id 下的客户
+    const adminPhone = verifyAdminToken(request.headers.get('x-admin-token') || '');
+    const userPhone = adminPhone || verifyUserToken(request.headers.get('x-user-token') || '');
+    if (!userPhone) {
+      return NextResponse.json({ error: '请先登录后再查看客户' }, { status: 403 });
+    }
+    const isAdmin = !!adminPhone;
+    let ownerUserId: string | null = null;
+    if (!isAdmin) {
+      const { data: u } = await getSupabase()
+        .from('users')
+        .select('id')
+        .eq('phone', userPhone)
+        .maybeSingle();
+      ownerUserId = u?.id ?? null;
     }
 
     const { searchParams } = new URL(request.url);
@@ -78,6 +91,11 @@ export async function GET(request: Request) {
       .from('customers')
       .select('*', { count: 'exact' })
       .order('created_at', { ascending: false });
+
+    if (!isAdmin) {
+      // 员工：只能读自己导入的客户（ownerUserId 为空则一条都读不到，不泄露共享库）
+      query = query.eq('user_id', ownerUserId);
+    }
 
     if (keyword.trim()) {
       query = query.or(

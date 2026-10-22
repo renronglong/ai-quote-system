@@ -26,6 +26,13 @@ export function getAdminToken(): string | null {
   } catch { return null; }
 }
 
+/** 员工token（普通登录账号也有）：用于「已登录即可操作自己的数据」类接口 */
+export function getUserToken(): string | null {
+  try {
+    return sessionStorage.getItem('user_token') || localStorage.getItem('user_token');
+  } catch { return null; }
+}
+
 interface AuthContextType {
   user: ExtendedUser | null;
   session: Session | null;
@@ -119,6 +126,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try { sessionStorage.setItem('admin_token', data.admin_token); localStorage.setItem('admin_token', data.admin_token); } catch { /* ignore */ }
       } else {
         try { sessionStorage.removeItem('admin_token'); localStorage.removeItem('admin_token'); } catch { /* ignore */ }
+      }
+      // 员工 token（所有登录账号）
+      if (data.user_token) {
+        try { sessionStorage.setItem('user_token', data.user_token); localStorage.setItem('user_token', data.user_token); } catch { /* ignore */ }
+      } else {
+        try { sessionStorage.removeItem('user_token'); localStorage.removeItem('user_token'); } catch { /* ignore */ }
       }
       setIsAdmin(!!data.user?.is_admin);
       const mockSession = {
