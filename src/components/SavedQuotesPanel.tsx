@@ -175,6 +175,9 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
   const [importResult, setImportResult] = useState<{ success: number; fail: number; errors: string[] } | null>(null);
   const [importError, setImportError] = useState('');
   const importInputRef = useRef<HTMLInputElement>(null);
+  // 导出弹窗·客户名称下拉（数据源 = 本机客户档案）
+  const [custListOpen, setCustListOpen] = useState(false);
+  const [localCustomers, setLocalCustomers] = useState<{ name?: string; contact?: string; phone?: string; address?: string }[]>([]);
 
   const reload = async () => {
     if (!userId) return;
@@ -382,6 +385,8 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
     setExportFormat('excel');
     setExportSuccess(false);
     setCustomerInfo({ name: '', contact: '', phone: '', address: '' });
+    // 载入本机客户档案（批量导入/历史导出保存的客户），供客户名称下拉选择
+    try { setLocalCustomers(JSON.parse(localStorage.getItem('gyparts_customer_profiles') || '[]')); } catch { setLocalCustomers([]); }
     setExportDialogOpen(true);
   };
 
@@ -822,8 +827,8 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
                       onClick={() => setExportFormat('excel')}
                       className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border text-sm transition-all ${
                         exportFormat === 'excel'
-                          ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-medium'
-                          : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                          ? 'border-emerald-500 bg-white text-emerald-600 font-medium'
+                          : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
                       }`}
                     >
                       <FileSpreadsheet className="w-4 h-4" />
@@ -833,8 +838,8 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
                       onClick={() => setExportFormat('pdf')}
                       className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border text-sm transition-all ${
                         exportFormat === 'pdf'
-                          ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-medium'
-                          : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                          ? 'border-emerald-500 bg-white text-emerald-600 font-medium'
+                          : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
                       }`}
                     >
                       <FileText className="w-4 h-4" />
@@ -847,12 +852,37 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
                 <div>
                   <div className="text-xs font-medium text-gray-600 mb-1.5">客户信息（选填）</div>
                   <div className="space-y-2">
-                    <input
-                      className="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                      placeholder="客户名称"
-                      value={customerInfo.name}
-                      onChange={e => setCustomerInfo(p => ({ ...p, name: e.target.value }))}
-                    />
+                    <div className="relative">
+                      <input
+                        className="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        placeholder="客户名称（点击选择已保存的客户）"
+                        value={customerInfo.name}
+                        onChange={e => setCustomerInfo(p => ({ ...p, name: e.target.value }))}
+                        onFocus={() => { if (localCustomers.length > 0) setCustListOpen(true); }}
+                        onBlur={() => { window.setTimeout(() => setCustListOpen(false), 120); }}
+                      />
+                      {custListOpen && localCustomers.length > 0 && (
+                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-44 overflow-y-auto">
+                          {localCustomers
+                            .filter(c => !customerInfo.name.trim() || String(c.name || '').toLowerCase().includes(customerInfo.name.trim().toLowerCase()))
+                            .slice(0, 50)
+                            .map((c, i) => (
+                              <div
+                                key={i}
+                                className="px-2.5 py-1.5 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-50 last:border-0"
+                                onMouseDown={() => {
+                                  setCustomerInfo({ name: c.name || '', contact: c.contact || '', phone: c.phone || '', address: c.address || '' });
+                                  setCustListOpen(false);
+                                }}
+                              >
+                                <span className="text-gray-800">{c.name}</span>
+                                {c.contact && <span className="text-xs text-gray-400 ml-2">{c.contact}</span>}
+                                {c.phone && <span className="text-xs text-gray-400 ml-2">{c.phone}</span>}
+                              </div>
+                            ))}
+                        </div>
+                      )}
+                    </div>
                     <div className="flex gap-2">
                       <input
                         className="flex-1 px-2.5 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500"
