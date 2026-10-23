@@ -1,4 +1,8 @@
 import { NextRequest } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jotgxnhueagbsvfeepic.supabase.co';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 interface PriceSource { keywords: string[]; sources: string[]; unit: string }
 interface PriceItem { name: string; price: string; change: string; source: string; unit: string }
@@ -69,14 +73,33 @@ function extractPricesFromLvdingjia(html: string, material: string): PriceItem[]
   return prices;
 }
 
+// 清洗抓取到的名称：去掉 HTML 标签/属性残留与引号等符号
+function cleanScrapedName(raw: string): string {
+  let s = raw;
+  s = s.replace(/<[^>]*>?/g, '');
+  s = s.replace(/[\w./-]+\.(?:htm|html|aspx?|php)[^"']*/gi, '');
+  s = s.replace(/(?:title|href|src|class|data-[\w-]+)\s*=\s*["'][^"']*/gi, '');
+  s = s.replace(/["'`\\<>]/g, '');
+  s = s.replace(/^[\s:：,，.。·|]+|[\s:：,，.。·|]+$/g, '');
+  return s.trim();
+}
+
+function isCleanName(name: string): boolean {
+  if (!/[\u4e00-\u9fa5]/.test(name)) return false;
+  return !/[="'\\/]|https?:|\.com|\.cn|\.htm|\.(?:json|js|css)/i.test(name);
+}
+
 function extractPricesWithRegex(html: string, _material: string): PriceItem[] {
   const prices: PriceItem[] = [];
+  const seen = new Set<string>();
   const generalRegex = /([^\d\n]{2,20}?)\s*(?:均价|价格|参考价|报价|中间价)\s*[:：]?\s*(\d{4,6})\s*(?:元\/吨|元\/千克)?/g;
   let match;
   while ((match = generalRegex.exec(html)) !== null) {
-    const name = match[1].trim().replace(/[<>]/g, '');
+    const name = cleanScrapedName(match[1]);
     const price = parseInt(match[2]);
-    if (name.length >= 2 && !isNaN(price) && price > 1000 && price < 500000) {
+    const key = `${name}|${price}`;
+    if (name.length >= 2 && isCleanName(name) && !seen.has(key) && !isNaN(price) && price > 1000 && price < 500000) {
+      seen.add(key);
       prices.push({ name, price: String(price), change: '→0', source: 'web', unit: '元/吨' });
     }
   }
@@ -107,13 +130,51 @@ interface PriceCache { data: PriceItem[]; timestamp: number; material: string }
 const priceCache = new Map<string, PriceCache>();
 const CACHE_DURATION = 2 * 60 * 60 * 1000;
 
-function buildDataField(prices: PriceItem[]) {
-  const primary = prices[0];
+function buildDataField(prices: PriceItem[], material?: string) {
+  const norm = (n: string) => n.replace(/[（]/g, '(').replace(/[）]/g, ')');
+  let primary = prices[0];
+  if (material === '铝型材') {
+    const hasTicket = prices.find(p => norm(p.name).includes('南海铝锭(含票)'));
+    if (hasTicket) primary = hasTicket;
+    else {
+      const anyNanhai = prices.find(p => norm(p.name).includes('南海铝锭') && !/无票|不含票/.test(norm(p.name)));
+      if (anyNanhai) primary = anyNanhai;
+      else primary = prices.find(p => !/无票|不含票/.test(norm(p.name))) || prices[0];
+    }
+  }
+  if (material === '压铸铝') {
+    const adc12 = prices.find(p => norm(p.name).includes('标准ADC12') || norm(p.name).includes('ADC12'));
+    if (adc12) primary = adc12;
+  }
   if (!primary) return null;
   const raw = parseInt(primary.change.replace(/[↑↓→]/g, '')) || 0;
   const isDown = primary.change.includes('↓');
   const signed = isDown ? -raw : raw;
-  return { price: parseInt(primary.price), change: signed, changePercent: primary.price ? (signed / parseInt(primary.price) * 100) : 0 };
+  const prevClose = parseInt(primary.price) - signed;
+  return { price: parseInt(primary.price), change: signed, changePercent: prevClose > 0 ? (signed / prevClose * 100) : 0, primaryName: primary.name };
+}
+
+// 将价格数据写入数据库
+async function savePricesToDb(material: string, prices: PriceItem[]): Promise<void> {
+  if (!supabaseServiceKey) return;
+  try {
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const today = new Date().toISOString().split('T')[0];
+    const cleanRows = prices.filter(p => isCleanName(cleanScrapedName(p.name)));
+    if (cleanRows.length === 0) return;
+    const rows = cleanRows.map(p => ({
+      material,
+      name: cleanScrapedName(p.name),
+      price: parseInt(p.price),
+      change_amount: parseInt(p.change.replace(/[↑↓→]/g, '')) || 0,
+      source: p.source,
+      price_date: today,
+    }));
+    const { error } = await supabase.from('material_prices').upsert(rows, { onConflict: 'material,name,price_date' });
+    if (error) console.error('[market-price] DB write error:', error);
+  } catch (err) {
+    console.error('[market-price] savePricesToDb exception:', err);
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -123,9 +184,42 @@ export async function GET(request: NextRequest) {
   const mm = matchMaterial(mq);
   if (!mm) return Response.json({ success: false, error: `不支持的材质: ${mq}`, supportedMaterials: Object.keys(MATERIAL_SOURCES) });
 
+  // 优先从数据库读取今日价格
+  const forceRefresh = sp.get('refresh') === '1';
+  if (!forceRefresh) {
+    try {
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+      const today = new Date().toISOString().split('T')[0];
+      const { data: dbPrices, error } = await supabase
+        .from('material_prices')
+        .select('*')
+        .eq('material', mm)
+        .eq('price_date', today)
+        .order('created_at', { ascending: false });
+      
+      if (!error && dbPrices && dbPrices.length > 0) {
+        const prices: PriceItem[] = dbPrices.map((row: any) => ({
+          name: row.name,
+          price: String(row.price),
+          change: row.change_amount > 0 ? `↑${row.change_amount}` : row.change_amount < 0 ? `↓${Math.abs(row.change_amount)}` : '→0',
+          source: row.source || 'lvdingjia.com',
+          unit: '元/吨',
+        }));
+        return Response.json({ 
+          success: true, material: mm, prices, cached: true, fromDb: true,
+          updatedAt: dbPrices[0].created_at, data: buildDataField(prices, mm)
+        });
+      }
+      if (error) console.error('[market-price] DB query error:', error?.message, 'key len:', supabaseServiceKey?.length || 0);
+    } catch (err) {
+      console.error('[market-price] DB read exception:', err);
+    }
+  }
+
+  // 降级到实时抓取
   const cached = priceCache.get(mm);
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-    return Response.json({ success: true, material: mm, prices: cached.data, cached: true, updatedAt: new Date(cached.timestamp).toISOString(), data: buildDataField(cached.data) });
+    return Response.json({ success: true, material: mm, prices: cached.data, cached: true, updatedAt: new Date(cached.timestamp).toISOString(), data: buildDataField(cached.data, mm) });
   }
 
   try {
@@ -138,7 +232,8 @@ export async function GET(request: NextRequest) {
 
     if (pricedData.length > 0) {
       priceCache.set(mm, { data: pricedData, timestamp: Date.now(), material: mm });
-      return Response.json({ success: true, material: mm, prices: pricedData, cached: false, updatedAt: new Date().toISOString(), data: buildDataField(pricedData) });
+      await savePricesToDb(mm, pricedData);
+      return Response.json({ success: true, material: mm, prices: pricedData, cached: false, updatedAt: new Date().toISOString(), data: buildDataField(pricedData, mm) });
     }
     return Response.json({ success: false, material: mm, prices: [], error: '未查询到价格数据' });
   } catch (error) {
