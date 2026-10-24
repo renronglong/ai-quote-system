@@ -353,6 +353,11 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
   // （P0-2：识别成功即入库，/api/check 的确认答案必须合并回该条，而不是再 push 一条）
   const lastCommitIdRef = useRef<string | null>(null);
   const checkTargetIdRef = useRef<string | null>(null);
+  // completedResults 的同步镜像：patch 回填时用来「同步」判断目标记录是否存在。
+  // 不能靠 setState updater 里的副作用标志 —— React 的 updater 是渲染时才跑的，
+  // 同步读永远是 false，会误判「目标不存在」而退回新增 ⇒ 同一文件重复入库（10-24 实测 bug）
+  const completedResultsRef = useRef<CompletedResult[]>([]);
+  useEffect(() => { completedResultsRef.current = completedResults; }, [completedResults]);
   // 微信/手机端：accept 用 */* 才会出现「从聊天记录选择文件」（详见 use-file-accept）
   const fileAccept = useFileAccept(ALLOWED_EXTENSIONS.join(','));
   const isMobileUa = useIsMobileUa();
@@ -436,20 +441,20 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
       const products = payload.recogProducts && payload.recogProducts.length > 0
         ? payload.recogProducts
         : (payload.recogData ? [payload.recogData] : []);
-      // 修订模式（AI 确认抽屉回填）：把确认答案合并进已入库记录的第一个零件，
-      // 不再新增记录 —— 否则同一文件在「已识别完成」里出现两条、零件数翻倍（P0-2）
+      // 修订模式（AI 确认抽屉回填 / 缺参补全弹窗回填）：把确认答案合并进已入库记录的
+      // 第一个零件，不再新增记录 —— 否则同一文件在「已识别完成」里出现两条、零件数翻倍（P0-2）
       if (payload.patchId) {
-        let patched = false;
-        setCompletedResults(prev => prev.map(r => {
-          if (r.id !== payload.patchId || patched) return r;
-          patched = true;
-          const base = r.products[0] || {};
-          const patch = Object.fromEntries(
-            Object.entries(payload.recogData || {}).filter(([, v]) => v !== undefined && v !== null && v !== '')
-          );
-          return { ...r, products: [{ ...base, ...patch }], error: undefined };
-        }));
-        if (patched) {
+        const patch = Object.fromEntries(
+          Object.entries(payload.recogData || {}).filter(([, v]) => v !== undefined && v !== null && v !== '')
+        );
+        // 用 ref 同步判断目标记录是否存在（updater 异步，靠它里面的标志判断会误判成不存在→重复入库）
+        if (completedResultsRef.current.some(r => r.id === payload.patchId)) {
+          completedResultsRef.current = completedResultsRef.current.map(r => {
+            if (r.id !== payload.patchId) return r;
+            const base = r.products[0] || {};
+            return { ...r, products: [{ ...base, ...patch }], error: undefined };
+          });
+          setCompletedResults(completedResultsRef.current);
           if (fileInputRef.current) fileInputRef.current.value = '';
           committedThisRunRef.current = true;
           return;
@@ -459,14 +464,16 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
       const id = 'res_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
       newId = id;
       lastCommitIdRef.current = id;
-      setCompletedResults(prev => [...prev, {
+      const newRecord: CompletedResult = {
         id,
         fileName: payload.fileName || currentFileNameRef.current || '',
         products,
         isAssembly: payload.isAssembly ?? products.length > 1,
         recognitionId: payload.recognitionId,
         error: payload.error,
-      }]);
+      };
+      completedResultsRef.current = [...completedResultsRef.current, newRecord];
+      setCompletedResults(completedResultsRef.current);
       // 当前文件处理完即清空，准备下一份
       setUploadedFile(null);
       resetRecognitionState();

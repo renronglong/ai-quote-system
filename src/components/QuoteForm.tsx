@@ -2087,8 +2087,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           const next = { ...prev };
           const wt = toNum(d.wall_thickness) ?? toNum(d.thickness) ?? toNum(d.sheet_thickness) ?? toNum(d.thickness_mm);
           if (wt !== null) next.thickness = wt;
-          const sheetL = toNum(d.unfold_length) ?? toNum(d.unfold_length_mm) ?? toNum(d.sheet_length);
-          const sheetW = toNum(d.unfold_width) ?? toNum(d.unfold_width_mm) ?? toNum(d.sheet_width);
+          // 展开长/宽兜底到 length/width：零件列表「改材质」把识别为型材口径（width/length）的零件
+          // 归到板材时，几何量只有 width/length 键；批量生成 buildPartPayload 早已同样兜底
+          // （unfold_length_mm ?? length），这里对齐，避免手动进报价页只剩厚度、其他全空（10-24 实测）。
+          // 注意 height 不参与兜底 —— 型材的截面高（如 42.19）落进「展开长」会是错值。
+          const sheetL = toNum(d.unfold_length) ?? toNum(d.unfold_length_mm) ?? toNum(d.sheet_length) ?? toNum(d.length);
+          const sheetW = toNum(d.unfold_width) ?? toNum(d.unfold_width_mm) ?? toNum(d.sheet_width) ?? toNum(d.width);
           if (sheetL !== null) next.length = sheetL;
           if (sheetW !== null) next.width = sheetW;
           const qty = toNum(d.quantity) ?? toNum(d._quantity);
