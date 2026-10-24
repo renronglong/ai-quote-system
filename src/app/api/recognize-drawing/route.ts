@@ -154,6 +154,11 @@ export async function POST(request: NextRequest) {
           conf = /high/i.test(cs) ? 0.9 : (/medium|mid/i.test(cs) ? 0.5 : 0);
         }
         data.confidence = conf;
+        // 厚度 ≤0 = 图上没标（后端约定返回 0）：删掉，让前端缺参弹窗问板厚，
+        // 别把 0 当真值填进表单（板厚 0 会让激光单价档/米重算出垃圾价）
+        for (const tk of ['thickness_mm', 'wall_thickness_mm', 'sheet_thickness']) {
+          if (typeof data[tk] === 'number' && (data[tk] as number) <= 0) delete data[tk];
+        }
         // 板材：把 width_mm/length_mm 映射为展开尺寸（后端对板材给的就是件轮廓尺寸）
         const isSheet = data.is_sheet_metal === true || data.process_type === 'sheet_aluminum';
         if (isSheet) {
