@@ -9,6 +9,11 @@ const DOUBAO_API_KEY = process.env.DOUBAO_API_KEY || process.env.VOLCENGINE_API_
 const DOUBAO_BASE_URL = process.env.DOUBAO_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
 const DOUBAO_MODEL = process.env.DOUBAO_MODEL || 'doubao-seed-2-0-pro-260215';
 
+// 后端解析服务（api.gyparts.cn:8000，与 /api/drawing-parse 同源）。
+// 2026-10-25 起识图优先走它：Vercel 云函数直调豆包的尺寸抽取不稳（PH-002 实测把
+// OCR 噪音 42,19/16,79 当宽高，真实 136×357 反而没进结构化字段）。失败再回退豆包。
+const PARSER_API = process.env.RECOGNIZE_PARSER_URL || process.env.DRAWING_PARSER_URL || 'http://api.gyparts.cn:8000';
+
 // ============ 几何自动计算工具 ============
 
 /**
@@ -129,6 +134,47 @@ export async function POST(request: NextRequest) {
     let fileType = file.type || 'image/png';
 
     console.log(`[Recognize] 文件: ${fileName}, type: ${fileType}, size: ${buffer.length}`);
+
+    // ===== 优先走后端解析服务（A 的统一识图端点，需带 userId）=====
+    // 积分扣减与识别日志两条路径一致：成功才扣。解析服务失败/异常 → 回退下方豆包直调。
+    try {
+      const parserForm = new FormData();
+      parserForm.append('file', new Blob([buffer as unknown as BlobPart], { type: fileType }), fileName);
+      const parserResp = await fetch(
+        `${PARSER_API}/api/recognize-drawing?userId=${encodeURIComponent(userId)}`,
+        { method: 'POST', body: parserForm, signal: AbortSignal.timeout(110000) },
+      );
+      if (parserResp.ok) {
+        const pj = await parserResp.json();
+        const data: Record<string, unknown> = (pj && typeof pj === 'object' && pj.data) ? pj.data : pj;
+        // 规范化：confidence 可能是 "0.8 (high)" / "high" 等字符串
+        let conf = typeof data.confidence === 'number' ? data.confidence : parseFloat(String(data.confidence ?? ''));
+        if (!Number.isFinite(conf)) {
+          const cs = String(data.confidence ?? '');
+          conf = /high/i.test(cs) ? 0.9 : (/medium|mid/i.test(cs) ? 0.5 : 0);
+        }
+        data.confidence = conf;
+        // 板材：把 width_mm/length_mm 映射为展开尺寸（后端对板材给的就是件轮廓尺寸）
+        const isSheet = data.is_sheet_metal === true || data.process_type === 'sheet_aluminum';
+        if (isSheet) {
+          if (data.unfold_width_mm == null && data.width_mm != null) data.unfold_width_mm = Number(data.width_mm);
+          if (data.unfold_length_mm == null && data.length_mm != null) data.unfold_length_mm = Number(data.length_mm);
+        }
+        const canAutoFill = conf >= 0.75;
+        data.needs_human = !canAutoFill;
+        await changeCredits(supabase, userId, RECOGNIZE_COST_CREDITS, 'consume', '图纸AI识别消耗积分');
+        const { data: logRow } = await supabase
+          .from('recognition_logs')
+          .insert({ user_id: userId, file_name: fileName, ai_result: data })
+          .select('id')
+          .single();
+        console.log(`[Recognize] 解析服务成功(confidence=${conf}, autoFill=${canAutoFill})`);
+        return NextResponse.json({ success: true, data, autoFill: canAutoFill, recognition_id: logRow?.id || null, new_balance: balanceBefore - RECOGNIZE_COST_CREDITS });
+      }
+      console.warn(`[Recognize] 解析服务响应异常(${parserResp.status})，回退豆包直调`);
+    } catch (parserErr) {
+      console.warn('[Recognize] 解析服务不可达，回退豆包直调:', parserErr);
+    }
 
     const base64Image = buffer.toString('base64');
     const dataUrl = `data:${fileType};base64,${base64Image}`;
