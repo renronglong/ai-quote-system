@@ -198,6 +198,102 @@ function mergeTopCncIntoParts(cadJson: any): any[] {
   });
 }
 
+// ==================== 缺失参数补全（识别不到 → 弹窗让用户手填） ====================
+// 只问「AI 没读出来、缺了就算不出价」的几何量；材质/表面处理交给报价页的下拉，
+// 这里绝不猜值、也不碰价格口径 —— 用户填什么就是什么。
+interface MissingField {
+  key: string;
+  label: string;
+  unit: string;
+  required: boolean;          // true = 缺了算不出价；false = 只是标识，可跳过
+  input: 'number' | 'text';
+  apply: (target: Record<string, any>, raw: string) => void;
+}
+
+const nz = (v: any): number | null => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+function collectMissingFields(d: Record<string, any>): MissingField[] {
+  const out: MissingField[] = [];
+  const isSheet = d.is_sheet_metal === true || d._isSheetMetal === true
+    || d.product_type === 'sheet_metal' || String(d.process_type || '').includes('sheet');
+
+  const numApply = (keys: string[]) => (t: Record<string, any>, raw: string) => {
+    const v = Number(raw);
+    if (!Number.isFinite(v) || v <= 0) return;
+    keys.forEach(k => { t[k] = v; });
+  };
+
+  // ① 厚度：板材叫板厚、型材叫壁厚 —— 缺了激光/挤压单价档都落不了地
+  if (nz(d.sheet_thickness ?? d.thickness_mm ?? d.thickness ?? d.wall_thickness) == null) {
+    out.push({
+      key: 'thickness',
+      label: isSheet ? '板厚' : '壁厚',
+      unit: 'mm',
+      required: true,
+      input: 'number',
+      apply: numApply(['wall_thickness', 'thickness', 'thickness_mm', 'sheet_thickness']),
+    });
+  }
+
+  if (isSheet) {
+    // ② 展开长 / 展开宽（AI 链路可能只给 width/height，也算数）
+    if (nz(d.unfold_length ?? d.unfold_length_mm ?? d.length ?? d.height) == null) {
+      out.push({
+        key: 'unfold_length', label: '展开长', unit: 'mm', required: true, input: 'number',
+        apply: numApply(['unfold_length', 'unfold_length_mm', 'length']),
+      });
+    }
+    if (nz(d.unfold_width ?? d.unfold_width_mm ?? d.width) == null) {
+      out.push({
+        key: 'unfold_width', label: '展开宽', unit: 'mm', required: true, input: 'number',
+        apply: numApply(['unfold_width', 'unfold_width_mm', 'width']),
+      });
+    }
+  } else {
+    // ③ 型材/压铸：截面积有值时米重能反算，就不逼用户填宽高
+    const hasArea = nz(d.crossSectionArea ?? d.section_area_mm2) != null;
+    if (!hasArea) {
+      if (nz(d.width ?? d.section_width_mm) == null) {
+        out.push({
+          key: 'width', label: '截面宽', unit: 'mm', required: true, input: 'number',
+          apply: numApply(['width', 'section_width_mm']),
+        });
+      }
+      if (nz(d.height ?? d.section_height_mm) == null) {
+        out.push({
+          key: 'height', label: '截面高', unit: 'mm', required: true, input: 'number',
+          apply: numApply(['height', 'section_height_mm']),
+        });
+      }
+    }
+    if (nz(d.length ?? d.extrusion_length ?? d.extrusion_length_mm) == null) {
+      out.push({
+        key: 'length', label: '长度', unit: 'mm', required: true, input: 'number',
+        apply: numApply(['length', 'extrusion_length', 'extrusion_length_mm']),
+      });
+    }
+  }
+
+  // ④ 标识类：不影响算价，选填
+  if (!String(d.product_code || d.part_number || '').trim()) {
+    out.push({
+      key: 'product_code', label: '图号 / 零件编号', unit: '', required: false, input: 'text',
+      apply: (t, raw) => { t.product_code = raw; t.part_number = raw; },
+    });
+  }
+  if (!String(d.product_name || d.part_name || '').trim()) {
+    out.push({
+      key: 'product_name', label: '零件名称', unit: '', required: false, input: 'text',
+      apply: (t, raw) => { t.product_name = raw; t.part_name = raw; t._partName = raw; },
+    });
+  }
+  return out;
+}
+
 // ==================== Component ====================
 
 export default function DrawingRecognition({ onDrawingData, user, mode = 'single' }: DrawingRecognitionProps) {
@@ -224,6 +320,18 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
   const [checkQuestions, setCheckQuestions] = useState<any[]>([]);
   const [checkAnswers, setCheckAnswers] = useState<Record<string, any>>({});
   const [showCheckDialog, setShowCheckDialog] = useState(false);
+  // 识别不到 → 弹窗让用户手填（commitResult 里判定，确认后回填再提交）
+  const [missingFields, setMissingFields] = useState<MissingField[]>([]);
+  const [missingValues, setMissingValues] = useState<Record<string, string>>({});
+  const [missingCtx, setMissingCtx] = useState<{
+    data: Record<string, any>;
+    products?: Record<string, any>[];
+    isAssembly?: boolean;
+    fileName?: string;
+    recognitionId?: string;
+    patchId?: string;
+    low?: boolean;       // 低置信度：用户跳过时按原逻辑「不自动填入」
+  } | null>(null);
   const [deepQuoteLoading, setDeepQuoteLoading] = useState(false);
   const [isAssembly, setIsAssembly] = useState(false);
   const [copiedInvite, setCopiedInvite] = useState(false);
@@ -313,7 +421,17 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
     error?: string;
     checkAnswers?: Record<string, any>;
     patchId?: string;
+    skipMissingCheck?: boolean;   // 补全弹窗回填后的二次提交，不再重复弹
+    promptData?: Record<string, any>; // 低置信度：不自动填入，但拿这份数据去问用户补
+    lowConfidence?: boolean;
   }) => {
+    // ===== 关键参数缺失 → 弹窗让用户手填 =====
+    // 连续模式仍然先入库（不卡队列），用户填完用 patchId 回填进这条记录；
+    // 单件模式则先不填表，等用户确认/跳过后再提交。
+    const promptSrc = payload.promptData || payload.recogData;
+    const missing = (payload.skipMissingCheck || payload.patchId || !promptSrc)
+      ? [] : collectMissingFields(promptSrc);
+    let newId: string | null = null;
     if (isContinuous) {
       const products = payload.recogProducts && payload.recogProducts.length > 0
         ? payload.recogProducts
@@ -339,6 +457,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
         // 目标记录不存在（极端情况）：退回新增，至少不丢用户确认的参数
       }
       const id = 'res_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      newId = id;
       lastCommitIdRef.current = id;
       setCompletedResults(prev => [...prev, {
         id,
@@ -353,10 +472,75 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
       resetRecognitionState();
       if (fileInputRef.current) fileInputRef.current.value = '';
       committedThisRunRef.current = true;
-    } else {
+    } else if (missing.length === 0) {
+      // 单件模式：参数齐了才直接填表；缺参数时先弹窗（确认/跳过后再提交）
       onDrawingData(payload as any);
     }
+    // ===== 有缺失 → 弹窗让用户手填 =====
+    if (missing.length > 0 && promptSrc) {
+      setMissingFields(missing);
+      setMissingValues({});
+      setMissingCtx({
+        data: promptSrc,
+        products: payload.recogProducts,
+        isAssembly: payload.isAssembly,
+        fileName: payload.fileName || currentFileNameRef.current || undefined,
+        recognitionId: payload.recognitionId,
+        patchId: newId || undefined,
+        low: !!payload.lowConfidence,
+      });
+    }
   }, [isContinuous, onDrawingData, resetRecognitionState]);
+
+  // ===== 补全弹窗：确认填入 =====
+  const confirmMissingDialog = useCallback(() => {
+    const ctx = missingCtx;
+    if (!ctx) return;
+    const merged: Record<string, any> = { ...ctx.data };
+    missingFields.forEach(f => {
+      const raw = String(missingValues[f.key] ?? '').trim();
+      if (raw) f.apply(merged, raw);
+    });
+    merged._manualFilled = true;
+    setMissingFields([]);
+    setMissingValues({});
+    setMissingCtx(null);
+    setRecogResult(merged);
+    commitResult({
+      recogData: merged,
+      recogProducts: (ctx.products || []).map(p => (p === ctx.data ? merged : p)),
+      isAssembly: ctx.isAssembly,
+      fileName: ctx.fileName,
+      recognitionId: ctx.recognitionId,
+      patchId: ctx.patchId,
+      skipMissingCheck: true,
+    } as any);
+  }, [missingCtx, missingFields, missingValues, commitResult]);
+
+  // ===== 补全弹窗：跳过 =====
+  const skipMissingDialog = useCallback(() => {
+    const ctx = missingCtx;
+    setMissingFields([]);
+    setMissingValues({});
+    setMissingCtx(null);
+    if (!ctx) return;
+    if (ctx.low && !ctx.patchId) {
+      // 低置信度 + 单件：维持原逻辑 —— 不自动填入，用户去报价页手填
+      commitResult({ recogData: null, recognitionId: ctx.recognitionId, fileName: ctx.fileName } as any);
+      return;
+    }
+    if (!ctx.patchId) {
+      commitResult({
+        recogData: ctx.data,
+        recogProducts: ctx.products,
+        isAssembly: ctx.isAssembly,
+        fileName: ctx.fileName,
+        recognitionId: ctx.recognitionId,
+        skipMissingCheck: true,
+      } as any);
+    }
+    // 连续模式已入库：跳过就是什么都不改
+  }, [missingCtx, commitResult]);
 
   const proceedToQuote = useCallback(() => {
     if (!completedResults.length) return;
@@ -855,7 +1039,15 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
         if (json.autoFill && d.confidence >= 0.75) {
           commitResult({ recogData: d, recognitionId, fileName: file.name });
         } else {
-          commitResult({ recogData: null, recognitionId, fileName: file.name });
+          // 置信度低：不再「一律不填、让用户干瞪眼」，而是把已读到的参数弹给用户补，
+          // 补了才用；跳过则维持原来的不自动填入（promptData 只为弹窗取数，不入库）
+          commitResult({
+            recogData: null,
+            recognitionId,
+            fileName: file.name,
+            promptData: Object.keys(d).length ? d : undefined,
+            lowConfidence: true,
+          });
         }
       }
       setStatusMessage(null);
@@ -1439,6 +1631,64 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           </SheetFooter>
         </SheetContent>
       </Sheet>
+      {/* ===== 缺失参数补全弹窗（识别不到就让用户手填） ===== */}
+      {missingCtx && missingFields.length > 0 && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-3">
+            <div className="flex items-start gap-2">
+              <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold text-gray-900">有 {missingFields.length} 项参数没读出来</h3>
+                <p className="text-xs text-slate-500 mt-0.5 break-all">{missingCtx.fileName || '当前图纸'}</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              这几项图纸里没读到，缺了就算不出价。麻烦手动补一下；不清楚可以先跳过，到报价页再改。
+            </p>
+            <div className="space-y-2.5">
+              {missingFields.map(f => (
+                <div key={f.key}>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    {f.label}
+                    {f.required
+                      ? <span className="text-red-500 ml-0.5">*</span>
+                      : <span className="ml-1 text-xs font-normal text-slate-400">（选填）</span>}
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type={f.input === 'number' ? 'number' : 'text'}
+                      inputMode={f.input === 'number' ? 'decimal' : undefined}
+                      value={missingValues[f.key] ?? ''}
+                      onChange={e => setMissingValues(prev => ({ ...prev, [f.key]: e.target.value }))}
+                      placeholder={f.input === 'number' ? '0.00' : '如 PH-002'}
+                      className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                    />
+                    {f.unit && <span className="text-sm text-slate-500 shrink-0">{f.unit}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={confirmMissingDialog}
+                className="flex-1 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition"
+              >
+                确认并填入
+              </button>
+              <button
+                type="button"
+                onClick={skipMissingDialog}
+                className="px-4 py-2.5 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition"
+              >
+                跳过
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* ===== 登录提示弹窗 ===== */}
       {showLoginModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
