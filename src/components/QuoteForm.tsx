@@ -1972,8 +1972,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   doCalculateRef.current = doCalculate;
 
   const applyRecogToForm = (d: Record<string, any>) => {
-    // 钣金件优先：is_sheet_metal=true 或 area_method=sheet_metal 时强制切板材
-    const isSheet = d.is_sheet_metal === true || d.area_method === 'sheet_metal' || d.product_type === 'sheet_metal';
+    // 钣金件优先：is_sheet_metal=true 或 area_method=sheet_metal 时强制切板材。
+    // 10-24 补：识图链路只给 process_type=sheet_aluminum / structure_type=aluminum_sheet，
+    // 不给 product_type/is_sheet_metal（PH-002 实测）——不认这俩信号就会停在「挤出」tab，
+    // 把平板件当型材填宽高。板材识别结果理应自动归类，不再依赖用户手选 tab。
+    const isSheet = d.is_sheet_metal === true || d.area_method === 'sheet_metal' || d.product_type === 'sheet_metal'
+      || d.process_type === 'sheet_aluminum' || d.structure_type === 'aluminum_sheet';
     if (isSheet) {
       d.product_type = 'sheet_metal';
       // 兜底顺序：snake → camel → '铝板'。原来只看 material_category，
@@ -1991,7 +1995,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const ptMap: Record<string,string> = {
         extrusion: '挤出', stamping: '板材', sheet_metal: '板材', die_casting: '压铸',
         zinc_alloy: '压铸', cnc: '挤出', injection: '注塑',
-        steel_standard: '钢材', steel: '钢材', 钢材: '钢材',
+        steel_standard: '钢材', steel: '钢材', 钢材: '钢材', sheet_aluminum: '板材',
       };
       const mapped = ptMap[String(d.product_type).toLowerCase()] || ptMap[d.product_type];
       if (mapped && PRODUCT_TYPES[mapped]) {
@@ -2087,12 +2091,15 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           const next = { ...prev };
           const wt = toNum(d.wall_thickness) ?? toNum(d.thickness) ?? toNum(d.sheet_thickness) ?? toNum(d.thickness_mm);
           if (wt !== null) next.thickness = wt;
-          // 展开长/宽兜底到 length/width：零件列表「改材质」把识别为型材口径（width/length）的零件
-          // 归到板材时，几何量只有 width/length 键；批量生成 buildPartPayload 早已同样兜底
-          // （unfold_length_mm ?? length），这里对齐，避免手动进报价页只剩厚度、其他全空（10-24 实测）。
-          // 注意 height 不参与兜底 —— 型材的截面高（如 42.19）落进「展开长」会是错值。
-          const sheetL = toNum(d.unfold_length) ?? toNum(d.unfold_length_mm) ?? toNum(d.sheet_length) ?? toNum(d.length);
-          const sheetW = toNum(d.unfold_width) ?? toNum(d.unfold_width_mm) ?? toNum(d.sheet_width) ?? toNum(d.width);
+          // 展开长/宽兜底到 length/width：**仅限零件列表预填（_fromParts）**——那边几何是真实识别值，
+          // 且批量生成 buildPartPayload 早已同样兜底（unfold_* ?? length），对齐口径。
+          // 直接上传的识图结果不兜：识图接口会把 OCR 噪音当宽高返回（PH-002 实测 42.19/16.79，
+          // 真实尺寸 136×357），兜进去就是「看起来正常的错值」。
+          const dimFallback = !!d._fromParts;
+          const sheetL = toNum(d.unfold_length) ?? toNum(d.unfold_length_mm) ?? toNum(d.sheet_length)
+            ?? (dimFallback ? toNum(d.length) : null);
+          const sheetW = toNum(d.unfold_width) ?? toNum(d.unfold_width_mm) ?? toNum(d.sheet_width)
+            ?? (dimFallback ? toNum(d.width) : null);
           if (sheetL !== null) next.length = sheetL;
           if (sheetW !== null) next.width = sheetW;
           const qty = toNum(d.quantity) ?? toNum(d._quantity);

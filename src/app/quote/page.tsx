@@ -159,6 +159,7 @@ export default function QuotePage() {
                      : '铝板';
         const mappedData: any = {
           ...part,
+          _fromParts: true,   // 标记来源=零件列表预填：几何量（width/length）是真实识别值，QuoteForm 板材分支才允许兜底
           wallThickness: part.thickness_mm || part.sheet_thickness || part.wall_thickness,
           // 板材取展开尺寸；型材取挤出长度 / 截面尺寸
           length: part.length || part.extrusion_length_mm

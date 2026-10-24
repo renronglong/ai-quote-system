@@ -240,14 +240,16 @@ function collectMissingFields(d: Record<string, any>): MissingField[] {
   }
 
   if (isSheet) {
-    // ② 展开长 / 展开宽（AI 链路可能只给 width/height，也算数）
-    if (nz(d.unfold_length ?? d.unfold_length_mm ?? d.length ?? d.height) == null) {
+    // ② 展开长 / 展开宽 —— 只认 unfold_* / sheet_* 专用字段。
+    // 不拿 width/length/height 顶数：识图接口会把 OCR 噪音当宽高返回
+    // （PH-002 实测 42.19/16.79，真实尺寸 136×357），宁可控用户手填也别填错值。
+    if (nz(d.unfold_length ?? d.unfold_length_mm ?? d.sheet_length) == null) {
       out.push({
         key: 'unfold_length', label: '展开长', unit: 'mm', required: true, input: 'number',
         apply: numApply(['unfold_length', 'unfold_length_mm', 'length']),
       });
     }
-    if (nz(d.unfold_width ?? d.unfold_width_mm ?? d.width) == null) {
+    if (nz(d.unfold_width ?? d.unfold_width_mm ?? d.sheet_width) == null) {
       out.push({
         key: 'unfold_width', label: '展开宽', unit: 'mm', required: true, input: 'number',
         apply: numApply(['unfold_width', 'unfold_width_mm', 'width']),
