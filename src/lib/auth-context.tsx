@@ -82,6 +82,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const rc = (parsed.user as any)?.referral_code;
           if (rc) setReferralCode(rc);
           setIsAdmin(!!(parsed.user as any)?.is_admin);
+          // 滑动续期：活跃用户每次进入都顺延 30 天，避免强制刷新后被踢回登录
+          try {
+            parsed.expires_at = Date.now() + 30 * 24 * 3600 * 1000;
+            localStorage.setItem('custom_session', JSON.stringify(parsed));
+          } catch { /* ignore */ }
         } else {
           localStorage.removeItem('custom_session');
         }
@@ -137,8 +142,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const mockSession = {
         access_token: 'custom_token',
         refresh_token: 'custom_refresh',
-        expires_in: 3600,
-        expires_at: Date.now() + 3600000,
+        expires_in: 30 * 24 * 3600, // 30天，与后端 JWT token 有效期对齐
+        expires_at: Date.now() + 30 * 24 * 3600 * 1000,
         token_type: 'bearer',
         user: {
           id: data.user.id,
