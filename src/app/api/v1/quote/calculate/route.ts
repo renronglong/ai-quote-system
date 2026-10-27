@@ -299,6 +299,10 @@ function r2(n: number): number {
 function r3(n: number): number {
   return Math.round(n * 1000) / 1000;
 }
+/** 四舍五入到四位小数（单件重量等小数值，避免 190g 显示把 193.6g 抹掉） */
+function r4(n: number): number {
+  return Math.round(n * 10000) / 10000;
+}
 /** 保留左边3位有效数字（如 1.234→1.23, 12.34→12.3, 1234→1230） */
 function r3sig(n: number): number {
   if (n <= 0) return 0;
@@ -740,7 +744,7 @@ function calcExtrusionMaterialCost(
 
   return {
     cost: r2(cost),
-    weight: r2(weightKg),
+    weight: r4(weightKg), // 保留到 0.1g，否则 193.6g 会显示成 190.0g，材料费对不上
     rawWeight: weightKg, // 未舍入的原始重量，用于精确计算MOQ
     formula: formulaStr,
     detail: detailStr,
