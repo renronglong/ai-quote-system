@@ -90,7 +90,9 @@ export async function POST(request: Request) {
         weight_per_meter: item.weight_per_meter != null && item.weight_per_meter !== '' ? Number(item.weight_per_meter) : null,
         perimeter: item.perimeter != null && item.perimeter !== '' ? Number(item.perimeter) : null,
         surface_treatments: surfaceTreatments || [],
-        num_dies: item.num_dies != null ? Number(item.num_dies) : 1,
+        // 模具类型列：平模=0，分流模/空值/无法识别=1（与产品管理新增页口径一致）
+        num_dies: String(item.mold_type ?? '').trim() === '平模' ? 0
+          : (item.num_dies != null && item.num_dies !== '' ? Number(item.num_dies) : 1),
         remarks: item.remarks?.trim() || null,
         updated_at: new Date().toISOString(),
       };
