@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/storage/database/supabase-client";
 
-// 获取用户ID：优先从 header 取，其次从 query param 取
+// 获取用户ID：全站统一从 query param user_id 取（与 profile/supplier/credits 等接口一致）
 function getUserId(request: NextRequest): string | null {
-  return (
-    request.headers.get('x-user-id') ||
-    request.nextUrl.searchParams.get('user_id') ||
-    null
-  );
+  return request.nextUrl.searchParams.get('user_id');
 }
 
 function errorResponse(message: string, status: number) {

@@ -36,13 +36,13 @@ export interface SavedQuote {
 }
 
 // ==================== API helpers ====================
-function getHeaders(userId: string): Record<string, string> {
-  return { 'Content-Type': 'application/json', 'x-user-id': userId };
+function getHeaders(): Record<string, string> {
+  return { 'Content-Type': 'application/json' };
 }
 
 export async function loadSavedQuotes(userId: string): Promise<SavedQuote[]> {
   try {
-    const res = await fetch('/api/saved-quotes', { headers: getHeaders(userId) });
+    const res = await fetch(`/api/saved-quotes?user_id=${encodeURIComponent(userId)}`, { headers: getHeaders() });
     const json = await res.json();
     if (json.success) return json.data || [];
     return [];
@@ -64,9 +64,9 @@ export async function saveQuoteToAPI(
   try {
     const name = customName || `报价-${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}-${productType}`;
     const finalParams = moldGroupId ? { ...params, _mold_group_id: moldGroupId } : params;
-    const res = await fetch('/api/saved-quotes', {
+    const res = await fetch(`/api/saved-quotes?user_id=${encodeURIComponent(userId)}`, {
       method: 'POST',
-      headers: getHeaders(userId),
+      headers: getHeaders(),
       body: JSON.stringify({
         name,
         product_type: productType,
@@ -86,9 +86,9 @@ export async function saveQuoteToAPI(
 
 export async function deleteSavedQuoteAPI(userId: string, id: string): Promise<boolean> {
   try {
-    const res = await fetch(`/api/saved-quotes?id=${id}`, {
+    const res = await fetch(`/api/saved-quotes?id=${id}&user_id=${encodeURIComponent(userId)}`, {
       method: 'DELETE',
-      headers: getHeaders(userId),
+      headers: getHeaders(),
     });
     const json = await res.json();
     return json.success;
