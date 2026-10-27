@@ -128,7 +128,7 @@ async function searchAndExtract(material: string, config: PriceSource): Promise<
 
 interface PriceCache { data: PriceItem[]; timestamp: number; material: string }
 const priceCache = new Map<string, PriceCache>();
-const CACHE_DURATION = 2 * 60 * 60 * 1000;
+const CACHE_DURATION = 30 * 60 * 1000; // 30 min（缩短，避免 scrape 脏数据长期污染）
 
 function buildDataField(prices: PriceItem[], material?: string) {
   const norm = (n: string) => n.replace(/[（]/g, '(').replace(/[）]/g, ')');
@@ -189,16 +189,34 @@ export async function GET(request: NextRequest) {
   if (!forceRefresh) {
     try {
       const supabase = createClient(supabaseUrl, supabaseServiceKey);
-      const today = new Date().toISOString().split('T')[0];
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      const threeDaysAgo = new Date(today);
+      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+      const threeDaysAgoStr = threeDaysAgo.toISOString().split('T')[0];
+
       const { data: dbPrices, error } = await supabase
         .from('material_prices')
         .select('*')
         .eq('material', mm)
-        .eq('price_date', today)
+        .gte('price_date', threeDaysAgoStr)
+        .lte('price_date', todayStr)
+        .order('price_date', { ascending: false })
         .order('created_at', { ascending: false });
-      
-      if (!error && dbPrices && dbPrices.length > 0) {
-        const prices: PriceItem[] = dbPrices.map((row: any) => ({
+
+      // 按 name 去重：保留每个 name 的最新一条（已按 price_date desc + created_at desc 排序）
+      let effectivePrices = dbPrices || [];
+      if (effectivePrices.length > 0) {
+        const seen = new Set<string>();
+        effectivePrices = effectivePrices.filter((row: any) => {
+          if (seen.has(row.name)) return false;
+          seen.add(row.name);
+          return true;
+        });
+      }
+
+      if (!error && effectivePrices && effectivePrices.length > 0) {
+        const prices: PriceItem[] = effectivePrices.map((row: any) => ({
           name: row.name,
           price: String(row.price),
           change: row.change_amount > 0 ? `↑${row.change_amount}` : row.change_amount < 0 ? `↓${Math.abs(row.change_amount)}` : '→0',
@@ -207,7 +225,9 @@ export async function GET(request: NextRequest) {
         }));
         return Response.json({ 
           success: true, material: mm, prices, cached: true, fromDb: true,
-          updatedAt: dbPrices[0].created_at, data: buildDataField(prices, mm)
+          dataDate: effectivePrices[0].price_date,
+          updatedAt: effectivePrices[0].created_at,
+          data: buildDataField(prices, mm) 
         });
       }
       if (error) console.error('[market-price] DB query error:', error?.message, 'key len:', supabaseServiceKey?.length || 0);
