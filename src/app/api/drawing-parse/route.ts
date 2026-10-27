@@ -58,6 +58,32 @@ async function postParser(buildForm: () => FormData, endpoint: string): Promise<
   return res;
 }
 
+
+/**
+ * 把解析服务的结果对前端做一层「人话化」。
+ * 典型场景：把 2D 工程图（DWG/DXF 导出的线框）误存成 STEP，FreeCAD 能读文件但没有 3D 实体，
+ * 后端抛 "Shape is null" / "Null shape" / "empty shape" 之类堆栈——用户看不懂。
+ */
+function humanizeParseResult(result: any, fileName?: string): any {
+  if (result && result.parse_success === false) {
+    const raw = String(result.error || result.parse_errors || result.detail || '');
+    const noSolid = /shape\s*is\s*null|null\s*shape|empty\s*shape|no\s*(valid\s*)?(solid|shape)|没有.*实体|无.*3d/i.test(raw);
+    if (noSolid) {
+      return {
+        ...result,
+        error_code: 'unsupported_format',
+        message: '这个 STEP 文件里没有 3D 实体（看起来是 2D 工程图导出来的）。请上传真正的 3D 实体模型；如果只有工程图，请导出为 PDF 或图片（JPG/PNG）后再上传。',
+        hint: '工程图请用 PDF/图片；STEP 必须含三维实体',
+      };
+    }
+    // 其他解析失败：保留后端原始信息，但剥掉过长堆栈（前端只显示前 300 字）
+    if (raw.length > 300) {
+      return { ...result, error: raw.slice(0, 300) + '…' };
+    }
+  }
+  return result;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -93,7 +119,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const result = await response.json();
+      const result = humanizeParseResult(await response.json(), request.headers.get("x-file-name") || undefined);
       return new Response(JSON.stringify(result), {
         headers: { "Content-Type": "application/json" },
       });
@@ -117,7 +143,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await response.json();
+    const result = humanizeParseResult(await response.json(), file!.name);
     return new Response(JSON.stringify(result), {
       headers: { "Content-Type": "application/json" },
     });

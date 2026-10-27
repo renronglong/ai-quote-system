@@ -2163,6 +2163,16 @@ export async function POST(request: NextRequest) {
         );
     }
 
+    // P0-2: 挤压型材填了长度却算不出重量（米重/截面积都缺）→ 422，禁止出 0 元报价；
+    // length=0 是「只核模具费」的合法场景，照常放行
+    if (body.product_type === 'extrusion' && (body.dimensions?.length_mm || 0) > 0
+      && (result.costs.material_cost ?? 0) === 0 && (result.weight ?? 0) === 0) {
+      return Response.json(
+        { success: false, error: '缺少米重或截面积，无法计算材料费。请填写米重(kg/m)或截面面积(mm²)，或用图纸识别自动读取。' } as QuoteResponse,
+        { status: 422, headers: CORS_HEADERS },
+      );
+    }
+
     // 4. 计算总价
     const unitPrice = result.costs.unit_price || 0;
     const totalPrice = r2(unitPrice * body.quantity);
@@ -2298,6 +2308,16 @@ export async function GET(request: NextRequest) {
           { success: false, error: `未知产品类型: ${body.product_type}` } as QuoteResponse,
           { status: 400, headers: CORS_HEADERS },
         );
+    }
+
+    // P0-2: 挤压型材填了长度却算不出重量（米重/截面积都缺）→ 422，禁止出 0 元报价；
+    // length=0 是「只核模具费」的合法场景，照常放行
+    if (body.product_type === 'extrusion' && (body.dimensions?.length_mm || 0) > 0
+      && (result.costs.material_cost ?? 0) === 0 && (result.weight ?? 0) === 0) {
+      return Response.json(
+        { success: false, error: '缺少米重或截面积，无法计算材料费。请填写米重(kg/m)或截面面积(mm²)，或用图纸识别自动读取。' } as QuoteResponse,
+        { status: 422, headers: CORS_HEADERS },
+      );
     }
 
     // 4. 计算总价

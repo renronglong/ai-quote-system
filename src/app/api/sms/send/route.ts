@@ -26,7 +26,10 @@ const VALID_PURPOSES = ['register', 'login', 'resetPassword'];
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { phone, purpose = 'register' } = body;
+    // 兼容旧版前端传 {type:'reset_password'}；统一换算成 purpose
+    const legacyTypeMap: Record<string, string> = { reset_password: 'resetPassword', register: 'register', login: 'login' };
+    const { phone } = body;
+    const purpose = body.purpose || legacyTypeMap[body.type] || 'register';
 
     // 1. 参数校验
     if (!phone) {
