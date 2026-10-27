@@ -308,7 +308,6 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
         processes: [
           { name: '无' },
           { name: '冲压', unit: '次' },
-          { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
           { name: 'CNC加工', unit: '分钟' },
           { name: '激光切割', unit: '米' },
@@ -330,7 +329,6 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
         processes: [
           { name: '无' },
           { name: '冲压', unit: '次' },
-          { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
           { name: 'CNC加工', unit: '分钟' },
           { name: '激光切割', unit: '米' },
@@ -349,7 +347,6 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
         processes: [
           { name: '无' },
           { name: '冲压', unit: '次' },
-          { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
           { name: 'CNC加工', unit: '分钟' },
           { name: '激光切割', unit: '米' },
@@ -368,7 +365,6 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
         processes: [
           { name: '无' },
           { name: '冲压', unit: '次' },
-          { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
           { name: 'CNC加工', unit: '分钟' },
           { name: '激光切割', unit: '米' },
@@ -387,7 +383,6 @@ export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
         processes: [
           { name: '无' },
           { name: '冲压', unit: '次' },
-          { name: '钻孔', unit: '次' },
           { name: '攻牙', unit: '次' },
           { name: 'CNC加工', unit: '分钟' },
           { name: '激光切割', unit: '米' },

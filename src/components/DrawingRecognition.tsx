@@ -52,12 +52,12 @@ interface PartInfo {
 }
 
 // Allowed upload extensions
-const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t', '.zip', '.rar', '.7z', '.tar', '.gz'];
+const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.heic', '.heif', '.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t', '.zip', '.rar', '.7z', '.tar', '.gz'];
 
 // 图片扩展名 — 触发AI识别
-const AI_RECOG_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf', '.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t', '.zip', '.rar', '.7z', '.tar', '.gz'];
+const AI_RECOG_EXTS = ['.jpg', '.jpeg', '.png', '.heic', '.heif', '.gif', '.bmp', '.webp', '.pdf', '.dxf', '.dwg', '.stp', '.step', '.igs', '.iges', '.x_t', '.zip', '.rar', '.7z', '.tar', '.gz'];
 // 上传区直接展示的能力标签（与实测结果一致，别再写支持但实际不支持）
-const SUPPORTED_TAGS = ['STP', 'STEP', 'DXF', 'DWG', 'PDF', 'JPG', 'PNG', 'ZIP', 'RAR', '7Z', 'TAR'];
+const SUPPORTED_TAGS = ['STP', 'STEP', 'DXF', 'DWG', 'PDF', 'JPG', 'PNG', 'HEIC', 'ZIP', 'RAR', '7Z', 'TAR'];
 
 // CAD扩展名 — 本地解析或转发
 const CAD_EXTS = ['.dxf', '.dwg', '.step', '.stp', '.igs'];
@@ -70,6 +70,36 @@ const MAX_FILE_BYTES = 4.5 * 1024 * 1024;
 const FORMAT_BLOCKED: Record<string, string> = {
   '.gz': 'GZ 压缩包解压后会丢失图纸扩展名（服务端解出的是无后缀文件名，识别不出来）。请改用 ZIP / TAR，或打包成 .tar.gz。',
 };
+
+// ===== HEIC/HEIF（iPhone 默认格式）上传前自动转 JPG =====
+const HEIC_EXTS = ['.heic', '.heif'];
+let heicScriptPromise: Promise<void> | null = null;
+function loadHeic2any(): Promise<void> {
+  if (typeof window === 'undefined') return Promise.reject(new Error('no window'));
+  if ((window as any).heic2any) return Promise.resolve();
+  if (!heicScriptPromise) {
+    heicScriptPromise = new Promise<void>((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = '/vendor/heic2any.min.js';
+      s.async = true;
+      s.onload = () => ((window as any).heic2any ? resolve() : reject(new Error('heic2any 加载失败')));
+      s.onerror = () => reject(new Error('HEIC 转换组件加载失败'));
+      document.head.appendChild(s);
+    });
+  }
+  return heicScriptPromise;
+}
+/** 是 HEIC/HEIF 则在浏览器端转成 JPG（文件名同步改后缀）；其他文件原样返回 */
+async function ensureJpegIfHeic(file: File): Promise<File> {
+  const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
+  const isHeic = HEIC_EXTS.includes(ext) || /image\/hei[cf]/i.test(file.type);
+  if (!isHeic) return file;
+  await loadHeic2any();
+  const out = await (window as any).heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
+  const blob: Blob = Array.isArray(out) ? out[0] : out;
+  const baseName = file.name.replace(/\.(heic|heif)$/i, '');
+  return new File([blob], baseName + '.jpg', { type: 'image/jpeg', lastModified: Date.now() });
+}
 
 const processToProductType: Record<string, string> = {
   '挤压铝型材': '挤出', '板材': '板材', '铝板': '板材',
@@ -1082,10 +1112,24 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
   };
   recognizeFileRef.current = recognizeFile;
 
-  const handleFileDrop = (e: React.DragEvent) => {
+  // HEIC/HEIF 先转 JPG，再走原有流程；转换失败给明确提示
+  const prepareFiles = async (files: File[]): Promise<File[]> => {
+    const out: File[] = [];
+    for (const f of files) {
+      try {
+        out.push(await ensureJpegIfHeic(f));
+      } catch (err) {
+        setRecogError('iPhone 的 HEIC 照片转换失败，请在手机「设置-相机-格式」里改成「兼容性最好」后重拍，或先把照片另存为 JPG 再上传。');
+        return [];
+      }
+    }
+    return out;
+  };
+
+  const handleFileDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const files = Array.from(e.dataTransfer.files || []);
+    const files = await prepareFiles(Array.from(e.dataTransfer.files || []));
     if (!files.length) return;
     if (isContinuous) {
       const valid = files.filter(isValidFile);
@@ -1103,9 +1147,9 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
     }
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = await prepareFiles(Array.from(e.target.files || []));
+    if (!files.length) { e.target.value = ''; return; }
     if (isContinuous) {
       const valid = files.filter(isValidFile);
       if (valid.length) {
@@ -1120,6 +1164,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
         recognizeFile(file);
       }
     }
+    e.target.value = '';
   };
 
   const removeFile = () => {
@@ -1168,6 +1213,9 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
       if (uploadedFile.name.toLowerCase().endsWith('.pdf')) {
         setStatusMessage('PDF正在转为图片识别，请稍候...');
         fileToSend = await convertPdfToPng(uploadedFile);
+      } else if (/\.(heic|heif)$/i.test(uploadedFile.name)) {
+        setStatusMessage('iPhone照片(HEIC)正在转为JPG，请稍候...');
+        fileToSend = await ensureJpegIfHeic(uploadedFile);
       }
       const fd = new FormData();
       fd.append('file', fileToSend);
