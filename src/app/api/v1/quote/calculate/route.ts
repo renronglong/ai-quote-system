@@ -706,7 +706,7 @@ function calcExtrusionMaterialCost(
   if (meterWeight > 0 && lengthMm > 0) {
     weightKg = meterWeight * (lengthMm + 5) / 1000;
     formulaStr = '米重(kg/m) × (长度+5) / 1000';
-    detailStr = `${r3(meterWeight)}kg/m × (${lengthMm}mm + 5mm) ÷ 1000 = ${r2(weightKg)}kg`;
+    detailStr = `${r3(meterWeight)}kg/m × (${lengthMm}mm + 5mm) ÷ 1000 = ${r4(weightKg)}kg`;
     if (stdWeightInfo) {
       detailStr += ` | 理论米重: ${stdWeightInfo.formula} × 2.7g/cm³ ÷ 1000 = ${r3(meterWeight)}kg/m`;
     }
@@ -732,7 +732,7 @@ function calcExtrusionMaterialCost(
   const cost = weightKg * materialPricePerKg;
   
   detailStr += ` | 材料单价: ${aluminumPrice} + ${extrusionFeePerTon} = ${materialPricePerTon}元/吨 = ${r2(materialPricePerKg)}元/kg`;
-  detailStr += ` | 材料费: ${r2(weightKg)}kg × ${r2(materialPricePerKg)}元/kg = ${r2(cost)}元`;
+  detailStr += ` | 材料费: ${r4(weightKg)}kg × ${r2(materialPricePerKg)}元/kg = ${r2(cost)}元`;
   
   // 计算材料利用率
   let utilizationRate: number | undefined;
