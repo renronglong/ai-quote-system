@@ -1,6 +1,7 @@
 // ============================================================
 // 统一铝锭价获取（元/吨）
-// 主源：lvdingjia.com 首页「南海铝锭(含票)」均价
+// 主源：Supabase material_prices 当日「南海铝锭(含票)」（与行情页同源，业主 2026-10-27 定案：材料单价用含票口径）
+// 备源：lvdingjia.com 首页「南海铝锭(含票)」均价
 // 兜底：Bing 搜索「南海灵通铝锭价 今日价格」
 // 缓存：2 小时；抓取失败时若 7 天内有成功价，返回最近价并标记 stale
 // ============================================================
@@ -8,6 +9,46 @@
 let cachedPrice: { price: number; timestamp: number } | null = null;
 const CACHE_DURATION = 2 * 60 * 60 * 1000; // 2 小时
 const STALE_LIMIT = 7 * 24 * 60 * 60 * 1000; // 7 天
+
+// ============================================================
+// Supabase 直读：material_prices 最近 3 天的「南海铝锭(含票)」
+// 报价材料单价统一用含票口径（业主 2026-10-27 定案）
+// ============================================================
+const SUPABASE_URL =
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jotgxnhueagbsvfeepic.supabase.co';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+
+async function fetchFromDb(): Promise<number | null> {
+  if (!SUPABASE_SERVICE_KEY) return null;
+  try {
+    const since = new Date();
+    since.setDate(since.getDate() - 3);
+    const sinceStr = since.toISOString().split('T')[0];
+    const qs = new URLSearchParams({
+      select: 'name,price,price_date',
+      material: 'eq.铝型材',
+      price_date: `gte.${sinceStr}`,
+      order: 'price_date.desc',
+      limit: '30',
+    });
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/material_prices?${qs.toString()}`, {
+      headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+      signal: AbortSignal.timeout(5000),
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const rows = await res.json();
+    if (!Array.isArray(rows)) return null;
+    const hit = rows.find(
+      (r: any) => typeof r?.name === 'string' && r.name.includes('南海铝锭') && r.name.includes('含票'),
+    );
+    const price = Number(hit?.price);
+    if (Number.isFinite(price) && price > 10000 && price < 50000) return price;
+  } catch (err) {
+    console.error('[aluminum-price] DB 读取失败:', err);
+  }
+  return null;
+}
 
 async function fetchWebHTML(url: string): Promise<string> {
   const response = await fetch(url, {
@@ -54,7 +95,7 @@ function extractFromSearch(html: string): number | null {
 
 export interface AluminumPriceResult {
   price: number;
-  source: 'lvdingjia' | 'bing' | 'stale-cache' | 'fallback';
+  source: 'db' | 'lvdingjia' | 'bing' | 'stale-cache' | 'fallback';
   stale: boolean;
 }
 
@@ -68,7 +109,14 @@ export async function getAluminumPrice(fallbackPrice?: number): Promise<Aluminum
     return { price: cachedPrice.price, source: 'lvdingjia', stale: false };
   }
 
-  // 2. 主源 lvdingjia
+  // 2. 数据库（material_prices 含票口径，最稳）
+  const dbPrice = await fetchFromDb();
+  if (dbPrice !== null) {
+    cachedPrice = { price: dbPrice, timestamp: Date.now() };
+    return { price: dbPrice, source: 'db', stale: false };
+  }
+
+  // 3. 备源 lvdingjia
   try {
     const html = await fetchWebHTML('https://www.lvdingjia.com/');
     const price = extractFromLvdingjia(html);
@@ -80,7 +128,7 @@ export async function getAluminumPrice(fallbackPrice?: number): Promise<Aluminum
     console.error('[aluminum-price] lvdingjia 抓取失败:', err);
   }
 
-  // 3. Bing 兜底
+  // 4. Bing 兜底
   try {
     const searchUrl = `https://www.bing.com/search?q=${encodeURIComponent('南海灵通铝锭价 今日价格')}&setlang=zh-CN`;
     const html = await fetchWebHTML(searchUrl);
@@ -93,12 +141,12 @@ export async function getAluminumPrice(fallbackPrice?: number): Promise<Aluminum
     console.error('[aluminum-price] bing 兜底失败:', err);
   }
 
-  // 4. 7 天内的陈旧缓存
+  // 5. 7 天内的陈旧缓存
   if (cachedPrice && Date.now() - cachedPrice.timestamp < STALE_LIMIT) {
     return { price: cachedPrice.price, source: 'stale-cache', stale: true };
   }
 
-  // 5. 调用方兜底
+  // 6. 调用方兜底
   if (fallbackPrice !== undefined) {
     return { price: fallbackPrice, source: 'fallback', stale: true };
   }
