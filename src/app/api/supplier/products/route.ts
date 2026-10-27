@@ -16,6 +16,20 @@ function computeMoldType(product: any): string {
   return '分流模';
 }
 
+// 模具类型 → num_dies（0=平模，≥1=分流模）。用户选了什么就存什么，不被默认值覆盖
+function resolveNumDies(moldType?: string | null, numDies?: any): number {
+  if (moldType === '平模') return 0;
+  if (moldType === '分流模') {
+    const n = Number(numDies);
+    return Number.isFinite(n) && n > 0 ? n : 1;
+  }
+  if (numDies != null && numDies !== '') {
+    const n = Number(numDies);
+    if (Number.isFinite(n)) return n;
+  }
+  return 1;
+}
+
 function getSupabase() {
   if (!supabaseServiceKey) throw new Error('Supabase service role key not configured');
   return createClient(supabaseUrl, supabaseServiceKey, {
@@ -148,7 +162,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const {
       supplier_id, mold_number, product_name, cross_section_mm,
-      weight_per_meter, perimeter, surface_treatments, num_dies,
+      weight_per_meter, perimeter, surface_treatments, num_dies, mold_type,
       cross_section_image_url, remarks,
     } = body;
 
@@ -166,7 +180,7 @@ export async function POST(request: Request) {
       perimeter: perimeter != null ? Number(perimeter) : null,
       surface_treatments: surface_treatments || [],
       cross_section_image_url: cross_section_image_url || null,
-      num_dies: num_dies != null ? Number(num_dies) : 1,
+      num_dies: resolveNumDies(mold_type, num_dies), // 之前忽略 mold_type，一律存1，导致选平模也变分流模
       remarks: remarks || null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -225,8 +239,8 @@ export async function PUT(request: Request) {
         if ((field === 'weight_per_meter' || field === 'perimeter') && updates[field] != null) {
           payload[field] = Number(updates[field]);
         } else if (field === 'mold_type') {
-          // mold_type → num_dies: 平模=0, 分流模=1
-          payload['num_dies'] = updates[field] === '平模' ? 0 : 1;
+          // mold_type 表里没有这一列，统一换算成 num_dies；平模=0，分流模见下方（保留原腔数）
+          if (updates[field] === '平模') payload['num_dies'] = 0;
         } else {
           payload[field] = updates[field];
         }
@@ -234,6 +248,18 @@ export async function PUT(request: Request) {
     }
 
     const supabase = getSupabase();
+
+    // 改成「分流模」时保留原来的腔数：多腔模具不能被硬写成单腔
+    if (updates.mold_type === '分流模' && updates.num_dies == null) {
+      const { data: cur } = await supabase
+        .from('supplier_products')
+        .select('num_dies')
+        .eq('id', id)
+        .maybeSingle();
+      const curN = Number(cur?.num_dies);
+      payload['num_dies'] = Number.isFinite(curN) && curN > 0 ? curN : 1;
+    }
+
     const { data, error } = await supabase
       .from('supplier_products')
       .update(payload)
