@@ -1055,7 +1055,7 @@ function calcExtrusion(
 
     breakdown['mold'] = {
       formula: `(材料费: 钢价×密度7.85×损耗1.2×πR²×H/10⁹ + (基础加工费0.028×Φ×H + 周长加工费0.0035×周长×2×厚度(分流模)或周长×厚度(平模)) × (1+管理费率)`,
-      detail: `模具钢价${dieSteelPrice}元/吨(密度7.85,损耗1.2) | Φ${dieDiameter}×${dieThickness}${dieType} | ${numCavities}公头(系数×${cavityMultiplier}): 材料费${dieSteelPrice}×7.85×1.2×π×(${dieDiameter}/2)²×${dieThickness}/10⁹=${Math.round(materialFee)} + 加工费(${Math.round(baseProcessingFee)}基础+${Math.round(perimeterFee)}周长)×${cavityMultiplier}=${Math.round((baseProcessingFee + perimeterFee) * cavityMultiplier)} → ×${(1+mgmtRate).toFixed(2)} = ${moldCost}元`,
+      detail: `模具钢价${dieSteelPrice}元/吨(密度7.85,损耗1.2) | Φ${dieDiameter}×${dieThickness}${dieType} | ${numCavities}公头(系数×${cavityMultiplier}): 材料费${dieSteelPrice}×7.85×1.2×π×(${dieDiameter}/2)²×${dieThickness}/10⁹=${Math.round(materialFee)} + 加工费(${Math.round(baseProcessingFee)}基础+${Math.round(perimeterFee)}周长)×${cavityMultiplier}=${Math.round((baseProcessingFee + perimeterFee) * cavityMultiplier)} → ×${(1+mgmtRate).toFixed(2)} = ${req.use_existing_mold ? 0 : preSurcharge}${req.use_existing_mold ? '（使用已有模具，模具费0元）' : ` + 统一加价100 = ${moldCost}元`}`,
     };
   }
 
