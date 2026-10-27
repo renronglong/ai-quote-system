@@ -202,7 +202,7 @@ const DEFAULT_PRICING_RULES: PricingRules = {
     '挤压铝型材': {
       density: 2.7,
       price_formula: '铝锭价 + 挤压加工费',
-      extrusion_fee_per_ton: 3000,
+      extrusion_fee_per_ton: 2000,
       default_grade: '6063-T5',
       fill_factor: 0.35,
     },
@@ -678,7 +678,7 @@ function calcExtrusionMaterialCost(
   weightOverride?: number,
 ): { cost: number; weight: number; rawWeight: number; formula: string; detail: string; utilizationRate?: number; sheetPrice?: number; nestingQty?: number } {
   const matRule = rules.material_prices['挤压铝型材'] || {};
-  const extrusionFeePerTon = matRule.extrusion_fee_per_ton || 3000;
+  const extrusionFeePerTon = matRule.extrusion_fee_per_ton || 2000;
   
   // 材料单价 = 铝锭价 + 挤压加工费 (元/吨)
   const materialPricePerTon = aluminumPrice + extrusionFeePerTon;
