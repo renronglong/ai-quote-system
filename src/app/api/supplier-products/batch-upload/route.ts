@@ -44,10 +44,10 @@ export async function POST(request: Request) {
     }
     const userId = payload.sub;
 
-    // Get supplier_id from suppliers table
+    // 供应商档案表是 supplier_profiles（不是 suppliers；旧表名会导致批量上传永远 400）
     const supabase = getSupabase();
     const { data: supplierRow } = await supabase
-      .from('suppliers')
+      .from('supplier_profiles')
       .select('id')
       .eq('user_id', userId)
       .maybeSingle();
