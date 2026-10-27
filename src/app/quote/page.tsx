@@ -533,17 +533,8 @@ export default function QuotePage() {
         </div>
       </header>
 
-      {/* 面包屑导航 */}
-      <div className="shrink-0 bg-white border-b border-slate-100 px-6 py-2">
-        <h1 className="sr-only">手动报价 · gyparts.cn AI报价系统</h1>
-        <div className="max-w-[1600px] mx-auto flex items-center gap-1.5 text-xs text-slate-500">
-          <Link href="/" className="px-1.5 py-1 rounded hover:bg-gray-100 hover:text-slate-700">首页</Link>
-          <span className="text-slate-300">/</span>
-          <span className="px-1.5 py-1 rounded text-slate-700 font-medium">AI报价</span>
-          <span className="text-slate-300">/</span>
-          <span className="px-1.5 py-1 rounded text-slate-700 font-medium">手动报价</span>
-        </div>
-      </div>
+      {/* 面包屑已去掉：和顶部导航（首页/AI报价）重复，只保留给读屏和 SEO 的标题 */}
+      <h1 className="sr-only">手动报价 · gyparts.cn AI报价系统</h1>
 
       {/* ===== Excel 正式报价单出单弹窗 ===== */}
       {showSheetDialog && user && (
