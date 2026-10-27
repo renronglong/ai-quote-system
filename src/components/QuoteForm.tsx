@@ -8,6 +8,30 @@ import { adviseCastingMachine } from '@/lib/pricing/castingMachine';
 import { calcProjVolumeMm3 } from '@/lib/pricing/cncMachining';
 import { STEEL_STANDARD_SPECS } from '@/data/steelStandardSpecs';
 
+// ==================== 表单草稿（自动暂存 / 恢复） ====================
+// 目的：保存报价、组件重挂载、误刷新后，已经填好的参数不再凭空消失
+const QUOTE_DRAFT_KEY = 'ai_quote_form_draft_v1';
+const QUOTE_DRAFT_TTL = 6 * 60 * 60 * 1000; // 草稿有效期 6 小时
+
+function readQuoteDraft(): Record<string, any> | null {
+  try {
+    const raw = localStorage.getItem(QUOTE_DRAFT_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    if (!d || !d.savedAt || Date.now() - d.savedAt > QUOTE_DRAFT_TTL) return null;
+    return d;
+  } catch {
+    return null;
+  }
+}
+
+/** 主动清空草稿（点「清空」时调用，避免下次进来又恢复旧内容） */
+export function clearQuoteDraft() {
+  try {
+    localStorage.removeItem(QUOTE_DRAFT_KEY);
+  } catch {}
+}
+
 // ==================== Types ====================
 
 interface QuoteFormData {
@@ -938,8 +962,73 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       if (!skipCategoryResetRef.current) {
         resetCategoryState(nextCat);
       }
+      skipCategoryResetRef.current = false;
     }
   }, [productType]);
+
+  // ===== 表单草稿：重挂载 / 刷新后自动恢复已填参数 =====
+  const draftRestoredRef = useRef(false);
+  useEffect(() => {
+    if (draftRestoredRef.current) return;
+    draftRestoredRef.current = true;
+    const d = readQuoteDraft();
+    if (!d) return;
+    if (d.fields && typeof d.fields === 'object') {
+      setFields(prev => ({ ...prev, ...d.fields }));
+    }
+    if (d.productType && PRODUCT_TYPES[d.productType] && d.productType !== productType) {
+      // 切产品类型会触发上面那个 effect 清空类别，这里提前打标跳过，避免把刚恢复的参数又清掉
+      skipCategoryResetRef.current = true;
+      preserveCatRef.current = d.materialCategory || null;
+      preserveStdCatRef.current = d.standardCategory || null;
+      setProductType(d.productType);
+    }
+    if (d.materialCategory) setMaterialCategory(d.materialCategory);
+    if (d.standardCategory !== undefined) setStandardCategory(d.standardCategory || '');
+    if (d.productName) setProductName(d.productName);
+    if (d.productCode) setProductCode(d.productCode);
+    if (d.materialGrade) setMaterialGrade(d.materialGrade);
+    if (d.materialSurfaceTreatment) setMaterialSurfaceTreatment(d.materialSurfaceTreatment);
+    if (d.materialColor) setMaterialColor(d.materialColor);
+    if (d.productSurfaceTreatment) setProductSurfaceTreatment(d.productSurfaceTreatment);
+    if (d.productColor) setProductColor(d.productColor);
+    if (d.surfaceTreatment) setSurfaceTreatment(d.surfaceTreatment);
+    if (d.surfaceColor) setSurfaceColor(d.surfaceColor);
+    if (Array.isArray(d.processes) && d.processes.length > 0) setProcesses(d.processes as ProcessSelection[]);
+    if (d.materialSizeType === 'long' || d.materialSizeType === 'short') setMaterialSizeType(d.materialSizeType);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ===== 表单草稿：内容变化时自动暂存 =====
+  const draftTimerRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    const hasContent =
+      Object.entries(fields).some(([k, v]) => k !== 'quantity' && v !== '' && v !== null && v !== undefined) ||
+      !!productName || !!productCode || processes.length > 0;
+    draftTimerRef.current = setTimeout(() => {
+      try {
+        if (hasContent) {
+          localStorage.setItem(QUOTE_DRAFT_KEY, JSON.stringify({
+            fields, productType, materialCategory, standardCategory,
+            productName, productCode, materialGrade,
+            materialSurfaceTreatment, materialColor,
+            productSurfaceTreatment, productColor,
+            surfaceTreatment, surfaceColor,
+            processes, materialSizeType,
+            savedAt: Date.now(),
+          }));
+        } else {
+          // 空表单延迟更久才删，避免「异常被清空」时把草稿一起抹掉
+          localStorage.removeItem(QUOTE_DRAFT_KEY);
+        }
+      } catch {}
+    }, hasContent ? 600 : 8000);
+    return () => {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fields, productType, materialCategory, standardCategory, productName, productCode, materialGrade, materialSurfaceTreatment, materialColor, productSurfaceTreatment, productColor, surfaceTreatment, surfaceColor, processes, materialSizeType]);
 
   // Reset dependent states when material category changes
   const resetCategoryState = (catKey: string) => {
@@ -2677,7 +2766,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           {onNewQuote && (
             <button
               type="button"
-              onClick={onNewQuote}
+              onClick={() => { clearQuoteDraft(); onNewQuote?.(); }}
               className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 text-slate-600 text-sm font-medium hover:border-blue-300 hover:text-blue-600 transition-all"
               title="清空表单"
             >
