@@ -43,7 +43,16 @@ import {
 /* ─────────────────────────────────────────────
    截图占位组件 — 后续替换为真实截图
    ───────────────────────────────────────────── */
-function ScreenshotPlaceholder({ label, hint }: { label: string; hint?: string }) {
+function ScreenshotPlaceholder({ label, hint, src }: { label: string; hint?: string; src?: string }) {
+  if (src) {
+    return (
+      <figure className="my-3">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt={label} className="w-full border border-gray-200 rounded-lg shadow-sm" loading="lazy" />
+        {hint && <figcaption className="text-xs text-gray-400 mt-1.5 text-center">{hint}</figcaption>}
+      </figure>
+    );
+  }
   return (
     <div className="my-3 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 flex flex-col items-center justify-center py-8 px-4 text-center">
       <Image className="w-8 h-8 text-gray-300 mb-2" />
@@ -258,7 +267,6 @@ export default function HelpPage() {
                 { href: "#products", label: "产品库", icon: <Package className="w-3.5 h-3.5" /> },
                 { href: "#market", label: "铝价行情", icon: <TrendingUp className="w-3.5 h-3.5" /> },
                 { href: "#history", label: "报价历史", icon: <History className="w-3.5 h-3.5" /> },
-                { href: "#inventory", label: "库存管理", icon: <Box className="w-3.5 h-3.5" /> },
                 { href: "#faq", label: "常见问题", icon: <HelpCircle className="w-3.5 h-3.5" /> },
                 { href: "#contact", label: "联系我们", icon: <Mail className="w-3.5 h-3.5" /> },
               ].map((item) => (
@@ -300,7 +308,7 @@ export default function HelpPage() {
                 在浏览器输入 <strong>gyparts.cn</strong>，在首页右上角点击 <strong>"注册"</strong> 按钮，进入注册页面。
               </TutorialStep>
 
-              <ScreenshotPlaceholder label="截图：首页右上角「注册」按钮位置" hint="建议截取注册按钮区域" />
+              <ScreenshotPlaceholder label="截图：首页右上角「注册」按钮位置" hint="建议截取注册按钮区域" src="/help/nav_register.png" />
 
               <TutorialStep step={2} title="输入手机号" color="blue">
                 在手机号输入框中，填写您正在使用的手机号码。系统会向该号码发送短信验证码。
@@ -322,7 +330,7 @@ export default function HelpPage() {
                 确认信息无误后，点击 <strong>"注册"</strong> 按钮。看到"注册成功"提示后，就可以去登录了！
               </TutorialStep>
 
-              <ScreenshotPlaceholder label="截图：注册页面完整界面" hint="展示手机号、验证码、密码三个输入框" />
+              <ScreenshotPlaceholder label="截图：注册页面完整界面" hint="展示手机号、验证码、密码三个输入框" src="/help/register.png" />
             </div>
 
             {/* ── 1.2 登录 ── */}
@@ -347,7 +355,7 @@ export default function HelpPage() {
                 点击 <strong>"登录"</strong> 按钮，验证成功后自动跳转到首页。
               </TutorialStep>
 
-              <ScreenshotPlaceholder label="截图：登录页面完整界面" hint="展示手机号、密码输入框和「记住密码」勾选项" />
+              <ScreenshotPlaceholder label="截图：登录页面完整界面" hint="展示手机号、密码输入框和「记住密码」勾选项" src="/help/login.png" />
             </div>
 
             {/* ── 1.3 忘记密码 ── */}
@@ -405,7 +413,7 @@ export default function HelpPage() {
               登录后，在首页找到并点击 <strong>"开始报价"</strong> 按钮，或者在左侧导航栏点击相关入口，进入 AI 报价界面。
             </TutorialStep>
 
-            <ScreenshotPlaceholder label="截图：首页「开始报价」按钮位置" hint="展示首页报价入口" />
+            <ScreenshotPlaceholder label="截图：首页「开始报价」按钮位置" hint="展示首页报价入口" src="/help/result.png" />
 
             <TutorialStep step={3} title="上传图纸 或 文字描述需求" color="violet">
               <p>你有两种方式开始报价：</p>
@@ -421,7 +429,7 @@ export default function HelpPage() {
               </div>
             </TutorialStep>
 
-            <ScreenshotPlaceholder label="截图：报价界面上传区域" hint="展示拖拽上传区域和对话输入框" />
+            <ScreenshotPlaceholder label="截图：报价界面上传区域" hint="展示拖拽上传区域和对话输入框" src="/help/recognize.png" />
 
             <TutorialStep step={4} title="AI 自动识别工艺参数" color="violet">
               文件上传后，AI 会自动分析图纸，识别出以下信息：
@@ -460,7 +468,7 @@ export default function HelpPage() {
               修改参数时不需要重新上传图纸，直接在对话框里打字修改就行。比如："壁厚改成 2mm"、"帮我加上电镀"。
             </TipBox>
 
-            <ScreenshotPlaceholder label="截图：AI 对话界面，展示参数确认和修改的对话示例" hint="展示 AI 识别出的参数列表，以及用户修改参数的对话" />
+            <ScreenshotPlaceholder label="截图：AI 对话界面，展示参数确认和修改的对话示例" hint="展示 AI 识别出的参数列表，以及用户修改参数的对话" src="/help/chat.png" />
 
             <TutorialStep step={6} title="生成报价单" color="violet">
               参数确认无误后，AI 会根据当前铝价行情和你的工艺要求，自动计算出价格，生成一份详细的报价单。报价单包含：
@@ -484,7 +492,7 @@ export default function HelpPage() {
               报价单生成后，点击 <strong>"导出 PDF"</strong> 或 <strong>"下载报价单"</strong> 按钮，即可保存到本地。你可以打印出来、发给客户、或存档备查。
             </TutorialStep>
 
-            <ScreenshotPlaceholder label="截图：报价单结果页面和导出按钮" hint="展示报价单明细和 PDF 下载按钮" />
+            <ScreenshotPlaceholder label="截图：报价单结果页面和导出按钮" hint="展示报价单明细和 PDF 下载按钮" src="/help/result_panel.png" />
 
             {/* ── 支持的文件格式 ── */}
             <div className="border-t border-gray-100 pt-4 mt-4">
@@ -550,7 +558,7 @@ export default function HelpPage() {
               进入后可以看到产品列表，每个产品会显示<strong>截面图</strong>和<strong>规格参数</strong>（如材质、尺寸、重量等）。点击产品卡片可以查看详情。
             </TutorialStep>
 
-            <ScreenshotPlaceholder label="截图：产品列表页面" hint="展示产品卡片、截面图、规格参数" />
+            <ScreenshotPlaceholder label="截图：产品列表页面" hint="展示产品卡片、截面图、规格参数" src="/help/suppliers.png" />
 
             <TutorialStep step={3} title="添加新产品" color="emerald">
               点击 <strong>"新增产品"</strong> 按钮，填写产品名称、上传截面图、填写规格参数（材质、尺寸、表面处理等），填好后保存即可。
@@ -596,7 +604,7 @@ export default function HelpPage() {
               登录后，首页顶部导航栏会实时显示 <strong>南海铝锭价</strong>，打开网站就能看到，不用点进任何页面。
             </TutorialStep>
 
-            <ScreenshotPlaceholder label="截图：首页导航栏铝价显示位置" hint="展示顶部导航栏实时铝价" />
+            <ScreenshotPlaceholder label="截图：首页导航栏铝价显示位置" hint="展示顶部导航栏实时铝价" src="/help/nav_price.png" />
 
             <TutorialStep step={2} title="进入铝价行情页面" color="orange">
               点击导航栏中的 <strong>"铝价行情"</strong>，或在地址栏输入 <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">gyparts.cn/market</code>。
@@ -620,7 +628,7 @@ export default function HelpPage() {
               </div>
             </TutorialStep>
 
-            <ScreenshotPlaceholder label="截图：铝价行情页面完整界面" hint="展示各类铝价数据表格和涨跌趋势" />
+            <ScreenshotPlaceholder label="截图：铝价行情页面完整界面" hint="展示各类铝价数据表格和涨跌趋势" src="/help/market.png" />
 
             <TipBox type="info">
               铝价数据每日更新，与市场行情同步。报价时系统会自动使用最新铝价，无需手动修改。
@@ -654,7 +662,7 @@ export default function HelpPage() {
               页面会列出你所有的历史报价记录，按时间从新到旧排列。每条记录显示报价时间、产品名称、报价金额等信息。
             </TutorialStep>
 
-            <ScreenshotPlaceholder label="截图：报价历史列表页面" hint="展示报价记录列表，含时间、产品、金额" />
+            <ScreenshotPlaceholder label="截图：报价历史列表页面" hint="展示报价记录列表，含时间、产品、金额" src="/help/history.png" />
 
             <TutorialStep step={3} title="搜索报价记录" color="amber">
               在页面顶部的搜索框中，输入产品名称、材质等关键词，按回车即可筛选出匹配的报价。
@@ -680,43 +688,17 @@ export default function HelpPage() {
         <div id="inventory">
           <AccordionSection
             icon={<Box className="w-5 h-5" />}
-            title="库存管理 — 管理产品库存数据"
-            subtitle="入库、出库、查询库存"
+            title="库存管理 — 功能规划中"
+            subtitle="入库、出库、查询库存（即将上线）"
             accent="teal"
           >
-            <p className="text-sm text-gray-600 mb-4">
-              库存管理帮你记录每个产品的库存数量，方便随时掌握存货情况。
-            </p>
-
-            <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-              <Settings2 className="w-4 h-4 text-teal-500" /> 操作步骤
-            </h4>
-
-            <TutorialStep step={1} title="进入库存管理页面" color="teal">
-              在左侧导航栏点击 <strong>"库存管理"</strong>，或访问 <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">gyparts.cn/inventory</code>。
-            </TutorialStep>
-
-            <TutorialStep step={2} title="查看当前库存" color="teal">
-              进入后可以看到所有产品的库存列表，包括产品名称、当前库存数量、单位等信息。
-            </TutorialStep>
-
-            <ScreenshotPlaceholder label="截图：库存列表页面" hint="展示产品库存数据表格" />
-
-            <TutorialStep step={3} title="入库操作" color="teal">
-              找到需要入库的产品，点击 <strong>"入库"</strong> 按钮，输入入库数量，确认后库存数量会自动增加。
-            </TutorialStep>
-
-            <TutorialStep step={4} title="出库操作" color="teal">
-              找到需要出库的产品，点击 <strong>"出库"</strong> 按钮，输入出库数量，确认后库存数量会自动减少。
-            </TutorialStep>
-
-            <TutorialStep step={5} title="搜索和筛选" color="teal">
-              在产品较多时，可以使用搜索框输入产品名称快速找到对应库存记录。
-            </TutorialStep>
-
-            <TipBox type="info">
-              库存数据只对你自己的账号可见，其他用户看不到你的库存信息。
-            </TipBox>
+            <div className="flex items-start gap-3 p-4 rounded-lg bg-teal-50 border border-teal-100">
+              <Settings2 className="w-5 h-5 text-teal-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-gray-600">
+                <p className="font-medium text-gray-800 mb-1">库存管理功能正在开发中</p>
+                <p>产品入库、出库、库存预警等功能即将上线。上线后会在帮助中心更新操作指引，敬请期待。</p>
+              </div>
+            </div>
           </AccordionSection>
         </div>
 
@@ -803,7 +785,7 @@ export default function HelpPage() {
             <FAQItem
               question="可以在手机上使用吗？"
               answer={
-                <p>可以！网站做了<strong>移动端适配</strong>，手机浏览器打开 gyparts.cn 就能正常使用。上传图纸、查看报价、管理库存都可以在手机上操作。建议把网站添加到手机书签，方便下次快速打开。</p>
+                <p>可以！网站做了<strong>移动端适配</strong>，手机浏览器打开 gyparts.cn 就能正常使用。上传图纸、查看报价、保存报价单都可以在手机上操作。建议把网站添加到手机书签，方便下次快速打开。</p>
               }
             />
           </div>
