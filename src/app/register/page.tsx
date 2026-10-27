@@ -77,8 +77,8 @@ export default function RegisterPage() {
       }
 
       setSuccessMessage('验证码已发送');
-      if (data.devCode) {
-        setDevCode(data.devCode);
+      if (data.debugCode) {
+        setDevCode(data.debugCode);
       }
       setCountdown(60);
       setStep('verify');

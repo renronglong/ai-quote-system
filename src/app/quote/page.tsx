@@ -997,7 +997,6 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
   const discountedUnit = p.unit_price * (productDiscount / 100);
   const discountedMold = moldFee * (moldDiscount / 100);
   const displayUnit = hasProductDiscount ? discountedUnit : p.unit_price;
-  const qty = 1; // TODO: get from params if available
 
   const breakdownItems = [
     { label: '材料费', value: p.material_cost, key: 'material_cost' },

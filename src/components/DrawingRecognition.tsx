@@ -349,6 +349,8 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
   const processingRef = useRef(false);
   const currentFileNameRef = useRef('');
   const committedThisRunRef = useRef(false);
+  // 当前文件真实失败原因：连续模式失败兜底入库用，避免列表里所有失败都只显示「识别失败」
+  const lastRecogErrorRef = useRef<string>('');
   const processNextRef = useRef<() => void>(() => {});
   const recognizeFileRef = useRef<(file: File) => Promise<void>>(async () => {});
   // 最近一次入库的结果 id + AI 确认抽屉正在修订的目标 id
@@ -587,7 +589,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
     }
     // 若 recognizeFile 内部未提交（出错提前 return），由这里兜底标记失败并继续
     if (isContinuous && !committedThisRunRef.current) {
-      commitResult({ recogData: null, error: '识别失败', fileName: nextFile.name });
+      commitResult({ recogData: null, error: lastRecogErrorRef.current || '识别失败', fileName: nextFile.name });
     }
     processingRef.current = false;
     processNext();
@@ -645,6 +647,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
   }, []);
 
   const recognizeFile = async (file: File) => {
+    lastRecogErrorRef.current = '';
     const ext = '.' + file.name.split('.').pop()?.toLowerCase();
     // ===== 登录检查 =====
     if (!user) {
@@ -966,7 +969,9 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           } else if (ext === '.x_t') {
             setRecogError('X_T（Parasolid）格式暂不支持解析。请在 CAD 里把文件另存为 STEP（.stp / .step）后再上传。');
           } else {
-            setRecogError(cadJson.error || cadJson.parse_errors || '3D 模型解析失败');
+            const e3d = cadJson.message || cadJson.error || cadJson.parse_errors || '3D 模型解析失败';
+            lastRecogErrorRef.current = e3d;
+            setRecogError(e3d);
           }
           setRecognitionFailed(true);
           return;
@@ -1065,7 +1070,9 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
       if (e?.name === 'AbortError') {
         setRecogError('识别超时，请重试或申请深度报价');
       } else {
-        setRecogError(e?.message || '网络错误');
+        const enet = e?.message || '网络错误';
+        lastRecogErrorRef.current = enet;
+        setRecogError(enet);
       }
       setRecognitionFailed(true);
     } finally {
