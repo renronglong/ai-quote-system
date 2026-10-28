@@ -2255,7 +2255,8 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
         // 检查是否有结构化参数标记
         const paramsBlock = t.match(/【FORM_PARAMS】([\s\S]*?)(?:【\/FORM_PARAMS】|$)/);
         if (paramsBlock) {
-          const block = paramsBlock[1];
+          // 兼容模型可能输出的 markdown 加粗/列表符号
+          const block = paramsBlock[1].replace(/\*\*/g, '').replace(/^[-*]\s+/gm, '');
 
           // ---- 材质 ----
           const matMatch = block.match(/material[_-]?grade[：:=]\s*(\S+)/i) || block.match(/材质[：:=]\s*(.*?)(?:\n|$)/);
