@@ -1199,6 +1199,7 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
   const [cadResult, setCadResult] = useState<CadParseResult | null>(null);
   const [cozeFileId, setCozeFileId] = useState<string | null>(null);
   const [cozeFileIdsBatch, setCozeFileIdsBatch] = useState<string[]>([]); // 批量文件ID（用于压缩包多文件）
+  const [fileUrls, setFileUrls] = useState<string[]>([]); // 压缩包多文件的公网URL（豆包视觉输入）
   const [extractedText, setExtractedText] = useState<string | null>(null);
   const [uploadedFileInfo, setUploadedFileInfo] = useState<{name: string, url: string | null, type: string, size: number} | null>(null);
   const [moldMatches, setMoldMatches] = useState<Array<{id:string;mold_number:string|null;product_name:string|null;cross_section_mm:string|null;weight_per_meter:number|null;perimeter:number|null;similarity:number;score:number;dim_score:number;weight_score:number;image_similarity:number;cross_section_image_url:string|null}>>([]);
@@ -1680,6 +1681,7 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
 
       // 收集所有文件ID和信息
       const collectedFileIds: string[] = [];
+      const collectedFileUrls: string[] = [];
       const fileSummaries: string[] = [];
       const allExtractedTexts: string[] = [];
       let firstImagePreview: string | null = null;
@@ -1754,8 +1756,9 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
             fd.append('file', fileToUpload);
             const resp = await fetch('/api/upload', { method: 'POST', body: fd });
             const data = await resp.json();
-            if (data.success && data.cozeFileId) {
-              collectedFileIds.push(data.cozeFileId);
+            if (data.success) {
+              if (data.cozeFileId) collectedFileIds.push(data.cozeFileId);
+              if (data.url) collectedFileUrls.push(data.url);
               if (!isPdf) fileSummaries[fileSummaries.length - 1] = `📄 ${baseName} (已上传)`;
             } else {
               fileSummaries.push(`⚠️ ${baseName} 上传失败`);
@@ -1823,8 +1826,9 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
             fd.append('file', extractedFile);
             const resp = await fetch('/api/upload', { method: 'POST', body: fd });
             const data = await resp.json();
-            if (data.success && data.cozeFileId) {
-              collectedFileIds.push(data.cozeFileId);
+            if (data.success) {
+              if (data.cozeFileId) collectedFileIds.push(data.cozeFileId);
+              if (data.url) collectedFileUrls.push(data.url);
               fileSummaries.push(`📎 ${baseName} (已上传)`);
             } else {
               fileSummaries.push(`⚠️ ${baseName} 上传失败`);
@@ -1838,6 +1842,7 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
 
       // 保存收集到的文件ID
       setCozeFileIdsBatch(collectedFileIds);
+      setFileUrls(collectedFileUrls);
       if (firstImagePreview) setUploadedImage(firstImagePreview);
 
       setStatusMessage(null);
@@ -2075,6 +2080,7 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
     const currentImageData = uploadedImage; // 图片Base64数据（仅用于预览）
     const currentCozeFileId = cozeFileId; // Coze文件ID（单文件）
     const currentCozeFileIdsBatch = cozeFileIdsBatch; // Coze文件ID列表（压缩包多文件）
+    const currentFileUrls = fileUrls; // 压缩包多文件公网URL（豆包视觉输入）
     const currentFileType = uploadedFileType; // 文件类型：'image' 或 'file'
     const currentExtractedText = extractedText; // PDF提取的文字内容
     setUploadedImage(null);
@@ -2082,6 +2088,7 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
     setUploadedFileType(null);
     setCozeFileId(null);
     setCozeFileIdsBatch([]);
+    setFileUrls([]);
     setExtractedText(null);
     const currentFileInfo = uploadedFileInfo;
     setUploadedFileInfo(null);
@@ -2089,7 +2096,7 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
     setStatusMessage(null);
 
     // 如果有文件上传，自动创建图纸报价工单
-    if (currentCozeFileId || currentCozeFileIdsBatch.length > 0) {
+    if (currentCozeFileId || currentCozeFileIdsBatch.length > 0 || currentFileUrls.length > 0 || currentFileInfo?.url) {
       const fileInfoList: Array<{name: string, size: number, type: string, url?: string}> = [];
       if (currentCozeFileIdsBatch.length > 0) {
         currentCozeFileIdsBatch.forEach((_id, idx) => {
@@ -2127,6 +2134,9 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
       }
       if (imageForRequest) {
         requestBody.images = [imageForRequest];
+      }
+      if (currentFileUrls.length > 0) {
+        requestBody.fileUrls = currentFileUrls;
       }
       // 传递 conversationId 以维持对话上下文
       if (conversationId) {

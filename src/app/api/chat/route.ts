@@ -98,11 +98,13 @@ export async function POST(request: NextRequest) {
   const {
     messages: userMessages,
     images,
+    fileUrls,
     extractedText,
     conversationId: existingConversationId,
   } = body as {
     messages?: ChatMessage[];
     images?: string[];
+    fileUrls?: string[];
     extractedText?: string;
     conversationId?: string;
   };
@@ -132,9 +134,14 @@ export async function POST(request: NextRequest) {
       await writeEvent({ type: 'conversation', conversationId });
 
       // ===== 组装豆包消息 =====
-      const imageList = (images || []).filter(
+      const base64Images = (images || []).filter(
         (u) => typeof u === 'string' && /^data:image\/(jpeg|jpg|png|webp);base64,/i.test(u),
-      ).slice(0, 3);
+      );
+      // 压缩包/批量场景：前端拿到的是 Supabase 公网 URL，豆包同样可以直接读
+      const urlImages = (fileUrls || []).filter(
+        (u) => typeof u === 'string' && /^https?:\/\//i.test(u) && /\.(jpe?g|png|webp)(\?|$)/i.test(u),
+      );
+      const imageList = [...base64Images, ...urlImages].slice(0, 3);
 
       const history: ChatMessage[] = userMessages
         .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
