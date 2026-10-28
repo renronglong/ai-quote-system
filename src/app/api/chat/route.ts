@@ -4,78 +4,84 @@ import { NextRequest } from 'next/server';
 export const runtime = 'edge';
 export const maxDuration = 60;
 
-// Coze API配置
-interface CozeConfig {
-  apiToken: string;
-  botId: string;
-  apiBase: string;
-}
+// ===== 豆包（火山方舟 Ark）配置 =====
+// 2026-10-29 起右下角 AI 对话直连豆包，不再依赖 Coze Bot（PAT 过期维护成本高）
+const DOUBAO_API_KEY = process.env.DOUBAO_API_KEY || process.env.VOLCENGINE_API_KEY || '';
+const DOUBAO_BASE_URL = process.env.DOUBAO_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
+const DOUBAO_MODEL = process.env.DOUBAO_MODEL || 'doubao-seed-2-0-pro-260215';
 
-function getCozeConfig(): CozeConfig {
-  return {
-    apiToken: process.env.COZE_API_TOKEN || '',
-    botId: process.env.COZE_BOT_ID || '',
-    apiBase: process.env.COZE_API_BASE_URL || 'https://api.coze.cn',
-  };
-}
+const SYSTEM_PROMPT = `你是「工品报价 AI 助手」，服务于铝型材与五金加工厂的在线报价系统 gyparts.cn。
 
-// Coze消息格式（注意：不要加type字段，会导致4000参数错误）
-interface CozeMessage {
+你的唯一职责：从用户上传的图纸图片或文字描述中识别产品参数，输出结构化结果，供后台系统自动计算报价。你不负责算价，也不要编造价格。
+
+【识别要点】
+- 材质牌号（6063-T5 / 6061-T6 / 304 不锈钢 / 锌合金 / 塑料等）
+- 产品类型：挤压型材、压铸件、CNC 机加工、冲压件
+- 截面尺寸：宽 × 高（mm），圆形写外径，管材注明壁厚
+- 单根长度（mm）
+- 壁厚（mm，空心截面必须有）
+- 订单数量（件）
+- 表面处理：氧化本色 / 阳极氧化-黑色 / 阳极氧化-自然色 / 粉末喷涂 / 电泳 / 拉丝 / 抛光 / 电镀 / 无
+- 二次加工：钻孔、攻牙、锯切、折弯等（如图纸标注）
+
+【回复格式】
+第一部分：用简洁中文说明识别到的关键参数和不确定项（不超过 6 行，不要客套开场白，不要说"我来帮你分析"）。
+第二部分：只要识别到 3 个及以上有效参数，就在回复末尾追加参数块，格式严格如下（前端靠它自动回填左侧表单）：
+
+【FORM_PARAMS】
+material_grade: 6063-T5
+product_type: extrusion
+width: 38.7
+height: 21.7
+length: 100
+wall_thickness: 1.5
+quantity: 1000
+surface_treatment: 阳极氧化-黑色
+【/FORM_PARAMS】
+
+【硬性规则】
+1. 单位统一 mm，只写数字，不要带单位。
+2. 识别不出来的字段直接省略该行，绝对不要编造尺寸或数量。
+3. product_type 只能取：extrusion（挤压型材）、die-casting（压铸）、cnc（机加工）、stamping（冲压）。
+4. 纯闲聊、咨询类问题（如"你能做什么""怎么报价"）不要输出参数块。
+5. 图纸模糊或信息不足时，明确说缺什么参数，请用户补充或改用图纸识别功能。
+6. 不要输出文件链接，不要复述上传过程。
+7. 米重参考公式：截面积(mm²) × 0.00271 = kg/m。`;
+
+interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
 }
 
-// 创建新会话
-async function createConversation(): Promise<{ success: boolean; conversationId?: string; error?: string }> {
-  const config = getCozeConfig();
-  try {
-    const response = await fetch(`${config.apiBase}/v1/conversation/create`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${config.apiToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({}),
-    });
-    
-    const result = await response.json() as { code?: number; data?: { id: string }; msg?: string };
-    
-    if (result.code !== 0 || !result.data?.id) {
-      return { success: false, error: result.msg || '创建会话失败' };
-    }
-    
-    return { success: true, conversationId: result.data.id };
-  } catch (error) {
-    return { success: false, error: `创建会话异常: ${error instanceof Error ? error.message : '未知错误'}` };
-  }
-}
+type DoubaoContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
 
 export async function GET() {
-  const config = getCozeConfig();
-  
-  if (!config.apiToken || !config.botId) {
-    return Response.json({ 
-      configured: false, 
-      message: '缺少环境变量配置：COZE_API_TOKEN 或 COZE_BOT_ID' 
+  if (!DOUBAO_API_KEY) {
+    return Response.json({
+      configured: false,
+      provider: 'doubao',
+      message: '缺少环境变量配置：DOUBAO_API_KEY',
     });
   }
-  
-  return Response.json({ 
-    configured: true, 
-    message: 'Coze Bot已配置',
-    botId: config.botId,
-    apiBase: config.apiBase
+
+  return Response.json({
+    configured: true,
+    provider: 'doubao',
+    message: '豆包已配置',
+    model: DOUBAO_MODEL,
+    apiBase: DOUBAO_BASE_URL,
   });
 }
 
 export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
-  const config = getCozeConfig();
 
-  if (!config.apiToken || !config.botId) {
-    return new Response(JSON.stringify({ 
+  if (!DOUBAO_API_KEY) {
+    return new Response(JSON.stringify({
       error: '服务配置错误',
-      details: '缺少COZE_API_TOKEN或COZE_BOT_ID环境变量',
+      details: '缺少 DOUBAO_API_KEY 环境变量',
     }), { status: 500, headers: { 'Content-Type': 'application/json' } });
   }
 
@@ -89,25 +95,17 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const { 
-    messages: userMessages, 
-    cozeFileId: preUploadedFileId,
-    cozeFileIds: preUploadedFileIds,
-    fileType = 'file',
+  const {
+    messages: userMessages,
+    images,
     extractedText,
     conversationId: existingConversationId,
-    userId = 'default_user'
   } = body as {
-    messages?: Array<{ role: string; content: string }>;
-    cozeFileId?: string;
-    cozeFileIds?: string[];
-    fileType?: string;
+    messages?: ChatMessage[];
+    images?: string[];
     extractedText?: string;
     conversationId?: string;
-    userId?: string;
   };
-
-  const hasFile = !!preUploadedFileId;
 
   if (!userMessages || !Array.isArray(userMessages) || userMessages.length === 0) {
     return new Response(JSON.stringify({ error: '消息格式错误' }), {
@@ -117,163 +115,117 @@ export async function POST(request: NextRequest) {
   }
 
   // ★ 使用 TransformStream 创建真正的流式响应
-  // Edge Runtime 原生支持流式，不会有 Vercel Node.js 函数的缓冲问题
   const { readable, writable } = new TransformStream();
   const writer = writable.getWriter();
 
-  // 异步执行所有操作，不阻塞响应返回
+  const writeEvent = async (payload: Record<string, unknown>) => {
+    await writer.write(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+  };
+
   (async () => {
     try {
-      // 立即发送状态事件
-      await writer.write(encoder.encode(
-        `data: ${JSON.stringify({ type: 'status', message: '正在处理...' })}\n\n`
-      ));
+      await writeEvent({ type: 'status', message: '正在处理...' });
 
-      // 1. 获取或创建会话ID
-      let conversationId = existingConversationId || null;
-      if (!conversationId) {
-        const convResult = await createConversation();
-        if (!convResult.success) {
-          await writer.write(encoder.encode(
-            `data: ${JSON.stringify({ type: 'error', error: convResult.error || '创建会话失败' })}\n\n`
-          ));
-          await writer.close();
-          return;
-        }
-        conversationId = convResult.conversationId || null;
+      // 会话 ID 仅作为前端上下文标识；豆包无服务端会话，历史消息由前端全量带上
+      const conversationId = existingConversationId
+        || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `conv_${Date.now()}`);
+      await writeEvent({ type: 'conversation', conversationId });
+
+      // ===== 组装豆包消息 =====
+      const imageList = (images || []).filter(
+        (u) => typeof u === 'string' && /^data:image\/(jpeg|jpg|png|webp);base64,/i.test(u),
+      ).slice(0, 3);
+
+      const history: ChatMessage[] = userMessages
+        .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+        .map((m) => ({ role: m.role, content: m.content }));
+
+      // 丢弃末尾的空助手占位消息
+      while (history.length > 0 && history[history.length - 1].role === 'assistant' && !history[history.length - 1].content.trim()) {
+        history.pop();
       }
 
-      if (!conversationId) {
-        await writer.write(encoder.encode(
-          `data: ${JSON.stringify({ type: 'error', error: '无法获取会话ID' })}\n\n`
-        ));
+      if (history.length === 0) {
+        await writeEvent({ type: 'error', error: '消息内容为空' });
         await writer.close();
         return;
       }
 
-      // 发送会话ID
-      await writer.write(encoder.encode(
-        `data: ${JSON.stringify({ type: 'conversation', conversationId })}\n\n`
-      ));
+      // 只保留最近 10 轮，控制上下文长度
+      const trimmed = history.slice(-20);
 
-      // 2. 获取用户最新消息
-      const lastMessage = userMessages[userMessages.length - 1];
-      const userContent = lastMessage?.content || '';
-
-      // 3. 构建Coze消息
-      const additionalMessages: CozeMessage[] = [];
-      let cozeFileId: string | null = preUploadedFileId || null;
-      const cozeFileIds = preUploadedFileIds || null;
-      let contentType: 'image' | 'file' = fileType === 'image' ? 'image' : 'file';
-
-      if (hasFile && !cozeFileId) {
-        await writer.write(encoder.encode(
-          `data: ${JSON.stringify({ type: 'error', error: '文件ID缺失' })}\n\n`
-        ));
-        await writer.close();
-        return;
-      }
-
-      if (cozeFileIds && cozeFileIds.length > 0) {
-        let textContent = userContent || '请分析这个文件';
-        if (extractedText) {
-          const maxLen = 8000;
-          const truncated = extractedText.length > maxLen 
-            ? extractedText.substring(0, maxLen) + '\n...(内容过长已截断)' 
-            : extractedText;
-          textContent = `${textContent}\n\n---以下是PDF图纸的结构化标注（由文字层提取，请优先使用这些精确数据）---\n${truncated}\n---结构化标注结束。同时上传了页面图片供识别几何形状和整体布局---`;
-        }
-        additionalMessages.push({ role: 'user', content: textContent });
-        const imageObjects = cozeFileIds.map(id => ({ type: 'image' as const, file_id: id }));
-        additionalMessages.push({ role: 'user', content: JSON.stringify(imageObjects) });
-      } else if (cozeFileId) {
-        let textContent = userContent || '请分析这个文件';
-        if (extractedText) {
-          const maxLen = 8000;
-          const truncated = extractedText.length > maxLen 
-            ? extractedText.substring(0, maxLen) + '\n...(内容过长已截断)' 
-            : extractedText;
-          textContent = `${textContent}\n\n---以下是PDF图纸的结构化标注（由文字层提取，请优先使用这些精确数据）---\n${truncated}\n---结构化标注结束。同时上传了页面图片供识别几何形状和整体布局---`;
-        }
-        additionalMessages.push({ role: 'user', content: textContent });
-        additionalMessages.push({ role: 'user', content: JSON.stringify([{ type: contentType, file_id: cozeFileId }]) });
-      } else if (extractedText) {
+      // 最后一条用户消息附加图纸文字层内容
+      const lastIdx = trimmed.length - 1;
+      const lastMsg = trimmed[lastIdx];
+      let lastText = lastMsg.content || '';
+      if (extractedText && extractedText.trim()) {
         const maxLen = 8000;
-        const truncated = extractedText.length > maxLen 
-          ? extractedText.substring(0, maxLen) + '\n...(内容过长已截断)' 
+        const truncated = extractedText.length > maxLen
+          ? extractedText.substring(0, maxLen) + '\n...(内容过长已截断)'
           : extractedText;
-        const textContent = `${userContent || '请分析以下内容'}\n\n---以下是文件提取的文字内容---\n${truncated}\n---内容结束---`;
-        additionalMessages.push({ role: 'user', content: textContent });
-      } else {
-        additionalMessages.push({ role: 'user', content: userContent });
+        lastText = `${lastText || '请分析以下图纸参数'}\n\n---以下是图纸的结构化标注（文字层提取，请优先使用这些精确数据）---\n${truncated}\n---结构化标注结束---`;
+      }
+      if (lastMsg.role === 'user' && imageList.length === 0) {
+        trimmed[lastIdx] = { role: 'user', content: lastText || '请分析这个产品' };
       }
 
-      // 4. 调用Coze Chat API（带文件重试机制）
-      // 有文件时先走非流式探测，失败则重试；无文件直接流式
-      const hasFileRef = !!(cozeFileId || (cozeFileIds && cozeFileIds.length > 0));
-      const useStream = true; // 始终使用流式模式
-      let chatUrl = `${config.apiBase}/v3/chat?conversation_id=${conversationId}`;
-      let chatBody: Record<string, unknown> = {
-        bot_id: config.botId,
-        user_id: userId,
-        stream: useStream,
-        additional_messages: additionalMessages,
-        auto_save_history: true,
-      };
+      const doubaoMessages: Array<{ role: string; content: string | DoubaoContentPart[] }> = [
+        { role: 'system', content: SYSTEM_PROMPT },
+        ...trimmed.slice(0, lastIdx).map((m) => ({ role: m.role, content: m.content })),
+      ];
 
-      // 记录请求参数用于调试4000错误
-      console.log('[Chat] 请求参数:', JSON.stringify({
-        cozeFileId, cozeFileIds, fileType: contentType,
-        msgCount: additionalMessages.length,
-        hasExtractedText: !!extractedText,
-        
-        
-        lastMsgContent: additionalMessages[additionalMessages.length-1]?.content?.substring(0, 100),
-      }));
+      if (imageList.length > 0) {
+        const parts: DoubaoContentPart[] = [
+          { type: 'text', text: lastText || '请识别这张图纸的产品参数' },
+          ...imageList.map((url) => ({ type: 'image_url' as const, image_url: { url } })),
+        ];
+        doubaoMessages.push({ role: 'user', content: parts });
+      } else {
+        doubaoMessages.push({ role: 'user', content: lastText || '请分析这个产品' });
+      }
 
-      let chatResponse = await fetch(chatUrl, {
+      // ===== 调用豆包流式接口 =====
+      const resp = await fetch(`${DOUBAO_BASE_URL}/chat/completions`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${config.apiToken}`,
+          'Authorization': `Bearer ${DOUBAO_API_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(chatBody),
+        body: JSON.stringify({
+          model: DOUBAO_MODEL,
+          messages: doubaoMessages,
+          stream: true,
+          temperature: 0.3,
+        }),
       });
 
-
-      if (!chatResponse.ok) {
-        const errorText = await chatResponse.text();
-        console.error('[Chat] Coze API错误:', chatResponse.status, errorText.substring(0, 500));
+      if (!resp.ok) {
+        const errorText = await resp.text();
+        console.error('[Chat] 豆包API错误:', resp.status, errorText.substring(0, 500));
         let errorMessage = '对话请求失败，请稍后重试';
-        try {
-          const errorJson = JSON.parse(errorText);
-          const rawMsg = errorJson.msg || '';
-          if (errorJson.code === 4000) errorMessage = '请求参数错误，请重新上传文件后再试';
-          else if (errorJson.code === 4006) errorMessage = 'Bot不存在或未发布到API';
-          else if (errorJson.code === 4013) errorMessage = '对话频率过高，请稍后再试';
-          else if (rawMsg.toLowerCase().includes('file') || rawMsg.toLowerCase().includes('parameter')) errorMessage = '文件处理异常，请重新上传后再试';
-          else errorMessage = rawMsg || errorMessage;
-        } catch { /* ignore */ }
-        await writer.write(encoder.encode(
-          `data: ${JSON.stringify({ type: 'error', error: errorMessage })}\n\n`
-        ));
+        if (resp.status === 401 || resp.status === 403) errorMessage = 'AI 服务鉴权失败，请联系管理员检查密钥';
+        else if (resp.status === 429) errorMessage = '对话频率过高，请稍后再试';
+        else if (resp.status === 400) errorMessage = '请求参数有误，请重新上传图片或简化描述';
+        else {
+          try {
+            const j = JSON.parse(errorText);
+            if (j?.error?.message) errorMessage = String(j.error.message).slice(0, 200);
+          } catch { /* ignore */ }
+        }
+        await writeEvent({ type: 'error', error: errorMessage });
         await writer.close();
         return;
       }
 
-      // 5. 流式模式：转发Coze流式响应到前端
-      const reader = chatResponse.body?.getReader();
+      const reader = resp.body?.getReader();
       if (!reader) {
-        await writer.write(encoder.encode(
-          `data: ${JSON.stringify({ type: 'error', error: '无法读取响应流' })}\n\n`
-        ));
+        await writeEvent({ type: 'error', error: '无法读取响应流' });
         await writer.close();
         return;
       }
 
       const decoder = new TextDecoder();
       let buffer = '';
-      let currentEventType = '';
       let hasReceivedContent = false;
 
       while (true) {
@@ -285,97 +237,49 @@ export async function POST(request: NextRequest) {
         buffer = lines.pop() || '';
 
         for (const line of lines) {
-          if (!line || line.startsWith(':')) continue;
-          
-          if (line.startsWith('event:')) {
-            currentEventType = line.slice(6).trim();
-          } else if (line.startsWith('data:')) {
-            const data = line.slice(5).trim();
-            if (!data || data === '[DONE]') continue;
+          const trimmedLine = line.trim();
+          if (!trimmedLine || trimmedLine.startsWith(':')) continue;
+          if (!trimmedLine.startsWith('data:')) continue;
 
-            try {
-              const json = JSON.parse(data);
-              const eventType = currentEventType || json.event || '';
-              
-              if (eventType === 'conversation.message.delta') {
-                const content = json.data?.content || json.content || '';
-                if (content) {
-                  hasReceivedContent = true;
-                  await writer.write(encoder.encode(
-                    `data: ${JSON.stringify({ type: 'text', content })}\n\n`
-                  ));
-                }
-              } else if (eventType === 'conversation.message.completed') {
-                // 仅在未通过 delta 收到内容时才处理 completed（避免重复）
-                if (!hasReceivedContent) {
-                  const msgType = json.data?.type || json.type || '';
-                  const content = json.data?.content || json.content || '';
-                  const role = json.data?.role || json.role || '';
-                  if (role === 'assistant' && content && (msgType === 'answer' || msgType === 'text')) {
-                    hasReceivedContent = true;
-                    await writer.write(encoder.encode(
-                      `data: ${JSON.stringify({ type: 'text', content })}\n\n`
-                    ));
-                  }
-                }
-              } else if (eventType === 'conversation.chat.failed') {
-                const errCode = json.last_error?.code || 0;
-                let errorMsg = json.last_error?.msg || json.data?.msg || json.msg || '对话处理失败';
-                // 映射Coze错误码为用户友好提示
-                if (errCode === 4000) errorMsg = '请求参数错误，请重新上传文件或简化描述后再试';
-                else if (errCode === 4006) errorMsg = 'Bot配置异常，请联系管理员';
-                else if (errCode === 4013) errorMsg = '请求过于频繁，请稍后再试';
-                else if (errorMsg.toLowerCase().includes('parameter') || errorMsg.toLowerCase().includes('request')) errorMsg = '请求参数错误，请重新上传文件或简化描述后再试';
-                await writer.write(encoder.encode(
-                  `data: ${JSON.stringify({ type: 'error', error: errorMsg })}\n\n`
-                ));
-              } else if (eventType === 'done' || eventType === 'conversation.chat.completed') {
-                if (!hasReceivedContent) {
-                  // Bot没有返回任何内容，给出提示
-                  await writer.write(encoder.encode(
-                    `data: ${JSON.stringify({ type: 'text', content: '已收到您的文件，但暂时无法解析内容。请尝试用文字描述产品的尺寸、材质和数量，我将为您识别参数。' })}\n\n`
-                  ));
-                }
-                await writer.write(encoder.encode(
-                  `data: ${JSON.stringify({ type: 'done' })}\n\n`
-                ));
-              } else if (json.event === 'conversation.message.delta') {
-                const content = json.data?.content || '';
-                if (content) {
-                  await writer.write(encoder.encode(
-                    `data: ${JSON.stringify({ type: 'text', content })}\n\n`
-                  ));
-                }
-              } else if (json.event === 'conversation.message.completed') {
-                // 备用处理 completed 消息
-                const msgType = json.data?.type || json.type || '';
-                const content = json.data?.content || json.content || '';
-                const role = json.data?.role || json.role || '';
-                if (role === 'assistant' && content && (msgType === 'answer' || msgType === 'text')) {
-                  await writer.write(encoder.encode(
-                    `data: ${JSON.stringify({ type: 'text', content })}\n\n`
-                  ));
-                }
-              }
-              
-              currentEventType = '';
-            } catch {
-              // JSON解析失败，忽略
+          const data = trimmedLine.slice(5).trim();
+          if (!data || data === '[DONE]') continue;
+
+          try {
+            const json = JSON.parse(data);
+            const delta = json.choices?.[0]?.delta;
+            const content = delta?.content;
+            if (content) {
+              hasReceivedContent = true;
+              await writeEvent({ type: 'text', content });
             }
+            const finishReason = json.choices?.[0]?.finish_reason;
+            if (finishReason === 'content_filter') {
+              await writeEvent({ type: 'text', content: '\n\n（内容触发安全策略，已被截断，请调整描述后重试）' });
+            }
+          } catch {
+            // 忽略无法解析的行
           }
         }
       }
 
+      if (!hasReceivedContent) {
+        await writeEvent({
+          type: 'text',
+          content: '没能识别出有效内容。可以补充产品的尺寸、材质和数量，或者改用「图纸识别」上传清晰的图纸照片。',
+        });
+      }
+
+      await writeEvent({ type: 'done' });
     } catch (error) {
-      await writer.write(encoder.encode(
-        `data: ${JSON.stringify({ type: 'error', error: `服务器内部错误: ${error instanceof Error ? error.message : '未知错误'}` })}\n\n`
-      ));
+      await writeEvent({
+        type: 'error',
+        error: `服务器内部错误: ${error instanceof Error ? error.message : '未知错误'}`,
+      });
     } finally {
       try { await writer.close(); } catch { /* ignore */ }
     }
   })();
 
-  // 立即返回流式响应 - Edge Runtime 会正确转发每个 chunk
   return new Response(readable, {
     headers: {
       'Content-Type': 'text/event-stream',

@@ -1124,6 +1124,32 @@ interface ChatPanelProps {
   onPricingResult?: (result: PricingResult | null) => void;
 }
 
+// 把图片 dataURL 压缩到指定最大边，降低请求体体积（豆包视觉输入用）
+async function compressImageDataUrl(dataUrl: string, maxEdge = 1400, quality = 0.82): Promise<string> {
+  if (!dataUrl.startsWith('data:image/')) return dataUrl;
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = reject;
+      el.src = dataUrl;
+    });
+    const scale = Math.min(1, maxEdge / Math.max(img.width || 1, img.height || 1));
+    if (scale >= 1 && dataUrl.length < 900 * 1024) return dataUrl;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round((img.width || 1) * scale));
+    canvas.height = Math.max(1, Math.round((img.height || 1) * scale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return dataUrl;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', quality);
+  } catch {
+    return dataUrl;
+  }
+}
+
 export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelProps) {
   const { user } = useAuth();
   
@@ -2088,6 +2114,10 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
         })),
         fileType: currentFileType || 'file',
       };
+      // 豆包视觉：把预览图压缩后随请求一起发送（不再依赖 Coze file_id）
+      if (currentImageData && currentImageData.startsWith('data:image/')) {
+        requestBody.images = [await compressImageDataUrl(currentImageData)];
+      }
       // 传递 conversationId 以维持对话上下文
       if (conversationId) {
         requestBody.conversationId = conversationId;

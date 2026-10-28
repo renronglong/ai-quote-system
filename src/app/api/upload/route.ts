@@ -32,13 +32,9 @@ export async function POST(request: NextRequest) {
     const apiToken = process.env.COZE_API_TOKEN;
     const apiBase = process.env.COZE_API_BASE_URL || 'https://api.coze.cn';
 
-    if (!apiToken) {
-      return NextResponse.json({ error: '服务器配置缺失' }, { status: 500 });
-    }
-
     const formData = await request.formData();
     const file = formData.get('file') as File;
-    const taskMode = formData.get('task_mode') === 'true'; // 是否同时存储到Supabase供工单使用
+    const taskMode = formData.get('task_mode') === 'true'; // 兼容旧参数：文件现在统一落 Supabase，工单可直接引用
 
     if (!file) {
       return NextResponse.json({ error: '未收到文件' }, { status: 400 });
@@ -51,12 +47,12 @@ export async function POST(request: NextRequest) {
     const buffer = await file.arrayBuffer();
 
     // 检查是否是HEIC/HEIF格式（iPhone照片）
-    const isHEIC = HEIC_MIME_TYPES.includes(fileType) || 
-                   fileName.toLowerCase().endsWith('.heic') || 
+    const isHEIC = HEIC_MIME_TYPES.includes(fileType) ||
+                   fileName.toLowerCase().endsWith('.heic') ||
                    fileName.toLowerCase().endsWith('.heif');
-    
+
     if (isHEIC) {
-      console.log('[Upload] 检测到HEIC/HEIF格式，Coze不支持，需要转换');
+      console.log('[Upload] 检测到HEIC/HEIF格式，需要转换');
       return NextResponse.json(
         { error: '不支持HEIC/HEIF格式，请先将图片转换为JPG或PNG格式再上传' },
         { status: 400 }
@@ -96,64 +92,70 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Upload] 最终文件名: "${fileName}", MIME: "${fileType}"`);
 
-    // ===== 上传到 Coze =====
-    const uploadFormData = new FormData();
-    const blob = new Blob([buffer], { type: fileType });
-    uploadFormData.append('file', blob, fileName);
+    // ===== 1. 存 Supabase Storage（主链路，公网可读 URL）=====
+    // 2026-10-29 起不再依赖 Coze 文件接口：AI 对话已切豆包，图片走 URL/base64 直传
+    let publicUrl: string | null = null;
+    try {
+      const supabase = getSupabaseClient();
+      const now = new Date();
+      const dateFolder = now.toISOString().slice(0, 10).replace(/-/g, '');
+      const uniqueName = `${Date.now()}_${fileName}`;
+      const storagePath = `${dateFolder}/${uniqueName}`;
 
-    const uploadResponse = await fetch(`${apiBase}/v1/files/upload`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiToken}` },
-      body: uploadFormData,
-    });
+      const { error: uploadError } = await supabase.storage
+        .from('task-files')
+        .upload(storagePath, Buffer.from(buffer), {
+          contentType: fileType,
+          upsert: false,
+        });
 
-    const result = await uploadResponse.json() as { code?: number; data?: { id: string; size?: number }; msg?: string };
-
-    if (result.code !== 0 || !result.data?.id) {
-      console.error('[Upload] Coze返回错误:', result);
-      return NextResponse.json(
-        { error: result.msg || '文件上传失败' },
-        { status: 500 }
-      );
+      if (uploadError) {
+        console.error('[Upload] Supabase存储失败:', uploadError.message);
+      } else {
+        const { data: urlData } = supabase.storage
+          .from('task-files')
+          .getPublicUrl(storagePath);
+        publicUrl = urlData.publicUrl;
+        console.log(`[Upload] 已存储到Supabase: ${publicUrl}`);
+      }
+    } catch (storageErr) {
+      console.error('[Upload] Supabase存储异常:', storageErr);
     }
 
-    console.log(`[Upload] Coze成功: cozeFileId=${result.data.id}`);
-
-    // ===== 同时存储到 Supabase Storage（工单模式） =====
-    let publicUrl: string | null = null;
-    if (taskMode) {
+    // ===== 2. 同步上传 Coze（best-effort，仅用于旧工单/兼容流程）=====
+    let cozeFileId: string | null = null;
+    if (apiToken) {
       try {
-        const supabase = getSupabaseClient();
-        const now = new Date();
-        const dateFolder = now.toISOString().slice(0, 10).replace(/-/g, '');
-        const uniqueName = `${Date.now()}_${fileName}`;
-        const storagePath = `${dateFolder}/${uniqueName}`;
-        
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('task-files')
-          .upload(storagePath, Buffer.from(buffer), {
-            contentType: fileType,
-            upsert: false,
-          });
-        
-        if (uploadError) {
-          console.error('[Upload] Supabase存储失败:', uploadError.message);
+        const uploadFormData = new FormData();
+        const blob = new Blob([buffer], { type: fileType });
+        uploadFormData.append('file', blob, fileName);
+
+        const uploadResponse = await fetch(`${apiBase}/v1/files/upload`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${apiToken}` },
+          body: uploadFormData,
+        });
+
+        const result = await uploadResponse.json() as { code?: number; data?: { id: string }; msg?: string };
+
+        if (result.code === 0 && result.data?.id) {
+          cozeFileId = result.data.id;
+          console.log(`[Upload] Coze成功: cozeFileId=${cozeFileId}`);
         } else {
-          const { data: urlData } = supabase.storage
-            .from('task-files')
-            .getPublicUrl(storagePath);
-          publicUrl = urlData.publicUrl;
-          console.log(`[Upload] 已存储到Supabase: ${publicUrl}`);
+          console.warn('[Upload] Coze返回错误（不阻断）:', result?.msg || result?.code);
         }
-      } catch (storageErr) {
-        console.error('[Upload] Supabase存储异常:', storageErr);
-        // 不阻断主流程
+      } catch (cozeErr) {
+        console.warn('[Upload] Coze上传异常（不阻断）:', cozeErr instanceof Error ? cozeErr.message : cozeErr);
       }
+    }
+
+    if (!publicUrl && !cozeFileId) {
+      return NextResponse.json({ error: '文件上传失败，请稍后重试' }, { status: 500 });
     }
 
     return NextResponse.json({
       success: true,
-      cozeFileId: result.data.id,
+      cozeFileId,
       url: publicUrl,
       fileName: fileName,
       fileType: fileType,
