@@ -1297,6 +1297,8 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
     setConversationId(null);
     // 重置消息为初始欢迎消息
     setMessages(getInitialMessages());
+    // 新对话不再携带上一张图纸
+    lastImageRef.current = null;
     console.log('[Chat] Started new conversation');
   }, []);
 
