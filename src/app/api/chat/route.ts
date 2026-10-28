@@ -209,7 +209,7 @@ export async function POST(request: NextRequest) {
       if (!resp.ok) {
         const errorText = await resp.text();
         console.error('[Chat] 豆包API错误:', resp.status, errorText.substring(0, 500));
-        let errorMessage = '对话请求失败，请稍后重试';
+        let errorMessage = `对话请求失败（HTTP ${resp.status}），请稍后重试`;
         if (resp.status === 401 || resp.status === 403) errorMessage = 'AI 服务鉴权失败，请联系管理员检查密钥';
         else if (resp.status === 429) errorMessage = '对话频率过高，请稍后再试';
         else if (resp.status === 400) errorMessage = '请求参数有误，请重新上传图片或简化描述';
@@ -278,10 +278,9 @@ export async function POST(request: NextRequest) {
 
       await writeEvent({ type: 'done' });
     } catch (error) {
-      await writeEvent({
-        type: 'error',
-        error: `服务器内部错误: ${error instanceof Error ? error.message : '未知错误'}`,
-      });
+      const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      console.error('[Chat] 未捕获异常:', detail, error instanceof Error ? error.stack : '');
+      await writeEvent({ type: 'error', error: `对话失败（${detail}）` });
     } finally {
       try { await writer.close(); } catch { /* ignore */ }
     }
