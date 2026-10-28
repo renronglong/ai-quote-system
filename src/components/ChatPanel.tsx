@@ -1205,6 +1205,8 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
   const [moldMatchLoading, setMoldMatchLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  // 最近一次上传的图纸图片（base64），后续追问时继续带给模型
+  const lastImageRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -2115,8 +2117,16 @@ export default function ChatPanel({ onFormUpdate, onPricingResult }: ChatPanelPr
         fileType: currentFileType || 'file',
       };
       // 豆包视觉：把预览图压缩后随请求一起发送（不再依赖 Coze file_id）
+      // 本轮没传新图时，复用最近一次上传的图纸，便于围绕同一张图连续追问
+      let imageForRequest: string | null = null;
       if (currentImageData && currentImageData.startsWith('data:image/')) {
-        requestBody.images = [await compressImageDataUrl(currentImageData)];
+        imageForRequest = await compressImageDataUrl(currentImageData);
+        lastImageRef.current = imageForRequest;
+      } else if (lastImageRef.current) {
+        imageForRequest = lastImageRef.current;
+      }
+      if (imageForRequest) {
+        requestBody.images = [imageForRequest];
       }
       // 传递 conversationId 以维持对话上下文
       if (conversationId) {
