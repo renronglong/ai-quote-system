@@ -191,8 +191,8 @@ export async function POST(request: NextRequest) {
         doubaoMessages.push({ role: 'user', content: lastText || '请分析这个产品' });
       }
 
-      // ===== 调用豆包流式接口 =====
-      const resp = await fetch(`${DOUBAO_BASE_URL}/chat/completions`, {
+      // ===== 调用豆包流式接口（上游抖动自动重试 1 次）=====
+      const requestInit: RequestInit = {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${DOUBAO_API_KEY}`,
@@ -204,7 +204,33 @@ export async function POST(request: NextRequest) {
           stream: true,
           temperature: 0.3,
         }),
-      });
+      };
+
+      let resp: Response | null = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          resp = await fetch(`${DOUBAO_BASE_URL}/chat/completions`, requestInit);
+          // 4xx 是请求本身的问题，重试无意义；5xx/429 才重试
+          if (resp.ok || (resp.status >= 400 && resp.status < 500 && resp.status !== 429)) break;
+          if (attempt === 0) {
+            console.warn('[Chat] 豆包返回', resp.status, '，1 秒后重试');
+            await new Promise((r) => setTimeout(r, 1000));
+          }
+        } catch (err) {
+          console.warn('[Chat] 豆包请求异常（第', attempt + 1, '次）:', err instanceof Error ? err.message : err);
+          if (attempt === 0) {
+            await new Promise((r) => setTimeout(r, 1000));
+            continue;
+          }
+          throw err;
+        }
+      }
+
+      if (!resp) {
+        await writeEvent({ type: 'error', error: 'AI 服务暂时无响应，请稍后重试' });
+        await writer.close();
+        return;
+      }
 
       if (!resp.ok) {
         const errorText = await resp.text();
@@ -280,7 +306,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
       console.error('[Chat] 未捕获异常:', detail, error instanceof Error ? error.stack : '');
-      await writeEvent({ type: 'error', error: `对话失败（${detail}）` });
+      await writeEvent({ type: 'error', error: 'AI 服务暂时无响应，请稍后重试' });
     } finally {
       try { await writer.close(); } catch { /* ignore */ }
     }
