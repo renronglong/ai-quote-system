@@ -44,7 +44,12 @@ export default function HomePage() {
     const saved = await saveQuoteToAPI(
       user.id,
       params,
-      result as any,
+      {
+        ...result,
+        // 手工改价优先：保存的必须是实际报出的价格
+        unit_price: manualUnitPrice ?? result.unit_price,
+        mold_cost: manualMoldFee ?? result.mold_cost,
+      } as any,
       (params.productType as string) || 'plate',
       productDiscount,
       moldDiscount,

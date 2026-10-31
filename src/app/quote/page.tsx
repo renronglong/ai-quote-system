@@ -57,6 +57,8 @@ const INTERNAL_PHONES = ['13900139000', '18929979760'];
 const INTERNAL_USER_IDS = ['98853002-61ba-485d-9672-6b4fa20906cd', 'd9e19564-5dfd-456b-b6d8-8068c84354e4'];
 function isInternalUser(user: any): boolean {
   if (!user) return false;
+  // 管理员账号一律视为内部账号（可看明细、可手工改价）
+  if (user.is_admin === true) return true;
   const phone = user.phone || user.user_metadata?.phone || '';
   const id = user.id || user.user_id || '';
   return INTERNAL_PHONES.includes(phone) || INTERNAL_USER_IDS.includes(id);
@@ -546,7 +548,12 @@ export default function QuotePage() {
           moldGroupId={moldGroupId}
           currentQuote={pricingResult && currentParams ? {
             params: { ...currentParams, ...(productInfo.productName ? { productName: productInfo.productName } : {}), ...(productInfo.productCode ? { productCode: productInfo.productCode } : {}) },
-            result: pricingResult,
+            // 手工改价优先：导出的报价单必须与实际报出的价格一致
+            result: {
+              ...pricingResult,
+              unit_price: manualUnitPrice ?? pricingResult.unit_price,
+              mold_cost: manualMoldFee ?? pricingResult.mold_cost,
+            },
             productType: productInfo.productName || currentParams.product_type || '产品',
             productDiscount,
             moldDiscount,
@@ -994,9 +1001,11 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
   const hasProductDiscount = productDiscount !== 100;
   const hasMoldDiscount = moldDiscount !== 100 && moldFee > 0;
   const hideMoldFeeForUser = useExistingMold === true && !user?.is_admin;
-  const discountedUnit = p.unit_price * (productDiscount / 100);
+  // 手工改价优先：单价被覆盖后，折扣与总价都跟着走
+  const baseUnit = manualUnitPrice ?? p.unit_price;
+  const discountedUnit = baseUnit * (productDiscount / 100);
   const discountedMold = moldFee * (moldDiscount / 100);
-  const displayUnit = hasProductDiscount ? discountedUnit : p.unit_price;
+  const displayUnit = hasProductDiscount ? discountedUnit : baseUnit;
 
   const breakdownItems = [
     { label: '材料费', value: p.material_cost, key: 'material_cost' },
@@ -1040,6 +1049,28 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
               )}/件
             </span>
             <span className="text-xs text-gray-300">（含13%增值税）</span>
+          </div>
+        )}
+        {/* 未税单价（内部账号可手工覆盖，含税单价与总价自动联动） */}
+        {!isPlaceholder && internal && (
+          <div className="mt-1 flex items-center gap-1.5">
+            <span className="text-xs text-slate-600">未税单价</span>
+            <span className="text-xs text-slate-600">¥</span>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={manualUnitPrice ?? p.unit_price}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                if (!isNaN(v) && v >= 0) onManualUnitPriceChange(v);
+              }}
+              className={`w-20 text-right text-sm border rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-400 font-semibold text-blue-700 ${manualUnitPrice !== null ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white/60'}`}
+            />
+            <span className="text-xs text-slate-600">/件</span>
+            {manualUnitPrice !== null && (
+              <button onClick={() => onManualUnitPriceChange(null)} className="text-xs text-slate-600 hover:text-red-500" title="恢复计算值">✕</button>
+            )}
           </div>
         )}
         <div className="mt-1.5 flex items-baseline gap-1">
