@@ -2336,6 +2336,18 @@ export async function GET(request: NextRequest) {
     result.costs.total_ex_tax = r2(exTaxUnit * body.quantity);
     result.costs.total_in_tax = r2(inTaxUnit * body.quantity);
 
+    // 4.5 工时缺失告警：勾了 CNC/车加工但没填分钟数时，后端会静默按 0 元计费，
+    // 报价单上完全看不出来 —— 补一条显式 note，避免漏项直接报给客户
+    const cncOps = (body.process?.secondary_operations || []).filter(
+      (o) => o === 'CNC加工' || o === '车加工',
+    );
+    const cncMinutes = body.process?.cnc_time?.minutes || 0;
+    if (cncOps.length > 0 && cncMinutes <= 0) {
+      result.notes.push(
+        `已勾选「${cncOps.join('/')}」但未填加工工时，本项按 0 元计，请补填分钟数或手工改价`,
+      );
+    }
+
     // 5. 最低订单量检查（按模具规格分档：300/500/1000kg）
     const totalWeight = result.weight * body.quantity;
     const minOrderWeight = result.costs.min_order_weight_kg || 300;
