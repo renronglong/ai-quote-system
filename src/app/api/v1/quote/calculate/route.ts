@@ -695,9 +695,11 @@ function calcExtrusionMaterialCost(
   aluminumPrice: number,
   rules: PricingRules,
   weightOverride?: number,
+  extrusionFeeOverride?: number,
 ): { cost: number; weight: number; rawWeight: number; formula: string; detail: string; utilizationRate?: number; sheetPrice?: number; nestingQty?: number } {
   const matRule = rules.material_prices['挤压铝型材'] || {};
-  const extrusionFeePerTon = matRule.extrusion_fee_per_ton || 2000;
+  // 挤压加工费按模具规格/米重分档后由调用方传入；未传时回退旧口径
+  const extrusionFeePerTon = extrusionFeeOverride ?? matRule.extrusion_fee_per_ton ?? 2000;
   
   // 材料单价 = 铝锭价 + 挤压加工费 (元/吨)
   const materialPricePerTon = aluminumPrice + extrusionFeePerTon;
@@ -780,13 +782,6 @@ function calcExtrusion(
   const notes: string[] = [];
   const breakdown: Record<string, { formula: string; detail: string }> = {};
   
-  // 1. 材料费（铝型材专用：铝锭价 + 挤压加工费）
-  const mat = calcExtrusionMaterialCost(dims, aluminumPrice, rules, req.weight_per_piece_kg);
-  breakdown['material'] = { formula: mat.formula, detail: mat.detail };
-  
-  let accumulated = mat.cost;
-  
-
   // 取整工具：按数量级向上进位（如 350→400, 35→40, 3500→4000）
   // 保留左边两位有效数字，后面补零
   const ceilByMagnitude = (n: number): number => {
@@ -1080,7 +1075,32 @@ function calcExtrusion(
     };
   }
 
-  
+  // ===== 最小起订量 & 挤压加工费（按模具规格 + 米重定，2026-11-01 业主定）=====
+  // 起订量档位：Φ≥358 → 1000kg，Φ338-357 → 500kg，Φ<338 → 300kg
+  // （Φ358 从 500kg 档提到 1000kg：358 已是大机台，500kg 排产不划算）
+  if (finalDieDiameter >= 358) minOrderWeightKg = 1000;
+  else if (finalDieDiameter >= 338) minOrderWeightKg = 500;
+  else minOrderWeightKg = 300;
+
+  // 挤压加工费跟着起订量档走：小模具量产少、换模摊销重 → 单价高；大模具单件重、摊薄 → 单价更高的是机台成本
+  const EXTRUSION_FEE_BY_MOQ: Record<number, number> = { 300: 1500, 500: 2500, 1000: 3500 };
+  let extrusionFeePerTon = EXTRUSION_FEE_BY_MOQ[minOrderWeightKg] ?? 1500;
+  // 超细料（米重 < 0.15 kg/m）出材率低、挤压难度大，单独按 2000 元/吨
+  const feeMeterWeight = dims.meter_weight_kg_per_m
+    || calcStandardMeterWeight(dims)?.weight
+    || (dims.cross_section_area_mm2 ? dims.cross_section_area_mm2 * 2.7 / 1000 : 0);
+  if (feeMeterWeight > 0 && feeMeterWeight < 0.15) {
+    extrusionFeePerTon = 2000;
+    notes.push(`米重 ${r3(feeMeterWeight)}kg/m 低于 0.15，挤压加工费按细料口径 2000元/吨`);
+  }
+  notes.push(`挤压加工费: ${extrusionFeePerTon}元/吨（起订${minOrderWeightKg}kg档${finalDieDiameter > 0 ? `，模具Φ${finalDieDiameter}` : ''}）`);
+
+  // 1. 材料费（铝型材专用：铝锭价 + 挤压加工费）
+  const mat = calcExtrusionMaterialCost(dims, aluminumPrice, rules, req.weight_per_piece_kg, extrusionFeePerTon);
+  breakdown['material'] = { formula: mat.formula, detail: mat.detail };
+
+  let accumulated = mat.cost;
+
   // ===== 长/小料判定 =====
   // 三种场景：
   //  A. 物理长料（length >= 3000mm）：仅材料费+表面处理费，跳过所有加工/包装/管销
@@ -1245,11 +1265,7 @@ function calcExtrusion(
   // 使用未舍入的原始重量计算MOQ，避免精度丢失导致MOQ为0
   const rawWeight = mat.rawWeight || mat.weight;
   
-  // 最小起订量：按模具规格分档最低起订重量换算件数，按数量级向上进位
-  // Φ397及以上→1000kg，Φ338→500kg，其余（含无模具/小模具）→300kg
-  if (finalDieDiameter >= 397) minOrderWeightKg = 1000;
-  else if (finalDieDiameter >= 338) minOrderWeightKg = 500;
-  else minOrderWeightKg = 300;
+  // 最小起订量已在材料费计算前按模具规格定档（Φ≥358→1000kg，Φ338-357→500kg，其余→300kg）
   const minOrderQtyRaw = rawWeight > 0 ? Math.ceil(minOrderWeightKg / rawWeight) : 0;
   const minOrderQty = ceilByMagnitude(minOrderQtyRaw);
   if (minOrderQty > 0) {
