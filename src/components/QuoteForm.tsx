@@ -1941,7 +1941,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       }
       if (weightKg !== undefined) payload.weight_per_piece_kg = weightKg;
       if (surfaceTreatmentPayload) payload.surface_treatment = surfaceTreatmentPayload;
-      if (processInfo.secondary_operations.length > 0 || processInfo.cut_count !== undefined) {
+      if (processInfo.secondary_operations.length > 0 || processInfo.cut_count !== undefined || processInfo.cnc_machining) {
         payload.process = processInfo;
       }
       // 冲压模具费：板材类型且有前端计算结果时，传递给后端

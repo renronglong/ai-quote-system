@@ -2,6 +2,7 @@ import { getAluminumPrice } from '@/lib/pricing/aluminum-price';
 import { calcMoldQuote } from '@/lib/mold-quote/engine';
 import { getRealtimeBasePrices, getRealtimeFuturesOnly, RealtimeBasePrices } from '@/lib/pricing/realtime-prices';
 import { NextRequest } from 'next/server';
+import { calcCncCycleMin } from '@/lib/pricing/cncMachining';
 
 // ============================================================
 // 报价计算 API v1 — 供 Coze Bot 插件调用
@@ -93,7 +94,15 @@ interface QuoteRequest {
     cut_count?: number;  // 锯切次数（铝型材）
     stamping_tonnage?: string;   // 冲压吨位（如 '<=35T', '45T', '200T双轴' 等）
     stamping_count?: number;     // 冲次数量
-    cnc_time?: { minutes: number }; // CNC/车加工时间
+    cnc_time?: { minutes: number }; // CNC/车加工时间（手填）
+    // CNC 机加几何量（识图 A 输出）→ 后端按刀路自算节拍（业主 2026-10-15 定案），有值优先于 cnc_time
+    cnc_machining?: {
+      tool_path_mm?: number;
+      air_travel_mm?: number;
+      clamp_count?: number;
+      proj_volume_mm3?: number;
+      is_extrusion?: boolean;
+    } | null;
     bend_count?: number;    // 折弯刀数（钣金）
   } | null;
   aluminum_price_override?: number; // 铝锭价覆盖值（元/吨）
@@ -1477,7 +1486,9 @@ function countSecondaryOps(
   if (process.slots && process.slots.count > 0) count++;
   const ops = process.secondary_operations || [];
   if (ops.includes('去毛刺')) count++;
-  if (process.cnc_time && process.cnc_time.minutes > 0) count++;
+  // 有刀路时后端按自算节拍计费，cnc_time 可能为空，同样算一道工序
+  if ((process.cnc_time && process.cnc_time.minutes > 0)
+    || Number(process.cnc_machining?.tool_path_mm) > 0) count++;
   return count || (ops.length > 0 ? 1 : 0);
 }
 
@@ -1559,14 +1570,30 @@ function calcSecondaryOperationsCost(
   // 折弯费在板材主引擎中按工序累计（×1.03×1.03），此处不重复计
 
   // CNC/车加工：时间费 1元/分钟 + 材料费的10%（2026-08-30 龙哥规则）
-  if (process.cnc_time && process.cnc_time.minutes > 0) {
-    const CNC_RATE_PER_MIN = 1; // 元/分钟
-    const timeCost = r2(process.cnc_time.minutes * CNC_RATE_PER_MIN);
-    const cncSurcharge = materialCost > 0 ? r2(materialCost * 0.1) : 0;
-    const cncTotal = r2(timeCost + cncSurcharge);
-    totalCost += cncTotal;
-    details.push(`CNC/车加工: ${process.cnc_time.minutes}分钟×1元/分=${timeCost}元${cncSurcharge > 0 ? ` + 材料费×10%=${cncSurcharge}元` : ''} = ${cncTotal}元`);
-    formulaParts.push(cncSurcharge > 0 ? 'CNC/车加工(工时+材料×10%)' : 'CNC/车加工(工时)');
+  // 分钟数优先按刀路自算（业主 2026-10-15 定案：A 给几何量 → 后端算节拍），
+  // 没有刀路时退回手填分钟；两者都没有则不收费
+  {
+    const mach = process.cnc_machining || undefined;
+    const cycle = calcCncCycleMin({
+      toolPathMm: Number(mach?.tool_path_mm) || undefined,
+      airTravelMm: Number(mach?.air_travel_mm) || undefined,
+      clampCount: Number(mach?.clamp_count) || undefined,
+      projVolumeMm3: Number(mach?.proj_volume_mm3) || undefined,
+      manualMinutes: (process.cnc_time?.minutes || 0) || undefined,
+    });
+    if (cycle.cycleMin > 0) {
+      const CNC_RATE_PER_MIN = 1; // 元/分钟
+      const mins = r2(cycle.cycleMin);
+      const timeCost = r2(mins * CNC_RATE_PER_MIN);
+      const cncSurcharge = materialCost > 0 ? r2(materialCost * 0.1) : 0;
+      const cncTotal = r2(timeCost + cncSurcharge);
+      totalCost += cncTotal;
+      const srcText = cycle.source === 'auto'
+        ? `刀路自算${mins}分钟(切削${r2(cycle.cuttingMin)}+空行程${r2(cycle.airMin)}+装夹${r2(cycle.clampMin)})`
+        : `手填${mins}分钟`;
+      details.push(`CNC/车加工: ${srcText}×1元/分=${timeCost}元${cncSurcharge > 0 ? ` + 材料费×10%=${cncSurcharge}元` : ''} = ${cncTotal}元`);
+      formulaParts.push(cncSurcharge > 0 ? 'CNC/车加工(工时+材料×10%)' : 'CNC/车加工(工时)');
+    }
   }
 
   if (details.length === 0) {
