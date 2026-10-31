@@ -4,6 +4,12 @@ import { getRealtimeBasePrices, getRealtimeFuturesOnly, RealtimeBasePrices } fro
 import { NextRequest } from 'next/server';
 import { calcCncCycleMin } from '@/lib/pricing/cncMachining';
 
+// 二次加工工序的材料附加费率（2026-11-01 业主定：10% → 3%）
+// 锯切、CNC/车加工都按材料费抽这个比例，属于「设备占用 + 辅助」的粗口径分摊，
+// 原 10% 叠加后二次加工费常占到材料费两成以上，明显偏离实际。
+const SECONDARY_MATERIAL_RATE = 0.03;
+const SECONDARY_MATERIAL_PCT = 3; // 展示用整数百分比，避免 0.03*100 浮点误差
+
 // ============================================================
 // 报价计算 API v1 — 供 Coze Bot 插件调用
 // 端点: POST /api/v1/quote/calculate
@@ -1192,14 +1198,15 @@ function calcExtrusion(
     }
 
     if (productLengthMm > 0) {
-      const sawCost = r2(mat.cost * 0.1 * 1.03);
+      // 工序材料附加系数：2026-11-01 业主改为 3%（原 10% 偏高，二次加工费常占到材料费两成以上）
+      const sawCost = r2(mat.cost * SECONDARY_MATERIAL_RATE * 1.03);
       accumulated += sawCost;
       totalSecondaryCost += sawCost;
-      secondaryDetails.push(`锯切(默认,长度<3m): 材料费${mat.cost}元 × 10% = ${sawCost}元`);
-      secondaryFormulaParts.push('锯切(材料×10%)');
+      secondaryDetails.push(`锯切(默认,长度<3m): 材料费${mat.cost}元 × ${SECONDARY_MATERIAL_PCT}% = ${sawCost}元`);
+      secondaryFormulaParts.push(`锯切(材料×${SECONDARY_MATERIAL_PCT}%)`);
       breakdown['sawing'] = {
-        formula: '材料费 × 10%（长度<3m默认锯切）',
-        detail: `${mat.cost} × 10% = ${sawCost}元`,
+        formula: `材料费 × ${SECONDARY_MATERIAL_PCT}%（长度<3m默认锯切）`,
+        detail: `${mat.cost} × ${SECONDARY_MATERIAL_PCT}% = ${sawCost}元`,
       };
     }
 
@@ -1587,14 +1594,14 @@ function calcSecondaryOperationsCost(
       const CNC_RATE_PER_MIN = 1; // 元/分钟
       const mins = r2(cycle.cycleMin);
       const timeCost = r2(mins * CNC_RATE_PER_MIN);
-      const cncSurcharge = materialCost > 0 ? r2(materialCost * 0.1) : 0;
+      const cncSurcharge = materialCost > 0 ? r2(materialCost * SECONDARY_MATERIAL_RATE) : 0;
       const cncTotal = r2(timeCost + cncSurcharge);
       totalCost += cncTotal;
       const srcText = cycle.source === 'auto'
         ? `刀路自算${mins}分钟(切削${r2(cycle.cuttingMin)}+空行程${r2(cycle.airMin)}+装夹${r2(cycle.clampMin)})`
         : `手填${mins}分钟`;
-      details.push(`CNC/车加工: ${srcText}×1元/分=${timeCost}元${cncSurcharge > 0 ? ` + 材料费×10%=${cncSurcharge}元` : ''} = ${cncTotal}元`);
-      formulaParts.push(cncSurcharge > 0 ? 'CNC/车加工(工时+材料×10%)' : 'CNC/车加工(工时)');
+      details.push(`CNC/车加工: ${srcText}×1元/分=${timeCost}元${cncSurcharge > 0 ? ` + 材料费×${SECONDARY_MATERIAL_PCT}%=${cncSurcharge}元` : ''} = ${cncTotal}元`);
+      formulaParts.push(cncSurcharge > 0 ? `CNC/车加工(工时+材料×${SECONDARY_MATERIAL_PCT}%)` : 'CNC/车加工(工时)');
     }
   }
 
