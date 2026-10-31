@@ -3508,7 +3508,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                             // 只改 surfaceTreatment 会让后两者仍沿用旧识别值（费用与显示对不上）
                             setSurfaceTreatment(o.name);
                             setSurfaceColor('');
-                            setMaterialSurfaceTreatment(o.name);
+                            // 只同步 productSurfaceTreatment（报价单/确认抽屉读它）；
+                            // materialSurfaceTreatment 是产品库选项分组的 key，改了会缩小选项列表，不动
                             setProductSurfaceTreatment(o.name === '无' ? '' : o.name);
                           }}
                           style={{
