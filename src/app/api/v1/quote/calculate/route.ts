@@ -1510,7 +1510,9 @@ function calcSecondaryOperationsCost(
   // 钻孔费（按≤35T冲压公式：基数0.10 + 长度附加 + 体积附加）
   // skipHoles：钣金件专用 —— 钣金件的孔在冲压复合模里与落料一次冲完（方案B 由激光切割路径+穿孔费覆盖），
   //            再收「钻孔费」属重复计费，故钣金引擎传 true 跳过。
-  if (!skipHoles && process.holes && process.holes.count > 0) {
+  // CNC 刀路已覆盖孔位加工（铣孔/钻孔动作在刀路内按工时计费），此时再单收钻孔费属重复
+  const cncCoversHoles = Number(process.cnc_machining?.tool_path_mm) > 0;
+  if (!skipHoles && !cncCoversHoles && process.holes && process.holes.count > 0) {
     const baseRate = 0.10;
     const lengthMm = dims.length_mm || 0;
     const widthMm = dims.width_mm || 0;
@@ -1594,6 +1596,10 @@ function calcSecondaryOperationsCost(
       details.push(`CNC/车加工: ${srcText}×1元/分=${timeCost}元${cncSurcharge > 0 ? ` + 材料费×10%=${cncSurcharge}元` : ''} = ${cncTotal}元`);
       formulaParts.push(cncSurcharge > 0 ? 'CNC/车加工(工时+材料×10%)' : 'CNC/车加工(工时)');
     }
+  }
+
+  if (cncCoversHoles && process.holes && process.holes.count > 0) {
+    details.push(`钻孔 ${process.holes.count}孔已含在 CNC 刀路内，不重复计费`);
   }
 
   if (details.length === 0) {
