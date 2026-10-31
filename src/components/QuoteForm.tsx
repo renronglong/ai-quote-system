@@ -2393,7 +2393,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           else if (cncTotalHoles > 0 && !isSheetPart) cncProc.quantity = cncTotalHoles;
           newProcs.push(cncProc);
         }
-        if (!existingNames.has('钻孔') && cncTotalHoles > 0) {
+        // 有 CNC 刀路时不再自动加「钻孔」工序：孔位加工已在刀路内按工时计费，
+        // 再挂一张钻孔卡既重复又误导（后端也会跳过钻孔费）
+        if (!existingNames.has('钻孔') && cncTotalHoles > 0 && !hasToolPath) {
           newProcs.push({ name: '钻孔', quantity: cncTotalHoles, subParams: { hole_count: cncTotalHoles } });
         }
         return newProcs.length > 0 ? [...prev, ...newProcs] : prev;
