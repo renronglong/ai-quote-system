@@ -1656,11 +1656,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       '喷涂': '喷涂', '氧化': '氧化本色', '电镀': '镀锌/镀镍',
       '除油': '除油',
     };
-    // 使用合并后的统一表面处理：优先用户手动选的，其次AI识别的
-    const effectiveST = (surfaceTreatment && surfaceTreatment !== '无')
-      ? surfaceTreatment
-      : ((materialSurfaceTreatment && materialSurfaceTreatment !== '无') ? materialSurfaceTreatment
-        : (productSurfaceTreatment && productSurfaceTreatment !== '无') ? productSurfaceTreatment : '');
+    // surfaceTreatment 是唯一权威口径：用户在 chips 点「无」= 明确不要表面处理。
+    // 不能再回退到 materialSurfaceTreatment / productSurfaceTreatment（AI 识别或品类默认带出的旧值），
+    // 否则会出现「chips 显示无、费用却按氧化收」——业主 2026-10-31 反馈。
+    const effectiveST = (surfaceTreatment && surfaceTreatment !== '无') ? surfaceTreatment : '';
     if (effectiveST) {
       let mapped = surfaceMap[effectiveST];
       if (!mapped) return null;
@@ -3504,7 +3503,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                         <button
                           key={o.name}
                           type="button"
-                          onClick={() => { setSurfaceTreatment(o.name); setSurfaceColor(''); }}
+                          onClick={() => {
+                            // 三处状态必须同步：chips 选中态 / 计价口径 / 报价单与确认抽屉，
+                            // 只改 surfaceTreatment 会让后两者仍沿用旧识别值（费用与显示对不上）
+                            setSurfaceTreatment(o.name);
+                            setSurfaceColor('');
+                            setMaterialSurfaceTreatment(o.name);
+                            setProductSurfaceTreatment(o.name === '无' ? '' : o.name);
+                          }}
                           style={{
                             padding: '6px 10px',
                             fontSize: 14,
