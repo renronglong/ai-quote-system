@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Sparkles, Plus, Loader2, CheckCircle2, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { calculateStampingMoldFee, calculateLaserCuttingFee, type StampingMoldResult, type LaserCuttingResult } from '@/lib/stamping-mold-calculator';
+import { calcCncCycleMin } from '@/lib/pricing/cncMachining';
 import { tryFrontendDieCasting } from '@/lib/pricing/dieCastingFrontend';
 import { adviseCastingMachine } from '@/lib/pricing/castingMachine';
 import { calcProjVolumeMm3 } from '@/lib/pricing/cncMachining';
@@ -1732,7 +1733,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       result.holes = holes;
     }
     if (tappedHoles) result.tapped_holes = tappedHoles;
-    if (cncTime) result.cnc_time = cncTime;
+    // 有刀路时后端按节拍自算，不再上送手填分钟 —— 否则「孔数兜底成 quantity」会被误当成工时
+    if (cncTime && !(cncMachiningData && Number(cncMachiningData.tool_path_mm) > 0)) result.cnc_time = cncTime;
     // CNC 机加几何量（A 识图输出）：有刀路 → 后端按节拍自动算，没有 → 退回手填分钟
     if (cncMachiningData) result.cnc_machining = cncMachiningData;
     if (bendCount !== undefined) result.bend_count = bendCount;
@@ -3548,10 +3550,24 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   {processes.some(p => p.name === 'CNC加工') && (() => {
                     const proc = processes.find(p => p.name === 'CNC加工');
                     const subDef = PROCESS_SUB_PARAMS['CNC加工'];
+                    // 有刀路时后端按节拍自算（业主 2026-10-15 定案），这里把推算值显示出来并锁死输入框，
+                    // 避免出现「框是空的、费用却在收」的误解
+                    const cncTp = Number(cncMachiningData?.tool_path_mm) || 0;
+                    const cncAutoCycle = cncTp > 0 ? calcCncCycleMin({
+                      toolPathMm: cncTp,
+                      airTravelMm: Number(cncMachiningData?.air_travel_mm) || undefined,
+                      clampCount: Number(cncMachiningData?.clamp_count) || undefined,
+                      projVolumeMm3: Number(cncMachiningData?.proj_volume_mm3) || undefined,
+                    }) : null;
+                    const cncAutoMin = cncAutoCycle && cncAutoCycle.cycleMin > 0
+                      ? Math.round(cncAutoCycle.cycleMin * 100) / 100
+                      : null;
                     return (
                       <div key="cnc_card" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: '#2563eb', marginBottom: 6 }}>CNC加工</div>
-                        {subDef?.map(param => (
+                        {subDef?.map(param => {
+                          const isAuto = param.name === 'minutes' && cncAutoMin !== null;
+                          return (
                           <div key={param.name} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
                             <span style={{ fontSize: 12, color: '#475569' }}>{param.label}:</span>
                             <input
@@ -3559,12 +3575,22 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                               min={0}
                               aria-label={param.label}
                               placeholder={param.label}
-                              value={proc?.subParams?.[param.name] ?? ''}
+                              readOnly={isAuto}
+                              title={isAuto ? '由刀路自动推算，改这里不生效' : undefined}
+                              value={isAuto ? cncAutoMin : (proc?.subParams?.[param.name] ?? '')}
                               onChange={e => updateSubParam('CNC加工', param.name, parseFloat(e.target.value) || '')}
-                              style={{ flex: 1, borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 13, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
+                              style={{ flex: 1, borderRadius: 6, border: '1px solid #e2e8f0', background: isAuto ? '#eef2f7' : '#fff', padding: '4px 6px', fontSize: 13, color: isAuto ? '#475569' : '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box', cursor: isAuto ? 'not-allowed' : 'text' }}
                             />
                           </div>
-                        ))}
+                          );
+                        })}
+                        {cncAutoMin !== null && cncAutoCycle && (
+                          <div style={{ fontSize: 11, color: '#2563eb', lineHeight: 1.4 }}>
+                            刀路自算 {cncAutoMin} 分（切削{Math.round(cncAutoCycle.cuttingMin * 100) / 100}
+                            {cncAutoCycle.airMin > 0 ? ` + 空行程${Math.round(cncAutoCycle.airMin * 100) / 100}` : ''}
+                            {cncAutoCycle.clampMin > 0 ? ` + 装夹${Math.round(cncAutoCycle.clampMin * 100) / 100}` : ''}）
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
