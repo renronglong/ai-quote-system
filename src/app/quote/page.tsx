@@ -1051,8 +1051,8 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
             <span className="text-xs text-gray-300">（含13%增值税）</span>
           </div>
         )}
-        {/* 未税单价（内部账号可手工覆盖，含税单价与总价自动联动） */}
-        {!isPlaceholder && internal && (
+        {/* 未税单价（登录即可手工覆盖，含税单价与总价自动联动） */}
+        {!isPlaceholder && !!user && (
           <div className="mt-1 flex items-center gap-1.5">
             <span className="text-xs text-slate-600">未税单价</span>
             <span className="text-xs text-slate-600">¥</span>
@@ -1087,7 +1087,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
                 <span className="inline-block text-xs text-slate-600 bg-gray-100 rounded px-1.5 py-0.5 font-mono">{p.mold_spec}</span>
               </div>
             )}
-            {internal ? (
+            {user ? (
             <div className="mt-1 flex items-center gap-1.5">
               <span className="text-sm text-slate-600">模具费(一次性)</span>
               <span className="text-xs text-slate-600">¥</span>
