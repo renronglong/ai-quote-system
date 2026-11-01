@@ -30,6 +30,16 @@ interface CustomerInfo {
   qq: string;
 }
 
+/** 客户搜索候选项：本地已保存客户 + 历史报价单客户名 */
+interface CompanyHit {
+  name: string;
+  address?: string;
+  contact?: string;
+  phone?: string;
+  creditCode?: string;
+  orgCode?: string;
+}
+
 interface SheetRecord {
   quote_no: string;
   customer_name: string;
@@ -190,8 +200,8 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
   const [supplierInfo, setSupplierInfo] = useState<{ company_name?: string; contact_name?: string; contact_phone?: string; contact_email?: string; address?: string }>({});
   const [noCompanyInfo, setNoCompanyInfo] = useState(false);
   
-  // 公司搜索（启信宝/企查查）
-  const [companySearchResults, setCompanySearchResults] = useState<{name: string; address: string; creditCode: string; orgCode: string}[]>([]);
+  // 客户名称搜索：数据源 = 本地已保存客户（localStorage）+ 历史报价单客户名
+  const [companySearchResults, setCompanySearchResults] = useState<CompanyHit[]>([]);
   const [companySearching, setCompanySearching] = useState(false);
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const companySearchTimer = useRef<NodeJS.Timeout | null>(null);
@@ -208,8 +218,14 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const selectCompany = (c: { name: string; address: string; creditCode: string; orgCode: string }) => {
-    setCust({ ...cust, name: c.name, address: c.address || cust.address });
+  const selectCompany = (c: CompanyHit) => {
+    setCust((prev) => ({
+      ...prev,
+      name: c.name,
+      address: c.address || prev.address,
+      contact: c.contact || prev.contact,
+      phone: c.phone || prev.phone,
+    }));
     setShowCompanyDropdown(false);
     setCompanySearchResults([]);
   };
@@ -300,10 +316,49 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
     });
   };
 
+  // 客户名称模糊搜索：本地已保存客户优先，其次历史报价单里的客户名
+  // （原实现只做全等匹配、companySearchResults 从不填充，导致输入什么都搜不出来）
+  const searchCustomerPool = (kw: string): CompanyHit[] => {
+    const k = kw.trim().toLowerCase();
+    if (!k) return [];
+    const pool = loadCustomers(); // 直接读 localStorage，保证别处新增的客户也能搜到
+    const hits: CompanyHit[] = [];
+    const seen = new Set<string>();
+    for (const c of pool) {
+      if (!c.name || seen.has(c.name)) continue;
+      const hay = `${c.name} ${c.address || ''} ${c.contact || ''} ${c.phone || ''}`.toLowerCase();
+      if (hay.includes(k)) {
+        seen.add(c.name);
+        hits.push({ name: c.name, address: c.address, contact: c.contact, phone: c.phone });
+      }
+    }
+    for (const h of history) {
+      const n = (h.customer_name || '').trim();
+      if (!n || seen.has(n) || !n.toLowerCase().includes(k)) continue;
+      seen.add(n);
+      hits.push({ name: n });
+    }
+    return hits.slice(0, 20);
+  };
+
   const onPickCustomer = (name: string) => {
-    const hit = customers.find((c) => c.name === name);
-    if (hit) setCust(hit);
-    else setCust({ ...cust, name });
+    setCust((prev) => ({ ...prev, name }));
+    const hits = searchCustomerPool(name);
+    setCompanySearchResults(hits);
+    // 有输入就保持下拉可见：有结果给候选，没结果提示「可直接输入」
+    setShowCompanyDropdown(name.trim() !== '');
+  };
+
+  // 聚焦时也给出候选：已输入就按关键词搜，没输入就列最近保存的客户
+  const onFocusCustomer = () => {
+    const k = cust.name.trim();
+    const hits = k
+      ? searchCustomerPool(k)
+      : loadCustomers().slice(0, 10).map((c) => ({ name: c.name, address: c.address, contact: c.contact, phone: c.phone }));
+    if (hits.length > 0) {
+      setCompanySearchResults(hits);
+      setShowCompanyDropdown(true);
+    }
   };
 
   const downloadB64 = (b64: string, filename: string, mime: string) => {
@@ -430,7 +485,7 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
               <div className="relative" ref={companyDropdownRef}>
                 <input className={inputCls} placeholder="客户名称（输入搜索） *" value={cust.name}
                   onChange={(e) => onPickCustomer(e.target.value)}
-                  onFocus={() => { if (companySearchResults.length > 0) setShowCompanyDropdown(true); }} />
+                  onFocus={onFocusCustomer} />
                 {companySearching && <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin absolute right-2.5 top-2.5" />}
                 {showCompanyDropdown && companySearchResults.length > 0 && (
                   <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-56 overflow-y-auto">
@@ -438,24 +493,20 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
                       <div key={i} className="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0"
                         onMouseDown={() => selectCompany(c)}>
                         <div className="text-sm font-medium text-gray-800">{c.name}</div>
-                        <div className="flex gap-2 mt-0.5 flex-wrap">
-                          {c.creditCode && <span className="text-xs text-blue-500">信用代码: {c.creditCode}</span>}
-                          {c.orgCode && <span className="text-xs text-green-600">组织代码: {c.orgCode}</span>}
-                        </div>
+                        {(c.contact || c.phone) && (
+                          <div className="flex gap-2 mt-0.5 flex-wrap">
+                            {c.contact && <span className="text-xs text-blue-500">联系人: {c.contact}</span>}
+                            {c.phone && <span className="text-xs text-green-600">电话: {c.phone}</span>}
+                          </div>
+                        )}
                         {c.address && <div className="text-xs text-gray-400 truncate mt-0.5">{c.address}</div>}
                       </div>
                     ))}
                   </div>
                 )}
-                {/* 已保存的客户资料（非搜索时显示） */}
-                {!showCompanyDropdown && customers.length > 0 && cust.name === '' && (
-                  <div className="absolute z-40 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-40 overflow-y-auto hidden peer-focus:block">
-                    {customers.map((c, i) => (
-                      <div key={i} className="px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-sm text-gray-700"
-                        onMouseDown={() => { setCust(c); }}>
-                        {c.name}
-                      </div>
-                    ))}
+                {showCompanyDropdown && cust.name.trim() !== '' && companySearchResults.length === 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg px-3 py-2 text-xs text-gray-500">
+                    没有匹配的历史客户，可直接输入新客户名称
                   </div>
                 )}
               </div>
