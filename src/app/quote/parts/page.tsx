@@ -10,6 +10,7 @@ import TopNavLinks from '@/components/TopNav';
 import { useAuth } from '@/lib/auth-context';
 import { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
 import { normalizeSheetCategory, PRODUCT_TYPES, CASTING_GRADES } from '@/components/QuoteForm';
+import { calculateStampingMoldFee, calculateLaserCuttingFee } from '@/lib/stamping-mold-calculator';
 
 interface PartData {
   _partName?: string;
@@ -96,7 +97,10 @@ function partNameOf(p: PartData, idx: number): string {
   return p.part_number || p._partName || p.product_code || p.product_name || p.part_name || `零件${idx + 1}`;
 }
 
-function buildPartPayload(p: PartData, idx: number): BuiltPayload {
+// 板材加工方案（业主 2026-11-02：批量生成前三选一——开模/现模/激光切割）
+type SheetPlan = 'open_mold' | 'existing_mold' | 'laser';
+
+function buildPartPayload(p: PartData, idx: number, sheetPlan?: SheetPlan): BuiltPayload {
   const { apiType, zh } = resolveApiType(p);
   if (!apiType) {
     return { apiType: 'sheet_metal', productTypeZh: '', category: '', payload: {}, params: {}, skipReason: '无法判定产品类型' };
@@ -104,6 +108,10 @@ function buildPartPayload(p: PartData, idx: number): BuiltPayload {
 
   const partName = partNameOf(p, idx);
   const grade = p.material_grade || '';
+  // 挤出件的 material_grade 常被识别写成类别词（异型材/标准件/铝圆棒等），不是牌号；
+  // 过滤掉类别词，报价单材质列回落 6063-T5 缺省（业主 2026-11-02）
+  const CATEGORY_WORDS = new Set(['异型材', '标准件', '铝型材', '铝合金', '型材', '挤出', '挤出铝型材', '挤压铝型材', '铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管', '铝方管']);
+  const realGrade = CATEGORY_WORDS.has(grade.trim()) ? '' : grade;
   // 板材用 normalizeSheetCategory 归一化到合法类目；型材类后端按铝计价（已知限制：钢型材仍按铝），
   // 其余按类型给默认类目（识别未给材料时兜底）。
   let category = '';
@@ -117,7 +125,7 @@ function buildPartPayload(p: PartData, idx: number): BuiltPayload {
 
   const payload: Record<string, any> = {
     product_type: apiType,
-    material: { category, grade: grade || undefined },
+    material: { category, grade: realGrade || undefined },
     quantity: qty,
     product_name: partName,
   };
@@ -152,12 +160,49 @@ function buildPartPayload(p: PartData, idx: number): BuiltPayload {
     product_type: apiType,
     productName: partName,
     materialCategory: category,
-    materialGrade: grade,
-    material: { category, grade: grade || undefined },
+    materialGrade: realGrade,
+    material: { category, grade: realGrade || undefined },
     quantity: qty,
     dimensions: dims || undefined,
   };
   if (p.product_code || p.product_number) params.productCode = p.product_code || p.product_number;
+
+  // 板材加工方案：按所选方案补充模具费/激光切割费（业主 2026-11-02）
+  if (apiType === 'sheet_metal' && sheetPlan) {
+    params.sheet_process_plan = sheetPlan;
+    const T = Number(p.thickness_mm) || 0;
+    const Lm = Number(p.unfold_length_mm ?? p.length) || 0;
+    const Wm = Number(p.unfold_width_mm ?? p.width) || 0;
+    const holeCount = Number(p.punch_holes_total ?? p.cnc_total_holes ?? 0) || 0;
+    if (sheetPlan === 'laser') {
+      // 方案B：激光切割（不开模）——切割费+穿孔费计入单价
+      const cutPath = Number(p.cut_perimeter_mm) || (Lm > 0 && Wm > 0 ? 2 * (Lm + Wm) : 0);
+      const lr = T > 0 && cutPath > 0 ? calculateLaserCuttingFee({ thickness: T, cutTotalPath: cutPath, holeCount }) : null;
+      if (lr && !lr.unavailable) {
+        payload.laser_cutting_fee = lr.totalLaserFee;
+        payload.laser_cutting_detail = {
+          cutting_fee: lr.cuttingFee,
+          piercing_fee: lr.piercingFee,
+          unit_price: lr.unitPrice,
+          pierce_rate: lr.pierceRate,
+        };
+      }
+    } else if (sheetPlan === 'open_mold') {
+      // 方案A：开新冲压模，模具费单独列出（不计入单价）
+      const outerPerimeter = Lm > 0 && Wm > 0 ? 2 * (Lm + Wm) : 0;
+      const holesPerimeter = Math.max(0, (Number(p.cut_perimeter_mm) || 0) - outerPerimeter);
+      const sr = Lm > 0 && Wm > 0 && T > 0
+        ? calculateStampingMoldFee({ unfoldLength: Lm, unfoldWidth: Wm, thickness: T, outerPerimeter, holesPerimeter, holeCount })
+        : null;
+      if (sr && !sr.isNonStandard) {
+        payload.mold_cost = sr.totalMoldFee;
+        payload.mold_spec = `冲压复合模 ${sr.frameSize[0]}×${sr.frameSize[1]}`;
+      }
+    } else if (sheetPlan === 'existing_mold') {
+      // 现有模具：免开模费（模具费0）
+      payload.use_existing_mold = true;
+    }
+  }
 
   return { apiType, productTypeZh: zh, category, payload, params };
 }
@@ -213,6 +258,8 @@ export default function QuotePartsPage() {
   const [batchError, setBatchError] = useState('');
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [batchSelected, setBatchSelected] = useState<Set<number>>(new Set());
+  // 批量板材加工方案（默认激光切割）
+  const [batchSheetPlan, setBatchSheetPlan] = useState<SheetPlan>('laser');
 
   useEffect(() => {
     try {
@@ -389,7 +436,7 @@ export default function QuotePartsPage() {
     const skippedInitial: Record<number, string> = {};
     selectedIdx.forEach(idx => {
       const p = products[idx];
-      const built = buildPartPayload(p, idx);
+      const built = buildPartPayload(p, idx, batchSheetPlan);
       if (built.skipReason) { skippedInitial[idx] = built.skipReason; return; }
       toProcess.push(idx);
     });
@@ -410,7 +457,7 @@ export default function QuotePartsPage() {
     const successIdx: number[] = [];
     for (const idx of toProcess) {
       const p = products[idx];
-      const built = buildPartPayload(p, idx);
+      const built = buildPartPayload(p, idx, batchSheetPlan);
       if (built.skipReason) { setBatchProgress(pr => ({ ...pr, done: pr.done + 1, skipped: pr.skipped + 1 })); continue; }
       try {
         const res = await fetch('/api/v1/quote/calculate', {
@@ -870,6 +917,36 @@ export default function QuotePartsPage() {
                   <p className="text-xs text-slate-500 mb-3">
                     勾选要生成报价的零件，确认后将逐个计算并保存报价。已报价零件也可重新勾选覆盖。
                   </p>
+                  {payload.products.some((p) => !p._failed && resolveApiType(p).apiType === 'sheet_metal') && (() => {
+                    const hasSheet = payload.products.some((p, idx) => !p._failed && String(p.material_grade || '').trim() && resolveApiType(p).apiType === 'sheet_metal' && batchSelected.has(idx));
+                    return (
+                      <div className="mb-3 rounded-lg border border-purple-200 bg-purple-50 p-2.5">
+                        <div className="text-xs font-semibold text-purple-800 mb-1.5">板材加工方案（出单前必选：开模 / 现模 / 激光切割）</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {([['laser', '激光切割（默认）'], ['open_mold', '开模（冲压模）'], ['existing_mold', '现有模具（免模具费）']] as const).map(([v, label]) => (
+                            <button
+                              key={v}
+                              type="button"
+                              disabled={batchGenerating}
+                              onClick={() => setBatchSheetPlan(v)}
+                              className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-all ${
+                                batchSheetPlan === v
+                                  ? 'bg-purple-600 border-purple-600 text-white'
+                                  : 'bg-white border-purple-200 text-purple-700 hover:bg-purple-50'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        {hasSheet && (
+                          <div className="text-[11px] text-purple-600 mt-1.5">
+                            已选零件含板材，将按「{batchSheetPlan === 'laser' ? '激光切割' : batchSheetPlan === 'open_mold' ? '开模（冲压模，模具费单独列出）' : '现有模具（免模具费）'}」方案计算
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-100">
                     <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
                       <input

@@ -141,9 +141,13 @@ function toSheetItem(q: SavedQuote) {
   }
 
   // ---- 材质：按产品管理/表单材质牌号；铝型材缺省 6063-T5；其他品类显示材料类别 ----
+  // 类别词（异型材/标准件/铝圆棒等）不是牌号：识别常把类别写进 material_grade（如 YL-176），
+  // 过滤掉类别词后铝型材行回落到 6063-T5 缺省（业主 2026-11-02：报价单材质列要显示牌号）
+  const gradeStr = String(p.materialGrade ?? '').trim();
+  const dimsGradeStr = String(dims?.material_grade ?? '').trim();
   let material = '';
-  if (p.materialGrade) material = String(p.materialGrade);
-  else if (dims?.material_grade) material = String(dims.material_grade);
+  if (gradeStr && !GENERIC_CATEGORY_NAMES.has(gradeStr)) material = gradeStr;
+  else if (dimsGradeStr && !GENERIC_CATEGORY_NAMES.has(dimsGradeStr)) material = dimsGradeStr;
   else if (isExtrusion) material = '6063-T5';
   else material = p.materialCategory || '';
 

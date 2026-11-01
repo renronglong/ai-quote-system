@@ -827,6 +827,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [moldMatchLoading, setMoldMatchLoading] = useState(false);
   const [selectedMoldId, setSelectedMoldId] = useState<string | null>(null);
   const [useExistingMold, setUseExistingMold] = useState<boolean | null>(null); // null=未选择, true=现有, false=新开
+  // 板材加工方案（业主 2026-11-02）：出单前三选一——开模/现模/激光切割，默认激光切割
+  const [sheetPlan, setSheetPlan] = useState<'open_mold' | 'existing_mold' | 'laser'>('laser');
   const [selectedMold, setSelectedMold] = useState<any | null>(null); // 选中的现有模具完整信息（来自产品管理/供应商产品库）
 
   // Parse cross_section_mm into dimension field values based on category
@@ -1283,7 +1285,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   useEffect(() => {
     triggerCalculate();
     return () => { if (debounceTimer.current) clearTimeout(debounceTimer.current); };
-  }, [productType, materialCategory, fields, materialSurfaceTreatment, materialColor, processes, productSurfaceTreatment, productColor, surfaceTreatment, surfaceColor, materialSizeType, dieSteelPrice, materialGrade, triggerCalculate]);
+  }, [productType, materialCategory, fields, materialSurfaceTreatment, materialColor, processes, productSurfaceTreatment, productColor, surfaceTreatment, surfaceColor, materialSizeType, dieSteelPrice, materialGrade, sheetPlan, triggerCalculate]);
 
   // Get available product surface treatments
   const getProductSurfaceOptions = (): ProductSurfaceOption[] => {
@@ -1946,20 +1948,27 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       if (processInfo.secondary_operations.length > 0 || processInfo.cut_count !== undefined || processInfo.cnc_machining) {
         payload.process = processInfo;
       }
-      // 冲压模具费：板材类型且有前端计算结果时，传递给后端
-      if (productType === '板材' && stampingMoldResult && !stampingMoldResult.isNonStandard) {
-        payload.mold_cost = stampingMoldResult.totalMoldFee;
-        payload.mold_spec = `冲压复合模 ${stampingMoldResult.frameSize[0]}×${stampingMoldResult.frameSize[1]}`;
-      }
-      // 激光切割费：板材类型且有计算结果时（方案B：不开模）
-      if (productType === '板材' && laserCuttingResult && !laserCuttingResult.unavailable) {
-        payload.laser_cutting_fee = laserCuttingResult.totalLaserFee;
-        payload.laser_cutting_detail = {
-          cutting_fee: laserCuttingResult.cuttingFee,
-          piercing_fee: laserCuttingResult.piercingFee,
-          unit_price: laserCuttingResult.unitPrice,
-          pierce_rate: laserCuttingResult.pierceRate,
-        };
+      // 板材加工方案（业主 2026-11-02：出单前三选一——开模/现模/激光切割）
+      if (productType === '板材') {
+        if (sheetPlan === 'open_mold') {
+          // 方案A：开新冲压模，模具费单独列出（不计入单价）
+          if (stampingMoldResult && !stampingMoldResult.isNonStandard) {
+            payload.mold_cost = stampingMoldResult.totalMoldFee;
+            payload.mold_spec = `冲压复合模 ${stampingMoldResult.frameSize[0]}×${stampingMoldResult.frameSize[1]}`;
+          }
+        } else if (sheetPlan === 'existing_mold') {
+          // 现有模具：免开模费（模具费0）
+          payload.use_existing_mold = true;
+        } else if (sheetPlan === 'laser' && laserCuttingResult && !laserCuttingResult.unavailable) {
+          // 方案B：激光切割，不开模
+          payload.laser_cutting_fee = laserCuttingResult.totalLaserFee;
+          payload.laser_cutting_detail = {
+            cutting_fee: laserCuttingResult.cuttingFee,
+            piercing_fee: laserCuttingResult.piercingFee,
+            unit_price: laserCuttingResult.unitPrice,
+            pierce_rate: laserCuttingResult.pierceRate,
+          };
+        }
       }
       const mySeq = ++calcReqSeq.current;
       const res = await fetch('/api/v1/quote/calculate', {
@@ -3382,6 +3391,38 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         <div className="space-y-2">
           {renderFields()}
         </div>
+
+        {/* ---- 板材加工方案（业主 2026-11-02：出单前三选一） ---- */}
+        {productType === '板材' && (
+          <div className="mt-3 bg-white rounded-xl shadow-sm border border-purple-200 overflow-hidden">
+            <div className="px-3 py-2.5 bg-gradient-to-r from-purple-50 to-indigo-50 flex items-center gap-2">
+              <span className="text-sm font-semibold text-purple-800">加工方案</span>
+              <span className="text-xs text-purple-500">板材出单前必选：开模 / 现有模具 / 激光切割</span>
+            </div>
+            <div className="px-3 py-3 flex flex-wrap gap-2">
+              {([['open_mold', '开模（冲压模）'], ['existing_mold', '现有模具（免模具费）'], ['laser', '激光切割（不开模）']] as const).map(([v, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setSheetPlan(v)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
+                    sheetPlan === v
+                      ? 'bg-purple-600 border-purple-600 text-white'
+                      : 'bg-white border-purple-200 text-purple-700 hover:bg-purple-50'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {sheetPlan === 'open_mold' && (!stampingMoldResult || stampingMoldResult.isNonStandard) && (
+              <div className="px-3 pb-3 text-xs text-amber-700">当前零件非标或尺寸不全，无法自动核算冲压模具费；请补全尺寸，或改走激光切割。</div>
+            )}
+            {sheetPlan === 'laser' && laserCuttingResult?.unavailable && (
+              <div className="px-3 pb-3 text-xs text-red-600">板厚超过22mm，激光切割无法加工，请改走开模方案。</div>
+            )}
+          </div>
+        )}
 
         {/* ---- 激光切割费明细（板材+识别数据时自动计算，方案B：不开模） ---- */}
         {productType === '板材' && laserCuttingResult && (() => {
