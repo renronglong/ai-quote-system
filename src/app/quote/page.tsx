@@ -833,7 +833,7 @@ export default function QuotePage() {
                     </div>
                     <div className="flex items-start gap-2">
                       <span className="w-1 h-1 rounded-full bg-orange-400 mt-1.5 shrink-0" />
-                      <span className="text-xs text-slate-600">最小起订量按300kg折算，未达标时页面会提示</span>
+                      <span className="text-xs text-slate-600">最小起订量按模具规格折算（300/500/1000kg三档），可手动修改</span>
                     </div>
                     <div className="flex items-start gap-2">
                       <span className="w-1 h-1 rounded-full bg-purple-400 mt-1.5 shrink-0" />
@@ -1118,14 +1118,16 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
           </div>
         )}
         {/* 最小起订量 */}
+        {/* 最小起订量：不再区分内外权限，一律可改（系统按模具规格算出的只是建议值） */}
         {!isPlaceholder && minOrderQty > 0 && (
-          internal ? (
-          <div className="mt-2 flex items-center gap-1.5 pt-2 border-t border-emerald-200/40">
+          <div className="mt-2 flex items-center gap-1.5 pt-2 border-t border-emerald-200/40 flex-wrap">
             <span className="text-sm text-slate-600">最小起订量</span>
             <input
               type="number"
               step="1"
               min="1"
+              aria-label="最小起订量"
+              title="系统按模具规格折算的建议值，可手动改"
               value={manualMinOrderQty ?? minOrderQty}
               onChange={(e) => {
                 const v = parseInt(e.target.value);
@@ -1134,16 +1136,17 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
               className={`w-20 text-right text-sm border rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-400 font-semibold text-gray-700 ${manualMinOrderQty !== null ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white/50'}`}
             />
             <span className="text-xs text-slate-600">件</span>
+            {(() => {
+              // 重量随件数实时联动，避免改了件数还显示旧的 kg 数
+              const qty = manualMinOrderQty ?? minOrderQty;
+              const w = p.weight_per_piece_kg > 0 ? qty * p.weight_per_piece_kg : 0;
+              if (!(w > 0)) return null;
+              return <span className="text-xs text-slate-600">约{w >= 100 ? Math.round(w) : Math.round(w * 10) / 10}kg</span>;
+            })()}
             {manualMinOrderQty !== null && (
               <button onClick={() => onManualMinOrderQtyChange(null)} className="text-xs text-slate-600 hover:text-red-500" title="恢复计算值">✕</button>
             )}
           </div>
-          ) : (
-          <div className="mt-2 pt-2 border-t border-emerald-200/40 flex items-baseline gap-1">
-            <span className="text-sm text-slate-600">最小起订量</span>
-            <span className="text-sm font-semibold text-gray-700">{manualMinOrderQty ?? minOrderQty} 件{(p as any).min_order_weight_kg ? <span className="text-xs text-slate-600 font-normal ml-1">约{(p as any).min_order_weight_kg}kg</span> : null}</span>
-          </div>
-          )
         )}
       </div>
 
