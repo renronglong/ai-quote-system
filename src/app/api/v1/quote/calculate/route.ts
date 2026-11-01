@@ -323,13 +323,9 @@ function r3sig(n: number): number {
   if (n <= 0) return 0;
   if (n < 0.001) return n; // 太小的数不处理
   const digits = Math.floor(Math.log10(n));
-  if (digits < 0) {
-    // 小于1的数，如 0.1234 → 保留3位有效数字
-    const unit = Math.pow(10, -digits - 1 + 3);
-    return Math.round(n * unit) / unit;
-  }
   const unit = Math.pow(10, digits - 2); // 保留3位有效数字
-  return Math.round(n / unit) * unit;
+  // 直接乘回会带浮点尾巴（274×0.1 = 27.400000000000002），过一遍 toPrecision 抹掉
+  return parseFloat((Math.round(n / unit) * unit).toPrecision(12));
 }
 
 /** 生成报价单号: Q-YYYYMMDD-XXX */
@@ -2238,10 +2234,15 @@ export async function POST(request: NextRequest) {
     // 4. 计算总价
     const unitPrice = result.costs.unit_price || 0;
     const totalPrice = r2(unitPrice * body.quantity);
-    const exTaxUnit = result.costs.unit_price_ex_tax || unitPrice;
-    const inTaxUnit = result.costs.unit_price_in_tax || unitPrice;
+    // 未税单价保留 3 位有效数字（业主 2026-11-01）：27.36 → 27.4
+    // 含税价按未税价同比例换算，保证报价单上「未税 ×(1+税率) = 含税」对得上
+    const rawExTax = result.costs.unit_price_ex_tax || unitPrice;
+    const rawInTax = result.costs.unit_price_in_tax || unitPrice;
+    const exTaxUnit = r3sig(rawExTax);
+    const inTaxUnit = rawExTax > 0 ? r3sig(exTaxUnit * (rawInTax / rawExTax)) : rawInTax;
     result.costs.unit_price_ex_tax = exTaxUnit;
     result.costs.unit_price_in_tax = inTaxUnit;
+    result.costs.unit_price = exTaxUnit; // 前端「未税单价」输入框读的就是这个字段
     result.costs.total_ex_tax = r2(exTaxUnit * body.quantity);
     result.costs.total_in_tax = r2(inTaxUnit * body.quantity);
 
@@ -2398,10 +2399,15 @@ export async function GET(request: NextRequest) {
     // 4. 计算总价
     const unitPrice = result.costs.unit_price || 0;
     const totalPrice = r2(unitPrice * body.quantity);
-    const exTaxUnit = result.costs.unit_price_ex_tax || unitPrice;
-    const inTaxUnit = result.costs.unit_price_in_tax || unitPrice;
+    // 未税单价保留 3 位有效数字（业主 2026-11-01）：27.36 → 27.4
+    // 含税价按未税价同比例换算，保证报价单上「未税 ×(1+税率) = 含税」对得上
+    const rawExTax = result.costs.unit_price_ex_tax || unitPrice;
+    const rawInTax = result.costs.unit_price_in_tax || unitPrice;
+    const exTaxUnit = r3sig(rawExTax);
+    const inTaxUnit = rawExTax > 0 ? r3sig(exTaxUnit * (rawInTax / rawExTax)) : rawInTax;
     result.costs.unit_price_ex_tax = exTaxUnit;
     result.costs.unit_price_in_tax = inTaxUnit;
+    result.costs.unit_price = exTaxUnit; // 前端「未税单价」输入框读的就是这个字段
     result.costs.total_ex_tax = r2(exTaxUnit * body.quantity);
     result.costs.total_in_tax = r2(inTaxUnit * body.quantity);
 
