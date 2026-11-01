@@ -233,57 +233,41 @@ export function ResultPanel({ pricingResult, aluminumPrice, productName, product
           <div className="divide-y divide-gray-100">
             {/* 产品折扣 */}
             <div className="flex items-center justify-between px-3 py-2.5">
-              <span className="text-sm text-gray-600">产品价调整</span>
+              <span className="text-sm text-gray-600">产品折扣</span>
               <div className="flex items-center gap-2">
-                <input
-                  type="range"
-                  min="50"
-                  max="200"
-                  step="1"
-                  value={productDiscount}
-                  onChange={(e) => onProductDiscountChange(Number(e.target.value))}
-                  className="w-20 h-1.5 accent-amber-500"
-                />
+                {/* 手填折扣系数：1=100%，0.9=9折；内部仍存百分比口径（90/100），业主 2026-11-01 */}
                 <input
                   type="number"
-                  min="50"
-                  max="200"
-                  value={productDiscount}
+                  min="0.5"
+                  max="2"
+                  step="0.01"
+                  value={productDiscount / 100}
                   onChange={(e) => {
                     const v = Number(e.target.value);
-                    if (v >= 50 && v <= 200) onProductDiscountChange(v);
+                    if (!isNaN(v) && v >= 0.5 && v <= 2) onProductDiscountChange(Math.round(v * 100));
                   }}
-                  className="w-14 text-sm text-right border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-amber-400"
+                  className="w-16 text-sm text-right border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-amber-400"
                 />
-                <span className="text-xs text-slate-600 w-8">{productDiscount > 100 ? '加价' : '%折'}</span>
               </div>
             </div>
             {/* 模具费折扣 */}
             {moldFee > 0 && (
               <div className="flex items-center justify-between px-3 py-2.5">
-                <span className="text-sm text-gray-600">模具费调整</span>
+                <span className="text-sm text-gray-600">模具费折扣</span>
                 <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min="50"
-                    max="200"
-                    step="1"
-                    value={moldDiscount}
-                    onChange={(e) => onMoldDiscountChange(Number(e.target.value))}
-                    className="w-20 h-1.5 accent-amber-500"
-                  />
+                  {/* 手填折扣系数：1=100%，0.9=9折；内部仍存百分比口径（90/100），业主 2026-11-01 */}
                   <input
                     type="number"
-                    min="50"
-                    max="200"
-                    value={moldDiscount}
+                    min="0.5"
+                    max="2"
+                    step="0.01"
+                    value={moldDiscount / 100}
                     onChange={(e) => {
                       const v = Number(e.target.value);
-                      if (v >= 50 && v <= 200) onMoldDiscountChange(v);
+                      if (!isNaN(v) && v >= 0.5 && v <= 2) onMoldDiscountChange(Math.round(v * 100));
                     }}
-                    className="w-14 text-sm text-right border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-amber-400"
+                    className="w-16 text-sm text-right border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-amber-400"
                   />
-                  <span className="text-xs text-slate-600 w-8">{moldDiscount > 100 ? '加价' : '%折'}</span>
                 </div>
               </div>
             )}
