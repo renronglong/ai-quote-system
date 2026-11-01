@@ -987,7 +987,6 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
   hideActions?: boolean;
 }) {
   const isPlaceholder = !pricingResult;
-  const internal = isInternalUser(user);
   const p = pricingResult || {
     material_cost: 0, processing_cost: 0, surface_treatment_cost: 0,
     secondary_operations_cost: 0, packaging_cost: 0, transport_cost: 0,
@@ -1150,8 +1149,8 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
         )}
       </div>
 
-      {/* 折扣调整区域（仅内部可见） */}
-      {internal && !isPlaceholder && (
+      {/* 折扣调整区域（所有用户可见，业主 2026-11-01） */}
+      {!isPlaceholder && (
         <div className="rounded-xl bg-white border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-3 py-2 bg-amber-50 border-b border-amber-100 flex items-center gap-1.5">
             <Percent className="w-3.5 h-3.5 text-amber-600" />
