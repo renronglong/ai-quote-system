@@ -1251,11 +1251,14 @@ function calcExtrusion(
 
   const preTaxPrice = accumulated;
   const taxRate = isLongMaterial ? 0.09 : 0.13;
-  const taxFee = r2(preTaxPrice * taxRate);
-  const unitPrice = r3sig(preTaxPrice + taxFee);
+  // 未税单价保留 3 位有效数字（业主 2026-11-01）：27.36 → 27.4
+  // 含税按舍入后的未税 × 税率重算，保证报价单上「未税 ×(1+税率) = 含税」算得回来
+  const preTaxPriceR = r3sig(preTaxPrice);
+  const taxFee = r2(preTaxPriceR * taxRate);
+  const unitPrice = r2(preTaxPriceR + taxFee);
   breakdown['tax'] = {
     formula: isLongMaterial ? '总价 × 9%(长料税)' : '总价 × 13%(小料税)',
-    detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
+    detail: `${preTaxPriceR} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
   };
   
   // 使用未舍入的原始重量计算MOQ，避免精度丢失导致MOQ为0
@@ -1280,7 +1283,7 @@ function calcExtrusion(
       packaging_cost: packagingCost,
       transport_cost: transportCost,
       unit_price: unitPrice,
-      unit_price_ex_tax: r2(preTaxPrice),
+      unit_price_ex_tax: preTaxPriceR,
       unit_price_in_tax: unitPrice,
       total_ex_tax: r2(preTaxPrice),
       total_in_tax: unitPrice,
@@ -1749,11 +1752,14 @@ function calcSheetMetal(
 
   const preTaxPrice = accumulated;
   const taxRate = 0.13;
-  const taxFee = r2(preTaxPrice * taxRate);
-  const unitPrice = r3sig(preTaxPrice + taxFee);
+  // 未税单价保留 3 位有效数字（业主 2026-11-01）：27.36 → 27.4
+  // 含税按舍入后的未税 × 税率重算，保证报价单上「未税 ×(1+税率) = 含税」算得回来
+  const preTaxPriceR = r3sig(preTaxPrice);
+  const taxFee = r2(preTaxPriceR * taxRate);
+  const unitPrice = r2(preTaxPriceR + taxFee);
   breakdown['tax'] = {
     formula: '总价 × 13%',
-    detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
+    detail: `${preTaxPriceR} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
   };
 
   // 板材最小起订量：按整板算，总价值≥3000 元
@@ -1780,7 +1786,7 @@ function calcSheetMetal(
       packaging_cost: packagingCost,
       transport_cost: transportCost,
       unit_price: unitPrice,
-      unit_price_ex_tax: r2(preTaxPrice),
+      unit_price_ex_tax: preTaxPriceR,
       unit_price_in_tax: unitPrice,
       total_ex_tax: r2(preTaxPrice),
       total_in_tax: unitPrice,
@@ -1888,11 +1894,14 @@ function calcDieCasting(
   const managementFee = r2((mat.cost + proc.cost) * 0.03);
   const preTaxPrice = accumulated;
   const taxRate = 0.13;
-  const taxFee = r2(preTaxPrice * taxRate);
-  const unitPrice = r3sig(preTaxPrice + taxFee);
+  // 未税单价保留 3 位有效数字（业主 2026-11-01）：27.36 → 27.4
+  // 含税按舍入后的未税 × 税率重算，保证报价单上「未税 ×(1+税率) = 含税」算得回来
+  const preTaxPriceR = r3sig(preTaxPrice);
+  const taxFee = r2(preTaxPriceR * taxRate);
+  const unitPrice = r2(preTaxPriceR + taxFee);
   breakdown['tax'] = {
     formula: '总价 × 13%',
-    detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
+    detail: `${preTaxPriceR} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
   };
 
   return {
@@ -1904,7 +1913,7 @@ function calcDieCasting(
       packaging_cost: packagingCost,
       transport_cost: transportCost,
       unit_price: unitPrice,
-      unit_price_ex_tax: r2(preTaxPrice),
+      unit_price_ex_tax: preTaxPriceR,
       unit_price_in_tax: unitPrice,
       total_ex_tax: r2(preTaxPrice),
       total_in_tax: unitPrice,
@@ -1984,11 +1993,14 @@ function calcZincAlloy(
   const managementFee = r2((mat.cost + proc.cost) * 0.03);
   const preTaxPrice = accumulated;
   const taxRate = 0.13;
-  const taxFee = r2(preTaxPrice * taxRate);
-  const unitPrice = r3sig(preTaxPrice + taxFee);
+  // 未税单价保留 3 位有效数字（业主 2026-11-01）：27.36 → 27.4
+  // 含税按舍入后的未税 × 税率重算，保证报价单上「未税 ×(1+税率) = 含税」算得回来
+  const preTaxPriceR = r3sig(preTaxPrice);
+  const taxFee = r2(preTaxPriceR * taxRate);
+  const unitPrice = r2(preTaxPriceR + taxFee);
   breakdown['tax'] = {
     formula: '总价 × 13%',
-    detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
+    detail: `${preTaxPriceR} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
   };
 
   return {
@@ -2000,7 +2012,7 @@ function calcZincAlloy(
       packaging_cost: packagingCost,
       transport_cost: transportCost,
       unit_price: unitPrice,
-      unit_price_ex_tax: r2(preTaxPrice),
+      unit_price_ex_tax: preTaxPriceR,
       unit_price_in_tax: unitPrice,
       total_ex_tax: r2(preTaxPrice),
       total_in_tax: unitPrice,
@@ -2080,11 +2092,14 @@ function calcInjection(
   const managementFee = r2((mat.cost + proc.cost) * 0.03);
   const preTaxPrice = accumulated;
   const taxRate = 0.13;
-  const taxFee = r2(preTaxPrice * taxRate);
-  const unitPrice = r3sig(preTaxPrice + taxFee);
+  // 未税单价保留 3 位有效数字（业主 2026-11-01）：27.36 → 27.4
+  // 含税按舍入后的未税 × 税率重算，保证报价单上「未税 ×(1+税率) = 含税」算得回来
+  const preTaxPriceR = r3sig(preTaxPrice);
+  const taxFee = r2(preTaxPriceR * taxRate);
+  const unitPrice = r2(preTaxPriceR + taxFee);
   breakdown['tax'] = {
     formula: '总价 × 13%',
-    detail: `${r2(preTaxPrice)} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
+    detail: `${preTaxPriceR} × ${(taxRate * 100).toFixed(0)}% = ${taxFee}元`,
   };
 
   return {
@@ -2096,7 +2111,7 @@ function calcInjection(
       packaging_cost: packagingCost,
       transport_cost: transportCost,
       unit_price: unitPrice,
-      unit_price_ex_tax: r2(preTaxPrice),
+      unit_price_ex_tax: preTaxPriceR,
       unit_price_in_tax: unitPrice,
       total_ex_tax: r2(preTaxPrice),
       total_in_tax: unitPrice,
@@ -2239,7 +2254,7 @@ export async function POST(request: NextRequest) {
     const rawExTax = result.costs.unit_price_ex_tax || unitPrice;
     const rawInTax = result.costs.unit_price_in_tax || unitPrice;
     const exTaxUnit = r3sig(rawExTax);
-    const inTaxUnit = rawExTax > 0 ? r2(exTaxUnit * (rawInTax / rawExTax)) : rawInTax; // 含税只保留两位小数，保证「未税×税率」算得回来
+    const inTaxUnit = rawInTax; // calcXxx 已按舍入后的未税 × 税率算好，这里不再二次换算
     result.costs.unit_price_ex_tax = exTaxUnit;
     result.costs.unit_price_in_tax = inTaxUnit;
     result.costs.unit_price = exTaxUnit; // 前端「未税单价」输入框读的就是这个字段
@@ -2404,7 +2419,7 @@ export async function GET(request: NextRequest) {
     const rawExTax = result.costs.unit_price_ex_tax || unitPrice;
     const rawInTax = result.costs.unit_price_in_tax || unitPrice;
     const exTaxUnit = r3sig(rawExTax);
-    const inTaxUnit = rawExTax > 0 ? r2(exTaxUnit * (rawInTax / rawExTax)) : rawInTax; // 含税只保留两位小数，保证「未税×税率」算得回来
+    const inTaxUnit = rawInTax; // calcXxx 已按舍入后的未税 × 税率算好，这里不再二次换算
     result.costs.unit_price_ex_tax = exTaxUnit;
     result.costs.unit_price_in_tax = inTaxUnit;
     result.costs.unit_price = exTaxUnit; // 前端「未税单价」输入框读的就是这个字段
