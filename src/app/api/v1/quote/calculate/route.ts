@@ -2239,7 +2239,7 @@ export async function POST(request: NextRequest) {
     const rawExTax = result.costs.unit_price_ex_tax || unitPrice;
     const rawInTax = result.costs.unit_price_in_tax || unitPrice;
     const exTaxUnit = r3sig(rawExTax);
-    const inTaxUnit = rawExTax > 0 ? r3sig(exTaxUnit * (rawInTax / rawExTax)) : rawInTax;
+    const inTaxUnit = rawExTax > 0 ? r2(exTaxUnit * (rawInTax / rawExTax)) : rawInTax; // 含税只保留两位小数，保证「未税×税率」算得回来
     result.costs.unit_price_ex_tax = exTaxUnit;
     result.costs.unit_price_in_tax = inTaxUnit;
     result.costs.unit_price = exTaxUnit; // 前端「未税单价」输入框读的就是这个字段
@@ -2404,7 +2404,7 @@ export async function GET(request: NextRequest) {
     const rawExTax = result.costs.unit_price_ex_tax || unitPrice;
     const rawInTax = result.costs.unit_price_in_tax || unitPrice;
     const exTaxUnit = r3sig(rawExTax);
-    const inTaxUnit = rawExTax > 0 ? r3sig(exTaxUnit * (rawInTax / rawExTax)) : rawInTax;
+    const inTaxUnit = rawExTax > 0 ? r2(exTaxUnit * (rawInTax / rawExTax)) : rawInTax; // 含税只保留两位小数，保证「未税×税率」算得回来
     result.costs.unit_price_ex_tax = exTaxUnit;
     result.costs.unit_price_in_tax = inTaxUnit;
     result.costs.unit_price = exTaxUnit; // 前端「未税单价」输入框读的就是这个字段
