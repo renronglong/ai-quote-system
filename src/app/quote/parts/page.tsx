@@ -98,7 +98,7 @@ function partNameOf(p: PartData, idx: number): string {
 }
 
 // 板材加工方案（业主 2026-11-02：批量生成前三选一——开模/现模/激光切割）
-type SheetPlan = 'open_mold' | 'existing_mold' | 'laser';
+type SheetPlan = 'open_mold' | 'existing_mold' | 'laser' | 'none';  // none=无需开模（板材→激光切割，挤压/锌→免模具费）
 
 function buildPartPayload(p: PartData, idx: number, sheetPlan?: SheetPlan): BuiltPayload {
   const { apiType, zh } = resolveApiType(p);
@@ -167,6 +167,12 @@ function buildPartPayload(p: PartData, idx: number, sheetPlan?: SheetPlan): Buil
   };
   if (p.product_code || p.product_number) params.productCode = p.product_code || p.product_number;
 
+  // 挤压/锌合金：行级「现有模具 / 无需开模」= 免开模费（后端 use_existing_mold 已支持，业主 2026-11-02）
+  if ((apiType === 'extrusion' || apiType === 'zinc_alloy') && (sheetPlan === 'existing_mold' || sheetPlan === 'none')) {
+    payload.use_existing_mold = true;
+    params.use_existing_mold = true;
+  }
+
   // 板材加工方案：按所选方案补充模具费/激光切割费（业主 2026-11-02）
   if (apiType === 'sheet_metal' && sheetPlan) {
     params.sheet_process_plan = sheetPlan;
@@ -174,7 +180,7 @@ function buildPartPayload(p: PartData, idx: number, sheetPlan?: SheetPlan): Buil
     const Lm = Number(p.unfold_length_mm ?? p.length) || 0;
     const Wm = Number(p.unfold_width_mm ?? p.width) || 0;
     const holeCount = Number(p.punch_holes_total ?? p.cnc_total_holes ?? 0) || 0;
-    if (sheetPlan === 'laser') {
+    if (sheetPlan === 'laser' || sheetPlan === 'none') {
       // 方案B：激光切割（不开模）——切割费+穿孔费计入单价
       const cutPath = Number(p.cut_perimeter_mm) || (Lm > 0 && Wm > 0 ? 2 * (Lm + Wm) : 0);
       const lr = T > 0 && cutPath > 0 ? calculateLaserCuttingFee({ thickness: T, cutTotalPath: cutPath, holeCount }) : null;
@@ -239,13 +245,51 @@ export default function QuotePartsPage() {
     },
   };
   // 子牌号（业主 2026-11-02）：异型材 / 标准件（含钢材·钢标准件）需再选一层牌号；挤压材料费不读牌号，纯展示口径
-  const AL_GRADES = ['6063-T5', '6063-T6', '6061-T6', '6060-T5', '6082-T6', '6005A-T5'];
-  const STEEL_GRADES = ['Q235', '45#', '40Cr', '304', '316'];
-  // 加工方式下拉选项（切换计价品类）
-  const PROCESS_OPTIONS: { key: string; label: string }[] = [
-    { key: 'extrusion', label: '挤压型材' },
-    { key: 'sheet_metal', label: '钣金折弯' },
-    { key: 'part', label: '零件' },
+  // 材料五大类（业主 2026-11-02：与报价页五大产品项对齐，钢材按几何特征智能选标准件）
+  const MATERIAL_CATS: { key: string; label: string }[] = [
+    { key: '铝型材', label: '铝型材' },
+    { key: '板材', label: '板材' },
+    { key: '铸造', label: '铸造' },
+    { key: '注塑', label: '注塑' },
+    { key: '钢材', label: '钢材' },
+  ];
+  // 牌号：同价位合并只留代表牌号（业主 2026-11-02「价格差不多的写一个就好」）
+  const GRADE_GROUPS: Record<string, { label: string; value: string }[]> = {
+    '铝型材': [
+      { label: '6063-T5（默认）', value: '6063-T5' },
+      { label: '6061-T6（高强度）', value: '6061-T6' },
+    ],
+    '板材': [
+      { label: '铝板 1060 纯铝', value: '1060' },
+      { label: '铝板 5052 镁铝（默认）', value: '5052' },
+      { label: '铝板 7075 航空铝', value: '7075' },
+      { label: '钢板 Q235', value: 'Q235' },
+      { label: '冷轧板 SPCC', value: 'SPCC' },
+      { label: '不锈钢 304', value: '304' },
+      { label: '镀锌板', value: '镀锌板' },
+    ],
+    '铸造': [
+      { label: '压铸铝 ADC12（默认）', value: 'ADC12' },
+      { label: '锌合金 Zamak3', value: 'Zamak3' },
+    ],
+    '注塑': [
+      { label: 'ABS（默认）', value: 'ABS' },
+      { label: 'PP', value: 'PP' },
+      { label: 'PC', value: 'PC' },
+    ],
+    '钢材': [
+      { label: 'Q235 碳钢（默认）', value: 'Q235' },
+      { label: '45# 碳结钢', value: '45#' },
+      { label: '304 不锈钢', value: '304' },
+    ],
+  };
+  // 钢标准件 8 种：种类由几何特征智能判定，可手改
+  const STEEL_KINDS = ['圆钢', '方钢', '六角钢', '角钢', '圆钢管', '方管', '槽钢', '工字钢'];
+  // 加工方式：开模 / 现有模具 / 无需开模（行级模具方案，业主 2026-11-02）
+  const MOLD_PLAN_OPTIONS: { key: string; label: string }[] = [
+    { key: 'open_mold', label: '开模' },
+    { key: 'existing_mold', label: '现有模具' },
+    { key: 'none', label: '无需开模' },
   ];
   // 表面处理选填（默认无）：值与后端 applySurfaceCost switch 对齐（氧化本色/氧化上色/喷砂/拉丝/喷涂）
   const SURFACE_OPTIONS = ['无', '氧化本色', '氧化上色', '喷砂', '拉丝', '喷涂'];
@@ -372,11 +416,34 @@ export default function QuotePartsPage() {
     setPayload(updatedPayload);
     if (invalidate) invalidateQuoted(idx);
   };
-  // 材料下拉：直接写牌号；钻取上下文 _material_child 清空
+  // 材料大类切换：改品类标记 + 清牌号；钢材自动判标准件种类（业主 2026-11-02）
+  const handleMaterialCatChange = (idx: number, cat: string) => {
+    if (!payload) return;
+    const p = payload.products[idx];
+    if (getMaterialCat(p) === cat) return;
+    const clearSheet = { product_type: undefined, is_sheet_metal: undefined, _isSheet: undefined, area_method: undefined };
+    const patch: Partial<PartData> = { material_grade: '', _material_child: '', _mold_plan: undefined };
+    if (cat === '板材') {
+      Object.assign(patch, clearSheet, { is_sheet_metal: true, process_type: 'sheet_metal' });
+    } else if (cat === '铸造') {
+      Object.assign(patch, clearSheet, { process_type: 'die_cast', die_type: undefined });
+    } else if (cat === '注塑') {
+      Object.assign(patch, clearSheet, { process_type: 'injection', die_type: undefined, perimeter: undefined });
+    } else if (cat === '钢材') {
+      Object.assign(patch, clearSheet, { process_type: 'extrusion', material_grade: 'Q235', _material_child: guessSteelKind(p) });
+    } else {
+      Object.assign(patch, clearSheet, { process_type: 'extrusion' });
+    }
+    updatePartField(idx, patch, true);
+  };
+  // 牌号下拉：写牌号；铸造按铝/锌牌号切换计价品类（后端两套价格表）
   const handleInlineMaterialChange = (idx: number, material: string) => {
     if (!payload) return;
     const hadMaterial = String(payload.products[idx]?.material_grade || '').trim() !== '';
-    updatePartField(idx, { material_grade: material, _material_child: '' }, hadMaterial !== (material !== ''));
+    const patch: Partial<PartData> = { material_grade: material, _material_child: '' };
+    if (material === 'Zamak3' || material === 'ZA-8') { patch.process_type = 'zinc'; patch.product_type = undefined; }
+    else if (material === 'ADC12' || material === 'A380') { patch.process_type = 'die_cast'; patch.product_type = undefined; }
+    updatePartField(idx, patch, hadMaterial !== (material !== ''));
   };
   // 表面处理下拉：选「无」= 清空（后端不计表面处理费）
   const handleInlineSurfaceChange = (idx: number, st: string) => {
@@ -384,24 +451,10 @@ export default function QuotePartsPage() {
     const had = String(payload.products[idx]?.surface_treatment || '').trim() !== '';
     updatePartField(idx, { surface_treatment: st === '无' ? '' : st }, had !== (st !== '无'));
   };
-  // 模具类型下拉：仅挤压件可选（平模/分流模），改后模具费口径变化需重新报价
-  const handleInlineDieChange = (idx: number, die: string) => {
-    if (!payload) return;
-    const old = String(payload.products[idx]?.die_type || '');
-    updatePartField(idx, { die_type: die || undefined }, old !== die);
-  };
-  // 加工方式下拉：切换计价品类，同时清理另一品类的专属标记，避免 getPartType/后端误判
-  const handleInlineProcessChange = (idx: number, key: string) => {
-    if (!payload) return;
-    if (getPartType(payload.products[idx]).key === key) return;
-    if (key === 'extrusion') {
-      updatePartField(idx, { process_type: 'extrusion', is_sheet_metal: undefined, _isSheet: undefined, area_method: undefined }, true);
-    } else if (key === 'sheet_metal') {
-      updatePartField(idx, { process_type: 'sheet_metal', is_sheet_metal: true }, true);
-    } else {
-      updatePartField(idx, { process_type: undefined, is_sheet_metal: undefined, _isSheet: undefined, area_method: undefined, die_type: undefined, perimeter: undefined }, true);
-    }
-  };
+  // 钢材标准件种类手改
+  const handleSteelKindChange = (idx: number, kind: string) => updatePartField(idx, { _material_child: kind }, true);
+  // 加工方式（开模/现有模具/无需开模）：行级生效，改后需重新报价
+  const handleMoldPlanChange = (idx: number, plan: string) => updatePartField(idx, { _mold_plan: plan }, true);
 
   // 批量生成报价：点击"立即生成"先弹出零件明细，用户手工勾选要生成的零件
   const openBatchModal = () => {
@@ -448,22 +501,23 @@ export default function QuotePartsPage() {
     const planWarnings: string[] = [];
     selectedIdx.forEach(idx => {
       const p = products[idx];
-      const built = buildPartPayload(p, idx, batchSheetPlan);
+      // 行级加工方式优先（零件自设），未设置时板材跟随批量方案
+      const rowPlan = rowPlanFor(p);
+      const built = buildPartPayload(p, idx, rowPlan);
       if (built.skipReason) { skippedInitial[idx] = built.skipReason; return; }
       // 板材方案前置校验：开模算不出模具费/激光不可用时阻断（业主 2026-11-02：选了开模却按激光出价，模具费丢失）
       if (built.payload.product_type === 'sheet_metal') {
         const nm = partNameOf(p, idx);
-        if (batchSheetPlan === 'open_mold' && built.payload.mold_cost == null) {
+        if (rowPlan === 'open_mold' && built.payload.mold_cost == null) {
           planWarnings.push(`${nm}：开模方案算不出模具费（非标或尺寸不全）`);
-        } else if (batchSheetPlan === 'laser' && built.payload.laser_cutting_fee == null) {
+        } else if ((rowPlan === 'laser' || rowPlan === 'none') && built.payload.laser_cutting_fee == null) {
           planWarnings.push(`${nm}：激光切割不可用（板厚超22mm或缺切割尺寸）`);
         }
       }
       toProcess.push(idx);
     });
     if (planWarnings.length > 0) {
-      const planName = batchSheetPlan === 'open_mold' ? '开模（冲压模）' : batchSheetPlan === 'existing_mold' ? '现有模具（免模具费）' : '激光切割';
-      window.alert(`当前板材加工方案：${planName}\n\n${planWarnings.join('\n')}\n\n请改选其他加工方案，或先补全零件尺寸。`);
+      window.alert(`零件加工方案存在问题：\n\n${planWarnings.join('\n')}\n\n请在列表「加工方式」中改选方案，或先补全零件尺寸。`);
       return;
     }
 
@@ -484,7 +538,7 @@ export default function QuotePartsPage() {
     const savedQuoteIds: string[] = [];
     for (const idx of toProcess) {
       const p = products[idx];
-      const built = buildPartPayload(p, idx, batchSheetPlan);
+      const built = buildPartPayload(p, idx, rowPlanFor(p));
       if (built.skipReason) { setBatchProgress(pr => ({ ...pr, done: pr.done + 1, skipped: pr.skipped + 1 })); continue; }
       try {
         const res = await fetch('/api/v1/quote/calculate', {
@@ -556,22 +610,72 @@ export default function QuotePartsPage() {
   };
 
   const getPartType = (p: PartData): { key: string; label: string; color: string; icon: any } => {
-    if (p._isSheet || p.is_sheet_metal || p.area_method === 'sheet_metal' || p.process_type === 'sheet_metal') {
+    const t = String(p.product_type || p.process_type || '').toLowerCase();
+    if (isSheetPart(p)) {
       return { key: 'sheet_metal', label: '钣金折弯', color: 'bg-violet-100 text-violet-700', icon: Layers };
     }
+    if (t.includes('die_cast') || t === '压铸') {
+      return { key: 'die_casting', label: '压铸', color: 'bg-orange-100 text-orange-700', icon: Box };
+    }
+    if (t.includes('zinc') || t === '锌') {
+      return { key: 'zinc_alloy', label: '锌合金', color: 'bg-amber-100 text-amber-700', icon: Box };
+    }
+    if (t.includes('inject') || t === '注塑') {
+      return { key: 'injection', label: '注塑', color: 'bg-pink-100 text-pink-700', icon: Package };
+    }
     if (p.process_type === 'extrusion' || p.die_type || p.perimeter) {
+      if (getMaterialCat(p) === '钢材') return { key: 'steel', label: '钢材', color: 'bg-slate-200 text-slate-700', icon: Box };
       return { key: 'extrusion', label: '挤压型材', color: 'bg-blue-100 text-blue-700', icon: Box };
     }
     return { key: 'part', label: '零件', color: 'bg-slate-100 text-slate-600', icon: Package };
   };
 
-  // 材料下拉选项：按加工方式给对应牌号组
-  const getMaterialOptions = (p: PartData): string[] => {
-    const t = getPartType(p).key;
-    if (t === 'extrusion') return AL_GRADES;
-    if (t === 'sheet_metal') return [...STEEL_GRADES, '6061-T6'];
-    return [...AL_GRADES, ...STEEL_GRADES];
+  // 材料大类：铝型材/板材/铸造/注塑/钢材（业主 2026-11-02）
+  const getMaterialCat = (p: PartData): string => {
+    const t = String(p.product_type || p.process_type || '').toLowerCase();
+    if (isSheetPart(p)) return '板材';
+    if (t.includes('die_cast') || t.includes('zinc') || t === '压铸' || t === '锌') return '铸造';
+    if (t.includes('inject') || t === '注塑') return '注塑';
+    const kind = String(p._material_child || '');
+    const g = String(p.material_grade || '');
+    if (STEEL_KINDS.includes(kind) || /^(Q235|45#|40Cr|304|316)$/i.test(g) || /steel|钢/i.test(t)) return '钢材';
+    return '铝型材';
   };
+
+  // 钢材标准件种类：按几何特征智能判定（diameter/hex/outer 都存 width，inner 存 height）
+  const guessSteelKind = (p: PartData): string => {
+    const w = Number(p.width) || 0;
+    const h = Number(p.height) || 0;
+    const th = Number(p.wall_thickness ?? p.thickness_mm) || 0;
+    const per = Number(p.perimeter) || 0;
+    const hollow = String(p.die_type || '') === 'split' || (th > 0 && h > 0);
+    if (hollow) {
+      if (w > 0 && per > 0 && Math.abs(per - Math.PI * w) / Math.max(per, 1) < 0.15) return '圆钢管';
+      return '方管';
+    }
+    if (w > 0 && per > 0 && Math.abs(per - Math.PI * w) / Math.max(per, 1) < 0.12) return '圆钢';
+    if (w > 0 && h > 0) return '方钢';
+    return '圆钢';
+  };
+  const getSteelKind = (p: PartData): string => {
+    const k = String(p._material_child || '');
+    return STEEL_KINDS.includes(k) ? k : guessSteelKind(p);
+  };
+
+  // 行级加工方式：零件自设优先；未设置时板材跟随批量方案，挤压/钢材默认开模
+  const getRowPlan = (p: PartData, fallback: SheetPlan): SheetPlan => {
+    const v = String(p._mold_plan || '');
+    if (v === 'open_mold' || v === 'existing_mold' || v === 'none') return v as SheetPlan;
+    return isSheetPart(p) ? fallback : 'open_mold';
+  };
+  // 传给 buildPartPayload 的行级方案：板材必须有方案；挤压/钢材未设置时不传（按默认开模计价）
+  const rowPlanFor = (p: PartData): SheetPlan | undefined => {
+    const v = String(p._mold_plan || '');
+    if (v === 'open_mold' || v === 'existing_mold' || v === 'none') return v as SheetPlan;
+    return isSheetPart(p) ? batchSheetPlan : undefined;
+  };
+  // 显示口径：板材默认激光切割 = 无需开模
+  const displayPlan = (plan: SheetPlan): string => (plan === 'laser' ? 'none' : plan);
 
   const getPartDims = (p: PartData): string => {
     if (p._isSheet || p.is_sheet_metal) {
@@ -747,6 +851,9 @@ export default function QuotePartsPage() {
               const TypeIcon = type.icon;
               const isQuoted = quotedParts.has(idx);
               const isFailed = p._failed;
+              const matCat = getMaterialCat(p);
+              const rowPlan = getRowPlan(p, batchSheetPlan);
+              const steelKind = getSteelKind(p);
 
               return (
                 <div
@@ -787,19 +894,31 @@ export default function QuotePartsPage() {
                     </div>
                   ) : (
                     <>
-                      {/* 业主 2026-11-02：四项改为行内专用下拉直接选，不再弹材料弹窗 */}
+                      {/* 业主 2026-11-02：四列=材料(五大类)/牌号(联动·同价位合并)/表面处理/加工方式(开模·现有模具·无需开模) */}
                       <div className="flex-1 min-w-0 grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1.5">
                         <div className="min-w-0">
-                          <div className="text-[11px] text-slate-400">加工方式</div>
+                          <div className="text-[11px] text-slate-400">材料</div>
                           <select
-                            value={type.key}
-                            onChange={(e) => handleInlineProcessChange(idx, e.target.value)}
+                            value={matCat}
+                            onChange={(e) => handleMaterialCatChange(idx, e.target.value)}
                             onClick={(e) => e.stopPropagation()}
                             className="max-w-full text-sm text-slate-700 bg-transparent rounded cursor-pointer hover:bg-blue-50 focus:outline-none"
                           >
-                            {PROCESS_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                            {MATERIAL_CATS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
                           </select>
-                          {((p.punch_holes_total ?? 0) > 0 || (p.cnc_total_holes ?? 0) > 0 || p.weight_g != null) && (
+                          {matCat === '钢材' ? (
+                            <div className="text-[11px] text-slate-400 truncate">
+                              标准件:
+                              <select
+                                value={steelKind}
+                                onChange={(e) => handleSteelKindChange(idx, e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-[11px] text-slate-600 bg-transparent rounded cursor-pointer hover:bg-blue-50 focus:outline-none"
+                              >
+                                {STEEL_KINDS.map(k => <option key={k} value={k}>{k}</option>)}
+                              </select>
+                            </div>
+                          ) : ((p.punch_holes_total ?? 0) > 0 || (p.cnc_total_holes ?? 0) > 0 || p.weight_g != null) && (
                             <div className="text-[11px] text-slate-400 truncate">
                               {(p.punch_holes_total ?? 0) > 0 && `·${p.punch_holes_total}孔`}
                               {(p.cnc_total_holes ?? 0) > 0 && ` ·CNC${p.cnc_total_holes}孔`}
@@ -808,7 +927,7 @@ export default function QuotePartsPage() {
                           )}
                         </div>
                         <div className="min-w-0">
-                          <div className="text-[11px] text-slate-400">材料</div>
+                          <div className="text-[11px] text-slate-400">牌号</div>
                           <select
                             value={p.material_grade || ''}
                             onChange={(e) => handleInlineMaterialChange(idx, e.target.value)}
@@ -816,7 +935,10 @@ export default function QuotePartsPage() {
                             className={`max-w-full text-sm bg-transparent rounded cursor-pointer hover:bg-blue-50 focus:outline-none ${p.material_grade ? 'text-slate-700' : 'text-amber-500 font-medium'}`}
                           >
                             <option value="">待选择</option>
-                            {getMaterialOptions(p).map(g => <option key={g} value={g}>{g}</option>)}
+                            {!!p.material_grade && !(GRADE_GROUPS[matCat] || []).some(g => g.value === p.material_grade) && (
+                              <option value={p.material_grade}>{p.material_grade}（识别值）</option>
+                            )}
+                            {(GRADE_GROUPS[matCat] || []).map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
                           </select>
                         </div>
                         <div className="min-w-0">
@@ -828,25 +950,27 @@ export default function QuotePartsPage() {
                             className="max-w-full text-sm text-slate-700 bg-transparent rounded cursor-pointer hover:bg-blue-50 focus:outline-none"
                           >
                             <option value="">无</option>
+                            {!!p.surface_treatment && !SURFACE_OPTIONS.includes(p.surface_treatment) && (
+                              <option value={p.surface_treatment}>{p.surface_treatment}（识别值）</option>
+                            )}
                             {SURFACE_OPTIONS.filter(s => s !== '无').map(s => <option key={s} value={s}>{s}</option>)}
                           </select>
                         </div>
                         <div className="min-w-0">
-                          <div className="text-[11px] text-slate-400">模具类型</div>
-                          {type.key === 'extrusion' ? (
-                            <select
-                              value={p.die_type || ''}
-                              onChange={(e) => handleInlineDieChange(idx, e.target.value)}
-                              onClick={(e) => e.stopPropagation()}
-                              className="max-w-full text-sm text-slate-700 bg-transparent rounded cursor-pointer hover:bg-blue-50 focus:outline-none"
-                            >
-                              <option value="">—</option>
-                              <option value="flat">平模</option>
-                              <option value="split">分流模</option>
-                            </select>
-                          ) : (
-                            <div className="text-sm text-slate-700">—</div>
-                          )}
+                          <div className="text-[11px] text-slate-400">加工方式</div>
+                          <select
+                            value={displayPlan(rowPlan)}
+                            onChange={(e) => handleMoldPlanChange(idx, e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="max-w-full text-sm text-slate-700 bg-transparent rounded cursor-pointer hover:bg-blue-50 focus:outline-none"
+                          >
+                            {MOLD_PLAN_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                          </select>
+                          <div className="text-[11px] text-slate-400 truncate">
+                            {matCat === '铸造' || matCat === '注塑'
+                              ? '模具费按品类固定'
+                              : displayPlan(rowPlan) === 'open_mold' ? '计模具费' : '免模具费'}
+                          </div>
                         </div>
                       </div>
                       <div className="shrink-0 flex items-center gap-2">
@@ -934,7 +1058,7 @@ export default function QuotePartsPage() {
                         </div>
                         {hasSheet && (
                           <div className="text-[11px] text-purple-600 mt-1.5">
-                            已选零件含板材，将按「{batchSheetPlan === 'laser' ? '激光切割' : batchSheetPlan === 'open_mold' ? '开模（冲压模，模具费单独列出）' : '现有模具（免模具费）'}」方案计算
+                            已选零件含板材，未单独设置加工方式的按「{batchSheetPlan === 'laser' ? '激光切割' : batchSheetPlan === 'open_mold' ? '开模（冲压模，模具费单独列出）' : '现有模具（免模具费）'}」方案计算
                           </div>
                         )}
                       </div>
