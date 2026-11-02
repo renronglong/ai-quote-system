@@ -259,7 +259,20 @@ export default function QuotePartsPage() {
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [batchSelected, setBatchSelected] = useState<Set<number>>(new Set());
   // 批量板材加工方案（默认激光切割）
-  const [batchSheetPlan, setBatchSheetPlan] = useState<SheetPlan>('laser');
+  // 板材加工方案持久到 sessionStorage：页面刷新/补选材料往返后不再静默回落默认激光（业主 2026-11-02）
+  const [batchSheetPlan, setBatchSheetPlan] = useState<SheetPlan>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const v = sessionStorage.getItem('ai_quote_sheet_plan');
+        if (v === 'open_mold' || v === 'existing_mold' || v === 'laser') return v as SheetPlan;
+      } catch { /* ignore */ }
+    }
+    return 'laser';
+  });
+  const updateBatchSheetPlan = (v: SheetPlan) => {
+    setBatchSheetPlan(v);
+    try { sessionStorage.setItem('ai_quote_sheet_plan', v); } catch { /* ignore */ }
+  };
 
   useEffect(() => {
     try {
@@ -434,12 +447,27 @@ export default function QuotePartsPage() {
     // 收集可构造参数的待处理零件（已剔除缺尺寸/无法判型的，后端会报错，这里先标记）
     const toProcess: number[] = [];
     const skippedInitial: Record<number, string> = {};
+    const planWarnings: string[] = [];
     selectedIdx.forEach(idx => {
       const p = products[idx];
       const built = buildPartPayload(p, idx, batchSheetPlan);
       if (built.skipReason) { skippedInitial[idx] = built.skipReason; return; }
+      // 板材方案前置校验：开模算不出模具费/激光不可用时阻断（业主 2026-11-02：选了开模却按激光出价，模具费丢失）
+      if (built.payload.product_type === 'sheet_metal') {
+        const nm = partNameOf(p, idx);
+        if (batchSheetPlan === 'open_mold' && built.payload.mold_cost == null) {
+          planWarnings.push(`${nm}：开模方案算不出模具费（非标或尺寸不全）`);
+        } else if (batchSheetPlan === 'laser' && built.payload.laser_cutting_fee == null) {
+          planWarnings.push(`${nm}：激光切割不可用（板厚超22mm或缺切割尺寸）`);
+        }
+      }
       toProcess.push(idx);
     });
+    if (planWarnings.length > 0) {
+      const planName = batchSheetPlan === 'open_mold' ? '开模（冲压模）' : batchSheetPlan === 'existing_mold' ? '现有模具（免模具费）' : '激光切割';
+      window.alert(`当前板材加工方案：${planName}\n\n${planWarnings.join('\n')}\n\n请改选其他加工方案，或先补全零件尺寸。`);
+      return;
+    }
 
     if (toProcess.length === 0) {
       setBatchDone(true);
@@ -455,6 +483,7 @@ export default function QuotePartsPage() {
     setBatchProgress({ done: 0, total: toProcess.length, success: 0, skipped: 0 });
 
     const successIdx: number[] = [];
+    const savedQuoteIds: string[] = [];
     for (const idx of toProcess) {
       const p = products[idx];
       const built = buildPartPayload(p, idx, batchSheetPlan);
@@ -480,6 +509,7 @@ export default function QuotePartsPage() {
         const saved = await saveQuoteToAPI(user.id, built.params, result, built.productTypeZh, undefined, undefined, undefined, partNameOf(p, idx));
         if (saved) {
           successIdx.push(idx);
+          savedQuoteIds.push(saved.id);
           setBatchProgress(pr => ({ ...pr, done: pr.done + 1, success: pr.success + 1 }));
         } else {
           setBatchProgress(pr => ({ ...pr, done: pr.done + 1, skipped: pr.skipped + 1 }));
@@ -513,8 +543,18 @@ export default function QuotePartsPage() {
     let msg = `批量生成完成：成功保存 ${successIdx.length} 个`;
     if (skippedCount > 0) msg += `，计算/保存失败 ${skippedCount} 个`;
     if (initSkipCount > 0) msg += `；另有 ${initSkipCount} 个初始跳过（已报价/识别失败/缺尺寸）`;
-    msg += '。可在「我的报价」多选导出汇总。';
+    const planLabel = batchSheetPlan === 'open_mold' ? '开模（冲压模）' : batchSheetPlan === 'existing_mold' ? '现有模具（免模具费）' : '激光切割';
+    msg += `。板材已按「${planLabel}」方案计价`;
     setBatchSummary(msg);
+
+    // 自动跳转导出报价单页并预选刚生成的报价（业主 2026-11-02：免得再选一次产品）
+    if (savedQuoteIds.length > 0) {
+      try {
+        sessionStorage.setItem('ai_quote_sheet_pick', JSON.stringify(savedQuoteIds));
+        sessionStorage.setItem('ai_quote_open_sheet', '1');
+      } catch { /* ignore */ }
+      router.push('/quote');
+    }
   };
 
   const getPartType = (p: PartData): { label: string; color: string; icon: any } => {
@@ -928,7 +968,7 @@ export default function QuotePartsPage() {
                               key={v}
                               type="button"
                               disabled={batchGenerating}
-                              onClick={() => setBatchSheetPlan(v)}
+                              onClick={() => updateBatchSheetPlan(v)}
                               className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-all ${
                                 batchSheetPlan === v
                                   ? 'bg-purple-600 border-purple-600 text-white'

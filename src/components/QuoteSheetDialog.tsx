@@ -270,8 +270,19 @@ export default function QuoteSheetDialog({ open, onClose, userId, currentQuote, 
       }
       setQuotes(list);
       loadHistory();
-      // 默认勾选最新一条
-      if (list.length > 0) setSelected(new Set([list[0].id]));
+      // 预选批量报价跳转带来的报价（ai_quote_sheet_pick），否则默认勾选最新一条
+      let pickIds: string[] = [];
+      try {
+        const raw = typeof window !== 'undefined' ? sessionStorage.getItem('ai_quote_sheet_pick') : null;
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) pickIds = parsed.filter((x: unknown): x is string => typeof x === 'string');
+          sessionStorage.removeItem('ai_quote_sheet_pick');
+        }
+      } catch { /* ignore */ }
+      const validPicks = pickIds.filter((id) => list.some((q) => q.id === id));
+      if (validPicks.length > 0) setSelected(new Set(validPicks));
+      else if (list.length > 0) setSelected(new Set([list[0].id]));
       setLoading(false);
     })();
   }, [open, userId]);

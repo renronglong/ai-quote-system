@@ -78,6 +78,17 @@ export default function QuotePage() {
   const [saving, setSaving] = useState(false);
   const [showExportLogin, setShowExportLogin] = useState(false); // 游客导出报价单时弹登录墙
   const [showSheetDialog, setShowSheetDialog] = useState(false); // Excel报价单出单弹窗
+
+  // 批量报价完成后自动打开导出弹窗（parts 页跳转时设置 ai_quote_open_sheet；业主 2026-11-02）
+  useEffect(() => {
+    if (!user) return;
+    try {
+      if (sessionStorage.getItem('ai_quote_open_sheet') === '1') {
+        sessionStorage.removeItem('ai_quote_open_sheet');
+        setShowSheetDialog(true);
+      }
+    } catch { /* ignore */ }
+  }, [user]);
   const [currentParams, setCurrentParams] = useState<Record<string, any> | null>(null);
   const [productDiscount, setProductDiscount] = useState<number>(100); // 产品折扣，100=无折扣
   const [moldDiscount, setMoldDiscount] = useState<number>(100); // 模具费折扣，100=无折扣
