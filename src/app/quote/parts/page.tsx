@@ -170,7 +170,7 @@ function buildPartPayload(p: PartData, idx: number, sheetPlan?: SheetPlan): Buil
   // 板材加工方案：按所选方案补充模具费/激光切割费（业主 2026-11-02）
   if (apiType === 'sheet_metal' && sheetPlan) {
     params.sheet_process_plan = sheetPlan;
-    const T = Number(p.thickness_mm) || 0;
+    const T = Number(p.thickness_mm ?? p.wall_thickness) || 0;  // 板厚回退 wall_thickness：识别数据常存这里，T=0 会静默丢冲压模具费/激光费
     const Lm = Number(p.unfold_length_mm ?? p.length) || 0;
     const Wm = Number(p.unfold_width_mm ?? p.width) || 0;
     const holeCount = Number(p.punch_holes_total ?? p.cnc_total_holes ?? 0) || 0;
@@ -772,12 +772,13 @@ export default function QuotePartsPage() {
           })()}
 
           {/* 零件卡片列表 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="space-y-2">
             {payload.products.map((p, idx) => {
               const type = getPartType(p);
               const TypeIcon = type.icon;
               const isQuoted = quotedParts.has(idx);
               const isFailed = p._failed;
+              const dieLabel = p.die_type === 'flat' ? '平模' : p.die_type === 'split' ? '分流模' : (p.die_type ? String(p.die_type) : '');
 
               return (
                 <div
@@ -789,13 +790,14 @@ export default function QuotePartsPage() {
                     if (isFailed) return;
                     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handlePartClick(idx); }
                   }}
-                  className={`text-left bg-white rounded-xl border p-4 shadow-sm transition-all group
+                  className={`text-left bg-white rounded-xl border px-4 py-3 shadow-sm transition-all group
                     ${isFailed ? 'opacity-50 cursor-not-allowed border-red-200 bg-red-50' :
                       isQuoted ? 'border-emerald-200 hover:shadow-md hover:border-emerald-300' :
                       'border-slate-200 hover:shadow-md hover:border-blue-300 cursor-pointer'}`}
                 >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2 min-w-0">
+                  {/* 业主 2026-11-02：列表改详细信息行式（不平铺），列=加工方式/材料/表面处理/模具类型 */}
+                  <div className="flex items-center gap-4 flex-wrap lg:flex-nowrap">
+                    <div className="flex items-center gap-2 min-w-0 lg:w-56 shrink-0">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isQuoted ? 'bg-emerald-100' : 'bg-slate-50'}`}>
                         {isQuoted ? <CheckCircle2 size={16} className="text-emerald-600" /> : <TypeIcon size={16} className="text-slate-500" />}
                       </div>
@@ -807,39 +809,52 @@ export default function QuotePartsPage() {
                             <span className="text-xs text-slate-500">×{p.quantity || p._quantity}件</span>
                           )}
                         </div>
+                        <div className="text-[11px] text-slate-400 truncate mt-0.5">{getPartDims(p)}</div>
                       </div>
                     </div>
-                    {!isFailed && (
-                      <ChevronRight size={18} className={`shrink-0 transition-transform ${isQuoted ? 'text-emerald-400' : 'text-slate-300 group-hover:text-blue-400 group-hover:translate-x-0.5'}`} />
-                    )}
-                  </div>
 
                   {isFailed ? (
-                    <div className="text-xs text-red-600 flex items-center gap-1">
+                    <div className="text-xs text-red-600 flex items-center gap-1 flex-1 min-w-0">
                       <AlertCircle size={12} /> {p._error || '解析失败'}
                     </div>
                   ) : (
                     <>
-                      <div className="flex items-center gap-3 text-sm text-slate-600">
-                        <Ruler size={13} className="text-slate-400 shrink-0" />
-                        <span className="truncate">{getPartDims(p)}</span>
+                      <div className="flex-1 min-w-0 grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1.5">
+                        <div className="min-w-0">
+                          <div className="text-[11px] text-slate-400">加工方式</div>
+                          <div className="text-sm text-slate-700 truncate">
+                            {type.label}
+                            {(p.punch_holes_total ?? 0) > 0 && ` · ${p.punch_holes_total}孔`}
+                            {(p.cnc_total_holes ?? 0) > 0 && ` · CNC${p.cnc_total_holes}孔`}
+                          </div>
+                          {p.weight_g != null && (
+                            <div className="text-[11px] text-slate-400 truncate">重 {p.weight_g}g{p.meter_weight != null ? ` / ${p.meter_weight}kg·m⁻¹` : ''}</div>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[11px] text-slate-400">材料</div>
+                          {p.material_grade ? (
+                            <div className="text-sm text-slate-700 truncate">{p.material_grade}</div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); openChangeMaterial(idx); }}
+                              className="text-sm text-amber-500 hover:text-amber-600 font-medium truncate"
+                            >
+                              待选择 <Pencil size={11} className="inline" />
+                            </button>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[11px] text-slate-400">表面处理</div>
+                          <div className="text-sm text-slate-700 truncate">{p.surface_treatment || '无'}</div>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[11px] text-slate-400">模具类型</div>
+                          <div className="text-sm text-slate-700 truncate">{dieLabel || '—'}</div>
+                        </div>
                       </div>
-                      {p.weight_g != null && (
-                        <div className="flex items-center gap-3 text-sm text-slate-600 mt-1">
-                          <Box size={13} className="text-slate-400 shrink-0" />
-                          <span>重 {p.weight_g}g{p.meter_weight != null ? ` / ${p.meter_weight}kg·m⁻¹` : ''}</span>
-                        </div>
-                      )}
-                      {(p.punch_holes_total != null || p.cnc_total_holes != null) && (
-                        <div className="flex items-center gap-3 text-sm text-slate-600 mt-1">
-                          <FileText size={13} className="text-slate-400 shrink-0" />
-                          <span>
-                            {(p.punch_holes_total ?? 0) > 0 && `${p.punch_holes_total}孔`}
-                            {(p.cnc_total_holes ?? 0) > 0 && `${(p.punch_holes_total ?? 0) > 0 ? ' + ' : ''}CNC ${p.cnc_total_holes}孔`}
-                          </span>
-                        </div>
-                      )}
-                      <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <div className="shrink-0 flex items-center gap-2">
                         {isQuoted ? (
                           <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700 text-sm font-medium">
                             <CheckCircle2 size={14} /> 已报价 · 查看
@@ -849,32 +864,24 @@ export default function QuotePartsPage() {
                             进入报价 <ChevronRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
                           </span>
                         )}
-                        {p.material_grade ? (
-                          <span className="flex items-center gap-1 ml-2 min-w-0 shrink-0">
-                            <span className="text-slate-500 truncate text-xs">材质: {p.material_grade}</span>
-                            <button
-                              type="button"
-                              aria-label={`修改 ${getPartName(p, idx)} 的材质`}
-                              title="修改材质"
-                              onClick={(e) => { e.stopPropagation(); openChangeMaterial(idx); }}
-                              className="shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition"
-                            >
-                              <Pencil size={12} />
-                            </button>
-                          </span>
-                        ) : (
+                        {p.material_grade && (
                           <button
                             type="button"
-                            aria-label={`为 ${getPartName(p, idx)} 选择材质`}
+                            aria-label={`修改 ${getPartName(p, idx)} 的材质`}
+                            title="修改材质"
                             onClick={(e) => { e.stopPropagation(); openChangeMaterial(idx); }}
-                            className="shrink-0 inline-flex items-center gap-1 ml-2 text-amber-500 hover:text-amber-600 text-xs font-medium transition"
+                            className="shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition"
                           >
-                            材质: 待选择 <Pencil size={11} />
+                            <Pencil size={12} />
                           </button>
+                        )}
+                        {!isFailed && (
+                          <ChevronRight size={18} className={`hidden md:block shrink-0 transition-transform ${isQuoted ? 'text-emerald-400' : 'text-slate-300 group-hover:text-blue-400 group-hover:translate-x-0.5'}`} />
                         )}
                       </div>
                     </>
                   )}
+                  </div>
                 </div>
               );
             })}
