@@ -265,6 +265,7 @@ export default function QuotePartsPage() {
       { label: '铝板 7075 航空铝', value: '7075' },
       { label: '钢板 Q235', value: 'Q235' },
       { label: '冷轧板 SPCC', value: 'SPCC' },
+      { label: '不锈钢 201（经济）', value: '201' },
       { label: '不锈钢 304', value: '304' },
       { label: '镀锌板', value: '镀锌板' },
     ],
@@ -293,6 +294,17 @@ export default function QuotePartsPage() {
   ];
   // 表面处理选填（默认无）：值与后端 applySurfaceCost switch 对齐（氧化本色/氧化上色/喷砂/拉丝/喷涂）
   const SURFACE_OPTIONS = ['无', '氧化本色', '氧化上色', '喷砂', '拉丝', '喷涂'];
+  // 表面处理按材料过滤（业主 2026-11-02：氧化/喷砂/拉丝是铝的工艺，钢材/钢板只做喷涂）
+  const surfaceAllowed = (cat: string, grade: string): string[] => {
+    if (cat === '铝型材') return ['氧化本色', '氧化上色', '喷砂', '拉丝', '喷涂'];
+    if (cat === '铸造') return ['喷砂', '喷涂'];
+    if (cat === '注塑') return ['喷涂'];
+    if (cat === '钢材') return ['喷涂'];
+    // 板材按牌号细分
+    if (/304|316|201|430/i.test(grade)) return ['拉丝', '喷涂'];
+    if (/Q235|SPCC|钢|镀锌/i.test(grade)) return ['喷涂'];
+    return ['氧化本色', '氧化上色', '喷砂', '拉丝', '喷涂'];
+  };
   const MATERIAL_GROUPS: { ptKey: string; ptLabel: string; cats: { key: string; label: string; children?: { label: string; value: string }[] }[] }[] = (() => {
     const groups: { ptKey: string; ptLabel: string; cats: { key: string; label: string; children?: { label: string; value: string }[] }[] }[] = [];
     for (const [ptKey, cfg] of Object.entries(PRODUCT_TYPES)) {
@@ -423,6 +435,8 @@ export default function QuotePartsPage() {
     if (getMaterialCat(p) === cat) return;
     const clearSheet = { product_type: undefined, is_sheet_metal: undefined, _isSheet: undefined, area_method: undefined };
     const patch: Partial<PartData> = { material_grade: '', _material_child: '', _mold_plan: undefined };
+    const curSt = String(p.surface_treatment || '');
+    if (curSt && !surfaceAllowed(cat, '').includes(curSt)) patch.surface_treatment = '';
     if (cat === '板材') {
       Object.assign(patch, clearSheet, { is_sheet_metal: true, process_type: 'sheet_metal' });
     } else if (cat === '铸造') {
@@ -441,6 +455,8 @@ export default function QuotePartsPage() {
     if (!payload) return;
     const hadMaterial = String(payload.products[idx]?.material_grade || '').trim() !== '';
     const patch: Partial<PartData> = { material_grade: material, _material_child: '' };
+    const curSt = String(payload.products[idx]?.surface_treatment || '');
+    if (curSt && !surfaceAllowed(getMaterialCat(payload.products[idx]), material).includes(curSt)) patch.surface_treatment = '';
     if (material === 'Zamak3' || material === 'ZA-8') { patch.process_type = 'zinc'; patch.product_type = undefined; }
     else if (material === 'ADC12' || material === 'A380') { patch.process_type = 'die_cast'; patch.product_type = undefined; }
     updatePartField(idx, patch, hadMaterial !== (material !== ''));
@@ -661,6 +677,9 @@ export default function QuotePartsPage() {
     const k = String(p._material_child || '');
     return STEEL_KINDS.includes(k) ? k : guessSteelKind(p);
   };
+
+  // 当前零件可选的表面处理（按材料过滤）
+  const getSurfaceOptions = (p: PartData): string[] => surfaceAllowed(getMaterialCat(p), String(p.material_grade || ''));
 
   // 行级加工方式：零件自设优先；未设置时板材跟随批量方案，挤压/钢材默认开模
   const getRowPlan = (p: PartData, fallback: SheetPlan): SheetPlan => {
@@ -950,10 +969,10 @@ export default function QuotePartsPage() {
                             className="max-w-full text-sm text-slate-700 bg-transparent rounded cursor-pointer hover:bg-blue-50 focus:outline-none"
                           >
                             <option value="">无</option>
-                            {!!p.surface_treatment && !SURFACE_OPTIONS.includes(p.surface_treatment) && (
+                            {!!p.surface_treatment && !getSurfaceOptions(p).includes(p.surface_treatment) && (
                               <option value={p.surface_treatment}>{p.surface_treatment}（识别值）</option>
                             )}
-                            {SURFACE_OPTIONS.filter(s => s !== '无').map(s => <option key={s} value={s}>{s}</option>)}
+                            {getSurfaceOptions(p).map(s => <option key={s} value={s}>{s}</option>)}
                           </select>
                         </div>
                         <div className="min-w-0">
