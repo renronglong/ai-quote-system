@@ -238,6 +238,14 @@ export default function QuotePartsPage() {
       '钢标准件': ['圆钢', '方钢', '六角钢', '角钢', '圆钢管', '方管', '槽钢', '工字钢'].map(k => ({ label: k, value: k })),
     },
   };
+  // 子牌号（业主 2026-11-02）：异型材 / 标准件（含钢材·钢标准件）需再选一层牌号；挤压材料费不读牌号，纯展示口径
+  const GRADE_OPTIONS: Record<string, { label: string; value: string }[]> = {
+    '挤出-异型材': ['6063-T5', '6063-T6', '6061-T6', '6060-T5', '6082-T6', '6005A-T5'].map(v => ({ label: v, value: v })),
+    '挤出-标准件': ['6063-T5', '6063-T6', '6061-T6', '6060-T5', '6082-T6', '6005A-T5'].map(v => ({ label: v, value: v })),
+    '钢材-钢标准件': ['Q235', '45#', '40Cr', '304', '316'].map(v => ({ label: v, value: v })),
+  };
+  // 表面处理选填（默认无）：值与后端 applySurfaceCost switch 对齐（氧化本色/氧化上色/喷砂/拉丝/喷涂）
+  const SURFACE_OPTIONS = ['无', '氧化本色', '氧化上色', '喷砂', '拉丝', '喷涂'];
   const MATERIAL_GROUPS: { ptKey: string; ptLabel: string; cats: { key: string; label: string; children?: { label: string; value: string }[] }[] }[] = (() => {
     const groups: { ptKey: string; ptLabel: string; cats: { key: string; label: string; children?: { label: string; value: string }[] }[] }[] = [];
     for (const [ptKey, cfg] of Object.entries(PRODUCT_TYPES)) {
@@ -250,6 +258,7 @@ export default function QuotePartsPage() {
   })();
   const [materialModalIdx, setMaterialModalIdx] = useState<number | null>(null); // 哪个零件弹出选材料
   const [materialModalCat, setMaterialModalCat] = useState<{ ptKey: string; ptLabel: string; key: string; label: string; children: { label: string; value: string }[] } | null>(null); // 已钻取到的材料类别
+  const [materialModalChild, setMaterialModalChild] = useState<{ label: string; value: string } | null>(null); // 已钻取到的形状子件（进牌号层前暂存）
   // 批量生成报价相关状态
   const [batchGenerating, setBatchGenerating] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0, success: 0, skipped: 0 });
@@ -329,6 +338,7 @@ export default function QuotePartsPage() {
     if (!effectiveMaterial) {
       // 弹出材料选择弹窗（每次都从「五大类」顶层开始）
       setMaterialModalCat(null);
+      setMaterialModalChild(null);
       setMaterialModalIdx(idx);
       return;
     }
@@ -353,6 +363,7 @@ export default function QuotePartsPage() {
       }
     }
     setMaterialModalCat(null);
+    setMaterialModalChild(null);
     setMaterialModalIdx(idx);
   };
 
@@ -366,6 +377,31 @@ export default function QuotePartsPage() {
     router.push('/quote?from=parts');
   };
 
+  // 选中表面处理：立即生效、不关弹窗（业主 2026-11-02：材质弹窗加表面处理选填，默认无）
+  // 「无」= 清空字段（后端不收表面处理费）；已报价零件改表面处理后作废标记，需重新报价
+  const handleModalSurfaceSelect = (st: string) => {
+    if (materialModalIdx === null || !payload) return;
+    const targetIdx = materialModalIdx;
+    const val = st === '无' ? '' : st;
+    const updatedProducts = [...payload.products];
+    updatedProducts[targetIdx] = { ...updatedProducts[targetIdx], surface_treatment: val };
+    const updatedPayload = { ...payload, products: updatedProducts };
+    sessionStorage.setItem('ai_quote_parts', JSON.stringify(updatedPayload));
+    setPayload(updatedPayload);
+    if (val) {
+      setQuotedParts(prev => {
+        if (!prev.has(targetIdx)) return prev;
+        const next = new Set(prev);
+        next.delete(targetIdx);
+        try {
+          const existing = sessionStorage.getItem('ai_quote_batch_quoted');
+          const arr: number[] = existing ? JSON.parse(existing) : [];
+          sessionStorage.setItem('ai_quote_batch_quoted', JSON.stringify(arr.filter((i: number) => i !== targetIdx)));
+        } catch (_e) { /* ignore */ }
+        return next;
+      });
+    }
+  };
   // 选中材料：material=展示用牌号；ptKey/catKey/child 用于把「大类/类别/子件」原样带进报价页。
   // 改材质模式（零件此前已有材料）：选择后就地生效、留在本页；若已报价过则作废绿色✓，需重新报价。
   // 首次选材料模式（原行为）：选择后写入并直接跳转报价页。
@@ -387,6 +423,7 @@ export default function QuotePartsPage() {
     setPayload(updatedPayload);
     setMaterialModalIdx(null);
     setMaterialModalCat(null);
+    setMaterialModalChild(null);
     if (hadMaterial) {
       // 材质已变更：作废旧的「已报价」标记（旧报价是按旧材质算的），状态与会话存储同步清除
       setQuotedParts(prev => {
@@ -849,11 +886,11 @@ export default function QuotePartsPage() {
             const mpName = getPartName(mp, materialModalIdx);
             const isChangeMode = String(mp?.material_grade || '').trim() !== '';
             return (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setMaterialModalIdx(null); setMaterialModalCat(null); }}>
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setMaterialModalIdx(null); setMaterialModalCat(null); setMaterialModalChild(null); }}>
                 <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-base font-semibold text-slate-800">{isChangeMode ? '修改材料' : '选择材料'}</h3>
-                    <button onClick={() => { setMaterialModalIdx(null); setMaterialModalCat(null); }} className="text-slate-400 hover:text-slate-600">
+                    <button onClick={() => { setMaterialModalIdx(null); setMaterialModalCat(null); setMaterialModalChild(null); }} className="text-slate-400 hover:text-slate-600">
                       <X size={20} />
                     </button>
                   </div>
@@ -864,6 +901,33 @@ export default function QuotePartsPage() {
                   </p>
                   {materialModalCat ? (() => {
                     const c = materialModalCat;
+                    const grades = GRADE_OPTIONS[c.ptKey + '-' + c.key] || [];
+                    const showGrades = (grades.length > 0) && (materialModalChild !== null || c.children.length === 0);
+                    if (showGrades) {
+                      // 牌号层：异型材（无形状子件）直接进；标准件/钢标准件选完形状后进（业主 2026-11-02 加子牌号）
+                      return (
+                        <div>
+                          <button
+                            onClick={() => { if (materialModalChild) setMaterialModalChild(null); else setMaterialModalCat(null); }}
+                            className="mb-3 text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                          >
+                            ← 返回 · {materialModalChild ? c.label : c.ptLabel}
+                          </button>
+                          <div className="text-xs font-semibold text-slate-500 mb-1.5">{c.ptLabel} › {c.label}{materialModalChild ? ` › ${materialModalChild.label}` : ''} › 选择牌号</div>
+                          <div className="max-h-[60vh] overflow-y-auto grid grid-cols-3 gap-2 pr-1">
+                            {grades.map(gr => (
+                              <button
+                                key={c.ptKey + '-' + c.key + '-' + (materialModalChild?.value || '') + '-' + gr.value}
+                                onClick={() => handleModalMaterialSelect(gr.value, c.ptKey, c.key, materialModalChild?.value || '')}
+                                className="px-2 py-2 text-sm rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition text-slate-700 font-medium"
+                              >
+                                {gr.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    }
                     return (
                       <div>
                         <button
@@ -877,7 +941,11 @@ export default function QuotePartsPage() {
                           {c.children.map(ch => (
                             <button
                               key={c.ptKey + '-' + c.key + '-' + ch.value}
-                              onClick={() => handleModalMaterialSelect(ch.value, c.ptKey, c.key, ch.value)}
+                              onClick={() => {
+                                const gr = GRADE_OPTIONS[c.ptKey + '-' + c.key];
+                                if (gr && gr.length) setMaterialModalChild({ label: ch.label, value: ch.value });
+                                else handleModalMaterialSelect(ch.value, c.ptKey, c.key, ch.value);
+                              }}
                               className="px-2 py-2 text-sm rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition text-slate-700 font-medium"
                             >
                               {ch.label}
@@ -898,6 +966,10 @@ export default function QuotePartsPage() {
                                 onClick={() => {
                                   if (c.children && c.children.length) {
                                     setMaterialModalCat({ ptKey: g.ptKey, ptLabel: g.ptLabel, key: c.key, label: c.label, children: c.children });
+                                  } else if (GRADE_OPTIONS[g.ptKey + '-' + c.key]?.length) {
+                                    // 无形状但有牌号（异型材）：进牌号层（业主 2026-11-02）
+                                    setMaterialModalCat({ ptKey: g.ptKey, ptLabel: g.ptLabel, key: c.key, label: c.label, children: [] });
+                                    setMaterialModalChild(null);
                                   } else {
                                     handleModalMaterialSelect(c.label, g.ptKey, c.key, '');
                                   }
@@ -911,6 +983,26 @@ export default function QuotePartsPage() {
                           </div>
                         </div>
                       ))}
+                      {/* 表面处理（选填，默认无）：立即生效；已报价零件改后作废需重新报价（业主 2026-11-02） */}
+                      <div className="pt-3 border-t border-slate-100">
+                        <div className="text-xs font-semibold text-slate-500 mb-1.5">表面处理（选填，默认无）</div>
+                        <div className="grid grid-cols-3 gap-2">
+                          {SURFACE_OPTIONS.map(s => (
+                            <button
+                              key={s}
+                              type="button"
+                              onClick={() => handleModalSurfaceSelect(s)}
+                              className={`px-2 py-2 text-sm rounded-lg border transition font-medium ${
+                                (mp.surface_treatment || '') === s || (s === '无' && !mp.surface_treatment)
+                                  ? 'bg-blue-600 border-blue-600 text-white'
+                                  : 'bg-white border-slate-200 text-slate-700 hover:border-blue-400 hover:bg-blue-50'
+                              }`}
+                            >
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1037,7 +1129,7 @@ export default function QuotePartsPage() {
                                 <button
                                   type="button"
                                   disabled={batchGenerating}
-                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setBatchModalOpen(false); setMaterialModalCat(null); setMaterialModalIdx(idx); }}
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setBatchModalOpen(false); setMaterialModalCat(null); setMaterialModalChild(null); setMaterialModalIdx(idx); }}
                                   className="inline-flex items-center gap-1 text-amber-500 hover:text-amber-600 font-medium"
                                 >
                                   材质: 待选择·点击补选 <Pencil size={11} />
