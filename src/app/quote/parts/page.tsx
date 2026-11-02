@@ -991,7 +991,18 @@ export default function QuotePartsPage() {
                               <span className={`text-xs px-1.5 py-0.5 rounded ${type.color}`}>{type.label}</span>
                             </div>
                             <div className="text-xs text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
-                              <span>材质: {p.material_grade || '待选择'}</span>
+                              {p.material_grade ? (
+                                <span>材质: {p.material_grade}</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={batchGenerating}
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setBatchModalOpen(false); setMaterialModalCat(null); setMaterialModalIdx(idx); }}
+                                  className="inline-flex items-center gap-1 text-amber-500 hover:text-amber-600 font-medium"
+                                >
+                                  材质: 待选择·点击补选 <Pencil size={11} />
+                                </button>
+                              )}
                               <span>尺寸: {getPartDims(p)}</span>
                               {(p.quantity ?? p._quantity) ? <span>数量: {p.quantity || p._quantity}</span> : null}
                             </div>
