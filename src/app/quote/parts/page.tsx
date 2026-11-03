@@ -97,7 +97,7 @@ function partNameOf(p: PartData, idx: number): string {
   return p.part_number || p._partName || p.product_code || p.product_name || p.part_name || `零件${idx + 1}`;
 }
 
-// 板材加工方案（业主 2026-11-02：批量生成前三选一——开模/现模/激光切割）
+// 加工方式（业主 2026-11-03：行级逐件选——开模/现有模具/无需开模；板材无需开模=激光切割）
 type SheetPlan = 'open_mold' | 'existing_mold' | 'laser' | 'none';  // none=无需开模（板材→激光切割，挤压/锌→免模具费）
 
 function buildPartPayload(p: PartData, idx: number, sheetPlan?: SheetPlan): BuiltPayload {
@@ -173,7 +173,7 @@ function buildPartPayload(p: PartData, idx: number, sheetPlan?: SheetPlan): Buil
     params.use_existing_mold = true;
   }
 
-  // 板材加工方案：按所选方案补充模具费/激光切割费（业主 2026-11-02）
+  // 板材：按行级加工方式补充模具费/激光切割费（业主 2026-11-03）
   if (apiType === 'sheet_metal' && sheetPlan) {
     params.sheet_process_plan = sheetPlan;
     const T = Number(p.thickness_mm ?? p.wall_thickness) || 0;  // 板厚回退 wall_thickness：识别数据常存这里，T=0 会静默丢冲压模具费/激光费
@@ -323,21 +323,8 @@ export default function QuotePartsPage() {
   const [batchError, setBatchError] = useState('');
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [batchSelected, setBatchSelected] = useState<Set<number>>(new Set());
-  // 批量板材加工方案（默认激光切割）
-  // 板材加工方案持久到 sessionStorage：页面刷新/补选材料往返后不再静默回落默认激光（业主 2026-11-02）
-  const [batchSheetPlan, setBatchSheetPlan] = useState<SheetPlan>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const v = sessionStorage.getItem('ai_quote_sheet_plan');
-        if (v === 'open_mold' || v === 'existing_mold' || v === 'laser') return v as SheetPlan;
-      } catch { /* ignore */ }
-    }
-    return 'laser';
-  });
-  const updateBatchSheetPlan = (v: SheetPlan) => {
-    setBatchSheetPlan(v);
-    try { sessionStorage.setItem('ai_quote_sheet_plan', v); } catch { /* ignore */ }
-  };
+  // 板材加工方式改由列表行级「加工方式」逐件选择（业主 2026-11-03：批量弹窗不再选方案），未设置时默认激光切割
+  const DEFAULT_SHEET_PLAN: SheetPlan = 'laser';
 
   useEffect(() => {
     try {
@@ -611,8 +598,7 @@ export default function QuotePartsPage() {
     let msg = `批量生成完成：成功保存 ${successIdx.length} 个`;
     if (skippedCount > 0) msg += `，计算/保存失败 ${skippedCount} 个`;
     if (initSkipCount > 0) msg += `；另有 ${initSkipCount} 个初始跳过（已报价/识别失败/缺尺寸）`;
-    const planLabel = batchSheetPlan === 'open_mold' ? '开模（冲压模）' : batchSheetPlan === 'existing_mold' ? '现有模具（免模具费）' : '激光切割';
-    msg += `。板材已按「${planLabel}」方案计价`;
+    msg += '。板材按列表「加工方式」逐件计价';
     setBatchSummary(msg);
 
     // 自动跳转导出报价单页并预选刚生成的报价（业主 2026-11-02：免得再选一次产品）
@@ -682,16 +668,16 @@ export default function QuotePartsPage() {
   const getSurfaceOptions = (p: PartData): string[] => surfaceAllowed(getMaterialCat(p), String(p.material_grade || ''));
 
   // 行级加工方式：零件自设优先；未设置时板材跟随批量方案，挤压/钢材默认开模
-  const getRowPlan = (p: PartData, fallback: SheetPlan): SheetPlan => {
+  const getRowPlan = (p: PartData): SheetPlan => {
     const v = String(p._mold_plan || '');
     if (v === 'open_mold' || v === 'existing_mold' || v === 'none') return v as SheetPlan;
-    return isSheetPart(p) ? fallback : 'open_mold';
+    return isSheetPart(p) ? DEFAULT_SHEET_PLAN : 'open_mold';
   };
   // 传给 buildPartPayload 的行级方案：板材必须有方案；挤压/钢材未设置时不传（按默认开模计价）
   const rowPlanFor = (p: PartData): SheetPlan | undefined => {
     const v = String(p._mold_plan || '');
     if (v === 'open_mold' || v === 'existing_mold' || v === 'none') return v as SheetPlan;
-    return isSheetPart(p) ? batchSheetPlan : undefined;
+    return isSheetPart(p) ? DEFAULT_SHEET_PLAN : undefined;
   };
   // 显示口径：板材默认激光切割 = 无需开模
   const displayPlan = (plan: SheetPlan): string => (plan === 'laser' ? 'none' : plan);
@@ -871,7 +857,7 @@ export default function QuotePartsPage() {
               const isQuoted = quotedParts.has(idx);
               const isFailed = p._failed;
               const matCat = getMaterialCat(p);
-              const rowPlan = getRowPlan(p, batchSheetPlan);
+              const rowPlan = getRowPlan(p);
               const steelKind = getSteelKind(p);
 
               return (
@@ -1053,36 +1039,6 @@ export default function QuotePartsPage() {
                   <p className="text-xs text-slate-500 mb-3">
                     勾选要生成报价的零件，确认后将逐个计算并保存报价。已报价零件也可重新勾选覆盖。
                   </p>
-                  {payload.products.some((p) => !p._failed && resolveApiType(p).apiType === 'sheet_metal') && (() => {
-                    const hasSheet = payload.products.some((p, idx) => !p._failed && String(p.material_grade || '').trim() && resolveApiType(p).apiType === 'sheet_metal' && batchSelected.has(idx));
-                    return (
-                      <div className="mb-3 rounded-lg border border-purple-200 bg-purple-50 p-2.5">
-                        <div className="text-xs font-semibold text-purple-800 mb-1.5">板材加工方案（出单前必选：开模 / 现模 / 激光切割）</div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {([['laser', '激光切割（默认）'], ['open_mold', '开模（冲压模）'], ['existing_mold', '现有模具（免模具费）']] as const).map(([v, label]) => (
-                            <button
-                              key={v}
-                              type="button"
-                              disabled={batchGenerating}
-                              onClick={() => updateBatchSheetPlan(v)}
-                              className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-all ${
-                                batchSheetPlan === v
-                                  ? 'bg-purple-600 border-purple-600 text-white'
-                                  : 'bg-white border-purple-200 text-purple-700 hover:bg-purple-50'
-                              }`}
-                            >
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                        {hasSheet && (
-                          <div className="text-[11px] text-purple-600 mt-1.5">
-                            已选零件含板材，未单独设置加工方式的按「{batchSheetPlan === 'laser' ? '激光切割' : batchSheetPlan === 'open_mold' ? '开模（冲压模，模具费单独列出）' : '现有模具（免模具费）'}」方案计算
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
                   <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-100">
                     <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
                       <input
