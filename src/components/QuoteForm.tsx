@@ -1747,7 +1747,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     // 有刀路时后端按节拍自算，不再上送手填分钟 —— 否则「孔数兜底成 quantity」会被误当成工时
     if (cncTime && !(cncMachiningData && Number(cncMachiningData.tool_path_mm) > 0)) result.cnc_time = cncTime;
     // CNC 机加几何量（A 识图输出）：有刀路 → 后端按节拍自动算，没有 → 退回手填分钟
-    if (cncMachiningData) result.cnc_machining = cncMachiningData;
+    // ⚠️ 只有勾了「CNC加工 / 车加工」才上送：识别带出的刀路几何量（tool_path/clamp/体积）
+    // 一旦无条件上送，后端就会按节拍计费，界面上却看不到、也没勾工序 → 隐形加价（业主 2026-11-04）
+    const cncSelected = processes.some(p => p.name === 'CNC加工' || p.name === '车加工');
+    if (cncSelected && cncMachiningData) result.cnc_machining = cncMachiningData;
     if (bendCount !== undefined) result.bend_count = bendCount;
     return result;
   };
