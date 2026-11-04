@@ -738,6 +738,7 @@ const PROCESS_SUB_PARAMS: Record<string, { name: string; type: string; label: st
     { name: 'tonnage', type: 'select', label: '吨位', options: ['<=35T', '45T', '60T', '80T', '110T', '160T', '200T', '200T双轴', '250T双轴'] },
   ],
   '钻孔': [
+    { name: 'hole_count', type: 'number', label: '孔数量' },
     { name: 'diameter_range', type: 'text', label: '孔径范围' },
   ],
   '攻牙': [
@@ -1386,6 +1387,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             const cncTotalHolesVal = Number(recogResult?.cnc_total_holes) || 0;
             const recogMin = cncTotalHolesVal > 0 ? (recogResult?.machining_time_min || recogResult?.process?.machining_time_min) : null;
             subParams[param.name] = recogMin ?? '';
+          } else if (param.type === 'number' && param.name === 'hole_count') {
+            // 钻孔孔数：默认带入识别/基本参数的孔数，用户可改（业主 2026-11-04）
+            const preHoles = Number((fields as any).holes) || 0;
+            subParams[param.name] = preHoles > 0 ? preHoles : '';
           } else if (param.type === 'number') subParams[param.name] = '';
           else if (param.type === 'select' && param.options) subParams[param.name] = param.options[0];
         }
@@ -1699,9 +1704,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         stampingCount = Number(proc.quantity) || 1;
       } else if (proc.name === '钻孔') {
         secondaryOps.push('钻孔');
-        // 孔数从表单 dimensions 字段取（unfold_hole_count），不从工序子参数取
+        // 孔数取钻孔子参数；未填时回落到基本参数孔数（板材界面可见）
+        // ⚠️ 只有勾了「钻孔」才会走到这里 —— 没勾就不上送 holes，避免识别孔数隐形加价（业主 2026-11-04）
         const dr = proc.subParams?.diameter_range || 'ø6~10';
-        holes = { count: 0, diameter_range: dr }; // placeholder, will be overridden by dimensions
+        const drillCnt = Number(proc.subParams?.hole_count) || 0;
+        holes = { count: drillCnt, diameter_range: dr };
       } else if (proc.name === '攻牙') {
         secondaryOps.push('攻丝');
         const hc = Number(proc.subParams?.hole_count ?? proc.quantity) || 0;
@@ -1727,12 +1734,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (cutCount !== undefined) result.cut_count = cutCount;
     if (stampingTonnage) result.stamping_tonnage = stampingTonnage;
     if (stampingCount !== undefined) result.stamping_count = stampingCount;
-    // 孔数优先从表单 dimensions 取（unfold_hole_count），覆盖工序子参数
+    // 孔数：仅当勾了「钻孔」工序才上送（holes 只在钻孔分支被赋值）。
+    // 孔数优先取钻孔子参数，未填时回落到基本参数孔数（板材/识别带入），保证「框里能看到、能改」。
     const dimHoles = Number((fields as any).holes) || 0;
-    if (dimHoles > 0) {
-      result.holes = { count: dimHoles, diameter_range: holes?.diameter_range || 'ø6~10' };
-    } else if (holes) {
-      result.holes = holes;
+    if (holes) {
+      const effectiveHoles = (Number(holes.count) || 0) > 0 ? Number(holes.count) : dimHoles;
+      if (effectiveHoles > 0) {
+        result.holes = { count: effectiveHoles, diameter_range: holes.diameter_range || 'ø6~10' };
+      }
     }
     if (tappedHoles) result.tapped_holes = tappedHoles;
     // 有刀路时后端按节拍自算，不再上送手填分钟 —— 否则「孔数兜底成 quantity」会被误当成工时
@@ -3658,12 +3667,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                               </select>
                             ) : (
                               <input
-                                type="number"
+                                type={param.type === 'text' ? 'text' : 'number'}
                                 min={0}
                                 aria-label={param.label}
                                 placeholder={param.label}
                                 value={proc?.subParams?.[param.name] ?? ''}
-                                onChange={e => updateSubParam('钻孔', param.name, parseFloat(e.target.value) || '')}
+                                onChange={e => updateSubParam('钻孔', param.name, param.type === 'text' ? e.target.value : (parseFloat(e.target.value) || ''))}
                                 style={{ width: '100%', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', padding: '4px 6px', fontSize: 13, color: '#1f2937', outline: 'none', minHeight: 28, boxSizing: 'border-box' }}
                               />
                             )}
