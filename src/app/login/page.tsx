@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, Phone, Lock, LogIn } from 'lucide-react';
+import { Loader2, Mail, Lock, LogIn } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 export default function LoginPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
-  const [phone, setPhone] = useState('');
+  const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,8 +23,9 @@ export default function LoginPage() {
     try {
       const saved = localStorage.getItem('gyparts_remember');
       if (saved) {
-        const { phone: savedPhone, password: savedPwd } = JSON.parse(saved);
-        if (savedPhone) setPhone(savedPhone);
+        const { account: savedAccount, phone: savedPhone, password: savedPwd } = JSON.parse(saved);
+        const savedUser = savedAccount || savedPhone;
+        if (savedUser) setAccount(savedUser);
         if (savedPwd) setPassword(savedPwd);
         setRemember(true);
       }
@@ -37,16 +38,18 @@ export default function LoginPage() {
     }
   }, [user, loading, router]);
 
-  const validatePhone = (phone: string) => {
-    return /^1[3-9]\d{9}$/.test(phone);
+  // 邮箱为主，兼容老手机号账号
+  const validateAccount = (v: string) => {
+    const s = v.trim();
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) || /^1[3-9]\d{9}$/.test(s);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (!validatePhone(phone)) {
-      setError('请输入正确的手机号');
+    if (!validateAccount(account)) {
+      setError('请输入正确的邮箱或手机号');
       return;
     }
 
@@ -62,7 +65,7 @@ export default function LoginPage() {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, password }),
+        body: JSON.stringify({ account: account.trim(), password }),
       });
 
       const data = await response.json();
@@ -81,7 +84,7 @@ export default function LoginPage() {
         token_type: 'bearer',
         user: {
           id: data.user.id,
-          email: null,
+          email: data.user.email || null,
           phone: data.user.phone,
           is_admin: !!data.user.is_admin,
           app_metadata: {},
@@ -106,7 +109,7 @@ export default function LoginPage() {
 
       // 记住密码处理
       if (remember) {
-        localStorage.setItem('gyparts_remember', JSON.stringify({ phone, password }));
+        localStorage.setItem('gyparts_remember', JSON.stringify({ account: account.trim(), password }));
       } else {
         localStorage.removeItem('gyparts_remember');
       }
@@ -145,7 +148,7 @@ export default function LoginPage() {
         <Card className="shadow-lg border-slate-200">
           <CardHeader className="space-y-1 pb-4">
             <CardTitle className="text-xl text-center text-slate-800">用户登录</CardTitle>
-            <CardDescription className="text-center">输入您的账号信息登录系统</CardDescription>
+            <CardDescription className="text-center">使用邮箱账号登录系统</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -156,15 +159,17 @@ export default function LoginPage() {
               )}
 
               <div className="space-y-2">
-                <label htmlFor="phone" className="text-sm font-medium text-slate-700">手机号</label>
+                <label htmlFor="account" className="text-sm font-medium text-slate-700">邮箱</label>
                 <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <Input 
-                    id="phone" 
-                    type="tel" 
-                    placeholder="请输入手机号" 
-                    value={phone} 
-                    onChange={(e) => setPhone(e.target.value)}
+                    id="account" 
+                    type="text" 
+                    inputMode="email"
+                    autoComplete="username"
+                    placeholder="请输入邮箱（老账号也可填手机号）" 
+                    value={account} 
+                    onChange={(e) => setAccount(e.target.value)}
                     className="pl-10"
                     disabled={submitting}
                   />
@@ -221,6 +226,11 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
+
+            <div className="mt-4 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-500 leading-relaxed">
+              演示账号：<span className="font-mono text-slate-700">longge2623@agent.qq.com</span>
+              <br />演示密码：<span className="font-mono text-slate-700">123456</span>
+            </div>
 
             <div className="mt-6 text-center">
               <Link href="/register" className="text-sm text-blue-600 hover:text-blue-700 hover:underline">

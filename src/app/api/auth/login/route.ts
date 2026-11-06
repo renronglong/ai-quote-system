@@ -8,7 +8,13 @@ const supabaseServiceKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY || process
 
 export async function POST(request: Request) {
   try {
-    const { phone, password } = await request.json();
+    const { phone, email, account, password } = await request.json();
+    // 账号标识：邮箱优先，兼容手机号（业主 2026-11-06：登录改邮箱账号体系，老手机号账号继续可登）
+    const identifier = String(email || account || phone || '').trim();
+    if (!identifier) {
+      return NextResponse.json({ error: '请输入邮箱或手机号' }, { status: 400 });
+    }
+    const isEmail = identifier.includes('@');
 
     if (!supabaseServiceKey) {
       console.error('[Login] Supabase service role key not set');
@@ -22,7 +28,7 @@ export async function POST(request: Request) {
     const { data: userData, error: queryError } = await supabase
       .from('users')
       .select('*')
-      .eq('phone', phone)
+      .eq(isEmail ? 'email' : 'phone', isEmail ? identifier.toLowerCase() : identifier)
       .single();
 
     if (queryError || !userData) {
