@@ -3518,7 +3518,24 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 <button
                   key={v}
                   type="button"
-                  onClick={() => setSheetPlan(v)}
+                  onClick={() => {
+                      setSheetPlan(v);
+                      // 加工方案 ↔ 工序联动（业主 2026-11-08）：
+                      //   激光切割 —— 孔加工已含在激光费里（切割周长含孔轮廓 + 穿孔费按孔数 0.1 元/孔），
+                      //               再挂「冲压」等于同一批孔收两遍，直接移除；
+                      //   开模 / 现有模具 —— 冲压是核心工序，缺了就补一张，冲次 = 孔数（一次冲程一个孔位）。
+                      //   不补的话后端会自己瞎估「1 次 × 53.46T」，吨位和次数都是错的（实测 0.3 元）。
+                      setProcesses(prev => {
+                        if (v === 'laser') {
+                          if (!prev.some(p => p.name === '冲压')) return prev;
+                          return prev.filter(p => p.name !== '冲压');
+                        }
+                        if (prev.some(p => p.name === '冲压')) return prev;
+                        const bendQty = Number(prev.find(p => p.name === '折弯')?.quantity) || 0;
+                        const holeQty = Number((fields as any).holes) || 0;
+                        return [...prev, { name: '冲压', quantity: holeQty || bendQty, subParams: { tonnage: '<=35T' } }];
+                      });
+                    }}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
                     sheetPlan === v
                       ? 'bg-purple-600 border-purple-600 text-white'
