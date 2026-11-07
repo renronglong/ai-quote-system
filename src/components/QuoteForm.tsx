@@ -1456,7 +1456,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     // If raw recognition data (snake_case fields), use applyRecogToForm directly
     const raw = aiData as Record<string, any>;
     const hasRawFields = raw.product_type || raw.perimeter !== undefined || raw.meter_weight !== undefined || raw.die_type !== undefined;
-    const hasSheetFields = raw.thickness_mm !== undefined || raw.unfold_length_mm !== undefined || raw.unfold_width_mm !== undefined || raw.is_sheet_metal !== undefined;
+    const hasSheetFields = raw.thickness_mm !== undefined || raw.unfold_length_mm !== undefined || raw.unfold_width_mm !== undefined || raw.is_sheet_metal !== undefined
+      || raw.sheet_metal_details !== undefined || raw.product_type === 'aluminum_sheet';
     console.log('[QuoteForm] aiData received:', { hasRawFields, hasSheetFields, thickness_mm: raw.thickness_mm, unfold_length_mm: raw.unfold_length_mm, unfold_width_mm: raw.unfold_width_mm, quantity: raw.quantity, product_type: raw.product_type });
     if (hasRawFields || hasSheetFields) {
       applyRecogToForm(raw);
@@ -1467,7 +1468,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (aiData.productType) {
       const ptMap: Record<string, string> = {
         'extrusion': '挤出', '挤压铝型材': '挤出', '挤出铝型材': '挤出', '挤出': '挤出', '挤压': '挤出', '铝型材': '挤出',
-        'sheet_metal': '板材', '铝板/铝平板': '板材', '板材': '板材', '铝板': '板材', '钣金': '板材',
+        'sheet_metal': '板材', 'aluminum_sheet': '板材', '铝板/铝平板': '板材', '板材': '板材', '铝板': '板材', '钣金': '板材',
         'die_casting': '压铸', '压铸铝件': '压铸', '压铸': '压铸', '压铸铝': '压铸',
         'zinc_alloy': '压铸',
         'injection': '注塑', '注塑': '注塑', '注塑件': '注塑',
@@ -2119,8 +2120,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     // 10-24 补：识图链路只给 process_type=sheet_aluminum / structure_type=aluminum_sheet，
     // 不给 product_type/is_sheet_metal（PH-002 实测）——不认这俩信号就会停在「挤出」tab，
     // 把平板件当型材填宽高。板材识别结果理应自动归类，不再依赖用户手选 tab。
+    // 2026-11-08 后端 2.4.0：product_type 取值域改为 aluminum_sheet / extrusion / casting / cnc_machined /
+    // injection_molding，钣金几何收进 sheet_metal_details —— 不认这两个信号就会停在「挤出」tab、
+    // 渲染出型材长度输入框，还会把冲压孔当 CNC 孔。
     const isSheet = d.is_sheet_metal === true || d.area_method === 'sheet_metal' || d.product_type === 'sheet_metal'
-      || d.process_type === 'sheet_aluminum' || d.structure_type === 'aluminum_sheet';
+      || d.product_type === 'aluminum_sheet'
+      || d.process_type === 'sheet_aluminum' || d.structure_type === 'aluminum_sheet'
+      || !!d.sheet_metal_details;
     if (isSheet) {
       d.product_type = 'sheet_metal';
       // 兜底顺序：snake → camel → '铝板'。原来只看 material_category，
@@ -2136,7 +2142,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     let ptZh = '';
     if (d.product_type) {
       const ptMap: Record<string,string> = {
-        extrusion: '挤出', stamping: '板材', sheet_metal: '板材', die_casting: '压铸',
+        extrusion: '挤出', stamping: '板材', sheet_metal: '板材', aluminum_sheet: '板材', die_casting: '压铸',
         zinc_alloy: '压铸', cnc: '挤出', injection: '注塑',
         steel_standard: '钢材', steel: '钢材', 钢材: '钢材', sheet_aluminum: '板材',
       };
@@ -2423,7 +2429,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     // CNC 加工：直接从 STP/CAD 解析结果自动添加（有孔位或有加工时间均触发）
     // 钣金件：仅当有明确CNC孔数或加工时间时才加CNC；零孔+无加工时间的纯折弯件不加
     const cncHoles = d.cnc_holes || d.process?.cnc_holes;
-    const isSheetPart = d.is_sheet_metal === true || d.area_method === 'sheet_metal' || productType === '板材';
+    const isSheetPart = d.is_sheet_metal === true || d.area_method === 'sheet_metal' || productType === '板材'
+      || d.product_type === 'aluminum_sheet' || !!d.sheet_metal_details;
     // ⚠️ 钣金件绝不能用 all_holes_total 兜底：那是「全部孔」（含冲压孔），不是 CNC 孔。
     //    cnc_total_holes 明确为 0 时必须尊重 0 —— 旧写法 `0 || all_holes_total` 把 0 当假值，
     //    会把 9 个冲压孔当成 CNC 孔，凭空加出「CNC加工」并按 9 分钟计费。

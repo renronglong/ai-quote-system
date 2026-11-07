@@ -107,15 +107,44 @@ const processToProductType: Record<string, string> = {
 };
 
 // 将后端返回的零件/单件数据转为前端recogData格式
-function buildRecogDataFromParse(parseJson: any, productType: string, source: string, fileName?: string): Record<string, any> {
+function buildRecogDataFromParse(parseJsonIn: any, productType: string, source: string, fileName?: string): Record<string, any> {
+  // 上游可能是 /api/quote/prepare 的包装（{success, quote_params, raw_parse:{stp}, missing_fields, quotable}），
+  // 也可能是 /api/parse/stp 的扁平结果。统一解到 stp 层，下游只认一套字段名。
+  let parseJson: any = parseJsonIn;
+  if (parseJsonIn && parseJsonIn.raw_parse && parseJsonIn.raw_parse.stp) {
+    const stp = parseJsonIn.raw_parse.stp || {};
+    parseJson = {
+      ...stp,
+      quote_params: parseJsonIn.quote_params || null,
+      missing_fields: parseJsonIn.missing_fields,
+      quotable: parseJsonIn.quotable,
+      sheet_metal_details: parseJsonIn.quote_params?.sheet_metal_details ?? stp.sheet_metal_details,
+    };
+  }
   const dieTypeRaw = String(parseJson.die_type || parseJson.mold_type || '').toLowerCase();
   let dieType: string;
   if (['split', '分流模', '中空', '空心'].some(v => dieTypeRaw.includes(v))) dieType = 'split';
   else if (['flat', '平模', '实心'].some(v => dieTypeRaw.includes(v))) dieType = 'flat';
   else dieType = parseJson.die_type || parseJson.mold_type || '';
 
-  // 钣金件优先处理：is_sheet_metal=true 或 area_method=sheet_metal 时，强制覆盖product_type
-  const isSheet = parseJson.is_sheet_metal === true || parseJson.area_method === 'sheet_metal';
+  // 钣金件优先处理（2026-11-08 对接后端 2.4.0）：
+  // quote/prepare 把钣金几何收进 sheet_metal_details，product_type 改用 aluminum_sheet；
+  // 老链路仍是扁平字段 + is_sheet_metal。两种结构都认，避免展开长/宽取不到被渲染成 0.00。
+  const smd: Record<string, any> =
+    parseJson.sheet_metal_details || parseJson.quote_params?.sheet_metal_details || {};
+  /** 扁平字段优先，sheet_metal_details 嵌套兜底 */
+  const pick = (k: string): any => {
+    const flat = parseJson[k];
+    if (flat !== undefined && flat !== null && flat !== '') return flat;
+    const nested = smd[k];
+    return nested === undefined ? null : nested;
+  };
+  const isSheet = parseJson.is_sheet_metal === true
+    || parseJson.area_method === 'sheet_metal'
+    || parseJson.product_type === 'aluminum_sheet'
+    || parseJson.quote_params?.product_type === 'aluminum_sheet'
+    || parseJson.classification?.process_type === 'sheet_aluminum'
+    || Object.keys(smd).length > 0;
   const resolvedProductType = isSheet ? 'sheet_metal' : productType;
 
   // 兼容后端返回 part_name/part_number 或 product_name/product_code
@@ -131,48 +160,58 @@ function buildRecogDataFromParse(parseJson: any, productType: string, source: st
     part_number: resolvedProductCode,
     surface_treatment: parseJson.surface_treatment || '',
     material_grade: parseJson.material_grade || '',
-    width: isSheet ? parseJson.unfold_width_mm : parseJson.section_width_mm,
-    height: isSheet ? parseJson.unfold_length_mm : parseJson.section_height_mm,
-    length: isSheet ? parseJson.unfold_length_mm : parseJson.extrusion_length_mm,
-    perimeter: parseJson.outer_perimeter_mm,
+    width: isSheet ? pick('unfold_width_mm') : parseJson.section_width_mm,
+    height: isSheet ? pick('unfold_length_mm') : parseJson.section_height_mm,
+    length: isSheet ? pick('unfold_length_mm') : parseJson.extrusion_length_mm,
+    perimeter: pick('outer_perimeter_mm'),
     inner_perimeter: parseJson.inner_perimeter_mm,
     meter_weight: parseJson.weight_kg_per_m,
-    wall_thickness: parseJson.wall_thickness_mm || parseJson.thickness_mm,
+    wall_thickness: pick('wall_thickness_mm') || pick('thickness_mm'),
     crossSectionArea: parseJson.section_area_mm2,
     die_type: isSheet ? null : dieType,
     num_cavities: (parseJson.is_hollow && !isSheet) ? 1 : 0,
     // 优先用 AI 判的材料大类；原来这里填的是牌号（如 "Q235"/"6063"），
     // 大类填成牌号后下游匹配不到 ⇒ 被兜底成铝板（选钢按铝报价的根源之一）
     material_category: parseJson.material_category || parseJson.material_grade || (isSheet ? '铝板' : ''),
-    // 钣金专用字段
+    // 钣金专用字段（展开长/宽/板厚一律走 pick：扁平或 sheet_metal_details 都能取到）
     is_sheet_metal: isSheet,
-    thickness_mm: parseJson.thickness_mm,
-    sheet_thickness: parseJson.thickness_mm,
-    unfold_length_mm: parseJson.unfold_length_mm,
-    unfold_width_mm: parseJson.unfold_width_mm,
+    thickness_mm: pick('thickness_mm'),
+    sheet_thickness: pick('thickness_mm'),
+    unfold_length_mm: pick('unfold_length_mm'),
+    unfold_width_mm: pick('unfold_width_mm'),
     bend_angle: parseJson.bend_angle_deg,
     bend_radius: parseJson.bend_radius_mm,
     bend_dimension: parseJson.bend_dimension_mm,
-    unfold_length: parseJson.unfold_length_mm,
-    unfold_width: parseJson.unfold_width_mm,
+    unfold_length: pick('unfold_length_mm'),
+    unfold_width: pick('unfold_width_mm'),
     unfold_size: parseJson.unfold_size,
+    // 展开精度：exact=真实展开(误差<1%) / estimated=体积反推(切割周长偏差可达10%)
+    unfold_precision: pick('unfold_precision'),
+    fold_line_len_mm: pick('fold_line_len_mm'),
+    holes_perimeter_mm: pick('holes_perimeter_mm'),
+    punch_holes: pick('punch_holes'),
+    bends: pick('bends'),
     extrusion_length: parseJson.extrusion_length_mm,
     process: parseJson.process || null,
     secondary_operations: parseJson.secondary_operations || null,
-    cnc_holes: parseJson.cnc_holes || null,
-    cnc_total_holes: parseJson.cnc_total_holes || 0,
+    // 钣金件：后端已把 cnc_holes/cnc_total_holes 清零，前端再兜一层，防旧模板残留假孔
+    cnc_holes: isSheet ? [] : (parseJson.cnc_holes || null),
+    cnc_total_holes: isSheet ? 0 : (parseJson.cnc_total_holes || 0),
     all_holes: parseJson.all_holes || null,
     all_holes_total: parseJson.all_holes_total || 0,
     machining_time_min: parseJson.machining_time_min || null,
     quantity: parseJson.quantity || 1,
-    bend_count: parseJson.bend_count || 0,
-    punch_holes_total: parseJson.punch_holes_total || 0,
+    bend_count: pick('bend_count') || 0,
+    punch_holes_total: pick('punch_holes_total') || 0,
     // 板材下料三件套：后端已算好，这里只做透传（不参与任何计算）
     // 缺失时置 null 而非 0，避免报价页把「没有值」显示成 0
-    unfold_hole_count: parseJson.unfold_hole_count ?? parseJson.hole_count ?? null,
-    unfold_perimeter_mm: parseJson.unfold_perimeter_mm ?? parseJson.unfold_outer_perimeter_mm ?? parseJson.outer_perimeter_mm ?? parseJson.perimeter ?? null,
-    outer_perimeter_mm: parseJson.outer_perimeter_mm ?? parseJson.perimeter ?? null,
-    cut_total_path_mm: parseJson.cut_total_path_mm ?? parseJson.cut_total_length_mm ?? parseJson.total_perimeter ?? null,
+    unfold_hole_count: pick('punch_holes_total') ?? pick('unfold_hole_count') ?? pick('hole_count') ?? null,
+    unfold_perimeter_mm: pick('cut_perimeter_mm') ?? pick('unfold_perimeter_mm') ?? pick('unfold_outer_perimeter_mm') ?? pick('outer_perimeter_mm') ?? null,
+    outer_perimeter_mm: pick('cut_perimeter_mm') ?? pick('outer_perimeter_mm') ?? null,
+    cut_total_path_mm: pick('cut_total_path_mm') ?? pick('cut_total_length_mm') ?? pick('total_perimeter') ?? null,
+    // 后端参数完整性判定：missing_fields 为空数组 + quotable=true 表示参数齐全，前端不该再弹缺参窗
+    backend_missing_fields: Array.isArray(parseJson.missing_fields) ? parseJson.missing_fields : null,
+    backend_quotable: parseJson.quotable ?? null,
     // CNC 机加几何量（A 识图 v2.4+ 输出）—— 不透传的话报价页自动节拍永远算不出来
     // ⚠️ 后端实际字段名是 toolpath_mm（无下划线分隔），这里同时写成标准名 tool_path_mm 供下游读取
     structure_v2: parseJson.structure_v2 || null,
@@ -191,7 +230,7 @@ function buildRecogDataFromParse(parseJson: any, productType: string, source: st
     cnc_machining_seconds: parseJson.cnc_machining_seconds ?? null,
     cnc_process: parseJson.cnc_process ?? null,
     cnc_estimate: parseJson.cnc_estimate || null,
-    notes: `${source}${fileName ? ': ' + fileName : ''}${isSheet ? ` | 钣金折弯件 ${parseJson.unfold_size || ''} ${parseJson.bend_angle_deg || 90}°/R${parseJson.bend_radius_mm || ''}` : ''} | ⚠️仅用于报价估算，不可作为开模依据`,
+    notes: `${source}${fileName ? ': ' + fileName : ''}${isSheet ? ` | 钣金折弯件 ${parseJson.unfold_size || ''} ${parseJson.bend_angle_deg || 90}°/R${parseJson.bend_radius_mm || ''}` : ''}${isSheet && pick('unfold_precision') === 'estimated' ? ' | ⚠️展开尺寸为估算值（几何不规范，切割周长偏差可达 10%），建议人工复核' : ''} | ⚠️仅用于报价估算，不可作为开模依据`,
     _fileName: fileName,
     _partId: parseJson.part_id || parseJson.part_number || '',
     _quantity: parseJson.quantity || 1,
