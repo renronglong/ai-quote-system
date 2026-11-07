@@ -132,12 +132,16 @@ function buildRecogDataFromParse(parseJsonIn: any, productType: string, source: 
   // 老链路仍是扁平字段 + is_sheet_metal。两种结构都认，避免展开长/宽取不到被渲染成 0.00。
   const smd: Record<string, any> =
     parseJson.sheet_metal_details || parseJson.quote_params?.sheet_metal_details || {};
-  /** 扁平字段优先，sheet_metal_details 嵌套兜底 */
+  /**
+   * sheet_metal_details 优先，扁平字段兜底 —— 顺序不能反：
+   * /api/parse/stp 的 cut_perimeter_mm 还是「体积反推」旧值（bc-001-1.step 实测 830，
+   * 真实展开 951.558），只有 sheet_metal_details 里是精确值。扁平优先会少算 12.8% 切割费。
+   */
   const pick = (k: string): any => {
-    const flat = parseJson[k];
-    if (flat !== undefined && flat !== null && flat !== '') return flat;
     const nested = smd[k];
-    return nested === undefined ? null : nested;
+    if (nested !== undefined && nested !== null && nested !== '') return nested;
+    const flat = parseJson[k];
+    return flat === undefined ? null : flat;
   };
   const isSheet = parseJson.is_sheet_metal === true
     || parseJson.area_method === 'sheet_metal'
@@ -195,7 +199,15 @@ function buildRecogDataFromParse(parseJsonIn: any, productType: string, source: 
     process: parseJson.process || null,
     secondary_operations: parseJson.secondary_operations || null,
     // 钣金件：后端已把 cnc_holes/cnc_total_holes 清零，前端再兜一层，防旧模板残留假孔
-    cnc_holes: isSheet ? [] : (parseJson.cnc_holes || null),
+    // ⚠️ 后端 cnc_holes 可能是 JSON 字符串 "[]"，直接透传会让下游 Array.isArray 判假
+    cnc_holes: isSheet ? [] : (() => {
+      const ch = parseJson.cnc_holes;
+      if (Array.isArray(ch)) return ch.length ? ch : null;
+      if (typeof ch === 'string') {
+        try { const p = JSON.parse(ch); return Array.isArray(p) && p.length ? p : null; } catch { return null; }
+      }
+      return ch || null;
+    })(),
     cnc_total_holes: isSheet ? 0 : (parseJson.cnc_total_holes || 0),
     all_holes: parseJson.all_holes || null,
     all_holes_total: parseJson.all_holes_total || 0,
@@ -209,8 +221,16 @@ function buildRecogDataFromParse(parseJsonIn: any, productType: string, source: 
     unfold_perimeter_mm: pick('cut_perimeter_mm') ?? pick('unfold_perimeter_mm') ?? pick('unfold_outer_perimeter_mm') ?? pick('outer_perimeter_mm') ?? null,
     outer_perimeter_mm: pick('cut_perimeter_mm') ?? pick('outer_perimeter_mm') ?? null,
     cut_total_path_mm: pick('cut_total_path_mm') ?? pick('cut_total_length_mm') ?? pick('total_perimeter') ?? null,
-    // 后端参数完整性判定：missing_fields 为空数组 + quotable=true 表示参数齐全，前端不该再弹缺参窗
-    backend_missing_fields: Array.isArray(parseJson.missing_fields) ? parseJson.missing_fields : null,
+    // 后端参数完整性判定：missing_fields 为空 + quotable=true 表示参数齐全，前端不该再弹缺参窗
+    // ⚠️ 后端实际返回的是 JSON 字符串 "[]"（不是数组），不解析的话恒为 null
+    backend_missing_fields: (() => {
+      const mf = parseJson.missing_fields;
+      if (Array.isArray(mf)) return mf;
+      if (typeof mf === 'string') {
+        try { const p = JSON.parse(mf); return Array.isArray(p) ? p : null; } catch { return null; }
+      }
+      return null;
+    })(),
     backend_quotable: parseJson.quotable ?? null,
     // CNC 机加几何量（A 识图 v2.4+ 输出）—— 不透传的话报价页自动节拍永远算不出来
     // ⚠️ 后端实际字段名是 toolpath_mm（无下划线分隔），这里同时写成标准名 tool_path_mm 供下游读取

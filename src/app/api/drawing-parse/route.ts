@@ -84,6 +84,41 @@ function humanizeParseResult(result: any, fileName?: string): any {
   return result;
 }
 
+/**
+ * 钣金件补全展开几何（2026-11-08 对接后端 2.4.0）。
+ * /api/parse/stp 的 cut_perimeter_mm 还是「体积反推」旧值（bc-001-1.step 实测 830，真实展开 951.558），
+ * 真实几何只在 /api/quote/prepare 的 quote_params.sheet_metal_details 里。
+ * 仅对钣金件补调一次，型材件不受影响、不加耗时；补调失败不阻塞主流程（前端仍有扁平字段兜底）。
+ */
+async function enrichSheetMetalDetails(
+  result: any,
+  buildForm: () => FormData,
+): Promise<any> {
+  if (!result || result.parse_success === false) return result;
+  const isSheet = result.is_sheet_metal === true || result.product_type === 'aluminum_sheet';
+  if (!isSheet) return result;
+  try {
+    const res = await fetchWithRetry(
+      `${PARSER_API}/api/quote/prepare`,
+      { method: 'POST', body: buildForm(), signal: AbortSignal.timeout(120000) },
+    );
+    if (!res.ok) return result;
+    const qp = await res.json();
+    const smd = qp?.quote_params?.sheet_metal_details;
+    if (!smd || typeof smd !== 'object' || Object.keys(smd).length === 0) return result;
+    return {
+      ...result,
+      sheet_metal_details: smd,
+      quote_params: qp.quote_params || null,
+      missing_fields: qp.missing_fields ?? result.missing_fields,
+      quotable: qp.quotable ?? result.quotable,
+    };
+  } catch {
+    return result;
+  }
+}
+
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -119,7 +154,12 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const result = humanizeParseResult(await response.json(), request.headers.get("x-file-name") || undefined);
+      let result = humanizeParseResult(await response.json(), request.headers.get("x-file-name") || undefined);
+      result = await enrichSheetMetalDetails(result, () => {
+        const fd = new FormData();
+        fd.append("file_id", fileId!);
+        return fd;
+      });
       return new Response(JSON.stringify(result), {
         headers: { "Content-Type": "application/json" },
       });
@@ -143,7 +183,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = humanizeParseResult(await response.json(), file!.name);
+    let result = humanizeParseResult(await response.json(), file!.name);
+    result = await enrichSheetMetalDetails(result, () => {
+      const fd = new FormData();
+      fd.append("file", new Blob([raw], { type: file!.type || 'application/octet-stream' }), file!.name);
+      return fd;
+    });
     return new Response(JSON.stringify(result), {
       headers: { "Content-Type": "application/json" },
     });
