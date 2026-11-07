@@ -201,7 +201,7 @@ const DEFAULT_PRICING_RULES: PricingRules = {
       density: 7.93,
       grades: {
         '304': { ratio: 1.0 },
-        '201': { ratio: 0.5 },
+        '201': { ratio: 0.65 },
         '430': { ratio: 0.5 },
         '316L': { ratio: 2.0 },
       },
