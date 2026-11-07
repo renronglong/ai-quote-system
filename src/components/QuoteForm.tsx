@@ -188,6 +188,31 @@ const SHEET_AL_GRADE_SET: readonly string[] = SHEET_AL_GRADES.map(x => x.g);
 const normalizeAlSheetGrade = (grade: string): string =>
   (SHEET_AL_GRADE_SET.includes(grade) ? grade : '5052');
 
+// 不锈钢牌号全集（板材·不锈钢）——与后端 calculate/route.ts 的 material_prices.不锈钢.grades 倍率同源
+// 后端只认 grade.includes('304'/'201'/'430'/'316L')，倍率未命中会回落 1.0（=304），
+// 所以这里必须把 SUS304 / 0Cr18Ni9 / J3 等写法归一到标准牌号，否则高亮和计价口径不一致。
+export const SHEET_SS_GRADES = [
+  { g: '304', label: '304 常规', add: '×1.0' },
+  { g: '201', label: '201 经济', add: '×0.65' },
+  { g: '430', label: '430 铁素体', add: '×0.5' },
+  { g: '316L', label: '316L 耐蚀', add: '×2.0' },
+] as const;
+const SHEET_SS_GRADE_SET: readonly string[] = SHEET_SS_GRADES.map(x => x.g);
+/** 板材·不锈钢牌号归一化：SUS304 / 0Cr18Ni9 / J3 等 → 标准牌号；无法判定 → 304 */
+const normalizeSsSheetGrade = (grade: string): string => {
+  const raw = String(grade ?? '').trim();
+  if (!raw) return '304';
+  const u = raw.toUpperCase().replace(/[\s\-_]/g, '');
+  if (SHEET_SS_GRADE_SET.includes(raw)) return raw;
+  if (u.includes('316')) return '316L';
+  if (u.includes('430') || u.includes('1CR17')) return '430';
+  // 304 必须先判：304J1（含铜变种）也是 304 系，不能因为带 J 就掉进 201
+  if (u.includes('304') || u.includes('0CR18NI9')) return '304';
+  if (u.includes('201') || /^J[1-5]$/.test(u) || /201J[1-5]/.test(u)) return '201';
+  // 321/310S 等其他奥氏体：归 304，避免错落到 430 半价或 316L 双倍
+  return '304';
+};
+
 export const PRODUCT_TYPES: Record<string, ProductTypeConfig> = {
   '挤出': {
     label: '挤出铝型材',
@@ -1361,6 +1386,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const handleMaterialCategoryChange = (mc: string) => {
     setMaterialCategory(mc);
     resetCategoryState(mc);
+    // 板材牌号默认值：铝板 5052 / 不锈钢 304。不清旧牌号的话，跨类别切换后 chips 无高亮，
+    // 且旧牌号可能命中别的倍率（如 201 带进铝板），用户看不见计价口径已经变了
+    if (productType === '板材') {
+      if (mc === '铝板') setMaterialGrade('5052');
+      else if (mc === '不锈钢') setMaterialGrade('304');
+    }
     // 铸造：切换铝合金/锌合金时给默认材料型号（后续可改）
     if (productType === '压铸') {
       setMaterialGrade(mc === '锌合金' ? 'Zamak3' : 'ADC12');
@@ -1501,6 +1532,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           ? normalizeSheetCategory(String(aiData.materialCategory || materialCategory || '铝板'))
           : String(aiData.materialCategory || materialCategory || '');
         if (cat === '铝板') g = normalizeAlSheetGrade(g);
+        else if (cat === '不锈钢') g = normalizeSsSheetGrade(g);
       }
       setMaterialGrade(g);
     }
@@ -1937,7 +1969,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const dimensions = buildDimensions();
       const payload: Record<string, any> = {
         product_type: mapProductType(),
-        material: { category: mapMaterialCategory(), grade: materialGrade || (productType === '板材' ? '5052' : undefined) },
+        material: {
+          category: mapMaterialCategory(),
+          grade:
+            materialGrade ||
+            (productType === '板材' ? (materialCategory === '不锈钢' ? '304' : '5052') : undefined),
+        },
         quantity: (fields.quantity as number) || 1,
       };
       if (productName) payload.product_name = productName;
@@ -2327,6 +2364,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const effPt = ptZh || productType;
       const effCat = resolvedMatCat || String(d.material_category || '');
       if (effPt === '板材' && effCat === '铝板') g = normalizeAlSheetGrade(g);
+      // 不锈钢：SUS201 / J3 / 0Cr18Ni9 等写法 → 标准牌号（后端只认 304/201/430/316L 四个 key）
+      else if (effPt === '板材' && normalizeSheetCategory(effCat) === '不锈钢') g = normalizeSsSheetGrade(g);
       setMaterialGrade(g);
     }
     if (d.surface_treatment && d.surface_treatment !== '无') {
@@ -2908,6 +2947,32 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               ))}
             </div>
             <div className="mt-1.5 text-xs text-slate-600">默认 5052；整板规格 2440×1220mm，按展开尺寸排版算材料费</div>
+          </div>
+        )}
+
+        {/* ---- 不锈钢牌号选择（仅板材·不锈钢；默认304） ---- */}
+        {productType === '板材' && materialCategory === '不锈钢' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+            <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wide">
+              不锈钢牌号 <span className="normal-case text-slate-600">（304基准价×倍率，元/吨）</span>
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {SHEET_SS_GRADES.map(opt => (
+                <button
+                  key={opt.g}
+                  type="button"
+                  onClick={() => setMaterialGrade(opt.g)}
+                  className={`px-2.5 py-1 rounded-lg border text-sm transition-all duration-200 ${
+                    (materialGrade || '304') === opt.g
+                      ? 'bg-blue-50 border-blue-300 text-blue-700 font-semibold'
+                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {opt.label} <span className="opacity-60">{opt.add}</span>
+                </button>
+              ))}
+            </div>
+            <div className="mt-1.5 text-xs text-slate-600">默认 304；201/430 按倍率折算，316L 按 2 倍。AI 识别的 SUS201、J3 等写法会自动归一</div>
           </div>
         )}
 
