@@ -1025,6 +1025,16 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
     { label: '包装费', value: p.packaging_cost, key: 'packaging_cost' },
     { label: '运输费', value: p.transport_cost, key: 'transport_cost' },
   ];
+  // 折弯费 / 管销费 / 利润：后端把这三项揉进 unit_price，breakdown 里 bending、management
+  // 只有 formula+detail、没有数值字段，上面 5 项加起来永远小于未税单价
+  // （bc-001-1 实测：材料 3.20 + 加工 2.56 + 包装 0.09 + 运输 0.09 = 5.94，未税却 8.10，
+  //  差 2.16 = 折弯 5 刀×0.2×1.03×1.03 + 管销/利润）。用户看到明细加不平会以为算错，
+  // 这里按差额补一行，保证「明细合计 = 未税单价」。
+  const listedSum = breakdownItems.reduce((acc, it) => acc + (Number(it.value) || 0), 0);
+  const overheadGap = Math.round(((Number(p.unit_price) || 0) - listedSum) * 100) / 100;
+  if (overheadGap > 0.005) {
+    breakdownItems.push({ label: '折弯/管销/利润', value: overheadGap, key: 'bending' });
+  }
 
   return (
     <div className={`space-y-3 ${compact ? 'space-y-2' : ''}`}>

@@ -2468,8 +2468,13 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         return newProcs.length > 0 ? [...prev, ...newProcs] : prev;
       });
     }
-    // 钣金折弯：bend_count>0时自动勾选折弯工序 + 冲压工序
+    // 钣金折弯：bend_count>0 时自动勾选「折弯」；「冲压」只在开模（冲压模）方案下才自动勾
+    // （业主 2026-11-08）：激光切割/现有模具方案本就不开模，自动挂一张「冲压」卡会让人以为要收冲压费，
+    // 而且和上面选中的「激光切割（不开模）」自相矛盾。
     const bendCount = toNum(d.bend_count) || 0;
+    // 冲压次数 = 孔数（一次冲程冲一个孔位），不是折弯道数。
+    // 原实现 quantity 用 bendCount：折弯 5 刀 ⇒ 冲次 5 次，跟冲压毫无关系（bc-001-1 实测 13 孔被写成 5 次）。
+    const sheetHoleCount = toNum(d.unfold_hole_count) ?? toNum(d.punch_holes_total) ?? toNum(d.hole_count) ?? 0;
     if (bendCount > 0 && (isSheetPart || productType === '板材')) {
       setProcesses(prev => {
         const existingNames = new Set(prev.map(p => p.name));
@@ -2477,38 +2482,63 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         if (!existingNames.has('折弯')) {
           updated.push({ name: '折弯', quantity: bendCount });
         }
-        if (!existingNames.has('冲压')) {
-          // Calculate actual diameter range from all_holes if available
-          let diameterRange = 'ø3~6'; // default
+        // 孔径范围：优先后端 punch_holes 明细（腰形孔只有 width_mm，没有 diameter_mm），
+        // 再退回 all_holes。⚠️ 字段名是 diameter_mm —— 原来读 h.diameter 恒为 0，范围永远算不出来。
+        let diameterRange = '';
+        const punchHoles = (d as any).punch_holes;
+        if (Array.isArray(punchHoles) && punchHoles.length > 0) {
+          const parts = punchHoles.map((h: any) => {
+            const dia = Number(h.diameter_mm ?? h.width_mm) || 0;
+            const cnt = Number(h.count) || 1;
+            return dia > 0 ? `ø${dia}×${cnt}` : '';
+          }).filter(Boolean);
+          if (parts.length > 0) diameterRange = parts.join(' + ');
+        }
+        if (!diameterRange) {
           try {
             const allHoles = (d as any).all_holes;
             if (Array.isArray(allHoles) && allHoles.length > 0) {
               const bendRadius = toNum(d.bend_radius) || 0;
               // Filter out bend radii (diameter ≈ 2×bend_radius)
               const realHoles = allHoles.filter((h: any) => {
-                const dia = Number(h.diameter) || 0;
+                const dia = Number(h.diameter_mm ?? h.diameter) || 0;
                 return dia > 0 && Math.abs(dia - 2 * bendRadius) > 0.5; // not a bend radius
               });
-              if (realHoles.length > 0) {
-                const diameters = realHoles.map((h: any) => Number(h.diameter) || 0).filter(d => d > 0);
-                if (diameters.length > 0) {
-                  const minDia = Math.min(...diameters);
-                  const maxDia = Math.max(...diameters);
-                  diameterRange = `ø${minDia}~${maxDia}`;
-                }
+              const diameters = realHoles.map((h: any) => Number(h.diameter_mm ?? h.diameter) || 0).filter(d0 => d0 > 0);
+              if (diameters.length > 0) {
+                const minDia = Math.min(...diameters);
+                const maxDia = Math.max(...diameters);
+                diameterRange = minDia === maxDia ? `ø${minDia}` : `ø${minDia}~${maxDia}`;
               }
             }
           } catch (e) { /* ignore */ }
-          updated.push({ name: '冲压', quantity: bendCount, subParams: { tonnage: '<=35T', diameter_range: diameterRange } });
+        }
+        if (!existingNames.has('冲压')) {
+          if (sheetPlan === 'open_mold') {
+            updated.push({ name: '冲压', quantity: sheetHoleCount || bendCount, subParams: { tonnage: '<=35T', diameter_range: diameterRange } });
+          }
         } else {
-          // 已有冲压工序时，如果数量为空则用bend_count填充
+          // 已有冲压工序（用户手点或上次识别留下）：次数为空时用孔数补，孔径范围为空时用本次识别补，
+          // 不覆盖用户已经填过的值。
           const stampIdx = updated.findIndex(p => p.name === '冲压');
-          if (stampIdx >= 0 && !updated[stampIdx].quantity) {
-            updated[stampIdx] = { ...updated[stampIdx], quantity: updated[stampIdx].quantity || bendCount };
+          if (stampIdx >= 0) {
+            const cur = updated[stampIdx];
+            updated[stampIdx] = {
+              ...cur,
+              quantity: cur.quantity || sheetHoleCount || bendCount,
+              subParams: { ...cur.subParams, diameter_range: cur.subParams?.diameter_range || diameterRange },
+            };
           }
         }
         return updated;
       });
+    }
+    // 钻孔孔数联动：识别回填后同步已有「钻孔」卡片的孔数。
+    // 否则连续识别两个文件时，卡片还留着上一个件的孔数（bc-001-1 实测：基本参数 13，钻孔卡仍显示 16）。
+    if (sheetHoleCount > 0) {
+      setProcesses(prev => prev.map(p => p.name === '钻孔'
+        ? { ...p, quantity: sheetHoleCount, subParams: { ...p.subParams, hole_count: sheetHoleCount } }
+        : p));
     }
     setAiSynced(true);
     setTimeout(() => setAiSynced(false), 2500);
