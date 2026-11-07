@@ -454,15 +454,18 @@ function calcSheetMaterialCost(
   const sheetWeightKg = sheetVolumeCm3 * density / 1000;
   const sheetPrice = sheetWeightKg * pricePerTon / 1000; // kg × (元/吨) / 1000 = 元
 
-  // 排版：板材 2440×1220 两个方向都试，取能排下的最大件数（单件外形矩形 + 10mm 割缝/边距）
-  const gap = 10;
+  // 排版：板材 2440×1220 两个方向都试，取能排下的最大件数（单件外形矩形 + 单边间距）
+  // 单边间距 = 板厚 × 1.5（业主 2026-11-07 定案）：薄板热变形小、间距可窄，厚板需更大间距防翘曲。
+  // 原硬编码 10mm 对窄条件影响极大：53.5mm 宽的件占位变 63.5mm（多占 18.7%），
+  // 2440×1220 板只能排 19 行（余 13.5mm 浪费），单件材料费从 3.20 虚高到 3.70。
+  const gap = Math.max(0.5, t * 1.5);
   const partL = length_mm + gap, partW = width_mm + gap;
   const n1 = Math.floor(sheetSize.length_mm / partL) * Math.floor(sheetSize.width_mm / partW);
   const n2 = Math.floor(sheetSize.length_mm / partW) * Math.floor(sheetSize.width_mm / partL);
   const nestingQty = Math.max(1, n1, n2);
   const materialCost = sheetPrice / nestingQty;
 
-  detailStr += ` | 整张${sheetSize.length_mm}×${sheetSize.width_mm}×${t}mm = ${r2(sheetWeightKg)}kg → 整板${r2(sheetPrice)}元；展开件${length_mm}×${width_mm}排版 ${nestingQty}件/张 → 单件材料费 ${r2(materialCost)}元`;
+  detailStr += ` | 整张${sheetSize.length_mm}×${sheetSize.width_mm}×${t}mm = ${r2(sheetWeightKg)}kg → 整板${r2(sheetPrice)}元；展开件${length_mm}×${width_mm}排版 ${nestingQty}件/张（单边间距${gap}mm） → 单件材料费 ${r2(materialCost)}元`;
 
   return {
     cost: r2(materialCost),
