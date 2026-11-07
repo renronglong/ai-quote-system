@@ -179,10 +179,19 @@ function buildPartPayload(p: PartData, idx: number, sheetPlan?: SheetPlan): Buil
     const T = Number(p.thickness_mm ?? p.wall_thickness) || 0;  // 板厚回退 wall_thickness：识别数据常存这里，T=0 会静默丢冲压模具费/激光费
     const Lm = Number(p.unfold_length_mm ?? p.length) || 0;
     const Wm = Number(p.unfold_width_mm ?? p.width) || 0;
-    const holeCount = Number(p.punch_holes_total ?? p.cnc_total_holes ?? 0) || 0;
+    // 孔数：DXF 路径给 hole_count，AI 识图给 punch_holes_total/cnc_total_holes，统一兼容
+    const holeCount = Number(
+      p.punch_holes_total ?? p.cnc_total_holes ?? p.unfold_hole_count ?? p.hole_count ?? p.all_holes_total ?? 0,
+    ) || 0;
+    // 外轮廓周长：识别给 unfold_perimeter_mm / outer_perimeter_mm，缺失才退回矩形 2×(长+宽)
+    const outerPerimeter = Number(p.unfold_perimeter_mm ?? p.outer_perimeter_mm)
+      || (Lm > 0 && Wm > 0 ? 2 * (Lm + Wm) : 0);
+    // 含孔下料总路径：识别给 cut_total_path_mm（业主 2026-10-21 激光口径），缺失退回外轮廓
+    const cutPath = Number(
+      p.cut_perimeter_mm ?? p.cut_total_path_mm ?? p.cut_total_length_mm ?? p.cut_total_length,
+    ) || outerPerimeter;
     if (sheetPlan === 'laser' || sheetPlan === 'none') {
       // 方案B：激光切割（不开模）——切割费+穿孔费计入单价
-      const cutPath = Number(p.cut_perimeter_mm) || (Lm > 0 && Wm > 0 ? 2 * (Lm + Wm) : 0);
       const lr = T > 0 && cutPath > 0 ? calculateLaserCuttingFee({ thickness: T, cutTotalPath: cutPath, holeCount }) : null;
       if (lr && !lr.unavailable) {
         payload.laser_cutting_fee = lr.totalLaserFee;
@@ -195,8 +204,7 @@ function buildPartPayload(p: PartData, idx: number, sheetPlan?: SheetPlan): Buil
       }
     } else if (sheetPlan === 'open_mold') {
       // 方案A：开新冲压模，模具费单独列出（不计入单价）
-      const outerPerimeter = Lm > 0 && Wm > 0 ? 2 * (Lm + Wm) : 0;
-      const holesPerimeter = Math.max(0, (Number(p.cut_perimeter_mm) || 0) - outerPerimeter);
+      const holesPerimeter = Math.max(0, cutPath - outerPerimeter);
       const sr = Lm > 0 && Wm > 0 && T > 0
         ? calculateStampingMoldFee({ unfoldLength: Lm, unfoldWidth: Wm, thickness: T, outerPerimeter, holesPerimeter, holeCount })
         : null;
