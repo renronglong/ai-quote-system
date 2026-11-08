@@ -10,9 +10,10 @@ import { useAuth } from '@/lib/auth-context';
  * 演示账号按钮 / 表单 / 底部介绍卡）。
  *
  * 功能沿用本站(gyparts.cn)既有认证链路：/api/auth/login + account(邮箱或手机号)
- * + password，登录成功后写入 custom_session / admin_token / user_token。
- * 不引入外部站点的 useAuth 方法（loginWithCode / sendCode / loginWithToken 等），
- * 本站后端未提供，强行照抄会导致编译失败或登录不可用。
+ * + password；另支持「邮箱验证码」无密码登录：/api/email/send-code 发码 +
+ * /api/email/verify-code 校验并写会话。登录成功后写入 custom_session /
+ * admin_token / user_token。
+ * 不引入外部站点的 useAuth 方法（loginWithCode / sendCode / loginWithToken 等）。
  */
 export default function LoginPage() {
   const router = useRouter();
@@ -67,14 +68,102 @@ export default function LoginPage() {
     setInfo('已填入演示账号，点击登录即可');
   };
 
+  // 把后端登录/校验返回的会话写入本地（custom_session + 双 token），并通知 context
+  const applySession = (data: { user?: Record<string, unknown>; admin_token?: string; user_token?: string }) => {
+    const u = data.user || {};
+    const mockSession = {
+      access_token: 'custom_token',
+      refresh_token: 'custom_refresh',
+      expires_in: 3600,
+      expires_at: Date.now() + 3600000,
+      token_type: 'bearer',
+      user: {
+        id: u.id,
+        email: u.email || null,
+        phone: u.phone,
+        is_admin: !!u.is_admin,
+        app_metadata: {},
+        user_metadata: {},
+        aud: 'authenticated',
+        created_at: new Date().toISOString(),
+      },
+    };
+    try { localStorage.setItem('custom_session', JSON.stringify(mockSession)); } catch { /* ignore */ }
+
+    if (data.admin_token) {
+      try { sessionStorage.setItem('admin_token', data.admin_token); } catch { /* ignore */ }
+    } else {
+      try { sessionStorage.removeItem('admin_token'); } catch { /* ignore */ }
+    }
+    if (data.user_token) {
+      try { sessionStorage.setItem('user_token', data.user_token); localStorage.setItem('user_token', data.user_token); } catch { /* ignore */ }
+    } else {
+      try { sessionStorage.removeItem('user_token'); localStorage.removeItem('user_token'); } catch { /* ignore */ }
+    }
+    window.dispatchEvent(new Event('auth-changed'));
+  };
+
+  // 邮箱验证码（无密码）登录：发码
+  const sendEmailCode = async () => {
+    const acc = account.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(acc)) {
+      setError('请先输入正确的邮箱');
+      return;
+    }
+    setError(null);
+    setInfo(null);
+    try {
+      const response = await fetch('/api/email/send-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: acc, purpose: 'login' }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error || '验证码发送失败');
+        return;
+      }
+      setInfo('验证码已发送，请查收邮箱（含垃圾邮件箱）');
+    } catch {
+      setError('网络错误，请重试');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setInfo(null);
 
-    // 本站暂未提供邮箱验证码登录接口，明确提示，不做假登录
+    // 邮箱验证码（无密码）登录
     if (mode === 'code') {
-      setError('邮箱验证码登录暂未开放，请使用密码登录');
+      const acc = account.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(acc)) {
+        setError('邮箱验证码登录请输入邮箱地址');
+        return;
+      }
+      if (!/^\d{6}$/.test(code)) {
+        setError('请输入 6 位数字验证码');
+        return;
+      }
+      setSubmitting(true);
+      try {
+        const response = await fetch('/api/email/verify-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: acc, code }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          setError(data.error || '登录失败');
+          return;
+        }
+        applySession(data);
+        router.replace('/');
+      } catch {
+        setError('登录失败，请稍后重试');
+      } finally {
+        setSubmitting(false);
+      }
       return;
     }
 
@@ -104,37 +193,7 @@ export default function LoginPage() {
         return;
       }
 
-      // 登录成功，存储会话
-      const mockSession = {
-        access_token: 'custom_token',
-        refresh_token: 'custom_refresh',
-        expires_in: 3600,
-        expires_at: Date.now() + 3600000,
-        token_type: 'bearer',
-        user: {
-          id: data.user.id,
-          email: data.user.email || null,
-          phone: data.user.phone,
-          is_admin: !!data.user.is_admin,
-          app_metadata: {},
-          user_metadata: {},
-          aud: 'authenticated',
-          created_at: new Date().toISOString(),
-        },
-      };
-
-      localStorage.setItem('custom_session', JSON.stringify(mockSession));
-
-      // 管理员token存入sessionStorage（刷新不丢，关闭标签页失效）
-      if (data.admin_token) {
-        try { sessionStorage.setItem('admin_token', data.admin_token); } catch { /* ignore */ }
-      } else {
-        try { sessionStorage.removeItem('admin_token'); } catch { /* ignore */ }
-      }
-      // 员工token（所有登录账号都发，供客户批量导入等接口使用）
-      if (data.user_token) {
-        try { sessionStorage.setItem('user_token', data.user_token); localStorage.setItem('user_token', data.user_token); } catch { /* ignore */ }
-      }
+      applySession(data);
 
       // 记住密码处理
       if (remember) {
@@ -143,8 +202,6 @@ export default function LoginPage() {
         localStorage.removeItem('gyparts_remember');
       }
 
-      // 触发 auth context 更新
-      window.dispatchEvent(new Event('auth-changed'));
       router.replace('/');
     } catch {
       setError('登录失败，请稍后重试');
@@ -270,7 +327,7 @@ export default function LoginPage() {
                 </div>
               )}
 
-              {/* 验证码（外观保留，本站后端暂未提供该登录方式） */}
+              {/* 验证码：邮箱验证码（无密码）登录 */}
               {mode === 'code' && (
                 <div>
                   <label htmlFor="code" className="block text-sm font-medium text-slate-600 mb-1">验证码</label>
@@ -283,18 +340,19 @@ export default function LoginPage() {
                       value={code}
                       onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
                       className="flex-1 px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm tracking-widest"
-                      placeholder="邮件中的数字验证码"
+                      placeholder="邮件中的 6 位数字验证码"
                     />
                     <button
                       type="button"
-                      onClick={() => setInfo('邮箱验证码登录暂未开放，请使用密码登录')}
-                      className="px-3 py-2.5 text-sm rounded-lg border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 whitespace-nowrap"
+                      onClick={sendEmailCode}
+                      disabled={submitting}
+                      className="px-3 py-2.5 text-sm rounded-lg border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 whitespace-nowrap disabled:opacity-60"
                     >
                       发送验证码
                     </button>
                   </div>
                   <p className="mt-1.5 text-xs text-slate-400 leading-relaxed">
-                    邮箱验证码登录暂未开放，请使用密码登录；忘记密码可点右侧链接重置
+                    验证码将发送至上方邮箱，10 分钟内有效；邮箱验证码仅用于已注册邮箱的无密码登录
                   </p>
                 </div>
               )}

@@ -3,38 +3,54 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, Phone, Lock, ShieldCheck, Mail } from 'lucide-react';
+import { Loader2, Phone, Mail, Lock, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function RegisterPage() {
   const router = useRouter();
   const { user, loading, signIn } = useAuth();
+  // 注册方式：手机（原有，默认）/ 邮箱（新增，作为额外登录方式）
+  const [regMode, setRegMode] = useState<'phone' | 'email'>('phone');
+
+  // 手机通道
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [verifyCode, setVerifyCode] = useState('');
+  const [step, setStep] = useState<'form' | 'verify'>('form');
+
+  // 邮箱通道
+  const [emailModeEmail, setEmailModeEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [emailModeCode, setEmailModeCode] = useState('');
+
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [agreed, setAgreed] = useState(false);
+
+  // 手机发码
   const [countdown, setCountdown] = useState(0);
   const [sending, setSending] = useState(false);
-  const [step, setStep] = useState<'form' | 'verify'>('form');
+  const [devCode, setDevCode] = useState<string | null>(null);
+  // 邮箱发码
+  const [emailCountdown, setEmailCountdown] = useState(0);
+  const [emailSending, setEmailSending] = useState(false);
+
   // 邀请码
   const [inviterCode, setInviterCode] = useState<string | null>(null);
-  // 同意服务协议与隐私政策
-  const [agreed, setAgreed] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get('ref');
     if (ref) setInviterCode(ref);
   }, []);
-  // TODO: 上线前删除测试账号相关逻辑
-  const [devCode, setDevCode] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && user) {
@@ -49,43 +65,68 @@ export default function RegisterPage() {
     }
   }, [countdown]);
 
-  const validatePhone = (phone: string) => {
-    return /^1[3-9]\d{9}$/.test(phone);
-  };
+  useEffect(() => {
+    if (emailCountdown > 0) {
+      const timer = setTimeout(() => setEmailCountdown(emailCountdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [emailCountdown]);
+
+  const validatePhone = (p: string) => /^1[3-9]\d{9}$/.test(p);
 
   const handleSendCode = async () => {
     if (!validatePhone(phone)) {
       setError('请输入正确的手机号');
       return;
     }
-
     setSending(true);
     setError(null);
-
     try {
       const response = await fetch('/api/sms/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone, type: 'register' }),
       });
-
       const data = await response.json();
-      
       if (!response.ok) {
         setError(data.error || '验证码发送失败');
         return;
       }
-
       setSuccessMessage('验证码已发送');
-      if (data.debugCode) {
-        setDevCode(data.debugCode);
-      }
+      if (data.debugCode) setDevCode(data.debugCode);
       setCountdown(60);
       setStep('verify');
     } catch {
       setError('验证码发送失败，请稍后重试');
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleSendEmailCode = async () => {
+    if (!EMAIL_RE.test(emailModeEmail)) {
+      setError('请输入正确的邮箱地址');
+      return;
+    }
+    setEmailSending(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/email/send-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailModeEmail, purpose: 'register' }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error || '验证码发送失败');
+        return;
+      }
+      setSuccessMessage('验证码已发送，请查收邮箱（含垃圾邮件箱）');
+      setEmailCountdown(60);
+    } catch {
+      setError('验证码发送失败，请稍后重试');
+    } finally {
+      setEmailSending(false);
     }
   };
 
@@ -98,59 +139,102 @@ export default function RegisterPage() {
       return;
     }
 
+    // ===== 邮箱注册分支 =====
+    if (regMode === 'email') {
+      if (!EMAIL_RE.test(emailModeEmail)) {
+        setError('请输入正确的邮箱地址');
+        return;
+      }
+      if (!displayName || displayName.length < 2 || displayName.length > 20) {
+        setError('请输入 2 到 20 个字符的显示名称');
+        return;
+      }
+      if (password.length < 6) {
+        setError('密码长度至少为6个字符');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('两次输入的密码不一致');
+        return;
+      }
+      if (!emailModeCode) {
+        setError('请输入邮箱验证码');
+        return;
+      }
+      setSubmitting(true);
+      try {
+        const response = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: emailModeEmail,
+            verifyCode: emailModeCode,
+            displayName,
+            password,
+            referralCode: inviterCode,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          setError(data.error || '注册失败，请稍后重试');
+          return;
+        }
+        setSuccessMessage('注册成功！正在自动登录...');
+        const { error: signInError } = await signIn(emailModeEmail, password);
+        if (signInError) {
+          setError('注册成功但自动登录失败，请手动登录');
+          setTimeout(() => router.push('/login'), 2000);
+        } else {
+          router.replace('/');
+        }
+      } catch {
+        setError('注册失败，请稍后重试');
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    // ===== 手机注册分支（原有逻辑） =====
     if (!validatePhone(phone)) {
       setError('请输入正确的手机号');
       return;
     }
-
     if (email) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
+      if (!EMAIL_RE.test(email)) {
         setError('请输入正确的邮箱地址');
         return;
       }
     }
-
     if (password.length < 6) {
       setError('密码长度至少为6个字符');
       return;
     }
-
     if (password !== confirmPassword) {
       setError('两次输入的密码不一致');
       return;
     }
-
     if (step === 'form') {
       await handleSendCode();
       return;
     }
-
     if (!verifyCode) {
       setError('请输入验证码');
       return;
     }
-
     setSubmitting(true);
-
     try {
-      // 调用服务端注册接口
       const response = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone, password, verifyCode, email, referralCode: inviterCode }),
       });
-
       const data = await response.json();
-
       if (!response.ok) {
         setError(data.error || '注册失败，请稍后重试');
         return;
       }
-
       setSuccessMessage('注册成功！正在自动登录...');
-      
-      // 自动登录
       const { error: signInError } = await signIn(phone, password);
       if (signInError) {
         setError('注册成功但自动登录失败，请手动登录');
@@ -195,10 +279,34 @@ export default function RegisterPage() {
                   🎉 您通过好友邀请注册，双方各得 100 积分奖励！
                 </div>
               )}
-              {step === 'form' ? '输入手机号和密码创建账号' : '输入收到的验证码完成注册'}
+              {regMode === 'phone' ? '输入手机号和密码创建账号' : '输入邮箱和验证码创建账号'}
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {/* 注册方式切换 */}
+            <div className="flex p-1 bg-slate-100 rounded-lg mb-5">
+              <button
+                type="button"
+                onClick={() => { setRegMode('phone'); setError(null); setSuccessMessage(null); }}
+                className={
+                  'flex-1 py-1.5 text-sm rounded-md transition-colors flex items-center justify-center gap-1.5 ' +
+                  (regMode === 'phone' ? 'bg-white text-blue-700 font-medium shadow-sm' : 'text-slate-500 hover:text-slate-700')
+                }
+              >
+                <Phone className="w-3.5 h-3.5" /> 手机注册
+              </button>
+              <button
+                type="button"
+                onClick={() => { setRegMode('email'); setError(null); setSuccessMessage(null); }}
+                className={
+                  'flex-1 py-1.5 text-sm rounded-md transition-colors flex items-center justify-center gap-1.5 ' +
+                  (regMode === 'email' ? 'bg-white text-blue-700 font-medium shadow-sm' : 'text-slate-500 hover:text-slate-700')
+                }
+              >
+                <Mail className="w-3.5 h-3.5" /> 邮箱注册
+              </button>
+            </div>
+
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
                 <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm">
@@ -211,131 +319,224 @@ export default function RegisterPage() {
                 </div>
               )}
 
-              <div className="space-y-2">
-                <label htmlFor="phone" className="text-sm font-medium text-slate-700">手机号</label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <Input 
-                    id="phone" 
-                    type="tel" 
-                    placeholder="请输入手机号" 
-                    value={phone} 
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="pl-10"
-                    disabled={submitting || step === 'verify'}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="email" className="text-sm font-medium text-slate-700">邮箱 <span className="text-slate-400 text-xs">（选填，用于接收报价结果）</span></label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <Input 
-                    id="email" 
-                    type="email" 
-                    placeholder="example@company.com" 
-                    value={email} 
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="pl-10"
-                    disabled={submitting || step === 'verify'}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="password" className="text-sm font-medium text-slate-700">密码</label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <Input 
-                    id="password" 
-                    type="password" 
-                    placeholder="请设置密码（至少6位）" 
-                    value={password} 
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="pl-10"
-                    disabled={submitting || step === 'verify'}
-                  />
-                </div>
-              </div>
-
-              {step === 'form' && (
-                <div className="space-y-2">
-                  <label htmlFor="confirmPassword" className="text-sm font-medium text-slate-700">确认密码</label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <Input 
-                      id="confirmPassword" 
-                      type="password" 
-                      placeholder="请再次输入密码" 
-                      value={confirmPassword} 
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="pl-10"
-                      disabled={submitting}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {step === 'verify' && (
-                <div className="space-y-2">
-                  <label htmlFor="verifyCode" className="text-sm font-medium text-slate-700">验证码</label>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <Input 
-                        id="verifyCode" 
-                        type="text" 
-                        placeholder="请输入验证码" 
-                        value={verifyCode} 
-                        onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              {/* ===== 邮箱注册字段 ===== */}
+              {regMode === 'email' && (
+                <>
+                  <div className="space-y-2">
+                    <label htmlFor="emailModeEmail" className="text-sm font-medium text-slate-700">邮箱</label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <Input
+                        id="emailModeEmail"
+                        type="email"
+                        placeholder="请输入邮箱（作为登录账号）"
+                        value={emailModeEmail}
+                        onChange={(e) => setEmailModeEmail(e.target.value)}
                         className="pl-10"
                         disabled={submitting}
                       />
                     </div>
-                    <Button 
-                      type="button"
-                      variant="outline"
-                      onClick={handleSendCode}
-                      disabled={countdown > 0 || sending}
-                      className="whitespace-nowrap"
-                    >
-                      {sending ? '发送中...' : countdown > 0 ? `${countdown}s` : '获取验证码'}
-                    </Button>
                   </div>
-                  <p className="text-xs text-slate-500">验证码已发送至您的手机，10分钟内有效</p>
-                  {/* TODO: 上线前删除测试账号相关逻辑 */}
-                  {devCode && (
-                    <p className="text-xs text-orange-600 bg-orange-50 p-2 rounded">
-                      🔧 测试模式：验证码为 <strong>{devCode}</strong>（上线前请删除此提示）
-                    </p>
-                  )}
-                </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="displayName" className="text-sm font-medium text-slate-700">显示名称</label>
+                    <Input
+                      id="displayName"
+                      type="text"
+                      placeholder="显示在侧边栏的名称（2-20 字）"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      disabled={submitting}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="emailModeCode" className="text-sm font-medium text-slate-700">邮箱验证码</label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <Input
+                          id="emailModeCode"
+                          type="text"
+                          placeholder="邮件中的 6 位数字验证码"
+                          value={emailModeCode}
+                          onChange={(e) => setEmailModeCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                          className="pl-10"
+                          disabled={submitting}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleSendEmailCode}
+                        disabled={emailCountdown > 0 || emailSending}
+                        className="whitespace-nowrap"
+                      >
+                        {emailSending ? '发送中...' : emailCountdown > 0 ? `${emailCountdown}s` : '获取验证码'}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-slate-500">验证码发送至上方邮箱，10 分钟内有效</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="password" className="text-sm font-medium text-slate-700">密码</label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <Input
+                        id="password"
+                        type="password"
+                        placeholder="请设置密码（至少6位）"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="pl-10"
+                        disabled={submitting}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="confirmPassword" className="text-sm font-medium text-slate-700">确认密码</label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <Input
+                        id="confirmPassword"
+                        type="password"
+                        placeholder="请再次输入密码"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className="pl-10"
+                        disabled={submitting}
+                      />
+                    </div>
+                  </div>
+                </>
               )}
 
-              <Button 
-                type="submit" 
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white" 
-                disabled={submitting || sending}
+              {/* ===== 手机注册字段（原有） ===== */}
+              {regMode === 'phone' && (
+                <>
+                  <div className="space-y-2">
+                    <label htmlFor="phone" className="text-sm font-medium text-slate-700">手机号</label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <Input
+                        id="phone"
+                        type="tel"
+                        placeholder="请输入手机号"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        className="pl-10"
+                        disabled={submitting || step === 'verify'}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="email" className="text-sm font-medium text-slate-700">邮箱 <span className="text-slate-400 text-xs">（选填，用于接收报价结果）</span></label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="example@company.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="pl-10"
+                        disabled={submitting || step === 'verify'}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="password" className="text-sm font-medium text-slate-700">密码</label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <Input
+                        id="password"
+                        type="password"
+                        placeholder="请设置密码（至少6位）"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="pl-10"
+                        disabled={submitting || step === 'verify'}
+                      />
+                    </div>
+                  </div>
+
+                  {step === 'form' && (
+                    <div className="space-y-2">
+                      <label htmlFor="confirmPassword" className="text-sm font-medium text-slate-700">确认密码</label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <Input
+                          id="confirmPassword"
+                          type="password"
+                          placeholder="请再次输入密码"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          className="pl-10"
+                          disabled={submitting}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {step === 'verify' && (
+                    <div className="space-y-2">
+                      <label htmlFor="verifyCode" className="text-sm font-medium text-slate-700">验证码</label>
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <Input
+                            id="verifyCode"
+                            type="text"
+                            placeholder="请输入验证码"
+                            value={verifyCode}
+                            onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                            className="pl-10"
+                            disabled={submitting}
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleSendCode}
+                          disabled={countdown > 0 || sending}
+                          className="whitespace-nowrap"
+                        >
+                          {sending ? '发送中...' : countdown > 0 ? `${countdown}s` : '获取验证码'}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-slate-500">验证码已发送至您的手机，10分钟内有效</p>
+                      {devCode && (
+                        <p className="text-xs text-orange-600 bg-orange-50 p-2 rounded">
+                          🔧 测试模式：验证码为 <strong>{devCode}</strong>（上线前请删除此提示）
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+
+              <Button
+                type="submit"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                disabled={submitting || sending || emailSending}
               >
                 {submitting ? (
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" />注册中...</>
-                ) : step === 'form' ? (
+                ) : regMode === 'phone' && step === 'form' ? (
                   <>下一步</>
                 ) : (
                   <>完成注册</>
                 )}
               </Button>
 
-              {step === 'verify' && (
-                <Button 
+              {regMode === 'phone' && step === 'verify' && (
+                <Button
                   type="button"
                   variant="ghost"
-                  onClick={() => {
-                    setStep('form');
-                    setVerifyCode('');
-                    setError(null);
-                  }}
+                  onClick={() => { setStep('form'); setVerifyCode(''); setError(null); }}
                   className="w-full"
                 >
                   返回上一步
