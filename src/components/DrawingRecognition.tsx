@@ -728,7 +728,8 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           if (checkData.success && checkData.questions && checkData.questions.length > 0) {
             setCheckQuestions(checkData.questions);
             setCheckAnswers({});
-            setShowCheckDialog(true);
+            // 不自动弹抽屉（业主 2026-11-08）：每识别一个件就弹一次，问的还是报价表里本来就有的字段
+            // （材料牌号 / 表面处理 / 型材长度 / CNC 孔数），纯打断。改成结果卡上挂一条可点提示。
           }
         }
       } catch { /* 检查失败不影响主流程 */ }
@@ -763,6 +764,8 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
     setRecogError(null);
     setStatusMessage(null);
     setRecognitionFailed(false);
+    // 上一个件的待确认问题不能留到下一个件（否则提示条张冠李戴）
+    setCheckQuestions([]);
     setRecogResult(null);
     setRecogProducts([]);
     setSelectedProductIdx(0);
@@ -1623,6 +1626,17 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
                   {deepQuoteLoading ? '深度识别中...' : '申请深度报价'}
                 </button>
               </div>
+            )}
+            {/* AI 完整性检查结果：不自动弹窗，挂一条可点提示（业主 2026-11-08） */}
+            {checkQuestions.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowCheckDialog(true)}
+                className="mt-2 w-full flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-blue-50 border border-blue-200 text-xs text-blue-700 hover:bg-blue-100 transition-colors text-left"
+              >
+                <span className="w-4 h-4 rounded-full bg-blue-500 text-white text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">AI</span>
+                <span>还有 <b>{checkQuestions.length}</b> 项参数可以补充确认（材料牌号 / 表面处理 / 长度等），点这里展开</span>
+              </button>
             )}
             {/* 装配体零件导航提示 */}
             {isAssembly && recogProducts.length > 1 && (
