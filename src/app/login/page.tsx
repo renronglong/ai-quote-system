@@ -171,8 +171,8 @@ export default function LoginPage() {
 
           {/* 标题区 */}
           <div className="mb-6 text-center">
-            <h1 className="text-2xl font-bold text-slate-800 mb-1">零配件生产销售管理系统</h1>
-            <p className="text-sm text-slate-500">登录后开始使用</p>
+            <h1 className="text-2xl font-bold text-slate-800 mb-1">AI智能报价助手</h1>
+            <p className="text-sm text-slate-500">智能报价，让工作更高效</p>
           </div>
 
           {/* 登录卡片 */}
