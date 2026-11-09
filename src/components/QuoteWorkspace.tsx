@@ -11,7 +11,6 @@ import {
   ChevronUp,
   AlertTriangle,
   Save,
-  History,
   CheckCircle2,
   Percent,
   FileText,
@@ -19,7 +18,6 @@ import {
   MessageCircle,
   X,
   ArrowLeft,
-  ChevronRight,
 } from 'lucide-react';
 import { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
 import QuoteSheetDialog from '@/components/QuoteSheetDialog';
@@ -528,10 +526,10 @@ export default function QuoteWorkspace({ defaultProductType }: { defaultProductT
         </div>
       )}
 
-      {/* 快捷操作条：原来独占 280px 一整列（只放两条细条），现压成顶部一行 */}
+      {/* 快捷操作条：仅保留「返回零件列表」（左侧栏 NAV 无对应入口）；图纸AI识别/我的报价已在左侧栏，移除避免重复 */}
       <div className="shrink-0 bg-white border-b border-slate-100 px-4 md:px-6 py-2">
         <div className="max-w-[1600px] mx-auto flex flex-wrap items-center gap-2">
-          {fromPartsList ? (
+          {fromPartsList && (
             <Link
               href="/quote/parts"
               title="保存报价后将自动返回"
@@ -543,26 +541,7 @@ export default function QuoteWorkspace({ defaultProductType }: { defaultProductT
                 {partsListPartName || `零件${partsListPartIdx + 1}`}
               </span>
             </Link>
-          ) : (
-            <Link
-              href="/quote/recognize"
-              title="上传 STP / PDF / 图片，AI 自动识别尺寸参数并报价"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 hover:border-blue-300 hover:bg-blue-50 transition"
-            >
-              <Sparkles size={15} className="text-blue-600 shrink-0" />
-              <span className="text-sm font-medium text-gray-800">图纸AI识别</span>
-              <ChevronRight size={14} className="text-gray-400 shrink-0" />
-            </Link>
           )}
-
-          <Link
-            href="/history"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 hover:border-blue-300 hover:bg-blue-50 transition"
-          >
-            <History size={15} className="text-slate-500 shrink-0" />
-            <span className="text-sm font-medium text-gray-800">我的报价</span>
-            <ChevronRight size={14} className="text-gray-400 shrink-0" />
-          </Link>
         </div>
       </div>
 
