@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import {
   Sparkles, Layers, Square, Box, Component, Hammer,
   History, Building2, Store, TrendingUp, MessageCircle, Coins,
-  Package, LogOut, MessageSquare, Handshake, FileText, Users, UserCheck,
+  Package, LogOut,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -34,17 +34,6 @@ const NAV: NavItem[] = [
   { key: 'contact', label: '联系我们', href: '/contact', icon: MessageCircle },
 ];
 
-// 账户菜单（原顶栏头像下拉内容，下沉到左侧栏底部）：除公司资料（已在 NAV）/ 联系我们（已在 NAV）外，
-// 补齐产品管理 / 询价管理 / 供应商工作台，以及管理员专属项。未登录访客不展示（GUEST_HIDDEN_HREFS）。
-const ACCOUNT_MENU: { label: string; href: string; icon: LucideIcon; adminOnly?: boolean }[] = [
-  { label: '产品管理', href: '/products', icon: Package },
-  { label: '询价管理', href: '/inquiries', icon: MessageSquare },
-  { label: '供应商工作台', href: '/supplier', icon: Handshake },
-  { label: '任务管理', href: '/admin/tasks', icon: FileText, adminOnly: true },
-  { label: '用户管理', href: '/admin/users', icon: Users, adminOnly: true },
-  { label: '客户管理', href: '/admin/customers', icon: UserCheck, adminOnly: true },
-];
-
 function isActive(item: NavItem, pathname: string): boolean {
   // /quote 默认页（无子路径）时，挤出铝型材作为默认高亮
   if (item.href === '/quote/extrusion' && pathname === '/quote') return true;
@@ -59,7 +48,7 @@ export default function QuoteSidebar({
   credits: number;
 }) {
   const pathname = usePathname() || '';
-  const { signOut, isAdmin } = useAuth();
+  const { signOut } = useAuth();
   const userName = user?.company_name || user?.phone || '游客';
   const [alumPrice, setAlumPrice] = useState<{ price: number; change: number; changePercent: number } | null>(null);
 
@@ -157,19 +146,6 @@ export default function QuoteSidebar({
           </div>
           {user ? (
             <>
-              <div className="mt-2 flex flex-col gap-0.5">
-                {ACCOUNT_MENU.filter(m => !m.adminOnly || isAdmin).map(m => {
-                  const Icon = m.icon;
-                  const active = pathname === m.href || pathname.startsWith(m.href + '/');
-                  return (
-                    <Link key={m.href} href={m.href}
-                      className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors ${active ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-600 hover:bg-gray-100 hover:text-slate-800'}`}>
-                      <Icon className="w-4 h-4 shrink-0 text-slate-400" />
-                      <span className="truncate">{m.label}</span>
-                    </Link>
-                  );
-                })}
-              </div>
               <button
                 onClick={() => signOut()}
                 className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-colors"
@@ -193,15 +169,6 @@ export default function QuoteSidebar({
         {NAV.map(i => renderItem(i, true))}
         {user ? (
           <>
-            {ACCOUNT_MENU.filter(m => !m.adminOnly || isAdmin).map(m => {
-              const Icon = m.icon;
-              return (
-                <Link key={m.href} href={m.href}
-                  className="shrink-0 whitespace-nowrap flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-slate-600 border border-gray-200">
-                  <Icon className="w-4 h-4" />{m.label}
-                </Link>
-              );
-            })}
             <button onClick={() => signOut()} className="shrink-0 whitespace-nowrap flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-gray-600 border border-gray-200">
               <LogOut className="w-4 h-4" />退出
             </button>
