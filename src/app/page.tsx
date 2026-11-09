@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
+import LoginPanel from '@/components/LoginPanel';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth-context';
 import QuoteForm, { PricingResult } from '@/components/QuoteForm';
@@ -10,7 +11,7 @@ import { ArrowRight, Handshake, History } from 'lucide-react';
 import { useState } from 'react';
 
 export default function HomePage() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const [result, setResult] = useState<PricingResult | null>(null);
   const [params, setParams] = useState<Record<string, any> | null>(null);
   const [productInfo, setProductInfo] = useState<{ productName: string; productCode: string }>({ productName: '', productCode: '' });
@@ -66,6 +67,19 @@ export default function HomePage() {
   const baseMoldFee = result?.mold_cost || 0;
   const moldFee = manualMoldFee ?? baseMoldFee;
   const minOrderQty = result?.min_order_qty || 0;
+
+  // 主网址未登录时直接呈现登录界面；登录成功后 auth-changed 更新登录态，自动切回报价首页。
+  // 其余路由仍保持公开（middleware 不做拦截），仅根路径做这道门。
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-sky-100 via-sky-50 to-blue-100">
+        <p className="text-sm text-slate-400">加载中...</p>
+      </div>
+    );
+  }
+  if (!user) {
+    return <LoginPanel embedded />;
+  }
 
   return (
     <AppLayout>
