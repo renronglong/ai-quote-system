@@ -1,9 +1,12 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { Fragment, useEffect, useState } from 'react';
+import { useAuth } from '@/lib/auth-context';
 import {
   Sparkles, Layers, Square, Box, Component, Hammer,
   History, Building2, Store, TrendingUp, MessageCircle, Coins,
+  Package, LogOut,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -45,7 +48,23 @@ export default function QuoteSidebar({
   credits: number;
 }) {
   const pathname = usePathname() || '';
+  const { signOut } = useAuth();
   const userName = user?.company_name || user?.phone || '游客';
+  const [alumPrice, setAlumPrice] = useState<{ price: number; change: number; changePercent: number } | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const fetchPrice = async () => {
+      try {
+        const res = await fetch(`/api/market-price?material=${encodeURIComponent('铝型材')}`);
+        const j = await res.json();
+        if (alive && j?.success && j?.data) setAlumPrice({ price: j.data.price, change: j.data.change, changePercent: j.data.changePercent });
+      } catch {}
+    };
+    fetchPrice();
+    const t = setInterval(fetchPrice, 5 * 60 * 1000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
 
   const renderItem = (item: NavItem, compact = false) => {
     const Icon = item.icon;
@@ -67,6 +86,22 @@ export default function QuoteSidebar({
     <>
       {/* 桌面端：左侧竖向栏 */}
       <aside className="hidden lg:flex lg:flex-col w-56 shrink-0 border-r border-gray-200 bg-white overflow-y-auto">
+        {/* 品牌首行 */}
+        <div className="flex items-center gap-2 px-4 pt-4 pb-3 border-b border-gray-100">
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-sm shrink-0">
+            <Package className="w-5 h-5 text-white" />
+          </div>
+          <div className="min-w-0 leading-tight">
+            <div className="flex items-center gap-1 truncate">
+              <span className="font-bold text-[15px] text-blue-700">碧利制造</span>
+              <span className="text-blue-600 text-[15px]">·</span>
+              <span className="font-bold text-[15px] text-gray-900">AI报价系统</span>
+            </div>
+            <div className="mt-0.5 flex items-center gap-1 text-[10px] text-slate-400">
+              <span>gyparts.cn</span><span>·</span><span>v2.1.3</span>
+            </div>
+          </div>
+        </div>
         <div className="px-4 pt-4 pb-2">
           <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">报价模块</p>
         </div>
@@ -75,10 +110,27 @@ export default function QuoteSidebar({
         </nav>
         <div className="mx-4 my-2 border-t border-gray-100" />
         <nav className="flex flex-col gap-0.5 px-2 pb-3">
-          {NAV.filter(i => i.dividerBefore).map(i => renderItem(i))}
+          {NAV.filter(i => i.dividerBefore).map(i => (
+            <Fragment key={i.key}>
+              {renderItem(i)}
+              {i.key === 'market' && alumPrice && (
+                <div className="mx-0.5 mt-1 rounded-lg border border-orange-100 bg-orange-50 px-3 py-2">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+                      <TrendingUp className="w-4 h-4 text-orange-500" />铝锭
+                    </span>
+                    <span className="text-sm font-bold text-gray-900">¥{alumPrice.price.toLocaleString()}</span>
+                  </div>
+                  <div className={`mt-0.5 text-right text-xs font-medium ${alumPrice.change >= 0 ? 'text-red-500' : 'text-green-500'}`}>
+                    {alumPrice.change >= 0 ? '↑' : '↓'}{Math.abs(alumPrice.changePercent).toFixed(2)}%
+                  </div>
+                </div>
+              )}
+            </Fragment>
+          ))}
         </nav>
 
-        {/* 左下角：用户名 + 积分 */}
+        {/* 左下角：用户名 + 积分 + 退出 */}
         <div className="mt-auto border-t border-gray-200 p-3">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-sm font-semibold shrink-0">
@@ -92,6 +144,14 @@ export default function QuoteSidebar({
               </p>
             </div>
           </div>
+          {user && (
+            <button
+              onClick={() => signOut()}
+              className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />退出
+            </button>
+          )}
         </div>
       </aside>
 
