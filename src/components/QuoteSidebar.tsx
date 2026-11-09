@@ -10,22 +10,20 @@ import {
 interface NavItem {
   key: string;
   label: string;
-  href?: string;        // 普通跳转项
-  pt?: string;          // 产品模块项（点选后预选对应产品类型）
+  href: string;        // 跳转地址（含产品模块独立子页）
   icon: LucideIcon;
   dividerBefore?: boolean;
 }
 
 // 左侧栏模块清单（来自 gyparts.cn 新修改任务.xlsx）
-// 5 个产品模块（挤出/板材/铸造/注塑/钢材）点击后预选对应产品类型，
-// 其余为既有页面跳转。
+// 5 个产品模块为各自独立子页（/quote/extrusion 等），其余为既有页面
 const NAV: NavItem[] = [
   { key: 'recognize', label: '图纸AI识别', href: '/quote/recognize', icon: Sparkles },
-  { key: 'extrusion', label: '挤出铝型材', pt: '挤出', icon: Layers },
-  { key: 'sheet', label: '板材', pt: '板材', icon: Square },
-  { key: 'casting', label: '铸造', pt: '压铸', icon: Box },
-  { key: 'injection', label: '注塑', pt: '注塑', icon: Component },
-  { key: 'steel', label: '钢材', pt: '钢材', icon: Hammer },
+  { key: 'extrusion', label: '挤出铝型材', href: '/quote/extrusion', icon: Layers },
+  { key: 'sheet', label: '板材', href: '/quote/sheet', icon: Square },
+  { key: 'casting', label: '铸造', href: '/quote/casting', icon: Box },
+  { key: 'injection', label: '注塑', href: '/quote/injection', icon: Component },
+  { key: 'steel', label: '钢材', href: '/quote/steel', icon: Hammer },
   { key: 'history', label: '我的报价', href: '/history', icon: History, dividerBefore: true },
   { key: 'profile', label: '公司资料', href: '/profile', icon: Building2 },
   { key: 'products', label: '我的产品展示', href: '/supplier/register', icon: Store },
@@ -33,45 +31,32 @@ const NAV: NavItem[] = [
   { key: 'contact', label: '联系我们', href: '/contact', icon: MessageCircle },
 ];
 
-function isActive(item: NavItem, pathname: string, activePt?: string): boolean {
-  if (item.pt) return activePt === item.pt;
-  if (!item.href) return false;
+function isActive(item: NavItem, pathname: string): boolean {
+  // /quote 默认页（无子路径）时，挤出铝型材作为默认高亮
+  if (item.href === '/quote/extrusion' && pathname === '/quote') return true;
   return pathname === item.href || pathname.startsWith(item.href + '/');
 }
 
 export default function QuoteSidebar({
   user,
   credits,
-  activePt,
-  onSelectPt,
 }: {
   user: any;
   credits: number;
-  activePt?: string;
-  onSelectPt: (pt: string) => void;
 }) {
   const pathname = usePathname() || '';
   const userName = user?.company_name || user?.phone || '游客';
 
   const renderItem = (item: NavItem, compact = false) => {
     const Icon = item.icon;
-    const active = isActive(item, pathname, activePt);
+    const active = isActive(item, pathname);
     const base = 'group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors border-l-2';
     const state = active
       ? 'bg-blue-50 text-blue-700 font-medium border-blue-600'
       : 'text-slate-600 border-transparent hover:bg-gray-100 hover:text-slate-800';
     const cls = `${base} ${state} ${compact ? 'shrink-0 whitespace-nowrap' : ''}`;
-
-    if (item.pt) {
-      return (
-        <button key={item.key} type="button" onClick={() => onSelectPt(item.pt!)} className={cls} title={item.label}>
-          <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-500'}`} />
-          <span className="truncate">{item.label}</span>
-        </button>
-      );
-    }
     return (
-      <Link key={item.key} href={item.href!} className={cls} title={item.label}>
+      <Link key={item.key} href={item.href} className={cls} title={item.label}>
         <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-500'}`} />
         <span className="truncate">{item.label}</span>
       </Link>
