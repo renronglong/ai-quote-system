@@ -2,7 +2,7 @@
  * POST /api/email/verify-code
  *
  * 校验「邮箱验证码」并完成无密码登录。
- * 通过 Supabase Auth verifyOtp({ type: 'email' }) 校验 6 位 OTP，校验通过后按邮箱
+ * 通过 Supabase Auth verifyOtp({ type: 'email' }) 校验邮件 OTP（项目可配置为 6 或 8 位），校验通过后按邮箱
  * 查业务 users 表，签发与 /api/auth/login 完全一致的会话（user / admin_token / user_token）。
  *
  * 请求体：{ email: string, code: string }
@@ -33,8 +33,9 @@ export async function POST(request: Request) {
     if (!EMAIL_RE.test(email)) {
       return NextResponse.json({ error: '请输入正确的邮箱地址' }, { status: 400 });
     }
-    if (!/^\d{6}$/.test(code)) {
-      return NextResponse.json({ error: '请输入 6 位数字验证码' }, { status: 400 });
+    // Supabase 邮件 OTP 长度按项目配置可能为 6 或 8 位，两种都放行
+    if (!/^\d{6,8}$/.test(code)) {
+      return NextResponse.json({ error: '请输入邮件中的数字验证码' }, { status: 400 });
     }
     if (!serviceKey || !otpAnonKey) {
       console.error('[Email/VerifyCode] 缺少 Supabase 配置');

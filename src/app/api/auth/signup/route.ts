@@ -136,8 +136,9 @@ async function handleEmailSignup(body: Record<string, unknown>, email: string): 
   if (!EMAIL_RE.test(email)) {
     return NextResponse.json({ error: '请输入正确的邮箱地址' }, { status: 400 });
   }
-  if (!/^\d{6}$/.test(code)) {
-    return NextResponse.json({ error: '请输入 6 位数字验证码' }, { status: 400 });
+  // Supabase 邮件 OTP 长度按项目配置可能为 6 或 8 位，两种都放行
+  if (!/^\d{6,8}$/.test(code)) {
+    return NextResponse.json({ error: '请输入邮件中的数字验证码' }, { status: 400 });
   }
   if (displayName && (displayName.length < 2 || displayName.length > 20)) {
     return NextResponse.json({ error: '显示名称需为 2 到 20 个字符' }, { status: 400 });

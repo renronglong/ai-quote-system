@@ -358,9 +358,9 @@ export default function RegisterPage() {
                         <Input
                           id="emailModeCode"
                           type="text"
-                          placeholder="邮件中的 6 位数字验证码"
+                          placeholder="邮件中的数字验证码"
                           value={emailModeCode}
-                          onChange={(e) => setEmailModeCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                          onChange={(e) => setEmailModeCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
                           className="pl-10"
                           disabled={submitting}
                         />

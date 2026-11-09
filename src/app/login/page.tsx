@@ -141,8 +141,8 @@ export default function LoginPage() {
         setError('邮箱验证码登录请输入邮箱地址');
         return;
       }
-      if (!/^\d{6}$/.test(code)) {
-        setError('请输入 6 位数字验证码');
+      if (!/^\d{6,8}$/.test(code)) {
+        setError('请输入邮件中的数字验证码');
         return;
       }
       setSubmitting(true);
@@ -340,7 +340,7 @@ export default function LoginPage() {
                       value={code}
                       onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
                       className="flex-1 px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm tracking-widest"
-                      placeholder="邮件中的 6 位数字验证码"
+                      placeholder="邮件中的数字验证码"
                     />
                     <button
                       type="button"
