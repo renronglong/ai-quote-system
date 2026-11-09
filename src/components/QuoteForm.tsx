@@ -2212,6 +2212,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         if (typeWillChangeRef.current) preserveCatRef.current = mc;
         resolvedMatCat = mc;
         setMaterialCategory(mc);
+        // 挤出：材料大类(异型材/标准件)即型材细分类，必须同步 standardCategory，
+        // 否则 异型材 的尺寸字段(宽/高/周长)不渲染、计价门控卡死 → 单价算不出（¥--）
+        if (mc === '异型材' || mc === '标准件') setStandardCategory(mc);
       } else if ((ptZh || productType) === '板材' || isSheet) {
         // 板材模式：AI 给的材料名五花八门（"钢"/"Q235"/"热轧板"/"冷轧钢板"/"6063"…），
         // 统一归一化到 铝板/钢板/冷轧板/不锈钢/镀锌板，未命中才兜底铝板
