@@ -182,17 +182,6 @@ export default function ProfilePage() {
     { label: '退出登录', desc: '退出当前账号', icon: LogOut, href: null, color: 'bg-red-50 text-red-600', action: handleSignOut, danger: true },
   ];
 
-  if (authLoading || !user) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-3" />
-          <p className="text-slate-500 text-sm">加载中...</p>
-        </div>
-      </div>
-    );
-  }
-
   const inputCls = 'w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors bg-white';
   const labelCls = 'text-xs font-medium text-slate-500 mb-1';
 
@@ -216,6 +205,11 @@ export default function ProfilePage() {
       </header>
       <QuoteSidebarLayout>
 
+      {authLoading || !user ? (
+        <div className="flex justify-center py-16">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        </div>
+      ) : (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-6">
         {/* 用户信息卡 */}
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
@@ -439,6 +433,7 @@ export default function ProfilePage() {
           <p className="mt-1">© {new Date().getFullYear()} 版权所有</p>
         </div>
       </div>
+      )}
         </QuoteSidebarLayout>
 </div>
   );
