@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Share2 } from 'lucide-react';
 import DrawingRecognition from '@/components/DrawingRecognition';
 import TopNavLinks from '@/components/TopNav';
+import QuoteSidebarLayout from '@/components/QuoteSidebarLayout';
 import { useAuth } from '@/lib/auth-context';
 
 /**
@@ -66,9 +67,9 @@ export default function QuoteRecognizePage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 overflow-x-hidden">
+    <div className="h-screen flex flex-col overflow-hidden bg-slate-50">
       <TopNavLinks />
-      <div className="bg-white border-b border-slate-100 px-6 py-2">
+      <div className="bg-white border-b border-slate-100 px-6 py-2 shrink-0">
         <div className="max-w-4xl mx-auto flex items-center gap-1.5 text-xs text-slate-500">
           <Link href="/" className="px-1.5 py-1 rounded hover:bg-gray-100 hover:text-slate-700">首页</Link>
           <span className="text-slate-300">/</span>
@@ -77,8 +78,9 @@ export default function QuoteRecognizePage() {
           <span className="text-slate-700 font-medium">图纸识别</span>
         </div>
       </div>
-      <main className="flex-1 min-h-0 flex items-center justify-center p-6">
-        <div className="w-full max-w-xl">
+      <QuoteSidebarLayout>
+      <main className="flex-1 min-h-0 overflow-y-auto p-6">
+        <div className="w-full max-w-xl mx-auto">
           {/* 手动报价是逃生口：降为右上角小字链，不占页面领头位。
               本页领头直接给上传区——零件列表页的「重新上传」按钮就是落到这里，
               传新图纸是最高频动作，不能让人先看一行装饰性大标题 */}
@@ -128,6 +130,7 @@ export default function QuoteRecognizePage() {
           </div>
         </div>
       </main>
+      </QuoteSidebarLayout>
     </div>
   );
 }
