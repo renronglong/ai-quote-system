@@ -72,6 +72,16 @@ export default function RegisterPage() {
     }
   }, [emailCountdown]);
 
+  // 两种注册方式共用密码状态；切换时清空，避免上一个 tab 的密码残留
+  const switchRegMode = (mode: 'phone' | 'email') => {
+    if (mode === regMode) return;
+    setRegMode(mode);
+    setPassword('');
+    setConfirmPassword('');
+    setError(null);
+    setSuccessMessage(null);
+  };
+
   const validatePhone = (p: string) => /^1[3-9]\d{9}$/.test(p);
 
   const handleSendCode = async () => {
@@ -287,23 +297,23 @@ export default function RegisterPage() {
             <div className="flex p-1 bg-slate-100 rounded-lg mb-5">
               <button
                 type="button"
-                onClick={() => { setRegMode('phone'); setError(null); setSuccessMessage(null); }}
-                className={
-                  'flex-1 py-1.5 text-sm rounded-md transition-colors flex items-center justify-center gap-1.5 ' +
-                  (regMode === 'phone' ? 'bg-white text-blue-700 font-medium shadow-sm' : 'text-slate-500 hover:text-slate-700')
-                }
-              >
-                <Phone className="w-3.5 h-3.5" /> 手机注册
-              </button>
-              <button
-                type="button"
-                onClick={() => { setRegMode('email'); setError(null); setSuccessMessage(null); }}
+                onClick={() => switchRegMode('email')}
                 className={
                   'flex-1 py-1.5 text-sm rounded-md transition-colors flex items-center justify-center gap-1.5 ' +
                   (regMode === 'email' ? 'bg-white text-blue-700 font-medium shadow-sm' : 'text-slate-500 hover:text-slate-700')
                 }
               >
                 <Mail className="w-3.5 h-3.5" /> 邮箱注册
+              </button>
+              <button
+                type="button"
+                onClick={() => switchRegMode('phone')}
+                className={
+                  'flex-1 py-1.5 text-sm rounded-md transition-colors flex items-center justify-center gap-1.5 ' +
+                  (regMode === 'phone' ? 'bg-white text-blue-700 font-medium shadow-sm' : 'text-slate-500 hover:text-slate-700')
+                }
+              >
+                <Phone className="w-3.5 h-3.5" /> 手机注册
               </button>
             </div>
 
@@ -385,6 +395,7 @@ export default function RegisterPage() {
                       <Input
                         id="password"
                         type="password"
+                        autoComplete="new-password"
                         placeholder="请设置密码（至少6位）"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
@@ -401,6 +412,7 @@ export default function RegisterPage() {
                       <Input
                         id="confirmPassword"
                         type="password"
+                        autoComplete="new-password"
                         placeholder="请再次输入密码"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
@@ -454,6 +466,7 @@ export default function RegisterPage() {
                       <Input
                         id="password"
                         type="password"
+                        autoComplete="new-password"
                         placeholder="请设置密码（至少6位）"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
@@ -471,6 +484,7 @@ export default function RegisterPage() {
                         <Input
                           id="confirmPassword"
                           type="password"
+                          autoComplete="new-password"
                           placeholder="请再次输入密码"
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
