@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import {
   Sparkles, Layers, Square, Box, Component, Hammer,
   History, Building2, Store, TrendingUp, MessageCircle, Coins,
-  Package, LogOut, Users, UserCheck,
+  Package, LogOut, Users, UserCheck, ArrowLeft,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -43,9 +43,13 @@ function isActive(item: NavItem, pathname: string): boolean {
 export default function QuoteSidebar({
   user,
   credits,
+  fromPartsList = false,
+  partsListLabel,
 }: {
   user: any;
   credits: number;
+  fromPartsList?: boolean;
+  partsListLabel?: string;
 }) {
   const pathname = usePathname() || '';
   const { signOut, isAdmin } = useAuth();
@@ -82,6 +86,28 @@ export default function QuoteSidebar({
     );
   };
 
+  // 第一项：从零件列表进来 → 返回零件列表；否则 → 图纸AI识别（共用槽位，取代原顶部快捷条）
+  const renderRecognizeOrReturn = (compact = false) => {
+    if (fromPartsList) {
+      const active = pathname === '/quote/parts';
+      const base = 'group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors border-l-2';
+      const state = active
+        ? 'bg-blue-50 text-blue-700 font-medium border-blue-600'
+        : 'text-slate-600 border-transparent hover:bg-gray-100 hover:text-slate-800';
+      const cls = `${base} ${state} ${compact ? 'shrink-0 whitespace-nowrap' : ''}`;
+      return (
+        <Link key="recognize-return" href="/quote/parts" className={cls} title="保存报价后将自动返回">
+          <ArrowLeft className={`w-4 h-4 shrink-0 ${active ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-500'}`} />
+          <span className="truncate">返回零件列表</span>
+          {partsListLabel && (
+            <span className="text-xs text-blue-600 truncate max-w-[160px]">{partsListLabel}</span>
+          )}
+        </Link>
+      );
+    }
+    return renderItem(NAV[0], compact); // 图纸AI识别
+  };
+
   return (
     <>
       {/* 桌面端：左侧竖向栏 */}
@@ -106,7 +132,9 @@ export default function QuoteSidebar({
           <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">报价模块</p>
         </div>
         <nav className="flex flex-col gap-0.5 px-2">
-          {NAV.filter(i => !i.dividerBefore).map(i => renderItem(i))}
+          {NAV.filter(i => !i.dividerBefore).map(i =>
+            i.key === 'recognize' ? renderRecognizeOrReturn() : renderItem(i)
+          )}
         </nav>
         <div className="mx-4 my-2 border-t border-gray-100" />
         <nav className="flex flex-col gap-0.5 px-2 pb-3">
@@ -180,7 +208,7 @@ export default function QuoteSidebar({
 
       {/* 移动端：顶部横向滚动条（含账户菜单，顶栏汉堡菜单在左侧栏页面已被隐藏） */}
       <nav className="lg:hidden flex items-center gap-1.5 overflow-x-auto border-b border-gray-200 bg-white px-3 py-2 shrink-0">
-        {NAV.map(i => renderItem(i, true))}
+        {NAV.map(i => i.key === 'recognize' ? renderRecognizeOrReturn(true) : renderItem(i, true))}
         {user ? (
           <>
             {isAdmin && (

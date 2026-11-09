@@ -17,7 +17,6 @@ import {
   User,
   MessageCircle,
   X,
-  ArrowLeft,
 } from 'lucide-react';
 import { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
 import QuoteSheetDialog from '@/components/QuoteSheetDialog';
@@ -484,7 +483,12 @@ export default function QuoteWorkspace({ defaultProductType }: { defaultProductT
 
       {/* 左侧栏 + 内容区（桌面端左栏 + 内容；移动端顶部横向导航 + 内容） */}
       <div className="flex flex-1 min-h-0 flex-col lg:flex-row">
-        <QuoteSidebar user={user} credits={credits} />
+        <QuoteSidebar
+          user={user}
+          credits={credits}
+          fromPartsList={fromPartsList}
+          partsListLabel={partsListPartName || `零件${partsListPartIdx + 1}`}
+        />
 
         <div className="flex-1 flex flex-col min-h-0">
       {/* ===== Excel 正式报价单出单弹窗 ===== */}
@@ -525,25 +529,6 @@ export default function QuoteWorkspace({ defaultProductType }: { defaultProductT
           </div>
         </div>
       )}
-
-      {/* 快捷操作条：仅保留「返回零件列表」（左侧栏 NAV 无对应入口）；图纸AI识别/我的报价已在左侧栏，移除避免重复 */}
-      <div className="shrink-0 bg-white border-b border-slate-100 px-4 md:px-6 py-2">
-        <div className="max-w-[1600px] mx-auto flex flex-wrap items-center gap-2">
-          {fromPartsList && (
-            <Link
-              href="/quote/parts"
-              title="保存报价后将自动返回"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 hover:bg-blue-100 transition"
-            >
-              <ArrowLeft size={15} className="text-blue-700 shrink-0" />
-              <span className="text-sm font-medium text-blue-700 shrink-0">返回零件列表</span>
-              <span className="text-xs text-blue-600 truncate max-w-[160px]">
-                {partsListPartName || `零件${partsListPartIdx + 1}`}
-              </span>
-            </Link>
-          )}
-        </div>
-      </div>
 
       {/* 主内容区：参数 + 结果（+ 报价指南）。第一列已并入上方操作条，
           并取消 1640px 强制最小宽度 —— 1366/1440 笔记本不再横向滚动。 */}
