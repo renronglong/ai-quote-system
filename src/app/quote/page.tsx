@@ -57,8 +57,6 @@ const INTERNAL_PHONES = ['13900139000', '18929979760'];
 const INTERNAL_USER_IDS = ['98853002-61ba-485d-9672-6b4fa20906cd', 'd9e19564-5dfd-456b-b6d8-8068c84354e4'];
 function isInternalUser(user: any): boolean {
   if (!user) return false;
-  // 管理员账号一律视为内部账号（可看明细、可手工改价）
-  if (user.is_admin === true) return true;
   const phone = user.phone || user.user_metadata?.phone || '';
   const id = user.id || user.user_id || '';
   return INTERNAL_PHONES.includes(phone) || INTERNAL_USER_IDS.includes(id);
@@ -78,17 +76,6 @@ export default function QuotePage() {
   const [saving, setSaving] = useState(false);
   const [showExportLogin, setShowExportLogin] = useState(false); // 游客导出报价单时弹登录墙
   const [showSheetDialog, setShowSheetDialog] = useState(false); // Excel报价单出单弹窗
-
-  // 批量报价完成后自动打开导出弹窗（parts 页跳转时设置 ai_quote_open_sheet；业主 2026-11-02）
-  useEffect(() => {
-    if (!user) return;
-    try {
-      if (sessionStorage.getItem('ai_quote_open_sheet') === '1') {
-        sessionStorage.removeItem('ai_quote_open_sheet');
-        setShowSheetDialog(true);
-      }
-    } catch { /* ignore */ }
-  }, [user]);
   const [currentParams, setCurrentParams] = useState<Record<string, any> | null>(null);
   const [productDiscount, setProductDiscount] = useState<number>(100); // 产品折扣，100=无折扣
   const [moldDiscount, setMoldDiscount] = useState<number>(100); // 模具费折扣，100=无折扣
@@ -546,8 +533,17 @@ export default function QuotePage() {
         </div>
       </header>
 
-      {/* 面包屑已去掉：和顶部导航（首页/AI报价）重复，只保留给读屏和 SEO 的标题 */}
-      <h1 className="sr-only">手动报价 · gyparts.cn AI报价系统</h1>
+      {/* 面包屑导航 */}
+      <div className="shrink-0 bg-white border-b border-slate-100 px-6 py-2">
+        <h1 className="sr-only">手动报价 · gyparts.cn AI报价系统</h1>
+        <div className="max-w-[1600px] mx-auto flex items-center gap-1.5 text-xs text-slate-500">
+          <Link href="/quote" className="px-1.5 py-1 rounded hover:bg-gray-100 hover:text-slate-700">首页</Link>
+          <span className="text-slate-300">/</span>
+          <span className="px-1.5 py-1 rounded text-slate-700 font-medium">AI报价</span>
+          <span className="text-slate-300">/</span>
+          <span className="px-1.5 py-1 rounded text-slate-700 font-medium">手动报价</span>
+        </div>
+      </div>
 
       {/* ===== Excel 正式报价单出单弹窗 ===== */}
       {showSheetDialog && user && (
@@ -559,12 +555,7 @@ export default function QuotePage() {
           moldGroupId={moldGroupId}
           currentQuote={pricingResult && currentParams ? {
             params: { ...currentParams, ...(productInfo.productName ? { productName: productInfo.productName } : {}), ...(productInfo.productCode ? { productCode: productInfo.productCode } : {}) },
-            // 手工改价优先：导出的报价单必须与实际报出的价格一致
-            result: {
-              ...pricingResult,
-              unit_price: manualUnitPrice ?? pricingResult.unit_price,
-              mold_cost: manualMoldFee ?? pricingResult.mold_cost,
-            },
+            result: pricingResult,
             productType: productInfo.productName || currentParams.product_type || '产品',
             productDiscount,
             moldDiscount,
@@ -844,7 +835,7 @@ export default function QuotePage() {
                     </div>
                     <div className="flex items-start gap-2">
                       <span className="w-1 h-1 rounded-full bg-orange-400 mt-1.5 shrink-0" />
-                      <span className="text-xs text-slate-600">最小起订量按模具规格折算（300/500/1000kg三档），可手动修改</span>
+                      <span className="text-xs text-slate-600">最小起订量按300kg折算，未达标时页面会提示</span>
                     </div>
                     <div className="flex items-start gap-2">
                       <span className="w-1 h-1 rounded-full bg-purple-400 mt-1.5 shrink-0" />
@@ -998,6 +989,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
   hideActions?: boolean;
 }) {
   const isPlaceholder = !pricingResult;
+  const internal = isInternalUser(user);
   const p = pricingResult || {
     material_cost: 0, processing_cost: 0, surface_treatment_cost: 0,
     secondary_operations_cost: 0, packaging_cost: 0, transport_cost: 0,
@@ -1011,11 +1003,10 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
   const hasProductDiscount = productDiscount !== 100;
   const hasMoldDiscount = moldDiscount !== 100 && moldFee > 0;
   const hideMoldFeeForUser = useExistingMold === true && !user?.is_admin;
-  // 手工改价优先：单价被覆盖后，折扣与总价都跟着走
-  const baseUnit = manualUnitPrice ?? p.unit_price;
-  const discountedUnit = baseUnit * (productDiscount / 100);
+  const discountedUnit = p.unit_price * (productDiscount / 100);
   const discountedMold = moldFee * (moldDiscount / 100);
-  const displayUnit = hasProductDiscount ? discountedUnit : baseUnit;
+  const displayUnit = hasProductDiscount ? discountedUnit : p.unit_price;
+  const qty = 1; // TODO: get from params if available
 
   const breakdownItems = [
     { label: '材料费', value: p.material_cost, key: 'material_cost' },
@@ -1025,16 +1016,6 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
     { label: '包装费', value: p.packaging_cost, key: 'packaging_cost' },
     { label: '运输费', value: p.transport_cost, key: 'transport_cost' },
   ];
-  // 折弯费 / 管销费 / 利润：后端把这三项揉进 unit_price，breakdown 里 bending、management
-  // 只有 formula+detail、没有数值字段，上面 5 项加起来永远小于未税单价
-  // （bc-001-1 实测：材料 3.20 + 加工 2.56 + 包装 0.09 + 运输 0.09 = 5.94，未税却 8.10，
-  //  差 2.16 = 折弯 5 刀×0.2×1.03×1.03 + 管销/利润）。用户看到明细加不平会以为算错，
-  // 这里按差额补一行，保证「明细合计 = 未税单价」。
-  const listedSum = breakdownItems.reduce((acc, it) => acc + (Number(it.value) || 0), 0);
-  const overheadGap = Math.round(((Number(p.unit_price) || 0) - listedSum) * 100) / 100;
-  if (overheadGap > 0.005) {
-    breakdownItems.push({ label: '折弯/管销/利润', value: overheadGap, key: 'bending' });
-  }
 
   return (
     <div className={`space-y-3 ${compact ? 'space-y-2' : ''}`}>
@@ -1071,28 +1052,6 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
             <span className="text-xs text-gray-300">（含13%增值税）</span>
           </div>
         )}
-        {/* 未税单价（登录即可手工覆盖，含税单价与总价自动联动） */}
-        {!isPlaceholder && !!user && (
-          <div className="mt-1 flex items-center gap-1.5">
-            <span className="text-xs text-slate-600">未税单价</span>
-            <span className="text-xs text-slate-600">¥</span>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={manualUnitPrice ?? p.unit_price}
-              onChange={(e) => {
-                const v = parseFloat(e.target.value);
-                if (!isNaN(v) && v >= 0) onManualUnitPriceChange(v);
-              }}
-              className={`w-20 text-right text-sm border rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-400 font-semibold text-blue-700 ${manualUnitPrice !== null ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white/60'}`}
-            />
-            <span className="text-xs text-slate-600">/件</span>
-            {manualUnitPrice !== null && (
-              <button onClick={() => onManualUnitPriceChange(null)} className="text-xs text-slate-600 hover:text-red-500" title="恢复计算值">✕</button>
-            )}
-          </div>
-        )}
         <div className="mt-1.5 flex items-baseline gap-1">
           <span className="text-sm text-slate-600">未税总价</span>
           <span className={`font-bold ${isPlaceholder ? 'text-gray-300' : 'text-gray-800'} ${compact ? 'text-lg' : 'text-2xl'}`}>
@@ -1107,7 +1066,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
                 <span className="inline-block text-xs text-slate-600 bg-gray-100 rounded px-1.5 py-0.5 font-mono">{p.mold_spec}</span>
               </div>
             )}
-            {user ? (
+            {internal ? (
             <div className="mt-1 flex items-center gap-1.5">
               <span className="text-sm text-slate-600">模具费(一次性)</span>
               <span className="text-xs text-slate-600">¥</span>
@@ -1138,16 +1097,14 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
           </div>
         )}
         {/* 最小起订量 */}
-        {/* 最小起订量：不再区分内外权限，一律可改（系统按模具规格算出的只是建议值） */}
         {!isPlaceholder && minOrderQty > 0 && (
-          <div className="mt-2 flex items-center gap-1.5 pt-2 border-t border-emerald-200/40 flex-wrap">
+          internal ? (
+          <div className="mt-2 flex items-center gap-1.5 pt-2 border-t border-emerald-200/40">
             <span className="text-sm text-slate-600">最小起订量</span>
             <input
               type="number"
               step="1"
               min="1"
-              aria-label="最小起订量"
-              title="系统按模具规格折算的建议值，可手动改"
               value={manualMinOrderQty ?? minOrderQty}
               onChange={(e) => {
                 const v = parseInt(e.target.value);
@@ -1156,22 +1113,21 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
               className={`w-20 text-right text-sm border rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-400 font-semibold text-gray-700 ${manualMinOrderQty !== null ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white/50'}`}
             />
             <span className="text-xs text-slate-600">件</span>
-            {(() => {
-              // 重量随件数实时联动，避免改了件数还显示旧的 kg 数
-              const qty = manualMinOrderQty ?? minOrderQty;
-              const w = p.weight_per_piece_kg > 0 ? qty * p.weight_per_piece_kg : 0;
-              if (!(w > 0)) return null;
-              return <span className="text-xs text-slate-600">约{w >= 100 ? Math.round(w) : Math.round(w * 10) / 10}kg</span>;
-            })()}
             {manualMinOrderQty !== null && (
               <button onClick={() => onManualMinOrderQtyChange(null)} className="text-xs text-slate-600 hover:text-red-500" title="恢复计算值">✕</button>
             )}
           </div>
+          ) : (
+          <div className="mt-2 pt-2 border-t border-emerald-200/40 flex items-baseline gap-1">
+            <span className="text-sm text-slate-600">最小起订量</span>
+            <span className="text-sm font-semibold text-gray-700">{manualMinOrderQty ?? minOrderQty} 件{(p as any).min_order_weight_kg ? <span className="text-xs text-slate-600 font-normal ml-1">约{(p as any).min_order_weight_kg}kg</span> : null}</span>
+          </div>
+          )
         )}
       </div>
 
-      {/* 折扣调整区域（所有用户可见，业主 2026-11-01） */}
-      {!isPlaceholder && (
+      {/* 折扣调整区域（仅内部可见） */}
+      {internal && !isPlaceholder && (
         <div className="rounded-xl bg-white border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-3 py-2 bg-amber-50 border-b border-amber-100 flex items-center gap-1.5">
             <Percent className="w-3.5 h-3.5 text-amber-600" />
@@ -1180,41 +1136,57 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
           <div className="divide-y divide-gray-100">
             {/* 产品折扣 */}
             <div className="flex items-center justify-between px-3 py-2.5">
-              <span className="text-sm text-gray-600">产品折扣</span>
+              <span className="text-sm text-gray-600">产品价调整</span>
               <div className="flex items-center gap-2">
-                {/* 手填折扣系数：1=100%，0.9=9折；内部仍存百分比口径（90/100），业主 2026-11-01 */}
+                <input
+                  type="range"
+                  min="50"
+                  max="200"
+                  step="1"
+                  value={productDiscount}
+                  onChange={(e) => onProductDiscountChange(Number(e.target.value))}
+                  className="w-20 h-1.5 accent-amber-500"
+                />
                 <input
                   type="number"
-                  min="0.5"
-                  max="2"
-                  step="0.01"
-                  value={productDiscount / 100}
+                  min="50"
+                  max="200"
+                  value={productDiscount}
                   onChange={(e) => {
                     const v = Number(e.target.value);
-                    if (!isNaN(v) && v >= 0.5 && v <= 2) onProductDiscountChange(Math.round(v * 100));
+                    if (v >= 50 && v <= 200) onProductDiscountChange(v);
                   }}
-                  className="w-16 text-sm text-right border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-amber-400"
+                  className="w-14 text-sm text-right border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-amber-400"
                 />
+                <span className="text-xs text-slate-600 w-8">{productDiscount > 100 ? '加价' : '%折'}</span>
               </div>
             </div>
             {/* 模具费折扣 */}
             {moldFee > 0 && (
               <div className="flex items-center justify-between px-3 py-2.5">
-                <span className="text-sm text-gray-600">模具费折扣</span>
+                <span className="text-sm text-gray-600">模具费调整</span>
                 <div className="flex items-center gap-2">
-                  {/* 手填折扣系数：1=100%，0.9=9折；内部仍存百分比口径（90/100），业主 2026-11-01 */}
+                  <input
+                    type="range"
+                    min="50"
+                    max="200"
+                    step="1"
+                    value={moldDiscount}
+                    onChange={(e) => onMoldDiscountChange(Number(e.target.value))}
+                    className="w-20 h-1.5 accent-amber-500"
+                  />
                   <input
                     type="number"
-                    min="0.5"
-                    max="2"
-                    step="0.01"
-                    value={moldDiscount / 100}
+                    min="50"
+                    max="200"
+                    value={moldDiscount}
                     onChange={(e) => {
                       const v = Number(e.target.value);
-                      if (!isNaN(v) && v >= 0.5 && v <= 2) onMoldDiscountChange(Math.round(v * 100));
+                      if (v >= 50 && v <= 200) onMoldDiscountChange(v);
                     }}
-                    className="w-16 text-sm text-right border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-amber-400"
+                    className="w-14 text-sm text-right border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-amber-400"
                   />
+                  <span className="text-xs text-slate-600 w-8">{moldDiscount > 100 ? '加价' : '%折'}</span>
                 </div>
               </div>
             )}
