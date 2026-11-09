@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/sheet';
 import { useAuth } from '@/lib/auth-context';
 import TopNavLinks from '@/components/TopNav';
+import { SidebarAccountContext } from '@/components/sidebarAccountContext';
 import Footer from '@/components/Footer';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -77,6 +78,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [credits, setCredits] = useState<number>(0);
+  const [hasSidebar, setHasSidebar] = useState(false);
   const { user, signOut, isAdmin } = useAuth();
 
   // 拉取积分余额（仅登录用户）
@@ -89,6 +91,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [user, pathname]);
 
   return (
+    <SidebarAccountContext.Provider value={{ setHasSidebar }}>
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* 顶部导航栏 */}
       <header className="bg-white border-b sticky top-0 z-40 shadow-sm">
@@ -110,7 +113,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <TopNavLinks />
           </div>
 
-          {/* 右侧操作区 */}
+          {/* 右侧操作区（有左侧栏时由左侧栏底部账户菜单接管，此处隐藏避免重复） */}
+          {!hasSidebar && (
           <div className="flex items-center gap-3">
             {/* 积分显示 */}
             {user && (
@@ -246,6 +250,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </SheetContent>
             </Sheet>
           </div>
+          )}
         </div>
       </header>
 
@@ -269,5 +274,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* 页脚 */}
       <Footer />
     </div>
+    </SidebarAccountContext.Provider>
   );
 }

@@ -2,6 +2,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import QuoteSidebar from '@/components/QuoteSidebar';
+import { useSidebarAccount } from '@/components/sidebarAccountContext';
 
 // 与 /quote 一致的「顶部页头 + 左栏 + 内容区」外壳：
 // 在页面自有 header 之下，放左侧栏（桌面）+ 内容区（内部滚动）。
@@ -9,6 +10,13 @@ import QuoteSidebar from '@/components/QuoteSidebar';
 export default function QuoteSidebarLayout({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [credits, setCredits] = useState(0);
+  const { setHasSidebar } = useSidebarAccount();
+
+  // 通知 AppLayout：本页有左侧栏，账户菜单由左侧栏底部接管，顶栏账户下拉/移动端汉堡隐藏，避免重复。
+  useEffect(() => {
+    setHasSidebar(true);
+    return () => setHasSidebar(false);
+  }, [setHasSidebar]);
 
   useEffect(() => {
     if (!user) { setCredits(0); return; }
