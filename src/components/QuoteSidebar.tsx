@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import {
   Sparkles, Layers, Square, Box, Component, Hammer,
   History, Building2, Store, TrendingUp, MessageCircle, Coins,
-  Package, LogOut,
+  Package, LogOut, Users, UserCheck,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -48,7 +48,7 @@ export default function QuoteSidebar({
   credits: number;
 }) {
   const pathname = usePathname() || '';
-  const { signOut } = useAuth();
+  const { signOut, isAdmin } = useAuth();
   const userName = user?.company_name || user?.phone || '游客';
   const [alumPrice, setAlumPrice] = useState<{ price: number; change: number; changePercent: number } | null>(null);
 
@@ -146,6 +146,20 @@ export default function QuoteSidebar({
           </div>
           {user ? (
             <>
+              {isAdmin && (
+                <div className="mt-2 flex flex-col gap-0.5">
+                  <Link href="/admin/users"
+                    className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-gray-100 hover:text-slate-800 transition-colors">
+                    <Users className="w-4 h-4 shrink-0 text-slate-400" />
+                    <span className="truncate">用户管理</span>
+                  </Link>
+                  <Link href="/admin/customers"
+                    className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-gray-100 hover:text-slate-800 transition-colors">
+                    <UserCheck className="w-4 h-4 shrink-0 text-slate-400" />
+                    <span className="truncate">客户管理</span>
+                  </Link>
+                </div>
+              )}
               <button
                 onClick={() => signOut()}
                 className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-colors"
@@ -169,6 +183,16 @@ export default function QuoteSidebar({
         {NAV.map(i => renderItem(i, true))}
         {user ? (
           <>
+            {isAdmin && (
+              <>
+                <Link href="/admin/users" className="shrink-0 whitespace-nowrap flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-slate-600 border border-gray-200">
+                  <Users className="w-4 h-4" />用户管理
+                </Link>
+                <Link href="/admin/customers" className="shrink-0 whitespace-nowrap flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-slate-600 border border-gray-200">
+                  <UserCheck className="w-4 h-4" />客户管理
+                </Link>
+              </>
+            )}
             <button onClick={() => signOut()} className="shrink-0 whitespace-nowrap flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-gray-600 border border-gray-200">
               <LogOut className="w-4 h-4" />退出
             </button>
