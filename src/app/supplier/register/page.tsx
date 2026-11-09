@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/components/AppLayout';
+import QuoteSidebarLayout from '@/components/QuoteSidebarLayout';
 import { Building2, Loader2, AlertCircle, Lock } from 'lucide-react';
 
 const STORAGE_KEY = 'supplier_register_form';
@@ -88,7 +89,7 @@ export default function SupplierRegisterPage() {
   };
 
   return (
-    <AppLayout>
+    <AppLayout><QuoteSidebarLayout>
       <div className="max-w-2xl mx-auto">
         {/* 页头 */}
         <div className="mb-8 text-center">
@@ -181,6 +182,6 @@ export default function SupplierRegisterPage() {
           </CardContent>
         </Card>
       </div>
-    </AppLayout>
+    </QuoteSidebarLayout></AppLayout>
   );
 }

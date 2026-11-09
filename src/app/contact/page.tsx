@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/components/AppLayout';
+import QuoteSidebarLayout from '@/components/QuoteSidebarLayout';
 import {
   Phone,
   MapPin,
@@ -38,7 +39,7 @@ export default function ContactPage() {
   };
 
   return (
-    <AppLayout>
+    <AppLayout><QuoteSidebarLayout>
       <div className="max-w-4xl mx-auto space-y-6">
         {/* 页面标题 */}
         <div>
@@ -66,7 +67,7 @@ export default function ContactPage() {
                   </div>
                   <div className="flex items-center gap-3 text-sm text-gray-600">
                     <Mail className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                    <span className="font-medium">service@gyparts.cn</span>
+                    <span className="font-medium">ryda8638@agent.qq.com</span>
                   </div>
                   <div className="flex items-start gap-3 text-sm text-gray-600">
                     <MapPin className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
@@ -224,6 +225,6 @@ export default function ContactPage() {
           </div>
         </div>
       </div>
-    </AppLayout>
+    </QuoteSidebarLayout></AppLayout>
   );
 }

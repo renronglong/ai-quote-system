@@ -1,4 +1,5 @@
 'use client';
+import QuoteSidebarLayout from '@/components/QuoteSidebarLayout';
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -45,14 +46,14 @@ const PRICE_SECTIONS = [
   },
   {
     title: '铝型材',
-    subtitle: '电泳 · 喷涂 · 磨砂 · 圆管',
-    keywords: ['电泳铝', '喷涂铝', '磨砂铝', '铝圆管', '圆管'],
+    subtitle: '电泳 · 喷涂 · 磨砂',
+    keywords: ['电泳铝', '喷涂铝', '磨砂铝'],
     accent: 'emerald',
   },
   {
     title: '压铸铝',
     subtitle: 'ADC12 系列',
-    keywords: ['ADC12', '压铸铝'],
+    keywords: ['ADC12', '压铸铝', '铝圆管'],
     accent: 'orange',
   },
 ];
@@ -84,26 +85,10 @@ function getAccentClasses(accent: string) {
   return map[accent] || map.blue;
 }
 
-// 清洗价格名称中可能混入的 HTML 残留（如 `.htm" title="今日南海铝锭`）
-function cleanName(raw: string): string {
-  let s = raw;
-  // 去掉 HTML 标签及其属性残留
-  s = s.replace(/<[^>]*>?/g, '');
-  // 去掉被截断的属性片段（如 .htm" title=" 或 href= 等）
-  s = s.replace(/[\w./-]+\.(?:htm|html|aspx?|php)[^"']*/gi, '');
-  s = s.replace(/(?:title|href|src|class|data-[\w-]+)\s*=\s*["'][^"']*/gi, '');
-  // 去掉引号、反斜杠等残留符号
-  s = s.replace(/[\"'`\\<>]/g, '');
-  // 去掉首尾空白和多余符号
-  s = s.replace(/^[\s:：,，.。·|]+|[\s:：,，.。·|]+$/g, '');
-  return s.trim();
-}
-
 function PriceCard({ item }: { item: PriceItem }) {
   const { value, direction, display } = parseChange(item.change);
   const colors = getCardColor(direction);
   const price = parseInt(item.price);
-  const name = cleanName(item.name);
 
   return (
     <div className={`relative overflow-hidden rounded-xl border ${colors.border} ${colors.bg} p-5 transition-all hover:shadow-md hover:-translate-y-0.5 group`}>
@@ -114,8 +99,8 @@ function PriceCard({ item }: { item: PriceItem }) {
 
       <div className="pl-3">
         {/* 名称 */}
-        <div className="text-sm text-slate-600 font-medium mb-3 truncate" title={name}>
-          {name}
+        <div className="text-sm text-slate-600 font-medium mb-3 truncate" title={item.name}>
+          {item.name}
         </div>
 
         {/* 价格 */}
@@ -218,6 +203,8 @@ export default function MarketPage() {
 
   useEffect(() => {
     fetchData();
+    const interval = setInterval(fetchData, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 
   // 按板块分类价格项
@@ -226,17 +213,16 @@ export default function MarketPage() {
 
   if (data?.prices) {
     for (const item of data.prices) {
-      const cleanItem = { ...item, name: cleanName(item.name) };
       let matched = false;
       for (const section of PRICE_SECTIONS) {
-        if (section.keywords.some((kw) => cleanItem.name.includes(kw))) {
+        if (section.keywords.some((kw) => item.name.includes(kw))) {
           if (!categorized[section.title]) categorized[section.title] = [];
-          categorized[section.title].push(cleanItem);
+          categorized[section.title].push(item);
           matched = true;
           break;
         }
       }
-      if (!matched) uncategorized.push(cleanItem);
+      if (!matched) uncategorized.push(item);
     }
   }
 
@@ -244,9 +230,9 @@ export default function MarketPage() {
   const summary = data?.data;
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="h-screen flex flex-col overflow-hidden bg-slate-50">
       {/* 顶部导航 */}
-      <header className="bg-white border-b sticky top-0 z-40">
+      <header className="bg-white border-b sticky top-0 z-40" shrink-0>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="relative flex items-center justify-between h-16">
             <Link href="/" className="flex items-center gap-2">
@@ -280,6 +266,7 @@ export default function MarketPage() {
           </div>
         </div>
       </header>
+      <QuoteSidebarLayout>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* 页面标题 */}
@@ -412,7 +399,7 @@ export default function MarketPage() {
                 </span>
               </div>
               <span>
-                数据仅供参考，实际以市场行情为准
+                每 5 分钟自动刷新 · 数据仅供参考，实际以市场行情为准
               </span>
             </div>
           </div>
@@ -433,6 +420,7 @@ export default function MarketPage() {
           </p>
         </div>
       </footer>
-    </div>
+        </QuoteSidebarLayout>
+</div>
   );
 }

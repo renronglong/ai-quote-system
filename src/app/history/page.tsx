@@ -1,4 +1,5 @@
 'use client';
+import QuoteSidebarLayout from '@/components/QuoteSidebarLayout';
 
 import { useEffect } from 'react';
 import Link from 'next/link';
@@ -38,8 +39,8 @@ export default function MyQuotesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="bg-white border-b sticky top-0 z-40">
+    <div className="h-screen flex flex-col overflow-hidden bg-slate-50">
+      <header className="bg-white border-b sticky top-0 z-40" shrink-0>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="relative flex items-center justify-between h-16">
             <Link href="/" className="flex items-center gap-2">
@@ -81,6 +82,7 @@ export default function MyQuotesPage() {
           </div>
         </div>
       </header>
+      <QuoteSidebarLayout>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">
@@ -105,6 +107,7 @@ export default function MyQuotesPage() {
           </div>
         )}
       </main>
-    </div>
+        </QuoteSidebarLayout>
+</div>
   );
 }
