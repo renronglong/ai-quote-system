@@ -30,6 +30,7 @@ import { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
 import QuoteSheetDialog from '@/components/QuoteSheetDialog';
 import TopNavLinks from '@/components/TopNav';
 import ChatPanel from '@/components/ChatPanel';
+import QuoteSidebar from '@/components/QuoteSidebar';
 
 interface AiFormUpdate {
   productType?: string;
@@ -89,6 +90,35 @@ export default function QuotePage() {
   const [guideCollapsed, setGuideCollapsed] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [narrow, setNarrow] = useState(false); // ≤1024px 时三栏/四栏改为单列堆叠
+  // 左侧栏选中的产品模块（?pt=），用于预选 QuoteForm 的产品类型
+  const [activePt, setActivePt] = useState<string | undefined>(undefined);
+  const [credits, setCredits] = useState(0); // 用户积分（左下角显示）
+
+  // 初始化左侧栏产品模块 + 监听浏览器前进/后退同步 ?pt=
+  useEffect(() => {
+    const readPt = () => {
+      const p = new URLSearchParams(window.location.search).get('pt') || undefined;
+      setActivePt(p);
+    };
+    readPt();
+    window.addEventListener('popstate', readPt);
+    return () => window.removeEventListener('popstate', readPt);
+  }, []);
+
+  // 拉取积分余额（仅登录用户），与 AppLayout 同一接口
+  useEffect(() => {
+    if (!user) { setCredits(0); return; }
+    fetch(`/api/credits/balance?user_id=${user.id}`)
+      .then(r => r.json())
+      .then(j => setCredits(parseFloat(j?.data?.balance || '0')))
+      .catch(() => {});
+  }, [user]);
+
+  // 左侧栏点选产品模块：更新选中态并同步 URL（强制重挂载 QuoteForm 以应用预选）
+  const handleSelectPt = (pt: string) => {
+    setActivePt(pt);
+    router.push(pt ? `/quote?pt=${encodeURIComponent(pt)}` : '/quote');
+  };
   const [fromPartsList, setFromPartsList] = useState(false); // 从零件列表页跳过来
   const [partsListPartIdx, setPartsListPartIdx] = useState<number>(-1);
   const [partsListPartName, setPartsListPartName] = useState('');
@@ -533,7 +563,12 @@ export default function QuotePage() {
         </div>
       </header>
 
-      {/* 面包屑导航 */}
+      {/* 左侧栏 + 内容区（桌面端左栏 + 内容；移动端顶部横向导航 + 内容） */}
+      <div className="flex flex-1 min-h-0 flex-col lg:flex-row">
+        <QuoteSidebar user={user} credits={credits} activePt={activePt} onSelectPt={handleSelectPt} />
+
+        <div className="flex-1 flex flex-col min-h-0">
+          {/* 面包屑导航 */}
       <div className="shrink-0 bg-white border-b border-slate-100 px-6 py-2">
         <h1 className="sr-only">手动报价 · gyparts.cn AI报价系统</h1>
         <div className="max-w-[1600px] mx-auto flex items-center gap-1.5 text-xs text-slate-500">
@@ -642,7 +677,8 @@ export default function QuotePage() {
           <div className="p-4 space-y-4">
             <div className="bg-white rounded-xl border border-gray-200 p-4">
               <QuoteForm
-                key={formNonce}
+                key={`qf-${formNonce}-${activePt ?? 'default'}`}
+                defaultProductType={activePt}
                 aiData={aiFormData}
                 loadQuoteData={editQuoteData}
                 onResult={handleResult}
@@ -913,6 +949,9 @@ export default function QuotePage() {
           </div>
         )}
       </div>
+
+        </div>{/* /内容区 flex-1 */}
+      </div>{/* /左侧栏 + 内容区 */}
 
       {/* ===== 浮动智能客服按钮 + 聊天面板 ===== */}
       <div className="fixed bottom-6 right-6 z-50">

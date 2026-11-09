@@ -118,6 +118,8 @@ interface QuoteFormProps {
   aiData?: AiFormUpdate | Record<string, any> | null;
   loadQuoteData?: Record<string, any> | null;
   onDrawingData?: (data: Record<string, any>) => void;
+  /** 左侧栏点选产品模块时预选的产品类型（'挤出'|'板材'|'压铸'|'注塑'|'钢材'）；仅作为初值，手动切换仍生效 */
+  defaultProductType?: string;
 }
 
 // ==================== Configuration Data ====================
@@ -780,7 +782,7 @@ const PROCESS_SUB_PARAMS: Record<string, { name: string; type: string; label: st
 
 // ==================== Component ====================
 
-export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, onMoldInfoChange, onSaveVariant, onNewQuote, aiData, loadQuoteData, onDrawingData }: QuoteFormProps) {
+export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, onMoldInfoChange, onSaveVariant, onNewQuote, aiData, loadQuoteData, onDrawingData, defaultProductType }: QuoteFormProps) {
   // ===== 登录 + 识图额度 =====
   const { user } = useAuth();
 
@@ -808,6 +810,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         if (part.product_type === 'sheet_metal' || part.is_sheet_metal) return '板材';
       }
     } catch (e) {}
+    // 左侧栏点选产品模块（?pt=）时预选；仅接受合法产品类型
+    if (defaultProductType && PRODUCT_TYPES[defaultProductType]) return defaultProductType;
     return '挤出';
   })();
   
