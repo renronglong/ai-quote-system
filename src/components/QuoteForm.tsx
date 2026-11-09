@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { Sparkles, Plus, Loader2, CheckCircle2, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { calculateStampingMoldFee, calculateLaserCuttingFee, type StampingMoldResult, type LaserCuttingResult } from '@/lib/stamping-mold-calculator';
@@ -785,6 +786,11 @@ const PROCESS_SUB_PARAMS: Record<string, { name: string; type: string; label: st
 export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, onMoldInfoChange, onSaveVariant, onNewQuote, aiData, loadQuoteData, onDrawingData, defaultProductType }: QuoteFormProps) {
   // ===== 登录 + 识图额度 =====
   const { user } = useAuth();
+  const router = useRouter();
+  // 产品类型 key → /quote 子页 slug（点产品 tab / 切换时与左侧栏走同一条路由，保证高亮一致）
+  const PRODUCT_TYPE_SLUG: Record<string, string> = {
+    '挤出': 'extrusion', '板材': 'sheet', '压铸': 'casting', '注塑': 'injection', '钢材': 'steel',
+  };
 
   const [aiSynced, setAiSynced] = useState(false);
   const prevAiDataRef = useRef<AiFormUpdate | null | undefined>(null);
@@ -803,15 +809,16 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
   // Core form state
   const initialProductType = (() => {
+    // 路由预选优先（/quote/sheet 等子页）：URL 即「当前产品」，左侧栏高亮与内容必须一致
+    if (defaultProductType && PRODUCT_TYPES[defaultProductType]) return defaultProductType;
     try {
+      // 仅当处于通用 /quote（无路由预选）时，才回退到零件列表带进来的选中零件
       const partRaw = sessionStorage.getItem('ai_quote_selected_part');
       if (partRaw) {
         const part = JSON.parse(partRaw);
         if (part.product_type === 'sheet_metal' || part.is_sheet_metal) return '板材';
       }
     } catch (e) {}
-    // 左侧栏点选产品模块（?pt=）时预选；仅接受合法产品类型
-    if (defaultProductType && PRODUCT_TYPES[defaultProductType]) return defaultProductType;
     return '挤出';
   })();
   
@@ -1004,7 +1011,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (d.fields && typeof d.fields === 'object') {
       setFields(prev => ({ ...prev, ...d.fields }));
     }
-    if (d.productType && PRODUCT_TYPES[d.productType] && d.productType !== productType) {
+    if (d.productType && PRODUCT_TYPES[d.productType] && d.productType !== productType && !defaultProductType) {
       // 切产品类型会触发上面那个 effect 清空类别，这里提前打标跳过，避免把刚恢复的参数又清掉
       skipCategoryResetRef.current = true;
       preserveCatRef.current = d.materialCategory || null;
@@ -1381,9 +1388,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     return selected?.colors || [];
   };
 
+  // 产品类型 tab：与左侧栏点选同源——切产品即跳到对应 /quote 子页，
+  // 让 URL / 左侧栏高亮 / 内容选中产品三者始终一致（不再各自为政导致错位）
   const handleProductTypeChange = (pt: string) => {
-    setProductType(pt);
-    if (pt === '板材') setMaterialGrade('5052');
+    const slug = PRODUCT_TYPE_SLUG[pt] || 'extrusion';
+    router.push(`/quote/${slug}`);
   };
   const handleMaterialCategoryChange = (mc: string) => {
     setMaterialCategory(mc);

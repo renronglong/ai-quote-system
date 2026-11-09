@@ -396,7 +396,10 @@ export default function QuotePartsPage() {
     const partToStore = { ...part, material_grade: material };
     sessionStorage.setItem('ai_quote_selected_idx', String(idx));
     sessionStorage.setItem('ai_quote_selected_part', JSON.stringify(partToStore));
-    router.push('/quote?from=parts');
+    // 按零件类型跳到对应的产品子页（/quote/sheet 等），让左侧栏高亮与内容选中产品一致
+    const zh = resolveApiType(part).zh;
+    const slug = ({ '板材': 'sheet', '挤出': 'extrusion', '压铸': 'casting', '注塑': 'injection', '钢材': 'steel' } as Record<string, string>)[zh] || 'extrusion';
+    router.push(`/quote/${slug}?from=parts`);
   };
 
   // 业主 2026-11-02：材料弹窗取消，四项信息（加工方式/材料/表面处理/模具类型）改为行内专用下拉直接选。
