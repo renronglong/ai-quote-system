@@ -144,13 +144,20 @@ export default function QuoteSidebar({
               </p>
             </div>
           </div>
-          {user && (
+          {user ? (
             <button
               onClick={() => signOut()}
               className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-colors"
             >
               <LogOut className="w-4 h-4" />退出
             </button>
+          ) : (
+            <Link
+              href="/login"
+              className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 transition-colors"
+            >
+              登录
+            </Link>
           )}
         </div>
       </aside>
@@ -158,6 +165,15 @@ export default function QuoteSidebar({
       {/* 移动端：顶部横向滚动条 */}
       <nav className="lg:hidden flex items-center gap-1.5 overflow-x-auto border-b border-gray-200 bg-white px-3 py-2 shrink-0">
         {NAV.map(i => renderItem(i, true))}
+        {user ? (
+          <button onClick={() => signOut()} className="shrink-0 whitespace-nowrap flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-gray-600 border border-gray-200">
+            <LogOut className="w-4 h-4" />退出
+          </button>
+        ) : (
+          <Link href="/login" className="shrink-0 whitespace-nowrap flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-white bg-blue-600">
+            登录
+          </Link>
+        )}
       </nav>
     </>
   );

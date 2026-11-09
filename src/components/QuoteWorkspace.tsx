@@ -6,9 +6,7 @@ import Link from 'next/link';
 import QuoteForm, { PricingResult, normalizeSheetCategory } from '@/components/QuoteForm';
 import {
   Sparkles,
-  TrendingUp,
   Loader2,
-  Factory,
   ChevronDown,
   ChevronUp,
   AlertTriangle,
@@ -16,11 +14,8 @@ import {
   History,
   CheckCircle2,
   Percent,
-  Store,
   FileText,
   User,
-  LogOut,
-  Settings,
   MessageCircle,
   X,
   ArrowLeft,
@@ -28,7 +23,6 @@ import {
 } from 'lucide-react';
 import { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
 import QuoteSheetDialog from '@/components/QuoteSheetDialog';
-import TopNavLinks from '@/components/TopNav';
 import ChatPanel from '@/components/ChatPanel';
 import QuoteSidebar from '@/components/QuoteSidebar';
 
@@ -64,7 +58,7 @@ function isInternalUser(user: any): boolean {
 }
 
 export default function QuoteWorkspace({ defaultProductType }: { defaultProductType?: string }) {
-  const { user, loading: authLoading, signOut } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
   const [aluminumPrice, setAluminumPrice] = useState<AluminumPrice | null>(null);
   const [aiFormData, setAiFormData] = useState<AiFormUpdate | null>(null);
@@ -488,62 +482,7 @@ export default function QuoteWorkspace({ defaultProductType }: { defaultProductT
 
   return (
     <div className={`${narrow ? 'min-h-screen' : 'h-screen'} bg-gray-50 flex flex-col overflow-x-hidden`}>
-      {/* 顶部栏 */}
-      <header className="shrink-0 bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-[1600px] mx-auto px-4 lg:px-6">
-          <div className="flex flex-wrap items-center gap-3 py-2">
-            <Link href="/" className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-                <Factory className="w-4 h-4 text-white" />
-              </div>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-base font-bold text-gray-800"><span className="text-blue-600">碧利制造</span> <span className="text-slate-600">·</span> AI报价系统</span>
-                <span className="hidden sm:inline text-xs text-slate-600">gyparts.cn <span className="text-[11px] text-blue-400">v2.1.3</span></span>
-              </div>
-            </Link>
-
-            {/* 全站统一导航（min-w-0 flex-1 让它在窄屏能换行，避免「联系我们」被裁掉） */}
-            <div className="flex min-w-0 w-full sm:w-auto sm:flex-1 items-center gap-1 flex-wrap">
-              <TopNavLinks />
-            </div>
-
-            <div className="flex items-center gap-2 ml-auto flex-wrap">
-              {/* 「已保存」抽屉入口已合并到「我的报价」页（/history），此处不再重复挂载 */}
-              <button onClick={() => router.push('/supplier')} className="hidden sm:flex items-center gap-1 px-2 py-1 text-sm rounded-md bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 transition-colors">
-                <Store className="w-3.5 h-3.5" />
-                供应商
-              </button>
-              {aluminumPrice && (
-                <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-50 border border-gray-200">
-                  <TrendingUp className="w-3 h-3 text-orange-500" />
-                  <span className="text-xs text-slate-600">铝锭</span>
-                  <span className="text-sm font-bold text-gray-800">¥{aluminumPrice.price.toLocaleString()}</span>
-                  <span className={`text-xs font-medium ${aluminumPrice.change >= 0 ? 'text-red-500' : 'text-green-500'}`}>
-                    {aluminumPrice.change >= 0 ? '↑' : '↓'}{Math.abs(aluminumPrice.changePercent).toFixed(2)}%
-                  </span>
-                </div>
-              )}
-              {authLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin text-slate-600" />
-              ) : user ? (
-                <div className="flex items-center gap-2">
-                  <button onClick={() => router.push('/profile')} className="hidden sm:flex items-center gap-1 px-2 py-1 text-sm rounded-md bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors" title="公司资料">
-                    <Settings className="w-3.5 h-3.5" />
-                    <span className="max-w-[100px] truncate">{user.company_name || '公司资料'}</span>
-                  </button>
-                  <button onClick={() => signOut()} className="flex items-center gap-1 px-2 py-1 text-sm rounded-md border border-gray-200 text-slate-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-colors">
-                    <LogOut className="w-3 h-3" />退出
-                  </button>
-                </div>
-              ) : (
-                <button onClick={() => router.push('/login?redirect=/quote')} className="px-2.5 py-1 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors">
-                  登录
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
+      {/* 顶部栏已移除：品牌/导航/铝价/账户统一走左侧栏 QuoteSidebar */}
 
       {/* 左侧栏 + 内容区（桌面端左栏 + 内容；移动端顶部横向导航 + 内容） */}
       <div className="flex flex-1 min-h-0 flex-col lg:flex-row">
