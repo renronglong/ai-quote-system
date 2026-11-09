@@ -1,6 +1,5 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import { Sparkles, Plus, Loader2, CheckCircle2, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { calculateStampingMoldFee, calculateLaserCuttingFee, type StampingMoldResult, type LaserCuttingResult } from '@/lib/stamping-mold-calculator';
@@ -786,11 +785,6 @@ const PROCESS_SUB_PARAMS: Record<string, { name: string; type: string; label: st
 export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, onMoldInfoChange, onSaveVariant, onNewQuote, aiData, loadQuoteData, onDrawingData, defaultProductType }: QuoteFormProps) {
   // ===== 登录 + 识图额度 =====
   const { user } = useAuth();
-  const router = useRouter();
-  // 产品类型 key → /quote 子页 slug（点产品 tab / 切换时与左侧栏走同一条路由，保证高亮一致）
-  const PRODUCT_TYPE_SLUG: Record<string, string> = {
-    '挤出': 'extrusion', '板材': 'sheet', '压铸': 'casting', '注塑': 'injection', '钢材': 'steel',
-  };
 
   const [aiSynced, setAiSynced] = useState(false);
   const prevAiDataRef = useRef<AiFormUpdate | null | undefined>(null);
@@ -1388,12 +1382,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     return selected?.colors || [];
   };
 
-  // 产品类型 tab：与左侧栏点选同源——切产品即跳到对应 /quote 子页，
-  // 让 URL / 左侧栏高亮 / 内容选中产品三者始终一致（不再各自为政导致错位）
-  const handleProductTypeChange = (pt: string) => {
-    const slug = PRODUCT_TYPE_SLUG[pt] || 'extrusion';
-    router.push(`/quote/${slug}`);
-  };
   const handleMaterialCategoryChange = (mc: string) => {
     setMaterialCategory(mc);
     resetCategoryState(mc);
@@ -2925,35 +2913,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           </div>
         </div>
 
-        {/* ---- STEP 1 选材料与模具（Tab + 材料类别 + 牌号/型号 + 标准件 + 模具匹配） ---- */}
-        <StepCard n={1} title="选材料与模具" hint="先选类型，再填尺寸搜模具">
-        {/* ---- 产品类型 Tab栏 ---- */}
-        <div className="border-b border-gray-200">
-          {/* flex-wrap + shrink-0：手机端窄，若不换行会把「挤出铝型材」挤成竖排单字 */}
-          <div className="flex flex-wrap gap-0">
-            {Object.entries(PRODUCT_TYPES).map(([key, cfg]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => handleProductTypeChange(key)}
-                className={`relative shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
-                  productType === key
-                    ? 'text-blue-600'
-                    : 'text-slate-600 hover:text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                <span className="flex items-center gap-1.5">
-                  {/* 手机端窄，隐藏图标可少折一行 Tab */}
-                  <span className="hidden sm:inline text-base">{cfg.icon}</span>
-                  {cfg.label}
-                </span>
-                {productType === key && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-t-full" />
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* ---- STEP 1 选材料与模具（材料类别 + 牌号/型号 + 标准件 + 模具匹配） ---- */}
+        <StepCard n={1} title="选材料与模具" hint="左侧栏选产品模块后，再填尺寸搜模具">
 
         {/* ---- 材料类别 ---- */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
