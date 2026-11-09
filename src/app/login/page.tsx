@@ -27,6 +27,9 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // 邮箱验证码发码防重复：发送中禁用 + 60 秒倒计时（与注册页口径一致）
+  const [codeSending, setCodeSending] = useState(false);
+  const [codeCountdown, setCodeCountdown] = useState(0);
 
   // 页面加载时读取已保存的凭据
   useEffect(() => {
@@ -47,6 +50,13 @@ export default function LoginPage() {
       router.replace('/');
     }
   }, [user, loading, router]);
+
+  useEffect(() => {
+    if (codeCountdown > 0) {
+      const timer = setTimeout(() => setCodeCountdown(codeCountdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [codeCountdown]);
 
   // 邮箱为主，兼容老手机号账号
   const validateAccount = (v: string) => {
@@ -105,6 +115,7 @@ export default function LoginPage() {
 
   // 邮箱验证码（无密码）登录：发码
   const sendEmailCode = async () => {
+    if (codeSending || codeCountdown > 0) return;
     const acc = account.trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(acc)) {
       setError('请先输入正确的邮箱');
@@ -112,6 +123,7 @@ export default function LoginPage() {
     }
     setError(null);
     setInfo(null);
+    setCodeSending(true);
     try {
       const response = await fetch('/api/email/send-code', {
         method: 'POST',
@@ -124,8 +136,11 @@ export default function LoginPage() {
         return;
       }
       setInfo('验证码已发送，请查收邮箱（含垃圾邮件箱）');
+      setCodeCountdown(60);
     } catch {
       setError('网络错误，请重试');
+    } finally {
+      setCodeSending(false);
     }
   };
 
@@ -345,10 +360,10 @@ export default function LoginPage() {
                     <button
                       type="button"
                       onClick={sendEmailCode}
-                      disabled={submitting}
+                      disabled={submitting || codeSending || codeCountdown > 0}
                       className="px-3 py-2.5 text-sm rounded-lg border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 whitespace-nowrap disabled:opacity-60"
                     >
-                      发送验证码
+                      {codeSending ? '发送中...' : codeCountdown > 0 ? `${codeCountdown}s` : '发送验证码'}
                     </button>
                   </div>
                   <p className="mt-1.5 text-xs text-slate-400 leading-relaxed">
