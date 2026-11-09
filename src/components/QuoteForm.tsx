@@ -1378,8 +1378,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   };
 
   const handleProductTypeChange = (pt: string) => {
-    // 注塑尚未上线：不可选中，点击仅提示
-    if (pt === '注塑') return;
     setProductType(pt);
     if (pt === '板材') setMaterialGrade('5052');
   };
@@ -1858,12 +1856,19 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       const cL = num2(fields.length);
       const cW = num2(fields.width);
       const cH = num2(fields.height);
-      if (cL || cW || cH || num2(fields.volume)) {
+      const cVol = num2(fields.volume);
+      // 注塑走 productSize(长×宽×高) 输入，无独立 体积/长/宽/高 字段，需从解析尺寸推导体积
+      const pL = productType === '注塑' ? parsed?.l : undefined;
+      const pW = productType === '注塑' ? parsed?.w : undefined;
+      const pH = productType === '注塑' ? parsed?.h : undefined;
+      if (cL || cW || cH || cVol || (pL && pW)) {
+        // 注塑：体积优先用显式 体积 字段；否则由 productSize 解析尺寸计算（cm³ = mm³/1000）
+        const volume = cVol ?? (productType === '注塑' && pL && pW ? (pL * pW * (pH || 0)) / 1000 : undefined);
         return {
-          length_mm: cL || 0,
-          width_mm: cW || 0,
-          height_mm: cH || undefined,
-          volume_cm3: num2(fields.volume),
+          length_mm: cL || pL || 0,
+          width_mm: cW || pW || 0,
+          height_mm: cH || pH || undefined,
+          volume_cm3: volume,
           cnc_time_min: num2(fields.cncTime),
         };
       }
@@ -1986,12 +1991,12 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         payload.dimensions = dimensions;
       }
       // 铸造：体积与 CNC 加工时间直接上送（后端按 volume_cm3 计价；原逻辑只收到默认值 50cm³）
-      if (productType === '压铸') {
-        const cv = parseFloat(String(fields.volume ?? '')) || 0;
+      if (productType === '压铸' || productType === '注塑') {
+        const cv = parseFloat(String(fields.volume ?? '')) || (dimensions as any)?.volume_cm3 || 0;
         const ct = parseFloat(String(fields.cncTime ?? '')) || 0;
         if (cv > 0) payload.volume_cm3 = cv;
         if (ct > 0) payload.cnc_time_min = ct;
-        if (!payload.material.grade) payload.material.grade = materialGrade || 'ADC12';
+        if (productType === '压铸' && !payload.material.grade) payload.material.grade = materialGrade || 'ADC12';
       }
       if (weightKg !== undefined) payload.weight_per_piece_kg = weightKg;
       if (surfaceTreatmentPayload) payload.surface_treatment = surfaceTreatmentPayload;
@@ -2915,11 +2920,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 key={key}
                 type="button"
                 onClick={() => handleProductTypeChange(key)}
-                title={key === '注塑' ? '注塑报价即将上线，敬请期待' : undefined}
                 className={`relative shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
-                  key === '注塑'
-                    ? 'text-slate-300 cursor-not-allowed'
-                    : productType === key
+                  productType === key
                     ? 'text-blue-600'
                     : 'text-slate-600 hover:text-gray-700 hover:bg-gray-50'
                 }`}
@@ -2928,9 +2930,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   {/* 手机端窄，隐藏图标可少折一行 Tab */}
                   <span className="hidden sm:inline text-base">{cfg.icon}</span>
                   {cfg.label}
-                  {key === '注塑' && (
-                    <span className="ml-0.5 px-1 py-0.5 rounded bg-amber-100 text-amber-600 text-[11px] font-normal leading-none">即将上线</span>
-                  )}
                 </span>
                 {productType === key && (
                   <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-t-full" />
