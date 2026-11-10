@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth, getAdminToken } from '@/lib/auth-context';
-import { Users, Search, Coins, Loader2, Gift, Building2, Phone as PhoneIcon } from 'lucide-react';
+import { Users, Search, Coins, Loader2, Gift, Building2, Phone as PhoneIcon, Trash2, AlertTriangle } from 'lucide-react';
 import QuoteSidebarLayout from '@/components/QuoteSidebarLayout';
 
 interface AdminUser {
@@ -30,6 +30,8 @@ export default function AdminUsersPage() {
   const [grantRemark, setGrantRemark] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -95,6 +97,30 @@ export default function AdminUsersPage() {
       setError('网络错误');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // 删除用户（不可恢复）：调用后端 DELETE，成功后刷新列表
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setError('');
+    try {
+      const resp = await fetch(`/api/admin/users?id=${encodeURIComponent(deleteTarget.id)}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-token': getAdminToken() || '' },
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.success) {
+        setError(data.error || '删除失败');
+      } else {
+        setDeleteTarget(null);
+        setRefreshKey(k => k + 1);
+      }
+    } catch {
+      setError('网络错误');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -181,12 +207,21 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-3 text-right text-gray-500">{Number(u.total_consumed).toFixed(0)}</td>
                   <td className="px-4 py-3 text-gray-400 text-xs">{new Date(u.created_at).toLocaleDateString('zh-CN')}</td>
                   <td className="px-4 py-3 text-center">
-                    <button
-                      onClick={() => { setGrantOpen(u); setGrantAmount('100'); setGrantRemark(''); setError(''); }}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
-                    >
-                      <Gift className="w-3.5 h-3.5" /> 赠积分
-                    </button>
+                    <div className="inline-flex items-center gap-1.5">
+                      <button
+                        onClick={() => { setGrantOpen(u); setGrantAmount('100'); setGrantRemark(''); setError(''); }}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
+                      >
+                        <Gift className="w-3.5 h-3.5" /> 赠积分
+                      </button>
+                      <button
+                        onClick={() => { setDeleteTarget(u); setError(''); }}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
+                        title="删除该用户（不可恢复）"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> 删除
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -244,6 +279,43 @@ export default function AdminUsersPage() {
                 className="flex-1 px-4 py-2 bg-amber-600 text-white text-sm rounded-lg hover:bg-amber-700 disabled:opacity-50"
               >
                 {submitting ? '处理中…' : '赠送'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 删除用户二次确认（不可恢复） */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !deleting && setDeleteTarget(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-4">
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+              <h2 className="text-base font-bold text-gray-900">确认删除用户</h2>
+            </div>
+            <div className="mb-4 text-sm text-gray-600 space-y-1">
+              <p className="flex items-center gap-2"><PhoneIcon className="w-4 h-4 text-gray-400" />{deleteTarget.phone}</p>
+              {deleteTarget.email && <p className="text-xs text-gray-500 pl-6">{deleteTarget.email}</p>}
+              {deleteTarget.company_name && <p className="flex items-center gap-2"><Building2 className="w-4 h-4 text-gray-400" />{deleteTarget.company_name}</p>}
+            </div>
+            <div className="mb-5 rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 text-sm text-red-700 leading-relaxed">
+              删除后<b>不可恢复</b>：该用户账号及其报价、客户、积分、识图记录等关联数据将一并删除。
+              管理员账号和当前登录账号不允许删除。
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-600 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? '删除中…' : '确认删除'}
               </button>
             </div>
           </div>
