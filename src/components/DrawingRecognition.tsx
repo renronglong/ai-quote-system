@@ -1326,11 +1326,16 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
                 : 'border-gray-200 bg-gray-50 hover:border-blue-300 hover:bg-blue-50/50'
           }`}
         >
+          {/* 手机/微信：不输出 accept、不输出 multiple。
+              安卓微信 X5 会把「带 multiple 或带扩展名 accept」的 input 判定为图片多选
+              （系统「安全访问」只列图片、显示预览 0/100），STP/DXF/PDF 就选不了。
+              key 随 isMobileUa 变化强制重建 DOM 节点，让 WebView 原生层重新读取属性。
+              文件合法性仍由 isValidFile 按白名单校验，不会放行乱传的文件。 */}
           <input
+            key={isMobileUa ? 'drawing-file-mobile' : `drawing-file-${fileAccept}`}
             ref={fileInputRef}
             type="file"
-            accept={fileAccept}
-            multiple={isContinuous}
+            {...(isMobileUa ? {} : { accept: fileAccept, multiple: isContinuous })}
             onChange={handleFileSelect}
             className="sr-only"
           />
@@ -1381,7 +1386,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
               )}
               <p className="text-xs text-slate-500 mt-1.5">
                 {isMobileUa
-                  ? '微信里点上传后，可选择「聊天记录」里好友发来的文件'
+                  ? '微信里若只能选图片：把图纸导出成 JPG/PNG 再传，或用电脑上传 STP/DXF/PDF'
                   : '也可 Ctrl+V 直接粘贴图片'}
               </p>
             </div>

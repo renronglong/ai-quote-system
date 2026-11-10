@@ -97,8 +97,8 @@ export default function QuoteRecognizePage() {
                 <div className="text-sm font-semibold text-slate-700">手机微信上传图纸</div>
                 <ol className="mt-1 space-y-0.5 text-xs leading-relaxed text-slate-500 list-decimal list-inside">
                   <li>微信「扫一扫」二维码，在微信里打开本页</li>
-                  <li>点上方「上传图纸」→ 选「从聊天记录中选择文件」</li>
-                  <li>好友发来的 STP / DXF / PDF 可直接选，识别结果同账号同步</li>
+                  <li>点页面中间「图纸上传」虚线框，在文件选择器里选图纸</li>
+                  <li>微信若只显示图片：把图纸导出成 JPG/PNG，或改用电脑上传 STP/DXF/PDF</li>
                 </ol>
                 <div className="mt-2 flex items-center gap-2">
                   <button
