@@ -4,10 +4,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth, getAdminToken } from '@/lib/auth-context';
 import { Users, Search, Coins, Loader2, Gift, Building2, Phone as PhoneIcon } from 'lucide-react';
+import QuoteSidebarLayout from '@/components/QuoteSidebarLayout';
 
 interface AdminUser {
   id: string;
   phone: string;
+  email: string;
   company_name: string;
   address: string;
   created_at: string;
@@ -106,7 +108,9 @@ export default function AdminUsersPage() {
   const totalBalance = users.reduce((s, u) => s + Number(u.balance || 0), 0);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
+    <div className="h-screen flex flex-col overflow-hidden bg-slate-50">
+      <QuoteSidebarLayout>
+      <div className="max-w-6xl mx-auto px-4 py-8 w-full">
       <div className="flex items-center gap-3 mb-6">
         <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
           <Users className="w-5 h-5 text-blue-600" />
@@ -151,7 +155,7 @@ export default function AdminUsersPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
               <tr>
-                <th className="px-4 py-3 text-left">手机号</th>
+                <th className="px-4 py-3 text-left">手机 / 邮箱</th>
                 <th className="px-4 py-3 text-left">公司名</th>
                 <th className="px-4 py-3 text-right">积分余额</th>
                 <th className="px-4 py-3 text-right">累计赠送</th>
@@ -163,7 +167,10 @@ export default function AdminUsersPage() {
             <tbody className="divide-y divide-gray-100">
               {users.map(u => (
                 <tr key={u.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-mono text-gray-900">{u.phone}</td>
+                  <td className="px-4 py-3">
+                    <div className="font-mono text-gray-900">{u.phone || <span className="text-gray-300">—</span>}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">{u.email || <span className="text-gray-300">未填邮箱</span>}</div>
+                  </td>
                   <td className="px-4 py-3 text-gray-600">{u.company_name || <span className="text-gray-300">—</span>}</td>
                   <td className="px-4 py-3 text-right">
                     <span className={`font-semibold ${Number(u.balance) > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
@@ -198,6 +205,7 @@ export default function AdminUsersPage() {
             </div>
             <div className="mb-4 text-sm text-gray-600 space-y-1">
               <p className="flex items-center gap-2"><PhoneIcon className="w-4 h-4 text-gray-400" />{grantOpen.phone}</p>
+              {grantOpen.email && <p className="flex items-center gap-2 text-xs text-gray-500 pl-6">{grantOpen.email}</p>}
               {grantOpen.company_name && <p className="flex items-center gap-2"><Building2 className="w-4 h-4 text-gray-400" />{grantOpen.company_name}</p>}
               <p className="text-amber-600">当前余额：{Number(grantOpen.balance).toFixed(0)} 分</p>
             </div>
@@ -241,6 +249,8 @@ export default function AdminUsersPage() {
           </div>
         </div>
       )}
+      </div>
+      </QuoteSidebarLayout>
     </div>
   );
 }

@@ -81,6 +81,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [credits, setCredits] = useState<number>(0);
   const [hasSidebar, setHasSidebar] = useState(false);
+  // 有左侧栏的页面用整屏高度 + 内容区内部滚动，左栏才不会跟着整页滚动（首帧按路径同步判定，避免闪烁）
+  const fullHeight = hideHeader || hasSidebar;
   const { user, signOut, isAdmin } = useAuth();
 
   // 拉取积分余额（仅登录用户）
@@ -94,7 +96,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarAccountContext.Provider value={{ setHasSidebar }}>
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className={`bg-gray-50 flex flex-col ${fullHeight ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
       {/* 顶部导航栏（部分页面按路由隐藏） */}
       {!hideHeader && (
       <header className="bg-white border-b sticky top-0 z-40 shadow-sm">
@@ -258,8 +260,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </header>
       )}
 
-      {/* 主内容区 */}
-      <main className="flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full">
+      {/* 主内容区：有左栏时整屏高度 + 内部滚动，左栏保持固定 */}
+      <main className={`flex-1 min-h-0 p-4 md:p-6 max-w-7xl mx-auto w-full ${fullHeight ? 'flex flex-col overflow-hidden' : ''}`}>
         {children}
       </main>
 

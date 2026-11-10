@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import {
-  Phone, Building2, MapPin, Factory, User, Shield, Calendar,
+  Phone, Building2, MapPin, User, Shield, Calendar,
   LogOut, ChevronRight, Loader2, Edit3, Check, X, Mail, UserCircle,
 } from 'lucide-react';
 
@@ -187,22 +187,6 @@ export default function ProfilePage() {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-slate-50">
-      {/* 顶部导航 */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-50" shrink-0>
-        <div className="max-w-4xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between h-14">
-            <Link href="/" className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center">
-                <Factory className="w-4 h-4 text-white" />
-              </div>
-              <span className="text-base font-bold text-slate-800">碧利制造</span>
-            </Link>
-            <Link href="/" className="text-sm text-slate-500 hover:text-slate-700 transition-colors">
-              返回首页
-            </Link>
-          </div>
-        </div>
-      </header>
       <QuoteSidebarLayout>
 
       {authLoading || !user ? (
