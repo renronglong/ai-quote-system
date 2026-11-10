@@ -739,15 +739,6 @@ export default function QuotePartsPage() {
   return (
     <div className="h-screen flex flex-col bg-slate-50">
       <TopNavLinks />
-      <div className="bg-white border-b border-slate-100 px-6 py-2">
-        <div className="max-w-4xl mx-auto flex items-center gap-1.5 text-xs text-slate-500">
-          <Link href="/" className="hover:text-slate-700">首页</Link>
-          <span className="text-slate-300">/</span>
-          <Link href="/quote" className="hover:text-slate-700">AI报价</Link>
-          <span className="text-slate-300">/</span>
-          <span className="text-slate-700 font-medium">零件列表</span>
-        </div>
-      </div>
       <main className="flex-1 min-h-0 overflow-y-auto">
         <div className="max-w-4xl mx-auto p-6">
           {/* 顶部导航：「识别结果」只是标签，降档；重新上传是高频主动作（每次传新图纸都走它）给实心蓝按钮；
