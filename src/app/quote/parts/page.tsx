@@ -6,7 +6,6 @@ import {
   ArrowLeft, FileText, Layers, CheckCircle2, Upload, Pencil,
   ChevronRight, ArrowRight, Package, Ruler, Box, Info, AlertCircle, Loader2, X, Zap
 } from 'lucide-react';
-import TopNavLinks from '@/components/TopNav';
 import { useAuth } from '@/lib/auth-context';
 import { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
 import { normalizeSheetCategory, PRODUCT_TYPES, CASTING_GRADES } from '@/components/QuoteForm';
@@ -738,7 +737,6 @@ export default function QuotePartsPage() {
 
   return (
     <div className="h-screen flex flex-col bg-slate-50">
-      <TopNavLinks />
       <main className="flex-1 min-h-0 overflow-y-auto">
         <div className="max-w-4xl mx-auto p-6">
           {/* 顶部导航：「识别结果」只是标签，降档；重新上传是高频主动作（每次传新图纸都走它）给实心蓝按钮；

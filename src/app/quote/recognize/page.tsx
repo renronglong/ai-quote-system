@@ -4,7 +4,6 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Share2 } from 'lucide-react';
 import DrawingRecognition from '@/components/DrawingRecognition';
-import TopNavLinks from '@/components/TopNav';
 import QuoteSidebarLayout from '@/components/QuoteSidebarLayout';
 import { useAuth } from '@/lib/auth-context';
 
@@ -68,7 +67,6 @@ export default function QuoteRecognizePage() {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-slate-50">
-      <TopNavLinks />
       <QuoteSidebarLayout>
       <main className="flex-1 min-h-0 overflow-y-auto p-6">
         <div className="w-full max-w-xl mx-auto">

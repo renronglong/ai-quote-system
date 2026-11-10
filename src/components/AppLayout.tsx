@@ -75,6 +75,8 @@ const navGroups: NavGroup[] = [
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const HIDE_HEADER_PATHS = ['/supplier/register', '/contact'];
+  const hideHeader = HIDE_HEADER_PATHS.includes(pathname);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [credits, setCredits] = useState<number>(0);
@@ -93,7 +95,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <SidebarAccountContext.Provider value={{ setHasSidebar }}>
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* 顶部导航栏 */}
+      {/* 顶部导航栏（部分页面按路由隐藏） */}
+      {!hideHeader && (
       <header className="bg-white border-b sticky top-0 z-40 shadow-sm">
         <div className="flex items-center justify-between px-4 h-16 max-w-7xl mx-auto w-full">
           {/* Logo */}
@@ -253,6 +256,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           )}
         </div>
       </header>
+      )}
 
       {/* 主内容区 */}
       <main className="flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full">
