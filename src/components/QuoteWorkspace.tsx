@@ -540,15 +540,16 @@ export default function QuoteWorkspace({ defaultProductType }: { defaultProductT
             : guideCollapsed
               ? 'minmax(420px, 1fr) 380px'
               : 'minmax(420px, 1fr) 380px 300px',
-          gap: '16px',
-          padding: '16px',
+          gap: narrow ? '10px' : '16px',
+          padding: narrow ? '8px' : '16px',
           minWidth: 0,
         }}
       >
-        {/* 第二栏：参数设置 */}
-        <div ref={sectionParamRef} className="overflow-y-auto overflow-x-hidden min-w-0 bg-gray-50 rounded-xl border border-gray-200">
-          <div className="p-4 space-y-4">
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
+        {/* 第二栏：参数设置
+            手机端去掉灰底/白底两层套娃盒子与 p-4，让表单吃满屏宽（桌面端保持原样） */}
+        <div ref={sectionParamRef} className={`overflow-y-auto overflow-x-hidden min-w-0 ${narrow ? '' : 'bg-gray-50 rounded-xl border border-gray-200'}`}>
+          <div className={narrow ? 'space-y-2' : 'p-4 space-y-4'}>
+            <div className={narrow ? '' : 'bg-white rounded-xl border border-gray-200 p-4'}>
               <QuoteForm
                 key={`qf-${formNonce}-${defaultProductType ?? 'default'}`}
                 defaultProductType={defaultProductType}
@@ -765,7 +766,7 @@ export default function QuoteWorkspace({ defaultProductType }: { defaultProductT
         )}
 
         {/* 折叠时的展开按钮 - 固定在右栏位置 */}
-        {guideCollapsed && (
+        {guideCollapsed && !narrow && (
           <div className="fixed right-0 top-1/2 -translate-y-1/2 z-10">
             <button
               onClick={() => setGuideCollapsed(false)}

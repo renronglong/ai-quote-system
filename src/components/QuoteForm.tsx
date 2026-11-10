@@ -2861,7 +2861,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   return (
     <div className="h-full">
       {/* ===== CENTER COLUMN: 参数设置 ===== */}
-      <div style={{ overflow: 'auto', padding: '16px 20px', background: '#fff', borderRadius: 12, border: '1px solid #e8ecf1' }}>
+      <div className="overflow-auto bg-white rounded-xl border border-[#e8ecf1] p-2 sm:p-4 sm:px-5">
         <div style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e', marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ width: 28, height: 28, borderRadius: 8, background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>⚙️</span>
@@ -2889,7 +2889,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 
         {/* ---- 产品名称 & 编号 ---- */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
               <label className="block text-sm text-slate-600 mb-1">产品名称</label>
               <input
@@ -3191,7 +3191,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
               <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wide">
                 输入尺寸 · 填完点按钮匹配模具
               </label>
-              <div className={`grid ${dimFields.length >= 3 ? 'grid-cols-3' : dimFields.length === 2 ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
+              <div className={`grid ${dimFields.length >= 3 ? 'grid-cols-2 sm:grid-cols-3' : dimFields.length === 2 ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
                 {dimFields.map(df => {
                   const fieldMap: Record<string, string> = { diameter: 'width', hex: 'width', outer: 'width', inner: 'height' };
                   const stateKey = fieldMap[df.key] || df.key;
@@ -4046,10 +4046,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
 function StepCard({ n, title, hint, children }: { n: number; title: string; hint?: string; children: any }) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-      <div className="flex items-center gap-2 mb-2.5">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-2.5">
         <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center shrink-0">{n}</span>
         <span className="text-sm font-semibold text-slate-700">{title}</span>
-        {hint && <span className="text-xs text-slate-400 ml-auto">{hint}</span>}
+        {hint && <span className="text-xs text-slate-400 w-full sm:w-auto sm:ml-auto">{hint}</span>}
       </div>
       {children}
     </div>
