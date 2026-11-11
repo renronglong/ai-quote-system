@@ -1,5 +1,6 @@
 "use client";
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import Link from 'next/link';
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
 } from '@/components/ui/sheet';
@@ -8,7 +9,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Download, Trash2, FileText, History, CheckCircle2, FileSpreadsheet, Percent, Pencil, Upload, AlertCircle, Loader2, Lock } from 'lucide-react';
+import { Download, Trash2, FileText, History, CheckCircle2, FileSpreadsheet, Percent, Pencil, Upload, AlertCircle, Loader2, Lock, Save, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 
@@ -42,7 +43,8 @@ function getHeaders(): Record<string, string> {
 
 export async function loadSavedQuotes(userId: string): Promise<SavedQuote[]> {
   try {
-    const res = await fetch(`/api/saved-quotes?user_id=${encodeURIComponent(userId)}`, { headers: getHeaders() });
+    // no-store：删除/保存后必须拿到最新列表，避免浏览器缓存造成「删了还在」的错觉
+    const res = await fetch(`/api/saved-quotes?user_id=${encodeURIComponent(userId)}`, { headers: getHeaders(), cache: 'no-store' });
     const json = await res.json();
     if (json.success) return json.data || [];
     return [];
@@ -84,17 +86,47 @@ export async function saveQuoteToAPI(
   }
 }
 
-export async function deleteSavedQuoteAPI(userId: string, id: string): Promise<boolean> {
+// 删除结果带明细分：旧版只看 json.success，而服务端「删 0 行」也返回 success，
+// 导致「删除选中」点了没反应也看不到任何报错（业主 2026-11-11 反馈）。
+export type DeleteResult = { ok: boolean; deleted: number; ids: string[]; error?: string };
+
+async function callDelete(userId: string, ids: string[]): Promise<DeleteResult> {
   try {
-    const res = await fetch(`/api/saved-quotes?id=${id}&user_id=${encodeURIComponent(userId)}`, {
+    const qs = ids.length === 1 ? `id=${encodeURIComponent(ids[0])}` : `ids=${encodeURIComponent(ids.join(','))}`;
+    const res = await fetch(`/api/saved-quotes?${qs}&user_id=${encodeURIComponent(userId)}`, {
       method: 'DELETE',
       headers: getHeaders(),
+      cache: 'no-store',
     });
-    const json = await res.json();
-    return json.success;
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.success) {
+      return { ok: false, deleted: 0, ids: [], error: json.error || `删除失败（HTTP ${res.status}）` };
+    }
+    return { ok: true, deleted: Number(json.deleted || 0), ids: json.ids || ids, error: undefined };
   } catch {
-    return false;
+    return { ok: false, deleted: 0, ids: [], error: '网络错误，删除失败' };
   }
+}
+
+export async function deleteSavedQuoteAPI(userId: string, id: string): Promise<boolean> {
+  return (await callDelete(userId, [id])).ok;
+}
+
+export async function deleteSavedQuotesBatchAPI(userId: string, ids: string[]): Promise<DeleteResult> {
+  return callDelete(userId, ids);
+}
+
+// 报价单编号：与报价工作台 QuoteSheetDialog 共用同一天序列，避免同一天多张单相互覆盖
+function nextQuoteNo(): string {
+  const today = new Date();
+  const d = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+  let seq = 1;
+  try {
+    const saved = JSON.parse(localStorage.getItem('gyparts_quote_seq') || '{}');
+    if (saved.date === d) seq = (saved.seq || 0) + 1;
+  } catch { /* ignore */ }
+  localStorage.setItem('gyparts_quote_seq', JSON.stringify({ date: d, seq }));
+  return `GY${d}${String(seq).padStart(3, '0')}`;
 }
 
 // ==================== Export config ====================
@@ -140,6 +172,30 @@ interface SheetBody {
 }
 
 // ==================== Component ====================
+// 「显示完整内容」：把保存报价里的 params / result 原样铺开，不做截断
+function renderFullValue(v: any): string {
+  if (v == null) return '';
+  if (typeof v === 'object') {
+    try { return JSON.stringify(v); } catch { return String(v); }
+  }
+  return String(v);
+}
+
+function FullContentGrid({ data }: { data: Record<string, any> }) {
+  const entries = Object.entries(data || {}).filter(([, v]) => v !== null && v !== undefined && v !== '');
+  if (entries.length === 0) return <div className="text-xs text-gray-400">（无）</div>;
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+      {entries.map(([k, v]) => (
+        <div key={k} className="flex gap-0.5 text-[11px] leading-relaxed min-w-0">
+          <span className="shrink-0 text-gray-500">{k}</span>
+          <span className="text-gray-800 break-all">：{renderFullValue(v)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 interface SavedQuotesPanelProps {
   userId: string;
   user?: any;
@@ -167,6 +223,15 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
   const [exportSuccess, setExportSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null); // 待确认删除的报价 id
+  // 批量删除：二次确认 + 真实结果反馈（业主反馈「删除选中功能无效」）
+  const [deleteSelectedOpen, setDeleteSelectedOpen] = useState(false);
+  const [deletingSelected, setDeletingSelected] = useState(false);
+  const [actionError, setActionError] = useState('');
+  // 「显示完整内容」：每条报价可展开看全部参数与费用明细
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  // 导出弹窗「保存报价单」：存到子页面 /history/sheets
+  const [saving, setSaving] = useState(false);
+  const [savedQuoteNo, setSavedQuoteNo] = useState<string | null>(null);
   // ===== 批量导入客户（业主 2026-10-22：模板 /customer_import_template.xlsx）=====
   const [importOpen, setImportOpen] = useState(false);
   const [importRows, setImportRows] = useState<any[]>([]);
@@ -229,17 +294,48 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
   };
 
   const handleDelete = async (id: string) => {
-    await deleteSavedQuoteAPI(userId, id);
+    const r = await deleteSavedQuoteAPI(userId, id);
+    if (!r) {
+      setActionError('删除失败：记录不存在或无权删除，请刷新后重试');
+      return;
+    }
+    setActionError('');
+    setQuotes(prev => prev.filter(q => q.id !== id)); // 先本地移除，避免等接口返回期间仍显示
     setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+    setDeleteTarget(null);
     reload();
   };
 
+  // 「删除选中」：一次请求批量删 + 二次确认 + 真实结果反馈，不再静默失败
   const handleDeleteSelected = async () => {
-    for (const id of selectedIds) {
-      await deleteSavedQuoteAPI(userId, id);
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setDeletingSelected(true);
+    setActionError('');
+    const r = await deleteSavedQuotesBatchAPI(userId, ids);
+    setDeletingSelected(false);
+    setDeleteSelectedOpen(false);
+    if (!r.ok || r.deleted === 0) {
+      setActionError(r.error || '删除失败，请刷新后重试');
+      reload();
+      return;
     }
-    setSelectedIds(new Set());
+    const done = new Set(r.ids.length ? r.ids : ids);
+    setQuotes(prev => prev.filter(q => !done.has(q.id)));
+    setSelectedIds(prev => {
+      const n = new Set(prev);
+      done.forEach(id => n.delete(id));
+      return n;
+    });
     reload();
+  };
+
+  const toggleExpanded = (id: string) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   };
 
   const toggleExportSection = (key: ExportSectionKey) => {
@@ -318,27 +414,56 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
     });
   };
 
+  // 弹窗「显示完整内容」：与导出/保存用的是同一份 12 列数据，所见即所得
+  const previewItems = mapToSheetItems(quotes.filter(q => selectedIds.has(q.id)));
+
+  const buildSheetBody = (quoteNo: string): SheetBody => ({
+    supplier_company: supplierInfo.company_name || '',
+    supplier_contact: supplierInfo.contact_name || '',
+    supplier_phone: supplierInfo.contact_phone || '',
+    supplier_address: supplierInfo.address || '',
+    customer_name: customerInfo.name || undefined,
+    customer_contact: customerInfo.contact || undefined,
+    customer_phone: customerInfo.phone || undefined,
+    customer_address: customerInfo.address || undefined,
+    quote_no: quoteNo,
+    user_id: userId || undefined,
+    global_remark: globalRemark,
+    items: previewItems,
+  });
+
+  // 导出弹窗「保存」：只落库存档、不下载；记录出现在子页面 /history/sheets，
+  // 该页按导出报价单的 12 列格式完整展示。
+  const handleSaveSheet = async () => {
+    if (previewItems.length === 0) { setActionError('请先勾选至少一条报价'); return; }
+    setSaving(true);
+    setActionError('');
+    setSavedQuoteNo(null);
+    try {
+      const quoteNo = nextQuoteNo();
+      const resp = await fetch('/api/quote-sheets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, quote_no: quoteNo, body: buildSheetBody(quoteNo) }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.success) throw new Error(data.error || '保存失败');
+      setSavedQuoteNo(quoteNo);
+    } catch (err: any) {
+      setActionError(err?.message || '保存失败，请重试');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleExport = async () => {
-    const selectedQuotes = quotes.filter(q => selectedIds.has(q.id));
-    if (selectedQuotes.length === 0) return;
+    if (previewItems.length === 0) return;
 
     setExporting(true);
+    setActionError('');
     try {
-      const items = mapToSheetItems(selectedQuotes);
-      const body: SheetBody = {
-        supplier_company: supplierInfo.company_name || '',
-        supplier_contact: supplierInfo.contact_name || '',
-        supplier_phone: supplierInfo.contact_phone || '',
-        supplier_address: supplierInfo.address || '',
-        customer_name: customerInfo.name || undefined,
-        customer_contact: customerInfo.contact || undefined,
-        customer_phone: customerInfo.phone || undefined,
-        customer_address: customerInfo.address || undefined,
-        quote_no: `GY${new Date().toISOString().slice(0,10).replace(/-/g,'')}001`,
-        user_id: userId || undefined,
-        global_remark: globalRemark,
-        items,
-      };
+      const items = previewItems;
+      const body = buildSheetBody(nextQuoteNo());
 
       const res = await fetch('/api/quote-sheet', {
         method: 'POST',
@@ -385,6 +510,9 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
     setExportFormat('excel');
     setExportSuccess(false);
     setCustomerInfo({ name: '', contact: '', phone: '', address: '' });
+    setGlobalRemark('');
+    setActionError('');
+    setSavedQuoteNo(null);
     // 载入本机客户档案（批量导入/历史导出保存的客户），供客户名称下拉选择
     try { setLocalCustomers(JSON.parse(localStorage.getItem('gyparts_customer_profiles') || '[]')); } catch { setLocalCustomers([]); }
     setExportDialogOpen(true);
@@ -545,6 +673,13 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
   const listBody = (
     <>
       <div className={isInline ? 'space-y-2 mt-4' : 'flex-1 overflow-y-auto pr-2 space-y-2 mt-4'}>
+          {actionError && (
+            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span className="flex-1">{actionError}</span>
+              <button onClick={() => setActionError('')} className="text-red-400 hover:text-red-600" aria-label="关闭提示">✕</button>
+            </div>
+          )}
           {loading && (
             <div className="text-center py-4 text-sm text-gray-400">加载中...</div>
           )}
@@ -556,25 +691,26 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
           )}
 
           {quotes.length > 0 && (
-            <div className="flex items-center justify-between mb-2 gap-2">
+            <div className="flex flex-wrap items-center justify-between mb-2 gap-2">
               <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer py-2 -my-2 shrink-0">
                 <Checkbox
                   checked={quotes.length > 0 && selectedIds.size === quotes.length}
                   onCheckedChange={toggleSelectAll}
                 />
-                全选
+                全选{selectedIds.size > 0 ? `（已选 ${selectedIds.size}）` : ''}
               </label>
-              <div className="flex items-center gap-1.5 shrink-0">
+              <div className="flex flex-wrap items-center gap-1.5">
                 {selectedIds.size > 0 && (
-                  <Button variant="ghost" size="sm" onClick={handleDeleteSelected} className="text-red-500 hover:text-red-600 text-xs h-7">
-                    删除选中
+                  <Button variant="ghost" size="sm" onClick={() => setDeleteSelectedOpen(true)}
+                    className="text-red-500 hover:text-red-600 hover:bg-red-50 text-xs h-9 px-3">
+                    <Trash2 className="w-3.5 h-3.5" /> 删除选中（{selectedIds.size}）
                   </Button>
                 )}
                 {/* 导入客户（业主 2026-10-22） */}
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7 px-2.5 gap-1.5 text-xs"
+                  className="h-9 px-3 gap-1.5 text-xs"
                   onClick={() => { resetImport(); setImportOpen(true); }}
                 >
                   <Upload className="w-3.5 h-3.5" />
@@ -583,19 +719,44 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
                 {/* 导出按钮置顶（业主 2026-10-22：放底部要滚动才看得见） */}
                 <Button
                   size="sm"
-                  className="h-7 px-2.5 gap-1.5 text-xs"
+                  className="h-9 px-3 gap-1.5 text-xs"
                   disabled={selectedIds.size === 0}
                   onClick={openExportDialog}
                 >
                   <Download className="w-3.5 h-3.5" />
                   导出报价单{selectedIds.size > 0 ? `（${selectedIds.size}）` : ''}
                 </Button>
+                {isInline && (
+                  <Link href="/history/sheets"
+                    className="h-9 px-3 inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white text-xs text-blue-600 hover:bg-blue-50">
+                    <FileSpreadsheet className="w-3.5 h-3.5" />已保存报价单<ExternalLink className="w-3 h-3" />
+                  </Link>
+                )}
               </div>
             </div>
           )}
 
           {quotes.map(quote => {
             const { unitPrice, isDiscounted } = getDiscountedPrice(quote);
+            const p = quote.params || {};
+            const r = quote.result || {};
+            const dims = p.dimensions || {};
+            const specParts = [dims.width_mm ?? p.width, dims.height_mm ?? p.height, dims.length_mm ?? p.length]
+              .filter(v => v !== undefined && v !== null && v !== '').map(String);
+            const spec = p.moldCrossSection ? String(p.moldCrossSection).replace(/×/g, '*') : (specParts.join('*') || p.productSize || '-');
+            const material = p.materialGrade || dims.material_grade || p.materialCategory || p.material?.category || '-';
+            const st = p.surfaceTreatment && p.surfaceTreatment !== '无' ? String(p.surfaceTreatment) : '';
+            const co = p.surfaceColor && p.surfaceColor !== '无' ? String(p.surfaceColor) : '';
+            const surface = p.moldSurface ? String(p.moldSurface) : (st + co || '-');
+            const moldFee = r.mold_cost ?? r.breakdown?.mold?.amount;
+            const moq = r.min_order_qty || p.quantity || '-';
+            const expanded = expandedIds.has(quote.id);
+            const InfoCell = ({ label, value }: { label: string; value: any }) => (
+              <div className="min-w-0 text-[12px] leading-relaxed">
+                <span className="text-gray-400">{label}：</span>
+                <span className="text-gray-700 break-all">{value === '' || value == null ? '-' : String(value)}</span>
+              </div>
+            );
             return (
               <div
                 key={quote.id}
@@ -612,33 +773,52 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
                     className="mt-0.5"
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium text-gray-800 line-clamp-2 break-words">{quote.name}</span>
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-sm font-medium text-gray-800 break-words whitespace-normal">{quote.name}</span>
                       <div className="text-right shrink-0">
                         <span className="text-sm font-bold text-emerald-600">{unitPrice}</span>
                         {isDiscounted && (
                           <div className="text-[11px] text-gray-400 line-through">
-                            {fmt(quote.result?.unit_price)}
+                            {fmt(r.unit_price)}
                           </div>
                         )}
                       </div>
                     </div>
                     <div className="text-[12px] text-gray-400 mt-0.5">
                       {new Date(quote.date || quote.created_at || '').toLocaleString('zh-CN')}
+                      {' · '}{quote.product_type || '-'}
                     </div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[12px] text-gray-500">
-                        {quote.params?.quantity || 0}件 · {quote.params?.materialCategory || quote.params?.material?.category || '-'}
-                      </span>
-                      {(quote.product_discount || quote.mold_discount) && (
-                        <span className="text-[11px] text-orange-500 flex items-center gap-0.5">
-                          <Percent className="w-3 h-3" />
-                          {quote.product_discount && quote.product_discount < 100 && `产品${quote.product_discount}%折`}
-                          {quote.product_discount && quote.product_discount < 100 && quote.mold_discount && quote.mold_discount < 100 && ' '}
-                          {quote.mold_discount && quote.mold_discount < 100 && `模具${quote.mold_discount}%折`}
-                        </span>
-                      )}
+                    {/* 完整内容常显摘要：名称不再截断，关键字段全部铺开 */}
+                    <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-0.5">
+                      <InfoCell label="数量" value={p.quantity || '-'} />
+                      <InfoCell label="材质" value={material} />
+                      <InfoCell label="规格" value={spec} />
+                      <InfoCell label="表面处理" value={surface} />
+                      <InfoCell label="模具费" value={moldFee != null ? fmt(moldFee) : '-'} />
+                      <InfoCell label="起订量" value={moq} />
+                      <InfoCell label="含税单价" value={r.unit_price_inc_tax != null ? fmt(r.unit_price_inc_tax) : (r.unit_price != null ? fmt(Number(r.unit_price) * 1.13) : '-')} />
+                      <InfoCell label="合计" value={r.total_price != null ? fmt(r.total_price) : '-'} />
                     </div>
+                    {(quote.product_discount || quote.mold_discount) && (
+                      <div className="text-[11px] text-orange-500 flex items-center gap-0.5 mt-1">
+                        <Percent className="w-3 h-3" />
+                        {quote.product_discount && quote.product_discount < 100 && `产品${quote.product_discount}%折`}
+                        {quote.product_discount && quote.product_discount < 100 && quote.mold_discount && quote.mold_discount < 100 && ' '}
+                        {quote.mold_discount && quote.mold_discount < 100 && `模具${quote.mold_discount}%折`}
+                      </div>
+                    )}
+                    <button onClick={() => toggleExpanded(quote.id)}
+                      className="mt-1.5 inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800">
+                      {expanded ? <><ChevronUp className="w-3.5 h-3.5" />收起完整内容</> : <><ChevronDown className="w-3.5 h-3.5" />查看完整内容</>}
+                    </button>
+                    {expanded && (
+                      <div className="mt-2 rounded-lg border border-gray-200 bg-slate-50 p-3 space-y-2">
+                        <div className="text-xs font-semibold text-gray-700">产品参数（完整）</div>
+                        <FullContentGrid data={p} />
+                        <div className="text-xs font-semibold text-gray-700 pt-1 border-t border-gray-200">报价结果（完整）</div>
+                        <FullContentGrid data={r} />
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <button
@@ -808,11 +988,11 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
           </DialogContent>
         </Dialog>
 
-        {/* 批量导出弹窗（触发按钮已上移到列表顶部的全选行，此处仅保留 Dialog 本体） */}
+        {/* 批量导出 / 保存弹窗（业主 2026-11-11：加宽显示完整内容 + 增加保存） */}
         <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
-            <DialogContent className="sm:max-w-[420px]">
+            <DialogContent className="sm:max-w-[760px] max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>导出报价单</DialogTitle>
+                <DialogTitle>导出 / 保存报价单</DialogTitle>
               </DialogHeader>
               <div className="space-y-3 py-2">
                 <div className="text-xs text-gray-500 mb-1">
@@ -905,24 +1085,93 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
                     />
                   </div>
                 </div>
+
+                {/* 全局备注（导出报价单底部） */}
+                <div>
+                  <div className="text-xs font-medium text-gray-600 mb-1.5">全局备注（选填）</div>
+                  <textarea
+                    className="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500 min-h-[44px] resize-none"
+                    placeholder="备注信息（显示在报价单底部）"
+                    value={globalRemark}
+                    onChange={e => setGlobalRemark(e.target.value)}
+                  />
+                </div>
+
+                {/* 显示完整内容：与导出 Excel/PDF 同一套 12 列数据，所见即所得 */}
+                <div>
+                  <div className="text-xs font-medium text-gray-600 mb-1.5">
+                    报价单完整内容（{previewItems.length} 项 · 与导出报价单格式一致）
+                  </div>
+                  <div className="max-h-[240px] overflow-auto rounded-lg border border-gray-200">
+                    <table className="w-full text-[11px] border-collapse bg-white" style={{ minWidth: 900 }}>
+                      <thead className="bg-blue-50 sticky top-0">
+                        <tr>
+                          {['序号', '客户型号', '规格尺寸mm', '产品名称', '单位', '材质', '表面处理', '单价未税(元)', '含税价', '最小起订量', '模具费RMB(元)', '备注'].map(h => (
+                            <th key={h} className="border border-gray-200 px-1.5 py-1.5 font-medium text-gray-600 whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewItems.map((it, i) => (
+                          <tr key={i}>
+                            <td className="border border-gray-200 px-1.5 py-1 text-center">{i + 1}</td>
+                            <td className="border border-gray-200 px-1.5 py-1">{it.model || ''}</td>
+                            <td className="border border-gray-200 px-1.5 py-1">{it.spec || ''}</td>
+                            <td className="border border-gray-200 px-1.5 py-1">{it.name || ''}</td>
+                            <td className="border border-gray-200 px-1.5 py-1 text-center">{it.unit || 'pcs'}</td>
+                            <td className="border border-gray-200 px-1.5 py-1">{it.material || ''}</td>
+                            <td className="border border-gray-200 px-1.5 py-1">{it.surface || ''}</td>
+                            <td className="border border-gray-200 px-1.5 py-1 text-right">{it.price_ex_tax ?? ''}</td>
+                            <td className="border border-gray-200 px-1.5 py-1 text-right">{it.price_inc_tax ?? ''}</td>
+                            <td className="border border-gray-200 px-1.5 py-1 text-center">{it.moq ?? ''}</td>
+                            <td className="border border-gray-200 px-1.5 py-1 text-right">{it.mold_fee ?? ''}</td>
+                            <td className="border border-gray-200 px-1.5 py-1">{it.remark || ''}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {previewItems.length === 0 && (
+                      <div className="text-xs text-gray-400 py-4 text-center">请先勾选报价</div>
+                    )}
+                  </div>
+                </div>
+
+                {savedQuoteNo && (
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span className="flex-1">报价单 {savedQuoteNo} 已保存，格式与导出报价单一致。</span>
+                    <Link href="/history/sheets" className="inline-flex items-center gap-1 font-medium text-emerald-700 hover:underline">
+                      查看已保存报价单 <ExternalLink className="w-3 h-3" />
+                    </Link>
+                  </div>
+                )}
+                {actionError && (
+                  <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                    <span>{actionError}</span>
+                  </div>
+                )}
               </div>
-              <div className="flex justify-between mt-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setExportSections(new Set(EXPORT_SECTIONS.map(s => s.key)))}
-                >
-                  全选
-                </Button>
-                <Button className="gap-2" onClick={handleExport} disabled={exportSections.size === 0 || exporting}>
-                  {exporting ? (
-                    <>导出中...</>
-                  ) : exportSuccess ? (
-                    <><CheckCircle2 className="w-4 h-4" /> 已导出</>
-                  ) : (
-                    <><Download className="w-4 h-4" /> 导出 {exportFormat === 'excel' ? 'Excel' : 'PDF'}</>
-                  )}
-                </Button>
+              <div className="flex flex-wrap items-center justify-between gap-2 mt-2">
+                <Link href="/history/sheets"
+                  className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline">
+                  <FileSpreadsheet className="w-3.5 h-3.5" />已保存报价单<ExternalLink className="w-3 h-3" />
+                </Link>
+                <div className="flex gap-2">
+                  <Button variant="outline" className="gap-2" onClick={handleSaveSheet}
+                    disabled={saving || exporting || previewItems.length === 0}>
+                    {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> 保存中...</> : <><Save className="w-4 h-4" /> 保存报价单</>}
+                  </Button>
+                  <Button className="gap-2" onClick={handleExport} disabled={exporting || saving || previewItems.length === 0}>
+                    {exporting ? (
+                      <>导出中...</>
+                    ) : exportSuccess ? (
+                      <><CheckCircle2 className="w-4 h-4" /> 已导出</>
+                    ) : (
+                      <><Download className="w-4 h-4" /> 导出 {exportFormat === 'excel' ? 'Excel' : 'PDF'}</>
+                    )}
+                  </Button>
+                </div>
               </div>
             </DialogContent>
         </Dialog>
@@ -957,16 +1206,45 @@ export default function SavedQuotesPanel({ userId, user, trigger, onOpenChange, 
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* 批量删除确认（业主 2026-11-11：「删除选中功能无效」→ 改成一次批量删 + 明确反馈） */}
+        <Dialog open={deleteSelectedOpen} onOpenChange={(o) => { if (!deletingSelected) setDeleteSelectedOpen(o); }}>
+          <DialogContent className="sm:max-w-[380px]">
+            <DialogHeader>
+              <DialogTitle>确认删除选中的 {selectedIds.size} 条报价？</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-gray-600 py-2">
+              此操作不可恢复，删除后这些报价将从「我的报价」中永久移除。
+            </p>
+            <div className="flex justify-end gap-2 mt-2">
+              <button
+                onClick={() => setDeleteSelectedOpen(false)}
+                disabled={deletingSelected}
+                className="px-3 py-1.5 text-sm rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleDeleteSelected}
+                disabled={deletingSelected}
+                className="px-3 py-1.5 text-sm rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                {deletingSelected && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {deletingSelected ? '删除中...' : '全部删除'}
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
     </>
   );
 
-  // 独立页面模式：「我的报价」页面直接用这一支
+  // 独立页面模式：「我的报价」页面直接用这一支（页头已有大标题，这里只显示条数）
   if (isInline) {
     return (
       <div className="flex flex-col">
-        <div className="flex items-center gap-2 text-xl font-bold text-gray-900">
-          <History className="w-5 h-5 text-blue-600" />
-          我的报价（{quotes.length}）
+        <div className="flex items-center gap-2 text-sm text-gray-500">
+          <History className="w-4 h-4 text-blue-600" />
+          共 {quotes.length} 条已保存报价
         </div>
         {listBody}
       </div>

@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import {
   Sparkles, Layers, Square, Box, Component, Hammer,
   History, Building2, Store, TrendingUp, MessageCircle, Coins,
-  Package, LogOut, Users, UserCheck, ArrowLeft,
+  Package, LogOut, Users, UserCheck, ArrowLeft, FileSpreadsheet,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -28,6 +28,8 @@ const NAV: NavItem[] = [
   { key: 'injection', label: '注塑', href: '/quote/injection', icon: Component },
   { key: 'steel', label: '钢材', href: '/quote/steel', icon: Hammer },
   { key: 'history', label: '我的报价', href: '/history', icon: History, dividerBefore: true },
+  // 报价单存档：从「我的报价 → 导出报价单 → 保存报价单」写入，所有登录用户可见
+  { key: 'sheets', label: '已保存报价单', href: '/history/sheets', icon: FileSpreadsheet },
   // 客户管理对所有登录用户开放（业主 2026-11-11）：数据按 owner_phone 严格隔离，各自只看/管自己的
   { key: 'customers', label: '客户管理', href: '/admin/customers', icon: UserCheck },
   { key: 'profile', label: '公司资料', href: '/profile', icon: Building2 },
@@ -39,6 +41,8 @@ const NAV: NavItem[] = [
 function isActive(item: NavItem, pathname: string): boolean {
   // /quote 默认页（无子路径）时，挤出铝型材作为默认高亮
   if (item.href === '/quote/extrusion' && pathname === '/quote') return true;
+  // /history/sheets 是独立子页，别把「我的报价」也一起点亮
+  if (item.key === 'history') return pathname === '/history';
   return pathname === item.href || pathname.startsWith(item.href + '/');
 }
 

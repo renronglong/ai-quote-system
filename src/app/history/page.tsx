@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { Loader2 } from 'lucide-react';
+import { Loader2, FileSpreadsheet } from 'lucide-react';
 import SavedQuotesPanel, { type SavedQuote } from '@/components/SavedQuotesPanel';
 
 /**
@@ -41,12 +41,19 @@ export default function MyQuotesPage() {
     <div className="h-screen flex flex-col overflow-hidden bg-slate-50">
       <QuoteSidebarLayout>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-800">我的报价</h1>
-          <p className="text-slate-500 mt-1 text-sm">
-            查看、编辑已保存的报价，勾选多条可批量导出报价单
-          </p>
+      {/* 业主 2026-11-11：界面太窄 → 去掉 max-w-7xl 与多层套盒，内容区铺满左栏右侧 */}
+      <main className="w-full max-w-none px-3 sm:px-5 py-5">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-800">我的报价</h1>
+            <p className="text-slate-500 mt-0.5 text-xs sm:text-sm">
+              完整显示已保存报价，勾选多条可批量导出、保存或删除
+            </p>
+          </div>
+          <Link href="/history/sheets"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm rounded-lg border border-blue-200 bg-white text-blue-600 hover:bg-blue-50">
+            <FileSpreadsheet className="w-4 h-4" />已保存报价单
+          </Link>
         </div>
 
         {authLoading || !user ? (
@@ -54,14 +61,12 @@ export default function MyQuotesPage() {
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           </div>
         ) : (
-          <div className="rounded-xl border border-gray-200 bg-white p-5">
-            <SavedQuotesPanel
-              userId={user.id}
-              user={user}
-              variant="inline"
-              onEditQuote={handleEditQuote}
-            />
-          </div>
+          <SavedQuotesPanel
+            userId={user.id}
+            user={user}
+            variant="inline"
+            onEditQuote={handleEditQuote}
+          />
         )}
       </main>
         </QuoteSidebarLayout>
