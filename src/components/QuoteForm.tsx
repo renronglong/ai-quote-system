@@ -114,7 +114,6 @@ interface QuoteFormProps {
   onProductInfoChange?: (info: { productName: string; productCode: string }) => void;
   onMoldInfoChange?: (info: { useExistingMold: boolean | null; selectedMoldId: string | null }) => void;
   onSaveVariant?: () => Promise<boolean>;
-  onNewQuote?: () => void;
   aiData?: AiFormUpdate | Record<string, any> | null;
   loadQuoteData?: Record<string, any> | null;
   onDrawingData?: (data: Record<string, any>) => void;
@@ -782,7 +781,7 @@ const PROCESS_SUB_PARAMS: Record<string, { name: string; type: string; label: st
 
 // ==================== Component ====================
 
-export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, onMoldInfoChange, onSaveVariant, onNewQuote, aiData, loadQuoteData, onDrawingData, defaultProductType }: QuoteFormProps) {
+export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, onMoldInfoChange, onSaveVariant, aiData, loadQuoteData, onDrawingData, defaultProductType }: QuoteFormProps) {
   // ===== 登录 + 识图额度 =====
   const { user } = useAuth();
 
@@ -2861,23 +2860,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   return (
     <div className="h-full">
       {/* ===== CENTER COLUMN: 参数设置 ===== */}
+      {/* 业主 2026-11-11：删除「参数设置」标题字样与「清空」按钮（任务表 修改任务 1-5 同上） */}
       <div className="overflow-auto bg-white rounded-xl border border-[#e8ecf1] p-2 sm:p-4 sm:px-5">
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e', marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ width: 28, height: 28, borderRadius: 8, background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>⚙️</span>
-            参数设置
-          </div>
-          {onNewQuote && (
-            <button
-              type="button"
-              onClick={() => { clearQuoteDraft(); onNewQuote?.(); }}
-              className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 text-slate-600 text-sm font-medium hover:border-blue-300 hover:text-blue-600 transition-all"
-              title="清空表单"
-            >
-              清空
-            </button>
-          )}
-        </div>
 
         {/* AI synced indicator */}
         {aiSynced && (

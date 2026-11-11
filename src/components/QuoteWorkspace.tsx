@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useCreditsBalance } from '@/lib/use-credits-balance';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import QuoteForm, { PricingResult, normalizeSheetCategory } from '@/components/QuoteForm';
+import QuoteForm, { PricingResult, normalizeSheetCategory, clearQuoteDraft } from '@/components/QuoteForm';
 import {
   Sparkles,
   Loader2,
@@ -393,7 +393,6 @@ export default function QuoteWorkspace({ defaultProductType }: { defaultProductT
     if (!saved) { console.warn('[SaveQuote] 保存失败，无返回数据'); return; }
     if (saved) {
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 1500);
       // 如果来自零件列表，标记该零件已报价并返回列表
       if (fromPartsList && partsListPartIdx >= 0) {
         try {
@@ -405,6 +404,13 @@ export default function QuoteWorkspace({ defaultProductType }: { defaultProductT
             router.push('/quote/parts');
           }, 1200);
         } catch (e) { console.error(e); }
+      } else {
+        // 业主 2026-11-11：保存报价后自动清空（修改任务 1-5 同上），开始下一单
+        setTimeout(() => {
+          setSaveSuccess(false);
+          clearQuoteDraft();   // 先抹掉会话草稿，否则重挂载会把旧参数恢复回来
+          handleNewQuote();     // 重置状态 + 重挂载表单
+        }, 1500);
       }
     }
   };
@@ -551,7 +557,6 @@ export default function QuoteWorkspace({ defaultProductType }: { defaultProductT
                 onProductInfoChange={handleProductInfoChange}
                 onMoldInfoChange={handleMoldInfoChange}
                 onSaveVariant={handleSaveVariant}
-                onNewQuote={handleNewQuote}
                 onCalculate={handleParamsUpdate}
                 onDrawingData={handleDrawingData}
               />
