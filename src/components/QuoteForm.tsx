@@ -8,6 +8,7 @@ import { tryFrontendDieCasting } from '@/lib/pricing/dieCastingFrontend';
 import { adviseCastingMachine } from '@/lib/pricing/castingMachine';
 import { calcProjVolumeMm3 } from '@/lib/pricing/cncMachining';
 import { STEEL_STANDARD_SPECS } from '@/data/steelStandardSpecs';
+import { selectExtrusionDie, type DieSelectionResult } from '@/lib/die-selection';
 
 // ==================== 表单草稿（自动暂存 / 恢复） ====================
 // 目的：保存报价、组件重挂载、误刷新后，已经填好的参数不再凭空消失
@@ -839,6 +840,8 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   const [surfaceColor, setSurfaceColor] = useState('');
   const [materialSizeType, setMaterialSizeType] = useState<'long' | 'short'>('short');
   const [meterWeightManual, setMeterWeightManual] = useState(false);
+  // 选模归前端：前端用识别出的真实米重选定模具规格，随请求传给后端（后端据此跳过自动选型/米重升档）
+  const [selectedDie, setSelectedDie] = useState<DieSelectionResult | null>(null);
   const [quantityManual, setQuantityManual] = useState(false);
   const [perimeterManual, setPerimeterManual] = useState(false);
   const [areaManual, setAreaManual] = useState(false);
@@ -1161,6 +1164,30 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       }
     }
   }, [productType, materialCategory, fields.meterWeight, fields.crossSectionArea, meterWeightManual, areaManual]);
+
+  // 选模归前端：根据截面尺寸 + 真实米重，在前端选定模具规格（规则见 src/lib/die-selection.ts，与后端一致）
+  useEffect(() => {
+    if (productType !== '挤出') { setSelectedDie(null); return; }
+    const toNum = (v: unknown): number | undefined => {
+      const n = parseFloat(String(v));
+      return Number.isFinite(n) && n > 0 ? n : undefined;
+    };
+    const w = toNum(fields.width);
+    const h = toNum(fields.height);
+    if (!w && !h) { setSelectedDie(null); return; }
+    const sel = selectExtrusionDie({
+      width_mm: w,
+      height_mm: h,
+      standard_category: standardCategory || undefined,
+      perimeter_mm: toNum(fields.perimeter),
+      inner_perimeter_mm: toNum(fields.innerPerimeter),
+      num_cavities: parseInt(String(fields.num_cavities)) || 1,
+      die_type: (fields.die_type === 'flat' || fields.die_type === 'split') ? fields.die_type : undefined,
+      meter_weight_kg_per_m: toNum(fields.meterWeight),
+      cross_section_area_mm2: toNum(fields.crossSectionArea),
+    });
+    setSelectedDie(sel);
+  }, [productType, standardCategory, fields.width, fields.height, fields.perimeter, fields.innerPerimeter, fields.num_cavities, fields.die_type, fields.meterWeight, fields.crossSectionArea]);
 
   // 标准件：单件净重(g) = 米重(kg/m) × 长度(mm)，自动填入（规则截面棒/管按长度切割，净重≈消耗重量）
   useEffect(() => {
@@ -1834,6 +1861,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         cross_section_area_mm2: num(fields.crossSectionArea),
         net_weight_g: num(fields.netWeight),
         die_steel_price: dieSteelPrice ? parseFloat(dieSteelPrice) : undefined,
+        // 前端选定模具（选模归前端）：后端收到后跳过自动选型/米重升档
+        selected_die_diameter: selectedDie ? selectedDie.dieDiameter : undefined,
+        selected_die_thickness: selectedDie ? selectedDie.dieThickness : undefined,
       };
     }
     if (productType === '板材') {
@@ -3213,6 +3243,17 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   );
                 })}
               </div>
+
+              {/* 选模归前端：实时显示前端选定的模具规格（用真实米重，不靠后端兜底估算） */}
+              {productType === '挤出' && selectedDie && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-100 px-2.5 py-1.5 text-sm">
+                  <span className="font-semibold text-emerald-700">前端选定模具</span>
+                  <span className="font-mono font-semibold text-emerald-800">Φ{selectedDie.dieDiameter}×{selectedDie.dieThickness} {selectedDie.dieTypeKey === 'flat' ? '平模' : '分流模'}</span>
+                  {selectedDie.warnings.map((w, i) => (
+                    <span key={i} className="text-amber-600">⚠ {w}</span>
+                  ))}
+                </div>
+              )}
 
               {/* 标准件理论米重（规则截面自动计算，无需库存） */}
               {!CATEGORY_NEEDS_DIE_SELECTION.includes(standardCategory) && (() => {

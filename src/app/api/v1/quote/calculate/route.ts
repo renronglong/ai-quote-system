@@ -83,6 +83,9 @@ interface QuoteRequest {
     meter_weight_kg_per_m?: number; // 用户手动输入的米重(kg/m)
     net_weight_g?: number; // 产品净重(g)，用于计算材料利用率
     die_steel_price?: number; // 模具钢价(元/吨)，可选，默认18000
+    // 前端选定模具（选模归前端）：传入后后端跳过自动选型与米重升档/组合校验升级，只按该规格算费
+    selected_die_diameter?: number;
+    selected_die_thickness?: number;
   };
   volume_cm3?: number;       // 体积 cm³
   surface_area_cm2?: number; // 表面积 cm²
@@ -865,6 +868,8 @@ function calcExtrusion(
     }
 
     // 步骤1：对角线 → 模具直径
+    // 选模归前端：若前端已选定模具直径/厚度，则跳过后端自动选型与升档，只按该规格算费
+    const useFrontendDie = !!(dims.selected_die_diameter && dims.selected_die_diameter > 0);
     const W = dims.width_mm || 50;
     const H_dim = dims.height_mm || 25;
     // 按标准件类型计算外接圆直径（对角线）
@@ -892,6 +897,7 @@ function calcExtrusion(
     else phiDiag = diagonal * 1.1 + 180;
     let dieDiameter = STANDARD_DIE_SIZES.find(s => s >= phiDiag) || STANDARD_DIE_SIZES[STANDARD_DIE_SIZES.length - 1];
     if (phiDiag <= 140) dieDiameter = 139;
+    if (useFrontendDie) dieDiameter = dims.selected_die_diameter!;
 
     // 步骤2：模具类型确定 → 基础厚度
     // 优先使用用户手动选择的 die_type，没有则根据 num_dies 自动推断
@@ -916,6 +922,10 @@ function calcExtrusion(
     if (dims.standard_category && STD_GEOMETRY_CATS.includes(dims.standard_category)) {
       const hollowCats = ['铝圆管', '铝六角管', '铝方管'];
       dieTypeKey = hollowCats.includes(dims.standard_category) ? 'split' : 'flat';
+    }
+    // 前端已选定模具类型时，以前端为准（异型材由前端平/分流按钮决定）
+    if (useFrontendDie && (dims.die_type === 'flat' || dims.die_type === 'split')) {
+      dieTypeKey = dims.die_type;
     }
     const isFlatDie = dieTypeKey === 'flat';
     const stdPerimeters = dims.standard_category ? calcStandardPerimeters(dims) : null;
@@ -957,9 +967,13 @@ function calcExtrusion(
           : (STANDARD_THICKNESS[idx] || 130);
       }
     }
+    if (useFrontendDie && dims.selected_die_thickness && dims.selected_die_thickness > 0) {
+      dieThickness = dims.selected_die_thickness;
+    }
 
 
-    // 步骤2.5：校验 Φ×H 组合是否实际存在于安全表
+    // 步骤2.5：校验 Φ×H 组合是否实际存在于安全表（前端已选定模具时跳过）
+    if (!useFrontendDie) {
     // 若不存在，升级到该规格的最近可用厚度（优先取≥当前H的最小可用值）
     const availableThicknessBySize: Record<number, number[]> = {};
     for (const key of Object.keys(SAFE_METER_WEIGHT_LIMITS)) {
@@ -1018,6 +1032,7 @@ function calcExtrusion(
         notes.push(`模具规格 Φ${dieDiameter}×${dieThickness} 不可用，自动升级到 Φ${dieDiameter}×${newH2}`);
         dieThickness = newH2;
       }
+    }
     }
 
     // 步骤4：计算模具费（加入周长影响，支持实时模具钢价）
