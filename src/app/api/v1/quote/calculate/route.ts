@@ -1026,10 +1026,14 @@ function calcExtrusion(
     const baseProcessingFee = 0.028 * dieDiameter * dieThickness;
     let perimeterFee: number;
     let processingFee: number;
-    // 分流模加工总周长 = 外周长 + 内孔周长（AI识别提供inner_perimeter_mm时用实际值；
-    // 标准件用几何内周长；异型材未提供时按矩形管壁厚2mm估算内轮廓，不再用外周长×2高估）
+    // 业主 2026-11-12 确认：后台识别返回的 perimeter_mm（字段名义为「外周长」）
+    // 实际上已经是「外周长 + 内孔周长」的总周长。因此当 AI 提供了 perimeter_mm 时，
+    // 直接把它当作加工总周长即可，禁止再叠加 inner_perimeter_mm（否则内周长被算两次）。
+    // 仅在没有 AI 周长（几何兜底）时，才按「外周长 + 内孔周长」拼出总周长。
+    const aiProvidedPerimeter = !!(dims.perimeter_mm && dims.perimeter_mm > 0);
     let innerPerimeterForFee = 0;
-    if (!isFlatDie) {
+    if (!aiProvidedPerimeter && !isFlatDie) {
+      // 仅几何兜底（无 AI 周长）时需要单独算内孔周长
       if (dims.inner_perimeter_mm && dims.inner_perimeter_mm > 0) {
         innerPerimeterForFee = dims.inner_perimeter_mm;
       } else if (stdPerimeters?.inner) {
@@ -1043,16 +1047,11 @@ function calcExtrusion(
       // 内周长合理性钳制：不得大于外周长
       if (innerPerimeterForFee > finalPerimeter) innerPerimeterForFee = finalPerimeter;
     }
-    if (isFlatDie) {
-      // 平模：加工费 = 基础加工 + 外周长×厚度×系数
-      const processingArea = finalPerimeter * dieThickness;
-      perimeterFee = 0.0035 * processingArea;
-      processingFee = baseProcessingFee + perimeterFee;
-    } else {
-      // 分流模：加工费 = 基础加工 + (外周长+内孔周长)×厚度×系数
-      perimeterFee = 0.0035 * (finalPerimeter + innerPerimeterForFee) * dieThickness;
-      processingFee = baseProcessingFee + perimeterFee;
-    }
+    // 加工总周长：AI 提供 → 直接是总周长；几何兜底 → 外周长 + 内孔周长
+    const feePerimeter = aiProvidedPerimeter ? finalPerimeter : (finalPerimeter + innerPerimeterForFee);
+    const processingArea = feePerimeter * dieThickness;
+    perimeterFee = 0.0035 * processingArea;
+    processingFee = baseProcessingFee + perimeterFee;
     // 业主 2026-11-12：Φ248 及以上各档「模具加工费」按 10% 递增（248×1.1 … 450×1.7），218 及以下不变；
     // Φ560 因与 450 差距大，单独由 1.8 上调为 2.0（业主 02:12 定）
     const PROCESSING_FEE_TIER_FACTOR: Record<number, number> = {
@@ -1076,16 +1075,19 @@ function calcExtrusion(
     }
     finalDieDiameter = dieDiameter;
     notes.push(`模具钢价: ${dieSteelPrice}元/吨${dims.die_steel_price ? '（用户指定）' : '（默认H13均价）'}`);
+    const perimeterNote = aiProvidedPerimeter
+      ? `总周长(含内孔)${Math.round(feePerimeter)}`
+      : `外周长${Math.round(finalPerimeter)}+内周长${Math.round(innerPerimeterForFee)}`;
     if (isFlatDie) {
       notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + (${Math.round(baseProcessingFee)}基础 + ${Math.round(perimeterFee)}周长×厚度加工)×加工档${processingTierFactor} × ${(mgmtRate*100).toFixed(0)}%管理费)`);
     } else {
-      notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + (${Math.round(baseProcessingFee)}基础 + ${Math.round(perimeterFee)}(外周长${Math.round(finalPerimeter)}+内周长${Math.round(innerPerimeterForFee)})×厚度加工)×加工档${processingTierFactor} × ${(mgmtRate*100).toFixed(0)}%管理费)`);
+      notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + (${Math.round(baseProcessingFee)}基础 + ${Math.round(perimeterFee)}(${perimeterNote})×厚度加工)×加工档${processingTierFactor} × ${(mgmtRate*100).toFixed(0)}%管理费)`);
     }
     notes.push(`模具统一加价+100元: ${preSurcharge}→${moldCost}元`);
     notes.push(`模具费一次性，不计入单件价格`);
 
     breakdown['mold'] = {
-      formula: `(材料费: 钢价×密度7.85×损耗1.2×πR²×H/10⁹ + (基础加工费0.028×Φ×H + 周长加工费0.0035×周长×2×厚度(分流模)或周长×厚度(平模)) × (1+管理费率)`,
+      formula: `(材料费: 钢价×密度7.85×损耗1.2×πR²×H/10⁹ + 基础加工费0.028×Φ×H + 周长加工费0.0035×加工总周长×厚度) × (1+管理费率)；加工总周长=AI识别总周长(已含内孔)，无AI时=外周长+内孔周长`,
       detail: `模具钢价${dieSteelPrice}元/吨(密度7.85,损耗1.2) | Φ${dieDiameter}×${dieThickness}${dieType} | ${numCavities}公头(系数×${cavityMultiplier}): 材料费${dieSteelPrice}×7.85×1.2×π×(${dieDiameter}/2)²×${dieThickness}/10⁹=${Math.round(materialFee)} + 加工费(${Math.round(baseProcessingFee)}基础+${Math.round(perimeterFee)}周长)×加工档${processingTierFactor}=${Math.round(processingFee)} → (材料+加工)×${(1+mgmtRate).toFixed(2)} = ${req.use_existing_mold ? 0 : preSurcharge}${req.use_existing_mold ? '（使用已有模具，模具费0元）' : ` + 统一加价100 = ${moldCost}元`}`,
     };
   }
