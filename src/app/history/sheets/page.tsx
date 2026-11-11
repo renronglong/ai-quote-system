@@ -349,13 +349,13 @@ export default function SavedSheetsPage() {
                     ) : (
                       <>
                         {active.xlsx_url && (
-                          <a href={active.xlsx_url} target="_blank" rel="noreferrer"
+                          <a href={`/api/quote-sheet-file?user_id=${encodeURIComponent(user!.id)}&quote_no=${encodeURIComponent(active.quote_no)}&kind=legacy&ext=xlsx`} target="_blank" rel="noreferrer"
                             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100">
                             <FileSpreadsheet className="w-3.5 h-3.5" />下载 Excel
                           </a>
                         )}
                         {active.pdf_url && (
-                          <a href={active.pdf_url} target="_blank" rel="noreferrer"
+                          <a href={`/api/quote-sheet-file?user_id=${encodeURIComponent(user!.id)}&quote_no=${encodeURIComponent(active.quote_no)}&kind=legacy&ext=pdf`} target="_blank" rel="noreferrer"
                             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100">
                             <FileText className="w-3.5 h-3.5" />下载 PDF
                           </a>
@@ -374,11 +374,20 @@ export default function SavedSheetsPage() {
                     <div className="overflow-x-auto rounded-lg border border-gray-200">
                       <QuoteSheetView body={active.body} quoteNo={active.quote_no} createdAt={active.created_at} />
                     </div>
+                  ) : active.pdf_url ? (
+                    <div className="rounded-lg border border-gray-200 overflow-hidden bg-gray-50">
+                      <iframe
+                        src={`/api/quote-sheet-file?user_id=${encodeURIComponent(user!.id)}&quote_no=${encodeURIComponent(active.quote_no)}&kind=legacy&ext=pdf`}
+                        title="报价单预览"
+                        className="w-full block"
+                        style={{ height: '78vh', border: 0 }}
+                      />
+                    </div>
                   ) : (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
                       <div className="flex items-center gap-2 font-medium"><CheckCircle2 className="w-4 h-4" />历史导出记录</div>
                       <p className="mt-2 leading-relaxed">
-                        这张报价单是旧版「直接导出」生成的，只留存了 Excel/PDF 文件，没有留存可还原的明细数据，
+                        这张报价单是旧版「直接导出」生成的，只留存了 Excel 文件，没有留存可还原的明细数据，
                         因此不能在网页里按报价单格式展开。可点上方按钮下载原文件查看。
                         <br />之后用「我的报价 → 导出报价单 → 保存报价单」保存的，都会在这里完整显示。
                       </p>
