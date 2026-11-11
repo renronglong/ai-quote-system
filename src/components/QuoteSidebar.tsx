@@ -82,12 +82,12 @@ export default function QuoteSidebar({
     const active = isActive(item, pathname);
     const base = 'group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors border-l-2';
     const state = active
-      ? 'bg-blue-50 text-blue-700 font-medium border-blue-600'
-      : 'text-slate-600 border-transparent hover:bg-gray-100 hover:text-slate-800';
+      ? 'bg-white text-blue-700 font-medium border-blue-600 shadow-sm'
+      : 'text-slate-700 border-transparent hover:bg-white/60 hover:text-slate-900';
     const cls = `${base} ${state} ${compact ? 'shrink-0 whitespace-nowrap' : ''}`;
     return (
       <Link key={item.key} href={item.href} className={cls} title={item.label}>
-        <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-500'}`} />
+        <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-blue-600' : 'text-slate-500 group-hover:text-slate-700'}`} />
         <span className="truncate">{item.label}</span>
       </Link>
     );
@@ -104,7 +104,7 @@ export default function QuoteSidebar({
       const cls = `${base} ${state} ${compact ? 'shrink-0 whitespace-nowrap' : ''}`;
       return (
         <Link key="recognize-return" href="/quote/parts" className={cls} title="保存报价后将自动返回">
-          <ArrowLeft className={`w-4 h-4 shrink-0 ${active ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-500'}`} />
+          <ArrowLeft className={`w-4 h-4 shrink-0 ${active ? 'text-blue-600' : 'text-slate-500 group-hover:text-slate-700'}`} />
           <span className="truncate">返回零件列表</span>
           {partsListLabel && (
             <span className="text-xs text-blue-600 truncate max-w-[160px]">{partsListLabel}</span>
@@ -118,9 +118,9 @@ export default function QuoteSidebar({
   return (
     <>
       {/* 桌面端：左侧竖向栏 */}
-      <aside className="hidden lg:flex lg:flex-col w-56 shrink-0 border-r border-gray-200 bg-white overflow-y-auto">
+      <aside className="hidden lg:flex lg:flex-col w-56 shrink-0 border-r border-[#B4D1FD] bg-[#CBDDFE] overflow-y-auto">
         {/* 品牌首行 */}
-        <div className="flex items-center gap-2 px-4 pt-4 pb-3 border-b border-gray-100">
+        <div className="flex items-center gap-2 px-4 pt-4 pb-3 border-b border-white/50">
           <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-sm shrink-0">
             <Package className="w-5 h-5 text-white" />
           </div>
@@ -130,20 +130,20 @@ export default function QuoteSidebar({
               <span className="text-blue-600 text-[15px]">·</span>
               <span className="font-bold text-[15px] text-gray-900">AI报价系统</span>
             </div>
-            <div className="mt-0.5 flex items-center gap-1 text-[10px] text-slate-400">
+            <div className="mt-0.5 flex items-center gap-1 text-[10px] text-slate-500">
               <span>gyparts.cn</span><span>·</span><span>v2.1.3</span>
             </div>
           </div>
         </div>
         <div className="px-4 pt-4 pb-2">
-          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">报价模块</p>
+          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">报价模块</p>
         </div>
         <nav className="flex flex-col gap-0.5 px-2">
           {NAV.filter(i => !i.dividerBefore).map(i =>
             i.key === 'recognize' ? renderRecognizeOrReturn() : renderItem(i)
           )}
         </nav>
-        <div className="mx-4 my-2 border-t border-gray-100" />
+        <div className="mx-4 my-2 border-t border-white/50" />
         <nav className="flex flex-col gap-0.5 px-2 pb-3">
           {NAV.filter(i => i.dividerBefore).map(i => (
             <Fragment key={i.key}>
@@ -163,12 +163,12 @@ export default function QuoteSidebar({
               )}
             </Fragment>
           ))}
-          <div className="mx-1 my-1 border-t border-gray-100" />
+          <div className="mx-1 my-1 border-t border-white/50" />
           <ShareButton variant="nav" />
         </nav>
 
         {/* 左下角：用户名 + 积分 + 账户菜单 + 退出/登录 */}
-        <div className="mt-auto border-t border-gray-200 p-3">
+        <div className="mt-auto border-t border-white/50 p-3">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-sm font-semibold shrink-0">
               {(userName === '游客' ? '游' : (userName || 'U').slice(0, 1))}
@@ -186,15 +186,15 @@ export default function QuoteSidebar({
               {isAdmin && (
                 <div className="mt-2 flex flex-col gap-0.5">
                   <Link href="/admin/users"
-                    className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-gray-100 hover:text-slate-800 transition-colors">
-                    <Users className="w-4 h-4 shrink-0 text-slate-400" />
+                    className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-slate-700 hover:bg-white/60 hover:text-slate-900 transition-colors">
+                    <Users className="w-4 h-4 shrink-0 text-slate-500" />
                     <span className="truncate">用户管理</span>
                   </Link>
                 </div>
               )}
               <button
                 onClick={() => signOut()}
-                className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-colors"
+                className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg border border-white/60 px-3 py-1.5 text-sm text-slate-700 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-colors"
               >
                 <LogOut className="w-4 h-4" />退出
               </button>
@@ -211,17 +211,17 @@ export default function QuoteSidebar({
       </aside>
 
       {/* 移动端：顶部横向滚动条（含账户菜单，顶栏汉堡菜单在左侧栏页面已被隐藏） */}
-      <nav className="lg:hidden flex items-center gap-1.5 overflow-x-auto border-b border-gray-200 bg-white px-3 py-2 shrink-0">
+      <nav className="lg:hidden flex items-center gap-1.5 overflow-x-auto border-b border-[#B4D1FD] bg-[#CBDDFE] px-3 py-2 shrink-0">
         {NAV.map(i => i.key === 'recognize' ? renderRecognizeOrReturn(true) : renderItem(i, true))}
         <ShareButton variant="mobile" />
         {user ? (
           <>
             {isAdmin && (
-              <Link href="/admin/users" className="shrink-0 whitespace-nowrap flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-slate-600 border border-gray-200">
+              <Link href="/admin/users" className="shrink-0 whitespace-nowrap flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-slate-700 border border-white/60">
                 <Users className="w-4 h-4" />用户管理
               </Link>
             )}
-            <button onClick={() => signOut()} className="shrink-0 whitespace-nowrap flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-gray-600 border border-gray-200">
+            <button onClick={() => signOut()} className="shrink-0 whitespace-nowrap flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-slate-700 border border-white/60">
               <LogOut className="w-4 h-4" />退出
             </button>
           </>

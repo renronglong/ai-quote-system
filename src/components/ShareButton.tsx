@@ -25,10 +25,10 @@ type Variant = 'nav' | 'mobile' | 'header' | 'sheet';
 
 const TRIGGER_CLASS: Record<Variant, string> = {
   // 左侧栏桌面项（与 QuoteSidebar 的 NAV 项同款）
-  nav: 'group flex items-center gap-2.5 w-full text-left rounded-lg px-3 py-2 text-sm transition-colors border-l-2 border-transparent text-slate-600 hover:bg-gray-100 hover:text-slate-800',
+  nav: 'group flex items-center gap-2.5 w-full text-left rounded-lg px-3 py-2 text-sm transition-colors border-l-2 border-transparent text-slate-700 hover:bg-white/60 hover:text-slate-900',
   // 左侧栏移动端横向条
   mobile:
-    'shrink-0 whitespace-nowrap flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-slate-600 border border-gray-200 hover:bg-gray-50 transition-colors',
+    'shrink-0 whitespace-nowrap flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-slate-700 border border-white/60 hover:bg-white/60 transition-colors',
   // 顶部导航（与 TopNavLinks 的链接同款）
   header:
     'flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors whitespace-nowrap',
@@ -38,7 +38,7 @@ const TRIGGER_CLASS: Record<Variant, string> = {
 };
 
 const ICON_CLASS: Record<Variant, string> = {
-  nav: 'w-4 h-4 shrink-0 text-slate-400 group-hover:text-slate-500',
+  nav: 'w-4 h-4 shrink-0 text-slate-500 group-hover:text-slate-700',
   mobile: 'w-4 h-4 shrink-0',
   header: 'w-4 h-4 shrink-0',
   sheet: 'w-5 h-5 shrink-0',

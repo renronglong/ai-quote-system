@@ -231,7 +231,7 @@ export default function LoginPanel({ embedded = false }: { embedded?: boolean })
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+      <div className="flex items-center justify-center min-h-screen bg-[#F5F9FF]">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3" />
           <p className="text-slate-400 text-sm">加载中...</p>
@@ -241,7 +241,7 @@ export default function LoginPanel({ embedded = false }: { embedded?: boolean })
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-100 via-sky-50 to-blue-100">
+    <div className="min-h-screen bg-gradient-to-br from-[#CBDDFE] via-[#E7F0FF] to-[#F5F9FF]">
       <div className="flex min-h-screen w-full flex-col items-center justify-center px-5 py-10">
         <div className="w-full max-w-md">
 
@@ -252,7 +252,7 @@ export default function LoginPanel({ embedded = false }: { embedded?: boolean })
           </div>
 
           {/* 登录卡片 */}
-          <div className="bg-white rounded-xl p-8 shadow-xl shadow-sky-200/60 ring-1 ring-sky-100">
+          <div className="bg-white rounded-xl p-8 shadow-xl shadow-[#CBDDFE] ring-1 ring-[#B4D1FD]">
             <h2 className="text-xl font-semibold text-slate-800 mb-4 text-center">登录账号</h2>
 
             {/* 一键填入演示账号 */}
@@ -403,12 +403,12 @@ export default function LoginPanel({ embedded = false }: { embedded?: boolean })
               </Link>
             </div>
 
-            <div className="mt-5 border-t border-dashed border-sky-200 pt-5">
+            <div className="mt-5 border-t border-dashed border-[#CBDDFE] pt-5">
               <Link
                 href="/help"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-sky-200 bg-sky-50/80 py-2.5 text-sm font-medium text-sky-700 transition-colors hover:bg-sky-100"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#B4D1FD] bg-[#F5F9FF] py-2.5 text-sm font-medium text-blue-700 transition-colors hover:bg-[#E7F0FF]"
               >
                 <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5v-13Z" />
