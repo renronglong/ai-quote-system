@@ -66,6 +66,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (resp.ok) {
         const data = await resp.json();
         setQuota({ balance: data.balance ?? 0, remaining: data.remaining ?? 0, cost_per_recognition: data.cost_per_recognition ?? 10 });
+        // 识别扣费后通知三个左栏外壳重拉余额，否则积分显示停在旧值，业主会以为「没扣」
+        if (typeof window !== 'undefined') window.dispatchEvent(new Event('credits-refresh'));
       }
     } catch { /* ignore */ }
   }, [user]);

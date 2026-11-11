@@ -9,6 +9,7 @@ import {
   SheetTrigger 
 } from '@/components/ui/sheet';
 import { useAuth } from '@/lib/auth-context';
+import { useCreditsBalance } from '@/lib/use-credits-balance';
 import TopNavLinks from '@/components/TopNav';
 import { SidebarAccountContext } from '@/components/sidebarAccountContext';
 import Footer from '@/components/Footer';
@@ -79,20 +80,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const hideHeader = HIDE_HEADER_PATHS.includes(pathname);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [credits, setCredits] = useState<number>(0);
   const [hasSidebar, setHasSidebar] = useState(false);
   // 有左侧栏的页面用整屏高度 + 内容区内部滚动，左栏才不会跟着整页滚动（首帧按路径同步判定，避免闪烁）
   const fullHeight = hideHeader || hasSidebar;
   const { user, signOut, isAdmin } = useAuth();
-
-  // 拉取积分余额（仅登录用户）
-  useEffect(() => {
-    if (!user) { setCredits(0); return; }
-    fetch(`/api/credits/balance?user_id=${user.id}`)
-      .then(r => r.json())
-      .then(json => setCredits(parseFloat(json?.data?.balance || '0')))
-      .catch(() => {});
-  }, [user, pathname]);
+  // 积分必须放在 user 声明之后（TDZ）；跨页面切换 + 识别扣费都会自动重拉余额
+  const credits = useCreditsBalance(user?.id, pathname);
 
   return (
     <SidebarAccountContext.Provider value={{ setHasSidebar }}>

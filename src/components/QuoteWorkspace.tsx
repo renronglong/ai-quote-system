@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { useCreditsBalance } from '@/lib/use-credits-balance';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import QuoteForm, { PricingResult, normalizeSheetCategory } from '@/components/QuoteForm';
@@ -81,16 +82,7 @@ export default function QuoteWorkspace({ defaultProductType }: { defaultProductT
   const [guideCollapsed, setGuideCollapsed] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [narrow, setNarrow] = useState(false); // ≤1024px 时三栏/四栏改为单列堆叠
-  const [credits, setCredits] = useState(0); // 用户积分（左下角显示）
-
-  // 拉取积分余额（仅登录用户），与 AppLayout 同一接口
-  useEffect(() => {
-    if (!user) { setCredits(0); return; }
-    fetch(`/api/credits/balance?user_id=${user.id}`)
-      .then(r => r.json())
-      .then(j => setCredits(parseFloat(j?.data?.balance || '0')))
-      .catch(() => {});
-  }, [user]);
+  const credits = useCreditsBalance(user?.id); // 用户积分（左下角显示），识别扣费后自动刷新
 
   const [fromPartsList, setFromPartsList] = useState(false); // 从零件列表页跳过来
   const [partsListPartIdx, setPartsListPartIdx] = useState<number>(-1);

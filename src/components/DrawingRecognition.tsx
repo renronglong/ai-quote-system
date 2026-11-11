@@ -736,6 +736,37 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
     }, 100);
   }, []);
 
+  // CAD / 压缩包解析成功后的统一扣费。
+  // 图片/PDF 走 /api/recognize-drawing|recognize-sheet，后端已扣 10 分，这里不重复扣；
+  // DXF/DWG/STEP/IGES/ZIP 走 /api/drawing-parse|parse-batch（纯转发解析服务），
+  // 业主 2026-11-11 拍板「所有的都扣」⇒ 成功解析后统一调 /api/recognize-charge。
+  // 口径：一次上传（一个文件）成功识别 = 10 分；压缩包内多个零件仍算一次；解析失败不扣。
+  const chargeCadRecognition = async (): Promise<boolean> => {
+    try {
+      const resp = await fetch('/api/recognize-charge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user?.id }),
+      });
+      const j = await resp.json().catch(() => ({}));
+      if (!resp.ok || !j.success) {
+        setRecogError(j.error || '积分余额不足，无法完成识别');
+        setRecognitionFailed(true);
+        setStatusMessage(null);
+        setRecognizing(false);
+        checkQuota();
+        return false;
+      }
+      return true;
+    } catch {
+      setRecogError('积分扣减失败，请重试');
+      setRecognitionFailed(true);
+      setStatusMessage(null);
+      setRecognizing(false);
+      return false;
+    }
+  };
+
   const recognizeFile = async (file: File) => {
     lastRecogErrorRef.current = '';
     const ext = '.' + file.name.split('.').pop()?.toLowerCase();
@@ -900,6 +931,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           notes: `${extLabel}解析 | 展开${unfoldL}×${unfoldW}mm（flat_pattern 权威值） | 厚度${thickness ?? '未知'}mm | 孔: ${holeDesc || '无'} | ⚠️仅用于报价估算，不可作为开模依据`,
         };
         setRecogResult(recogData);
+        if (!(await chargeCadRecognition())) return;
         checkQuota();
         setStatusMessage(null);
         setRecognizing(false);
@@ -1037,6 +1069,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
         setSelectedProductIdx(0);
         setRecogResult(allProducts[0]);
         setIsAssembly(allProducts.length > 1 || allProducts.some(p => p.is_assembly));
+        if (!(await chargeCadRecognition())) return;
         checkQuota();
         setRecognizing(false);
         commitResult({ recogData: allProducts[0], recogProducts: allProducts, isAssembly: allProducts.length > 1, fileName: file.name, recognitionId: "zip_" + Date.now() });
@@ -1083,6 +1116,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           setRecogProducts(parts);
           setSelectedProductIdx(0);
           setRecogResult(parts[0]);
+          if (!(await chargeCadRecognition())) return;
           checkQuota();
           setStatusMessage(null);
           setRecognizing(false);
@@ -1094,6 +1128,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
         // 单件模式
         const recogData = buildRecogDataFromParse(cadJson, productType, '3D 模型解析');
         setRecogResult(recogData);
+        if (!(await chargeCadRecognition())) return;
         checkQuota();
         setStatusMessage(null);
         setRecognizing(false);

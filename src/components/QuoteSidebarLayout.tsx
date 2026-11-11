@@ -1,6 +1,7 @@
 'use client';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { useCreditsBalance } from '@/lib/use-credits-balance';
 import QuoteSidebar from '@/components/QuoteSidebar';
 import { useSidebarAccount } from '@/components/sidebarAccountContext';
 
@@ -9,7 +10,7 @@ import { useSidebarAccount } from '@/components/sidebarAccountContext';
 // 自身拉取 user / 积分，供左侧栏底部「用户名 + 积分」使用。
 export default function QuoteSidebarLayout({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [credits, setCredits] = useState(0);
+  const credits = useCreditsBalance(user?.id);
   const { setHasSidebar } = useSidebarAccount();
 
   // 通知 AppLayout：本页有左侧栏，账户菜单由左侧栏底部接管，顶栏账户下拉/移动端汉堡隐藏，避免重复。
@@ -17,14 +18,6 @@ export default function QuoteSidebarLayout({ children }: { children: ReactNode }
     setHasSidebar(true);
     return () => setHasSidebar(false);
   }, [setHasSidebar]);
-
-  useEffect(() => {
-    if (!user) { setCredits(0); return; }
-    fetch(`/api/credits/balance?user_id=${user.id}`)
-      .then(r => r.json())
-      .then(j => setCredits(parseFloat(j?.data?.balance || '0')))
-      .catch(() => {});
-  }, [user]);
 
   return (
     <div className="flex flex-1 h-full min-h-0 flex-col lg:flex-row">
