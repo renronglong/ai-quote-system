@@ -2,7 +2,17 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Share2, Copy, Check, X } from 'lucide-react';
+import {
+  Share2,
+  Copy,
+  Check,
+  X,
+  MessageCircle,
+  MessageSquare,
+  Link2,
+  Sparkles,
+  Zap,
+} from 'lucide-react';
 
 // 统一的分享文案（与 src/app/layout.tsx 的 openGraph 保持一致，不含公司名称）
 export const SHARE_TITLE = 'AI 智能报价平台';
@@ -44,7 +54,7 @@ export default function ShareButton({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'' | 'text' | 'url'>('');
   const [canNative, setCanNative] = useState(false);
   const [mounted, setMounted] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -74,14 +84,14 @@ export default function ShareButton({
     };
   }, [open]);
 
-  const doCopy = async () => {
+  const copy = async (text: string, kind: 'text' | 'url') => {
     try {
       if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(SHARE_TEXT);
+        await navigator.clipboard.writeText(text);
       } else {
         // 微信内置浏览器等可能没有 clipboard API，退回 execCommand
         const ta = document.createElement('textarea');
-        ta.value = SHARE_TEXT;
+        ta.value = text;
         ta.setAttribute('readonly', '');
         ta.style.position = 'fixed';
         ta.style.top = '-9999px';
@@ -90,11 +100,11 @@ export default function ShareButton({
         document.execCommand('copy');
         document.body.removeChild(ta);
       }
-      setCopied(true);
+      setCopied(kind);
       if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => setCopied(false), 2000);
+      timer.current = setTimeout(() => setCopied(''), 2200);
     } catch {
-      // 最后兜底：让用户手动选中
+      // 最后兜底：让用户手动选中预览区
       const box = document.getElementById('share-text-box') as HTMLElement | null;
       if (box) {
         const range = document.createRange();
@@ -119,6 +129,9 @@ export default function ShareButton({
     }
   };
 
+  const tileClass =
+    'flex flex-col items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-1 py-3 transition-colors hover:bg-gray-50 active:scale-[0.98]';
+
   const modal =
     open && mounted
       ? createPortal(
@@ -133,12 +146,15 @@ export default function ShareButton({
               className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
+              {/* 头部 */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
                 <h3
                   id="share-dialog-title"
-                  className="text-base font-semibold text-gray-900 flex items-center gap-2"
+                  className="text-base font-semibold text-gray-900 flex items-center gap-2.5"
                 >
-                  <Share2 className="w-4 h-4 text-blue-600" />
+                  <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-sm shrink-0">
+                    <Share2 className="w-4 h-4 text-white" />
+                  </span>
                   分享 AI 智能报价平台
                 </h3>
                 <button
@@ -151,43 +167,108 @@ export default function ShareButton({
                 </button>
               </div>
 
-              <div className="px-5 py-4 space-y-3">
+              <div className="px-5 py-4 space-y-4">
+                {/* 文案预览：每行带图标 */}
                 <div
                   id="share-text-box"
-                  className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap select-text break-words"
+                  className="rounded-xl border border-gray-200 bg-gradient-to-br from-slate-50 to-white p-3 space-y-2 select-text"
                 >
-                  {SHARE_TEXT}
+                  <div className="flex items-start gap-2">
+                    <span className="w-6 h-6 rounded-md bg-white border border-gray-200 shadow-sm flex items-center justify-center shrink-0 mt-0.5">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    </span>
+                    <span className="text-sm font-semibold text-gray-900">{SHARE_TITLE}</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="w-6 h-6 rounded-md bg-white border border-gray-200 shadow-sm flex items-center justify-center shrink-0 mt-0.5">
+                      <Zap className="w-3.5 h-3.5 text-blue-500" />
+                    </span>
+                    <span className="text-sm text-slate-600 leading-relaxed">{SHARE_DESC}</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="w-6 h-6 rounded-md bg-white border border-gray-200 shadow-sm flex items-center justify-center shrink-0 mt-0.5">
+                      <Link2 className="w-3.5 h-3.5 text-slate-500" />
+                    </span>
+                    <span className="text-sm text-slate-600 break-all">{SHARE_URL}</span>
+                  </div>
                 </div>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  微信 / QQ 里直接粘贴发送即可；也可以只发链接，分享卡会自动带标题和简介。
-                </p>
-                <div className="flex flex-col sm:flex-row gap-2 pt-0.5">
+
+                {/* 图标瓷砖 */}
+                <div className="grid grid-cols-4 gap-2">
                   <button
                     type="button"
-                    onClick={doCopy}
-                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+                    onClick={() => copy(SHARE_TEXT, 'text')}
+                    className={tileClass}
+                    aria-label="复制文案，到微信粘贴发送"
                   >
-                    {copied ? (
-                      <>
-                        <Check className="w-4 h-4" />
-                        已复制
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-4 h-4" />
-                        复制文案和链接
-                      </>
-                    )}
+                    <span className="w-10 h-10 rounded-xl bg-[#07C160] flex items-center justify-center shadow-sm">
+                      <MessageCircle className="w-5 h-5 text-white" />
+                    </span>
+                    <span className="text-xs text-gray-600">微信</span>
                   </button>
-                  {canNative && (
+
+                  <button
+                    type="button"
+                    onClick={() => copy(SHARE_TEXT, 'text')}
+                    className={tileClass}
+                    aria-label="复制文案，到 QQ 粘贴发送"
+                  >
+                    <span className="w-10 h-10 rounded-xl bg-[#12B7F5] flex items-center justify-center shadow-sm">
+                      <MessageSquare className="w-5 h-5 text-white" />
+                    </span>
+                    <span className="text-xs text-gray-600">QQ</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => copy(SHARE_URL, 'url')}
+                    className={tileClass}
+                    aria-label="复制链接"
+                  >
+                    <span className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shadow-sm">
+                      <Link2 className="w-5 h-5 text-slate-600" />
+                    </span>
+                    <span className="text-xs text-gray-600">复制链接</span>
+                  </button>
+
+                  {canNative ? (
                     <button
                       type="button"
                       onClick={doNative}
-                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                      className={tileClass}
+                      aria-label="系统分享"
                     >
-                      <Share2 className="w-4 h-4" />
-                      系统分享
+                      <span className="w-10 h-10 rounded-xl bg-indigo-500 flex items-center justify-center shadow-sm">
+                        <Share2 className="w-5 h-5 text-white" />
+                      </span>
+                      <span className="text-xs text-gray-600">系统分享</span>
                     </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => copy(SHARE_TEXT, 'text')}
+                      className={tileClass}
+                      aria-label="复制文案和链接"
+                    >
+                      <span className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-sm">
+                        <Copy className="w-5 h-5 text-white" />
+                      </span>
+                      <span className="text-xs text-gray-600">复制文案</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* 反馈 / 提示 */}
+                <div className="min-h-[18px] text-center">
+                  {copied ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+                      <Check className="w-3.5 h-3.5" />
+                      {copied === 'url' ? '链接已复制' : '文案已复制，去微信 / QQ 粘贴发送'}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-slate-400">
+                      点微信 / QQ 会复制文案，到对应 App 粘贴即可；只发链接也会自动带标题和简介。
+                    </span>
                   )}
                 </div>
               </div>
