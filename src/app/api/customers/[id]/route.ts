@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { verifyAdminToken, verifyUserToken } from '@/lib/admin';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jotgxnhueagbsvfeepic.supabase.co';
 const supabaseServiceKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpvdGd4bmh1ZWFnYnN2ZmVlcGljIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MzUwMjEyMywiZXhwIjoyMDk5MDc4MTIzfQ.dSfa-90iQd4jVhpuvNAgqKPqBdzfXPqgYqpxpHl71Fo';
@@ -10,36 +11,60 @@ function getSupabase() {
   });
 }
 
-function verifyAdmin(req: Request): { ok: boolean; phone?: string; error?: string } {
-  const token = req.headers.get('x-admin-token') || '';
-  if (!token) return { ok: false, error: '未提供管理员凭证' };
+/**
+ * 统一操作者身份（业主 2026-11-11：客户管理开放给所有登录用户，按 owner_phone 严格隔离）。
+ * 归属以服务端 HMAC token 解出的手机号为准，绝不信任前端传参。
+ */
+type Actor = { phone: string; isAdmin: boolean };
+function getActor(req: Request): Actor | null {
+  const adminPhone = verifyAdminToken(req.headers.get('x-admin-token') || '');
+  if (adminPhone) return { phone: adminPhone, isAdmin: true };
+  const phone = verifyUserToken(req.headers.get('x-user-token') || '');
+  return phone ? { phone, isAdmin: false } : null;
+}
+function missingColumn(msg: string): boolean { return /owner_phone/i.test(msg || ''); }
+function upgradeRequired() {
+  return NextResponse.json(
+    { error: '客户库尚未升级（缺少 owner_phone 列），请联系管理员执行升级 SQL', needUpgrade: true },
+    { status: 503 },
+  );
+}
 
-  const parts = token.split('.');
-  if (parts.length !== 2) return { ok: false, error: '无效token' };
-
-  try {
-    const payload = Buffer.from(parts[0], 'base64url').toString('utf8');
-    const sep = payload.lastIndexOf('|');
-    if (sep < 0) return { ok: false, error: '无效payload' };
-    const phone = payload.slice(0, sep);
-    const exp = Number(payload.slice(sep + 1));
-    if (!Number.isFinite(exp) || exp < Date.now()) return { ok: false, error: 'token已过期' };
-
-    const ADMIN_PHONES = ['13800138000', '18929979760'];
-    if (!ADMIN_PHONES.includes(phone)) return { ok: false, error: '非管理员' };
-
-    return { ok: true, phone };
-  } catch {
-    return { ok: false, error: 'token解析失败' };
+/** 归属校验：普通用户仅能操作自己的；管理员仅能操作共享库 + 自己的（看不到员工的） */
+async function assertOwner(
+  supabase: ReturnType<typeof getSupabase>,
+  id: string,
+  actor: Actor,
+): Promise<{ ok: true } | { ok: false; response: NextResponse }> {
+  const { data: row, error } = await supabase
+    .from('customers')
+    .select('id, owner_phone')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) {
+    return {
+      ok: false,
+      response: missingColumn(error.message)
+        ? upgradeRequired()
+        : NextResponse.json({ error: error.message }, { status: 500 }),
+    };
   }
+  if (!row) return { ok: false, response: NextResponse.json({ error: '客户不存在' }, { status: 404 }) };
+  const allowed = actor.isAdmin
+    ? (row.owner_phone == null || row.owner_phone === actor.phone)
+    : (row.owner_phone === actor.phone);
+  if (!allowed) {
+    return { ok: false, response: NextResponse.json({ error: '无权操作该客户' }, { status: 403 }) };
+  }
+  return { ok: true };
 }
 
 // PUT /api/customers/[id] - update customer
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const admin = verifyAdmin(request);
-    if (!admin.ok) {
-      return NextResponse.json({ error: admin.error }, { status: 403 });
+    const actor = getActor(request);
+    if (!actor) {
+      return NextResponse.json({ error: '请先登录后再修改客户' }, { status: 403 });
     }
 
     const { id } = await params;
@@ -51,6 +76,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     const supabase = getSupabase();
+    const owned = await assertOwner(supabase, id, actor);
+    if (!owned.ok) return owned.response;
 
     // If changing customer_code, check uniqueness
     if (customer_code) {
@@ -101,13 +128,15 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 // DELETE /api/customers/[id] - delete customer
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const admin = verifyAdmin(request);
-    if (!admin.ok) {
-      return NextResponse.json({ error: admin.error }, { status: 403 });
+    const actor = getActor(request);
+    if (!actor) {
+      return NextResponse.json({ error: '请先登录后再删除客户' }, { status: 403 });
     }
 
     const { id } = await params;
     const supabase = getSupabase();
+    const owned = await assertOwner(supabase, id, actor);
+    if (!owned.ok) return owned.response;
 
     const { error } = await supabase
       .from('customers')

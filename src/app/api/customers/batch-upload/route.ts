@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { verifyAdminToken } from '@/lib/admin';
+import { verifyAdminToken, verifyUserToken } from '@/lib/admin';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jotgxnhueagbsvfeepic.supabase.co';
 const supabaseServiceKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpvdGd4bmh1ZWFnYnN2ZmVlcGljIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MzUwMjEyMywiZXhwIjoyMDk5MDc4MTIzfQ.dSfa-90iQd4jVhpuvNAgqKPqBdzfXPqgYqpxpHl71Fo';
@@ -12,17 +12,29 @@ function getSupabase() {
 }
 
 /**
- * 服务端导入仅限管理员（写共享客户库）。
- * 员工账号的客户由前端直接写本机（localStorage），不落服务端 —— 业主 2026-10-22：
- * ① 各自只能看自己的；② 老板也不看员工的。本机的 user_id 列有外键指向 auth.users，
- * 而本系统用户在自建 users 表（两套 ID 不通），无法按账号落库，故员工数据仅存本机。
+ * 业主 2026-11-11：客户库新增 owner_phone 列后，所有登录用户都能导入自己的客户，
+ * 按手机号严格隔离；管理员导入写入共享库(owner_phone = null)，且管理员也看不到员工的数据。
+ * 归属一律取服务端 HMAC token，绝不信任前端传参。
  */
-function verifyAdminOnly(req: Request): { ok: boolean; error?: string } {
-  const adminTok = req.headers.get('x-admin-token') || '';
-  if (!verifyAdminToken(adminTok)) {
-    return { ok: false, error: '员工账号的客户仅保存在本机，无需上传；共享客户库仅管理员可写入' };
-  }
-  return { ok: true };
+type Actor = { phone: string; isAdmin: boolean };
+function getActor(req: Request): Actor | null {
+  const adminPhone = verifyAdminToken(req.headers.get('x-admin-token') || '');
+  if (adminPhone) return { phone: adminPhone, isAdmin: true };
+  const phone = verifyUserToken(req.headers.get('x-user-token') || '');
+  return phone ? { phone, isAdmin: false } : null;
+}
+function missingColumn(msg: string): boolean { return /owner_phone/i.test(msg || ''); }
+function upgradeRequired() {
+  return NextResponse.json(
+    { error: '客户库尚未升级（缺少 owner_phone 列），请联系管理员执行升级 SQL', needUpgrade: true },
+    { status: 503 },
+  );
+}
+/** 已有记录能否被当前操作者覆盖：普通用户仅自己的；管理员仅共享库 + 自己的 */
+function canOverwrite(ownerPhone: string | null, actor: Actor): boolean {
+  return actor.isAdmin
+    ? (ownerPhone == null || ownerPhone === actor.phone)
+    : (ownerPhone === actor.phone);
 }
 
 // Generate a unique customer code: KH + 6-digit sequential number
@@ -48,9 +60,9 @@ async function generateCustomerCode(supabase: ReturnType<typeof getSupabase>, of
 
 export async function POST(request: Request) {
   try {
-    const adminOk = verifyAdminOnly(request);
-    if (!adminOk.ok) {
-      return NextResponse.json({ error: adminOk.error }, { status: 403 });
+    const actor = getActor(request);
+    if (!actor) {
+      return NextResponse.json({ error: '请先登录后再导入客户' }, { status: 403 });
     }
 
     const body = await request.json();
@@ -103,36 +115,45 @@ export async function POST(request: Request) {
         address: address,
         email: email,
         remarks: remarks,
-        // 注意：user_id 列外键指向 auth.users（与本系统自建 users 表不通），不可写入，保持 null = 共享库
+        // 归属不在这里写：更新时绝不改动既有 owner_phone（防止把别人的记录改到自己名下）
         updated_at: new Date().toISOString(),
       };
 
       // Upsert by customer_code (unique constraint)
-      const { data: existing } = await supabase
+      const { data: existing, error: selErr } = await supabase
         .from('customers')
-        .select('id')
+        .select('id, owner_phone')
         .eq('customer_code', customerCode)
         .maybeSingle();
+      if (selErr && missingColumn(selErr.message)) return upgradeRequired();
 
       if (existing) {
-        // Update existing record
+        // 归属校验：普通用户不能覆盖别人的/共享库；管理员也不能覆盖员工的数据
+        if (!canOverwrite(existing.owner_phone, actor)) {
+          errors.push(`第${rowNum}行 (${customerCode}): 该客户编号属于其他账号，无权覆盖`);
+          failCount++;
+          continue;
+        }
         const { error: upErr } = await supabase
           .from('customers')
           .update(recordPayload)
           .eq('id', existing.id);
         if (upErr) {
+          if (missingColumn(upErr.message)) return upgradeRequired();
           errors.push(`第${rowNum}行 (${customerCode}): 更新失败 - ${upErr.message}`);
           failCount++;
         } else {
           successCount++;
         }
       } else {
-        // Insert new record
+        // Insert new record：新增时才落归属，管理员写共享库(null)，普通用户写自己手机号
         recordPayload.created_at = new Date().toISOString();
+        recordPayload.owner_phone = actor.isAdmin ? null : actor.phone;
         const { error: insErr } = await supabase
           .from('customers')
           .insert([recordPayload]);
         if (insErr) {
+          if (missingColumn(insErr.message)) return upgradeRequired();
           errors.push(`第${rowNum}行 (${customerCode}): 插入失败 - ${insErr.message}`);
           failCount++;
         } else {

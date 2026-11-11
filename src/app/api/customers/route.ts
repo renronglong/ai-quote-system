@@ -11,31 +11,29 @@ function getSupabase() {
   });
 }
 
-// Verify admin via x-admin-token header
-function verifyAdmin(req: Request): { ok: boolean; phone?: string; error?: string } {
-  const token = req.headers.get('x-admin-token') || '';
-  if (!token) return { ok: false, error: '未提供管理员凭证' };
+/**
+ * 统一操作者身份：管理员 token 优先，否则员工 token。
+ * 归属一律以服务端 HMAC token 里解出的手机号为准，绝不信任前端传参。
+ * 业主 2026-11-11：客户管理开放给所有登录用户，数据按 owner_phone 严格隔离。
+ */
+type Actor = { phone: string; isAdmin: boolean };
+function getActor(req: Request): Actor | null {
+  const adminPhone = verifyAdminToken(req.headers.get('x-admin-token') || '');
+  if (adminPhone) return { phone: adminPhone, isAdmin: true };
+  const phone = verifyUserToken(req.headers.get('x-user-token') || '');
+  return phone ? { phone, isAdmin: false } : null;
+}
 
-  // Simple HMAC verification matching lib/admin.ts
-  const parts = token.split('.');
-  if (parts.length !== 2) return { ok: false, error: '无效token' };
+/** owner_phone 列未升级时的统一提示：绝不退回无过滤查询，避免跨账号泄露 */
+function missingColumn(errMsg: string): boolean {
+  return /owner_phone/i.test(errMsg || '');
+}
 
-  try {
-    const payload = Buffer.from(parts[0], 'base64url').toString('utf8');
-    const sep = payload.lastIndexOf('|');
-    if (sep < 0) return { ok: false, error: '无效payload' };
-    const phone = payload.slice(0, sep);
-    const exp = Number(payload.slice(sep + 1));
-    if (!Number.isFinite(exp) || exp < Date.now()) return { ok: false, error: 'token已过期' };
-
-    // Check admin phone whitelist
-    const ADMIN_PHONES = ['13800138000', '18929979760'];
-    if (!ADMIN_PHONES.includes(phone)) return { ok: false, error: '非管理员' };
-
-    return { ok: true, phone };
-  } catch {
-    return { ok: false, error: 'token解析失败' };
-  }
+function upgradeRequired() {
+  return NextResponse.json(
+    { error: '客户库尚未升级（缺少 owner_phone 列），请联系管理员执行升级 SQL', needUpgrade: true },
+    { status: 503 },
+  );
 }
 
 // Generate a unique customer code: KH + 6-digit sequential number
@@ -60,23 +58,14 @@ async function generateCustomerCode(supabase: ReturnType<typeof getSupabase>): P
   return `KH${String(nextNum).padStart(6, '0')}`;
 }
 
-// GET /api/customers - list customers with optional search
+// GET /api/customers - 按 owner_phone 严格隔离的客户列表
 export async function GET(request: Request) {
   try {
-    // 管理员（白名单）看全部；员工（已登录）只看自己 user_id 下的客户
-    const adminPhone = verifyAdminToken(request.headers.get('x-admin-token') || '');
-    const userPhone = adminPhone || verifyUserToken(request.headers.get('x-user-token') || '');
-    if (!userPhone) {
+    const actor = getActor(request);
+    if (!actor) {
       return NextResponse.json({ error: '请先登录后再查看客户' }, { status: 403 });
     }
-    const isAdmin = !!adminPhone;
-    // 归属账号（管理员也要按自己的 id 过滤：员工导入的客户老板同样看不到 —— 业主 2026-10-22）
-    const { data: me } = await getSupabase()
-      .from('users')
-      .select('id')
-      .eq('phone', userPhone)
-      .maybeSingle();
-    const myUserId: string | null = me?.id ?? null;
+    const { phone, isAdmin } = actor;
 
     const { searchParams } = new URL(request.url);
     const keyword = searchParams.get('keyword') || '';
@@ -85,42 +74,42 @@ export async function GET(request: Request) {
 
     const supabase = getSupabase();
 
+    // 归属过滤必须在数据库层完成：普通用户只取自己的；管理员取共享库 + 自己的，
+    // 绝不返回其他账号的数据。⚠️ 升级 SQL 未执行时这里会报「列不存在」，
+    // 直接返回 503，绝不退回无过滤查询（宁可不可用，也不串数据）。
     let query = supabase
       .from('customers')
-      .select('*', { count: 'exact' })
+      .select('*')
       .order('created_at', { ascending: false });
-
-    if (!isAdmin) {
-      // 员工：只能读自己导入的客户（myUserId 为空则一条都读不到，不泄露共享库）
-      query = query.eq('user_id', myUserId);
-    } else if (myUserId) {
-      // 管理员：共享客户库（user_id 为空的历史数据）+ 本人导入的；员工导入的不出现在老板列表里
-      query = query.or(`user_id.is.null,user_id.eq.${myUserId}`);
+    if (isAdmin) {
+      query = query.or(`owner_phone.is.null,owner_phone.eq.${phone}`);
     } else {
-      query = query.is('user_id', null);
+      query = query.eq('owner_phone', phone);
     }
-
-    if (keyword.trim()) {
-      query = query.or(
-        `company_name.ilike.%${keyword.trim()}%,contact_name.ilike.%${keyword.trim()}%,customer_code.ilike.%${keyword.trim()}%,phone.ilike.%${keyword.trim()}%`
-      );
-    }
-
-    // Pagination
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
-    query = query.range(from, to);
-
-    const { data, error, count } = await query;
-
+    const { data: rows, error } = await query;
     if (error) {
+      if (missingColumn(error.message)) return upgradeRequired();
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // 关键词与分页放在服务端内存做：客户表规模小，可避免归属 .or() 与关键词 .or()
+    // 互相覆盖、以及 .in('id', 大量id) 撑爆查询 URL 的问题。
+    let list: any[] = rows || [];
+    if (keyword.trim()) {
+      const kw = keyword.trim().toLowerCase();
+      list = list.filter(r =>
+        ['company_name', 'contact_name', 'customer_code', 'phone']
+          .some(k => String(r?.[k] ?? '').toLowerCase().includes(kw))
+      );
+    }
+    const total = list.length;
+    const from = (page - 1) * pageSize;
+    const data = list.slice(from, from + pageSize);
+
     return NextResponse.json({
       success: true,
-      data: data || [],
-      total: count || 0,
+      data,
+      total,
       page,
       pageSize,
     });
@@ -133,9 +122,9 @@ export async function GET(request: Request) {
 // POST /api/customers - create a single customer
 export async function POST(request: Request) {
   try {
-    const admin = verifyAdmin(request);
-    if (!admin.ok) {
-      return NextResponse.json({ error: admin.error }, { status: 403 });
+    const actor = getActor(request);
+    if (!actor) {
+      return NextResponse.json({ error: '请先登录后再新增客户' }, { status: 403 });
     }
 
     const body = await request.json();
@@ -172,6 +161,8 @@ export async function POST(request: Request) {
       address: address?.trim() || null,
       email: email?.trim() || null,
       remarks: remarks?.trim() || null,
+      // 归属：管理员写共享库(null)；普通用户写自己的手机号，查询/改/删都按此隔离
+      owner_phone: actor.isAdmin ? null : actor.phone,
     };
 
     const { data, error } = await supabase
@@ -181,6 +172,7 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
+      if (missingColumn(error.message)) return upgradeRequired();
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 

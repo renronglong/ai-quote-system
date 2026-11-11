@@ -28,6 +28,8 @@ const NAV: NavItem[] = [
   { key: 'injection', label: '注塑', href: '/quote/injection', icon: Component },
   { key: 'steel', label: '钢材', href: '/quote/steel', icon: Hammer },
   { key: 'history', label: '我的报价', href: '/history', icon: History, dividerBefore: true },
+  // 客户管理对所有登录用户开放（业主 2026-11-11）：数据按 owner_phone 严格隔离，各自只看/管自己的
+  { key: 'customers', label: '客户管理', href: '/admin/customers', icon: UserCheck },
   { key: 'profile', label: '公司资料', href: '/profile', icon: Building2 },
   { key: 'products', label: '我的产品展示', href: '/supplier/register', icon: Store },
   { key: 'market', label: '铝价行情', href: '/market', icon: TrendingUp },
@@ -181,11 +183,6 @@ export default function QuoteSidebar({
                     <Users className="w-4 h-4 shrink-0 text-slate-400" />
                     <span className="truncate">用户管理</span>
                   </Link>
-                  <Link href="/admin/customers"
-                    className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-gray-100 hover:text-slate-800 transition-colors">
-                    <UserCheck className="w-4 h-4 shrink-0 text-slate-400" />
-                    <span className="truncate">客户管理</span>
-                  </Link>
                 </div>
               )}
               <button
@@ -212,14 +209,9 @@ export default function QuoteSidebar({
         {user ? (
           <>
             {isAdmin && (
-              <>
-                <Link href="/admin/users" className="shrink-0 whitespace-nowrap flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-slate-600 border border-gray-200">
-                  <Users className="w-4 h-4" />用户管理
-                </Link>
-                <Link href="/admin/customers" className="shrink-0 whitespace-nowrap flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-slate-600 border border-gray-200">
-                  <UserCheck className="w-4 h-4" />客户管理
-                </Link>
-              </>
+              <Link href="/admin/users" className="shrink-0 whitespace-nowrap flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-slate-600 border border-gray-200">
+                <Users className="w-4 h-4" />用户管理
+              </Link>
             )}
             <button onClick={() => signOut()} className="shrink-0 whitespace-nowrap flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-gray-600 border border-gray-200">
               <LogOut className="w-4 h-4" />退出

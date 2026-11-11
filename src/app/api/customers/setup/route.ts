@@ -102,6 +102,9 @@ function getCreateSQL(): string {
 CREATE TABLE IF NOT EXISTS customers (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  -- 账号归属（业主 2026-11-11）：无外键，存登录手机号；NULL = 共享库。
+  -- 客户管理对所有登录用户开放后，读/改/删一律按此列严格隔离。
+  owner_phone TEXT,
   customer_code TEXT,
   company_name TEXT NOT NULL,
   contact_name TEXT,

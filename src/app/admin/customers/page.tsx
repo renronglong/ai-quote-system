@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth, getAdminToken } from '@/lib/auth-context';
-import AppLayout from '@/components/AppLayout';
+import { useAuth, getAdminToken, getUserToken } from '@/lib/auth-context';
+import QuoteSidebarLayout from '@/components/QuoteSidebarLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -102,14 +102,13 @@ function CustomersContent() {
   const [result, setResult] = useState<{ success: number; fail: number; errors: string[] } | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
-  // Redirect if not logged in or not admin
+  // 客户管理对所有登录用户开放（业主 2026-11-11）：数据按 owner_phone 严格隔离，
+  // 各自只看/改/删自己的；未登录才跳登录页。管理员额外可见共享库。
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login?redirect=/admin/customers');
-    } else if (!authLoading && user && !isAdmin) {
-      router.replace('/');
     }
-  }, [authLoading, user, isAdmin, router]);
+  }, [authLoading, user, router]);
 
   const loadCustomers = useCallback(async () => {
     setLoading(true);
@@ -117,11 +116,18 @@ function CustomersContent() {
     try {
       const qs = keyword.trim() ? `?keyword=${encodeURIComponent(keyword.trim())}` : '';
       const resp = await fetch(`/api/customers${qs}`, {
-        headers: { 'x-admin-token': getAdminToken() || '' },
+        headers: {
+          'x-admin-token': getAdminToken() || '',
+          'x-user-token': getUserToken() || '',
+        },
       });
       const data = await resp.json();
       if (resp.status === 403) {
-        setError('无管理员权限');
+        setError('请先登录后再查看客户');
+        setCustomers([]);
+      } else if (data.needUpgrade || resp.status === 503) {
+        // 隔离列未升级：明确报错，绝不退回无过滤查询
+        setError(data.error || '客户库尚未升级，请联系管理员执行升级 SQL');
         setCustomers([]);
       } else if (data.success) {
         setCustomers(data.data || []);
@@ -137,8 +143,8 @@ function CustomersContent() {
   }, [keyword]);
 
   useEffect(() => {
-    if (isAdmin) loadCustomers();
-  }, [isAdmin, refreshKey, loadCustomers]);
+    if (user) loadCustomers();
+  }, [user, refreshKey, loadCustomers]);
 
   // Open add dialog
   const openAddDialog = () => {
@@ -197,6 +203,7 @@ function CustomersContent() {
         headers: {
           'Content-Type': 'application/json',
           'x-admin-token': getAdminToken() || '',
+          'x-user-token': getUserToken() || '',
         },
         body: JSON.stringify(body),
       });
@@ -224,7 +231,10 @@ function CustomersContent() {
     try {
       const resp = await fetch(`/api/customers/${deleteConfirm.id}`, {
         method: 'DELETE',
-        headers: { 'x-admin-token': getAdminToken() || '' },
+        headers: {
+          'x-admin-token': getAdminToken() || '',
+          'x-user-token': getUserToken() || '',
+        },
       });
       const data = await resp.json();
       if (data.success) {
@@ -347,6 +357,7 @@ function CustomersContent() {
         headers: {
           'Content-Type': 'application/json',
           'x-admin-token': getAdminToken() || '',
+          'x-user-token': getUserToken() || '',
         },
         body: JSON.stringify({ items: rows }),
       });
@@ -381,13 +392,10 @@ function CustomersContent() {
   if (authLoading || !user) {
     return <div className="flex items-center justify-center min-h-screen text-gray-400 text-sm">请先登录...</div>;
   }
-  if (!isAdmin) {
-    return <div className="flex items-center justify-center min-h-screen text-gray-400 text-sm">无管理员权限，正在跳转...</div>;
-  }
-
   return (
-    <AppLayout>
-      <div className="max-w-6xl mx-auto px-4 py-8">
+    <div className="h-screen flex flex-col overflow-hidden bg-slate-50">
+      <QuoteSidebarLayout>
+      <div className="max-w-6xl mx-auto px-4 py-8 w-full">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
@@ -396,7 +404,9 @@ function CustomersContent() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900">客户管理</h1>
-              <p className="text-sm text-gray-500">共 {total} 个客户</p>
+              <p className="text-sm text-gray-500">
+                共 {total} 个客户{isAdmin ? '（含共享库，其他账号的客户不可见）' : '（仅显示您自己的客户）'}
+              </p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -800,7 +810,8 @@ function CustomersContent() {
           </div>
         )}
       </div>
-    </AppLayout>
+      </QuoteSidebarLayout>
+    </div>
   );
 }
 
