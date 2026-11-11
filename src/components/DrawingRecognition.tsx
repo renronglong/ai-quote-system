@@ -169,7 +169,9 @@ function buildRecogDataFromParse(parseJsonIn: any, productType: string, source: 
     length: isSheet ? pick('unfold_length_mm') : parseJson.extrusion_length_mm,
     perimeter: pick('outer_perimeter_mm'),
     inner_perimeter: parseJson.inner_perimeter_mm,
-    meter_weight: parseJson.weight_kg_per_m,
+    // 识别接口(recognize-drawing / forward-cad)返回字段名是 meter_weight（注意：不是 weight_kg_per_m），
+    // 直接用错键会让米重恒为 undefined，导致选模兜底估成实心重量顶到最大模。
+    meter_weight: parseJson.meter_weight ?? parseJson.weight_kg_per_m,
     wall_thickness: pick('wall_thickness_mm') || pick('thickness_mm'),
     crossSectionArea: parseJson.section_area_mm2,
     die_type: isSheet ? null : dieType,
