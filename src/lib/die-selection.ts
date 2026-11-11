@@ -126,17 +126,12 @@ export function selectExtrusionDie(dims: DieSelectionInput): DieSelectionResult 
   let dieDiameter = STANDARD_DIE_SIZES.find(s => s >= phiDiag) || STANDARD_DIE_SIZES[STANDARD_DIE_SIZES.length - 1];
   if (phiDiag <= 140) dieDiameter = 139;
 
-  // 步骤2：模具类型确定 → 基础厚度
+  // 步骤2：模具类型（平模/分流模）由后端（识图）提供，前端只认 dims.die_type，绝不自行按类别推断
+  // 缺失时仅按公头数兜底（num_dies>=1 = 分流模）；该兜底不应在正常识别流程触发
   const numCavities = dims.num_dies ?? dims.num_cavities ?? 1;
   let dieTypeKey: 'flat' | 'split';
   if (dims.die_type) dieTypeKey = dims.die_type;
   else dieTypeKey = numCavities <= 1 ? 'flat' : 'split';
-
-  const STD_GEOMETRY_CATS = ['铝圆棒', '铝方/扁棒', '铝六角棒', '角铝', '铝圆管', '铝六角管', '铝方管'];
-  if (dims.standard_category && STD_GEOMETRY_CATS.includes(dims.standard_category)) {
-    const hollowCats = ['铝圆管', '铝六角管', '铝方管'];
-    dieTypeKey = hollowCats.includes(dims.standard_category) ? 'split' : 'flat';
-  }
 
   const isFlatDie = dieTypeKey === 'flat';
   const stdPerimeters = dims.standard_category ? calcStandardPerimeters(dims) : null;
