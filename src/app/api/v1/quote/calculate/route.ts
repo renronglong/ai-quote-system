@@ -884,7 +884,12 @@ function calcExtrusion(
       // 方/扁棒、角铝、方管、异型材：矩形对角线
       diagonal = Math.sqrt(W * W + H_dim * H_dim);
     }
-    let phiDiag = diagonal * 1.1 + 90;
+    // 业主 2026-11-12：对角越大留的加工余量越多（+90/+120/+150/+180），系数统一 ×1.1
+    let phiDiag: number;
+    if (diagonal < 100) phiDiag = diagonal * 1.1 + 90;
+    else if (diagonal < 200) phiDiag = diagonal * 1.1 + 120;
+    else if (diagonal < 300) phiDiag = diagonal * 1.1 + 150;
+    else phiDiag = diagonal * 1.1 + 180;
     let dieDiameter = STANDARD_DIE_SIZES.find(s => s >= phiDiag) || STANDARD_DIE_SIZES[STANDARD_DIE_SIZES.length - 1];
     if (phiDiag <= 140) dieDiameter = 139;
 
