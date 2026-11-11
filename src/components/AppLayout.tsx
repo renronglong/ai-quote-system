@@ -11,6 +11,7 @@ import {
 import { useAuth } from '@/lib/auth-context';
 import { useCreditsBalance } from '@/lib/use-credits-balance';
 import TopNavLinks from '@/components/TopNav';
+import ShareButton from '@/components/ShareButton';
 import { SidebarAccountContext } from '@/components/sidebarAccountContext';
 import Footer from '@/components/Footer';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -232,6 +233,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                       </div>
                     </div>
                   ))}
+
+                  {/* 分享入口（移动端汉堡抽屉） */}
+                  <ShareButton variant="sheet" />
+
                   <div className="h-px bg-gray-200 mt-auto" />
                   {user ? (
                     <Button variant="ghost" className="justify-start text-red-600" onClick={() => signOut()}>

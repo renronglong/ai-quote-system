@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import ShareButton from '@/components/ShareButton';
 
 // 全站统一的顶部主导航入口（桌面端平铺显示，任何页面都可互相跳转）
 export const topNavLinks = [
@@ -32,6 +33,7 @@ export default function TopNavLinks({ className = '' }: { className?: string }) 
           </Link>
         );
       })}
+      <ShareButton variant="header" />
     </nav>
   );
 }

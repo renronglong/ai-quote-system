@@ -9,6 +9,7 @@ import {
   Package, LogOut, Users, UserCheck, ArrowLeft, FileSpreadsheet,
   type LucideIcon,
 } from 'lucide-react';
+import ShareButton from '@/components/ShareButton';
 
 interface NavItem {
   key: string;
@@ -162,6 +163,8 @@ export default function QuoteSidebar({
               )}
             </Fragment>
           ))}
+          <div className="mx-1 my-1 border-t border-gray-100" />
+          <ShareButton variant="nav" />
         </nav>
 
         {/* 左下角：用户名 + 积分 + 账户菜单 + 退出/登录 */}
@@ -210,6 +213,7 @@ export default function QuoteSidebar({
       {/* 移动端：顶部横向滚动条（含账户菜单，顶栏汉堡菜单在左侧栏页面已被隐藏） */}
       <nav className="lg:hidden flex items-center gap-1.5 overflow-x-auto border-b border-gray-200 bg-white px-3 py-2 shrink-0">
         {NAV.map(i => i.key === 'recognize' ? renderRecognizeOrReturn(true) : renderItem(i, true))}
+        <ShareButton variant="mobile" />
         {user ? (
           <>
             {isAdmin && (
