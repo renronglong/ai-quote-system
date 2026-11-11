@@ -1053,9 +1053,10 @@ function calcExtrusion(
       perimeterFee = 0.0035 * (finalPerimeter + innerPerimeterForFee) * dieThickness;
       processingFee = baseProcessingFee + perimeterFee;
     }
-    // 业主 2026-11-12：Φ248 及以上各档「模具加工费」按 10% 线性递增（248×1.1 … 560×1.8），218 及以下不变
+    // 业主 2026-11-12：Φ248 及以上各档「模具加工费」按 10% 递增（248×1.1 … 450×1.7），218 及以下不变；
+    // Φ560 因与 450 差距大，单独由 1.8 上调为 2.0（业主 02:12 定）
     const PROCESSING_FEE_TIER_FACTOR: Record<number, number> = {
-      248: 1.1, 278: 1.2, 297: 1.3, 338: 1.4, 358: 1.5, 397: 1.6, 450: 1.7, 560: 1.8,
+      248: 1.1, 278: 1.2, 297: 1.3, 338: 1.4, 358: 1.5, 397: 1.6, 450: 1.7, 560: 2.0,
     };
     const processingTierFactor = PROCESSING_FEE_TIER_FACTOR[dieDiameter] ?? 1.0;
     processingFee = processingFee * processingTierFactor;
