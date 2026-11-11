@@ -2692,8 +2692,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                         setFields(prev => ({
                           ...prev,
                           [fieldKey]: val,
-                          // 类型由后端提供：仅在尚未确定时才按面域数兜底，避免覆盖识图结果
-                          die_type: prev.die_type ? prev.die_type : (val === '' ? '' : (val <= 1 ? 'flat' : 'split')),
+                          die_type: val === '' ? '' : (val <= 1 ? 'flat' : 'split'),
                         }));
                       }}
                       className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
@@ -3059,7 +3058,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                   <button
                     key={cat.key}
                     type="button"
-                    onClick={() => { setStandardCategory(cat.key); resetProfileState(); setMeterWeightManual(false); setAreaManual(false); setPerimeterManual(false); setFields(prev => ({ ...prev, die_type: prev.die_type ? prev.die_type : (['铝圆管','铝六角管','铝方管'].includes(cat.key) ? 'split' : 'flat') })); }}
+                    onClick={() => { setStandardCategory(cat.key); resetProfileState(); setMeterWeightManual(false); setAreaManual(false); setPerimeterManual(false); setFields(prev => ({ ...prev, die_type: ['铝圆管','铝六角管','铝方管'].includes(cat.key) ? 'split' : 'flat' })); }}
                     className={`px-2.5 py-1.5 rounded-lg border text-sm transition-all duration-200 ${
                       standardCategory === cat.key
                         ? 'bg-blue-50 border-blue-300 text-blue-700 font-semibold'
