@@ -393,25 +393,19 @@ export default function QuoteWorkspace({ defaultProductType }: { defaultProductT
     if (!saved) { console.warn('[SaveQuote] 保存失败，无返回数据'); return; }
     if (saved) {
       setSaveSuccess(true);
-      // 如果来自零件列表，标记该零件已报价并返回列表
+      // 来自零件列表时，标记该零件已报价（返回 /quote/parts 时可见），但不跳走
       if (fromPartsList && partsListPartIdx >= 0) {
         try {
           sessionStorage.setItem('ai_quote_last_quoted_idx', String(partsListPartIdx));
-          // 派发自定义事件通知同tab的零件列表页（如果是新tab打开会走storage事件）
-          window.dispatchEvent(new Event('ai-quote-saved'));
-          // 延迟跳转，让用户看到"保存成功"提示
-          setTimeout(() => {
-            router.push('/quote/parts');
-          }, 1200);
         } catch (e) { console.error(e); }
-      } else {
-        // 业主 2026-11-11：保存报价后自动清空（修改任务 1-5 同上），开始下一单
-        setTimeout(() => {
-          setSaveSuccess(false);
-          clearQuoteDraft();   // 先抹掉会话草稿，否则重挂载会把旧参数恢复回来
-          handleNewQuote();     // 重置状态 + 重挂载表单
-        }, 1500);
       }
+      // 业主 2026-11-11（含零件列表来源）：保存报价后自动清空并留在报价页，开始下一单。
+      // handleNewQuote 会顺带清掉 fromPartsList 与「选中零件」sessionStorage 标记，避免泄漏到普通报价页。
+      setTimeout(() => {
+        setSaveSuccess(false);
+        clearQuoteDraft();   // 先抹掉会话草稿，否则重挂载会把旧参数恢复回来
+        handleNewQuote();     // 重置状态 + 重挂载表单
+      }, 1500);
     }
   };
 
