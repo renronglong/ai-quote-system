@@ -76,7 +76,7 @@ interface QuoteRequest {
     inner_diameter_mm?: number;  // 铝圆管/铝六角管内径
     cross_section_area_mm2?: number; // 截面积 mm²（挤压铝型材）
     material_size_type?: 'long' | 'short'; // 长料(≥3000mm) / 小料(<3000mm)
-    perimeter_mm?: number;    // 产品外周长(mm)
+    perimeter_mm?: number;    // 总周长(mm，识图返回已含内孔)
     inner_perimeter_mm?: number; // 内孔周长之和(mm)，中空分流模用于模具费精算
     num_dies?: number;    // 公头数（0=平模，≥1=分流模）
     die_type?: 'flat' | 'split'; // 模具类型：平模/分流模

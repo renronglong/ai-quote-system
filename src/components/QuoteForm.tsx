@@ -522,7 +522,7 @@ const FIELD_LABELS: Record<string, string> = {
   width: '截面宽度(mm)',
   height: '截面高度(mm)',
   length: '长度(mm)',
-  perimeter: '外周长(mm)',
+  perimeter: '总周长(mm)',
   num_cavities: '面域数',
   die_type: '模具类型',
   thickness: '厚度(mm)',
@@ -574,7 +574,7 @@ const CATEGORY_DIM_FIELDS: Record<string, { key: string; label: string; placehol
   '异型材': [
     { key: 'width', label: '宽度(mm)', placeholder: '如 30' },
     { key: 'height', label: '高度(mm)', placeholder: '如 15' },
-    { key: 'perimeter', label: '外周长(mm)', placeholder: '如 100（只算外轮廓）' },
+    { key: 'perimeter', label: '总周长(mm)', placeholder: '如 100（外轮廓+内孔总长）' },
   ],
   // ===== 钢材标准件尺寸配置 =====
   '圆钢': [{ key: 'diameter', label: '直径 Ø(mm)', placeholder: '如 20' }],
@@ -677,7 +677,7 @@ function calcSteelMeterWeight(cat: string, width?: number|string, height?: numbe
   return Math.round((area * density / 1000) * 1000) / 1000;
 }
 
-// 标准件几何周长(mm)：外周长（周长框自动填）+ 内孔周长（分流模模具费，随请求传后端）
+// 标准件几何周长(mm)：总周长（周长框自动填，已含内孔）+ 内孔周长（分流模模具费，随请求传后端）
 function calcStdPerimeters(cat: string, width?: number|string, height?: number|string, thickness?: number|string): { outer: number; inner: number } | null {
   const w = Number(width) || 0;
   const h = Number(height) || 0;
@@ -1173,7 +1173,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     }
   }, [productType, materialCategory, fields.meterWeight, fields.length]);
 
-  // 标准件：外周长自动填入周长框、内孔周长写入隐藏字段（分流模模具费外+内周长；手填周长后不覆盖）
+  // 标准件：总周长自动填入周长框、内孔周长写入隐藏字段（分流模模具费外+内周长；手填周长后不覆盖）
   useEffect(() => {
     if (productType !== '挤出' || materialCategory !== '标准件' || perimeterManual) return;
     const per = calcStdPerimeters(standardCategory, fields.width as number, fields.height as number, fields.thickness as number);

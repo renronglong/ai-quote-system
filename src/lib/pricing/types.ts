@@ -102,7 +102,7 @@ export interface SectionCalculation {
   chamferArea: number;        // 倒角面积 (mm²)
   cavityArea: number;         // 内腔面积 (mm²)
   crossSectionArea: number;   // 净截面面积 (mm²)
-  perimeter: number;          // 外周长 (mm)
+  perimeter: number;          // 总周长 (mm，已含内孔)
   weightPerMeter: number;     // 米重 (kg/m)
   unitWeight: number;         // 单件重量 (kg)
 }

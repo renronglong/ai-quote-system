@@ -843,7 +843,7 @@ export default function QuotePartsPage() {
             if (missing.length === 0) return null;
             return (
               <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
-                ⚠️ 有 <b>{missing.length}</b> 个零件判定为<b>型材</b>，但未能提取截面尺寸（宽 / 高 / 外周长 / 截面积）。
+                ⚠️ 有 <b>{missing.length}</b> 个零件判定为<b>型材</b>，但未能提取截面尺寸（宽 / 高 / 总周长 / 截面积）。
                 进入报价页后请手动填写；填了截面积会自动算出米重。
               </div>
             );

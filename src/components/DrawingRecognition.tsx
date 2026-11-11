@@ -1623,7 +1623,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
                   {recogResult.height != null && <div>高: <b>{recogResult.height}mm</b></div>}
                   {recogResult.wall_thickness != null && <div>壁厚: <b>{recogResult.wall_thickness}mm</b></div>}
                   {recogResult.length != null && <div>长: <b>{recogResult.length}mm</b></div>}
-                  {recogResult.perimeter != null && <div>外周长: <b>{recogResult.perimeter}mm</b></div>}
+                  {recogResult.perimeter != null && <div>总周长: <b>{recogResult.perimeter}mm</b></div>}
                   {recogResult.inner_perimeter != null && <div>内周长: <b>{recogResult.inner_perimeter}mm</b></div>}
                   {recogResult.meter_weight != null && <div>米重: <b>{recogResult.meter_weight}kg/m</b></div>}
                   {recogResult.crossSectionArea != null && <div>截面积: <b>{recogResult.crossSectionArea}mm²</b></div>}
@@ -1634,7 +1634,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
               {!(recogResult._isSheetMetal || recogResult.is_sheet_metal) &&
                 recogResult.crossSectionArea == null && recogResult.width == null && (
                 <div className="col-span-2 mt-0.5 rounded px-1.5 py-1 text-xs text-amber-800 bg-amber-100 border border-amber-200">
-                  ⚠️ 已判定为<b>型材</b>，但未能提取截面尺寸（宽 / 高 / 外周长 / 截面积）。
+                  ⚠️ 已判定为<b>型材</b>，但未能提取截面尺寸（宽 / 高 / 总周长 / 截面积）。
                   进入报价页后请手动填写；填了截面积会自动算出米重。
                 </div>
               )}
