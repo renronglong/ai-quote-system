@@ -1079,14 +1079,18 @@ function calcExtrusion(
   }
 
   // ===== 最小起订量 & 挤压加工费（按模具规格 + 米重定，2026-11-01 业主定）=====
-  // 起订量档位：Φ≥358 → 1000kg，Φ338-357 → 500kg，Φ<338 → 300kg
+  // 起订量档位：Φ≥560 → 3000kg，Φ≥450 → 2000kg，Φ≥358 → 1000kg，Φ338-357 → 500kg，Φ<338 → 300kg
   // （Φ358 从 500kg 档提到 1000kg：358 已是大机台，500kg 排产不划算）
-  if (finalDieDiameter >= 358) minOrderWeightKg = 1000;
+  // （业主 2026-11-12：Φ450→2000kg、Φ560→3000kg）
+  if (finalDieDiameter >= 560) minOrderWeightKg = 3000;
+  else if (finalDieDiameter >= 450) minOrderWeightKg = 2000;
+  else if (finalDieDiameter >= 358) minOrderWeightKg = 1000;
   else if (finalDieDiameter >= 338) minOrderWeightKg = 500;
   else minOrderWeightKg = 300;
 
   // 挤压加工费跟着起订量档走：小模具量产少、换模摊销重 → 单价高；大模具单件重、摊薄 → 单价更高的是机台成本
-  const EXTRUSION_FEE_BY_MOQ: Record<number, number> = { 300: 1500, 500: 2500, 1000: 3500 };
+  // 注：2000/3000kg 暂沿用最高档 3500 元/吨（业主仅指定起订重量，未给新费率，先不擅自加价）
+  const EXTRUSION_FEE_BY_MOQ: Record<number, number> = { 300: 1500, 500: 2500, 1000: 3500, 2000: 3500, 3000: 3500 };
   let extrusionFeePerTon = EXTRUSION_FEE_BY_MOQ[minOrderWeightKg] ?? 1500;
   // 超细料（米重 < 0.15 kg/m）出材率低、挤压难度大，单独按 2000 元/吨
   const feeMeterWeight = dims.meter_weight_kg_per_m
@@ -1271,7 +1275,7 @@ function calcExtrusion(
   // 使用未舍入的原始重量计算MOQ，避免精度丢失导致MOQ为0
   const rawWeight = mat.rawWeight || mat.weight;
   
-  // 最小起订量已在材料费计算前按模具规格定档（Φ≥358→1000kg，Φ338-357→500kg，其余→300kg）
+  // 最小起订量已在材料费计算前按模具规格定档（Φ≥560→3000kg，Φ≥450→2000kg，Φ≥358→1000kg，Φ338-357→500kg，其余→300kg）
   const minOrderQtyRaw = rawWeight > 0 ? Math.ceil(minOrderWeightKg / rawWeight) : 0;
   const minOrderQty = ceilByMagnitude(minOrderQtyRaw);
   if (minOrderQty > 0) {
@@ -2282,7 +2286,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 5. 最低订单量检查
-    // 板材：按总价值 3000 元；其他类型：按模具规格分档重量（300/500/1000kg）
+    // 板材：按总价值 3000 元；其他类型：按模具规格分档重量（300/500/1000/2000/3000kg）
     let minOrderMet = true;
     let minOrderNote = '';
     let minOrderWeightKg = 0;
