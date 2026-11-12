@@ -323,10 +323,11 @@ function numFrom(r: any, ...keys: string[]): number | undefined {
 }
 
 /**
- * 业主 2026-11-13（意图 D）：从后端识别响应里抽取「基本信息」+ 用站点报价引擎算「价格预估」。
- * 价格用识别尺寸 + 默认参数（1 件、无表面处理、引擎默认铝价）即时估算，与 /quote 正式报价会有差异。
+ * 业主 2026-11-13（意图 D）+ 2026-11-13 后续：从后端识别响应里抽取「基本信息」+ 用站点报价引擎算「价格」。
+ * 价格用识别尺寸 + 默认参数（1 件、无表面处理）+ 实时基准价（与 /quote/ 同款 /api/market-price）即时算，
+ * 与 /quote/ 默认口径接近一致（与 /quote/ 同样数量 1、无表面处理、识别长度）。
  */
-function buildBasicInfo(raw: any): BasicInfo {
+function buildBasicInfo(raw: any, livePricePerTon?: number): BasicInfo {
   const r = raw && typeof raw === 'object' ? raw : {};
   const name = r.product_name || r.part_name || r.file_name || r.drawing_number || '';
   const isSheet = r.is_sheet_metal === true ? true : r.is_sheet_metal === false ? false : undefined;
@@ -353,10 +354,10 @@ function buildBasicInfo(raw: any): BasicInfo {
       if (!(area && area > 0)) price = { ok: false, reason: '缺少截面面积' };
       else if (!(len && len > 0)) price = { ok: false, reason: '缺少型材长度' };
       else if (len > 3100) price = { ok: false, reason: '长度超出单支料长 3100mm，请到 /quote 按实际长度报价' };
-      else price = { ok: true, result: calculatePrice({ productType: 'extrusion', crossSectionArea: area, length: len, quantity: 1, surfaceTreatment: '无' }) };
+      else price = { ok: true, result: calculatePrice({ productType: 'extrusion', crossSectionArea: area, length: len, quantity: 1, surfaceTreatment: '无', aluminumPricePerTon: livePricePerTon }) };
     } else if (productType === 'plate') {
       if (w && w > 0 && h && h > 0 && thick && thick > 0) {
-        price = { ok: true, result: calculatePrice({ productType: 'plate', width: w, height: h, thickness: thick, quantity: 1, surfaceTreatment: '无' }) };
+        price = { ok: true, result: calculatePrice({ productType: 'plate', width: w, height: h, thickness: thick, quantity: 1, surfaceTreatment: '无', aluminumPricePerTon: livePricePerTon }) };
       } else price = { ok: false, reason: '缺少宽 / 高 / 板厚' };
     } else {
       const kg = wg != null ? wg / 1000 : undefined;
@@ -394,7 +395,7 @@ function PriceBlock({ result, productType }: { result: PricingResult; productTyp
       <InfoRow label="加工费" value={`¥${(processing ?? 0).toFixed(2)}`} />
       <InfoRow label="表面处理费" value={result.surfaceTreatmentCost ? `¥${result.surfaceTreatmentCost.toFixed(2)}` : '无'} />
       {weight != null ? <InfoRow label="单件重(估)" value={`${weight.toFixed(4)} kg`} /> : null}
-      <InfoRow label="铝价" value={`¥${(result.aluminumPrice?.pricePerKg ?? 0).toFixed(2)}/kg`} />
+      <InfoRow label="材料基准价" value={`¥${(result.aluminumPrice?.pricePerKg ?? 0).toFixed(2)}/kg`} />
     </dl>
   );
 }
@@ -408,6 +409,7 @@ export default function PartsInspectPage() {
   const [modelUrl, setModelUrl] = useState<string | null>(null);
   const [showRaw, setShowRaw] = useState(false);
   const [showJson, setShowJson] = useState(false);
+  const [livePricePerTon, setLivePricePerTon] = useState<number | undefined>(undefined);
   const [loaded, setLoaded] = useState(false);
   // 区分两种空态：①本会话压根没上传过图纸（ai_quote_parts / ai_quote_recog_result 皆空）；
   // ②上传过、后端也认，只是后端没给 drawing_preview_url 字段。
@@ -464,8 +466,26 @@ export default function PartsInspectPage() {
       .filter(([k]) => k !== '_rawBackend')
       .map(([k, v]) => ({ key: k, label: FIELD_LABELS[k] || k, value: formatValue(v), long: typeof v === 'object' && v !== null }));
   }, [raw]);
-  // 普通用户看到的「基本信息」卡片（含价格预估），见 buildBasicInfo。
-  const basicInfo = useMemo(() => buildBasicInfo(raw), [raw]);
+
+  // 实时基准价（与 /quote/ 同款 /api/market-price）：让 inspect 的单价与 /quote/ 默认口径一致。
+  // 挤出/铝板→铝型材；压铸→压铸铝(ADC12)；钢材类板材→冷轧板。失败则保持 undefined，引擎回退默认。
+  useEffect(() => {
+    const r = raw && typeof raw === 'object' ? raw : {};
+    const proc = String(r.process_type || r.product_type || r.material || r.product_name || r.part_name || r.file_name || '');
+    const isCast = /die_cast|压铸|casting/i.test(proc);
+    const isSteel = /钢|钢板|不锈钢|冷轧|镀锌|热轧|stainless|steel|spcc|sgcc/i.test(proc);
+    const isPlate = (r.is_sheet_metal === true) || /sheet|板材|钣金/i.test(proc);
+    const matKey = isCast ? '压铸铝' : (isPlate && isSteel) ? '冷轧板' : '铝型材';
+    let cancelled = false;
+    fetch(`/api/market-price?material=${encodeURIComponent(matKey)}`)
+      .then((res) => res.json())
+      .then((d) => { if (!cancelled && d?.success && typeof d?.data?.price === 'number') setLivePricePerTon(d.data.price); })
+      .catch(() => { /* 失败保持默认，不阻断 */ });
+    return () => { cancelled = true; };
+  }, [raw]);
+
+  // 普通用户看到的「基本信息」卡片（含价格），见 buildBasicInfo；价格用实时基准价算，与 /quote/ 同口径。
+  const basicInfo = useMemo(() => buildBasicInfo(raw, livePricePerTon), [raw, livePricePerTon]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
@@ -666,8 +686,8 @@ export default function PartsInspectPage() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
-                    <span className="text-sm font-medium">价格（预估）</span>
-                    <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-500">基于识别尺寸 · 1 件 · 无表面处理</span>
+                    <span className="text-sm font-medium">价格</span>
+                    <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-500">实时基准价 · 1 件 · 无表面处理</span>
                   </div>
                   {basicInfo.price.ok && basicInfo.price.result ? (
                     <PriceBlock result={basicInfo.price.result} productType={basicInfo.productType} />
@@ -675,7 +695,8 @@ export default function PartsInspectPage() {
                     <div className="text-sm text-slate-500">暂无法估算：{basicInfo.price.reason}。</div>
                   )}
                   <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                    注：此为前端按识别尺寸即时估算（铝价取引擎默认 ¥23.53/kg），与 /quote 正式报价因长度、数量、表面处理、实时铝价不同会有差异，仅供参考。
+                    注：此价格与 /quote/ 同口径——用站点报价引擎按识别尺寸 + 实时基准价（同 /api/market-price，与 /quote/ 顶部实时铝价同源）本地算，默认 1 件、无表面处理。
+                    与 /quote/ 正式报价差异仅来自长度、数量、表面处理、牌号加价等实际参数；如需精确报价请点上方「去 /quote/ 获取正式报价」。
                   </p>
                 </div>
                 {basicInfo.costTip ? (
