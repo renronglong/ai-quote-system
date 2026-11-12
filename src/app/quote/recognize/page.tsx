@@ -35,8 +35,10 @@ export default function QuoteRecognizePage() {
     };
 
     try {
-      sessionStorage.setItem('ai_quote_parts', JSON.stringify(payload));
-      sessionStorage.setItem('ai_quote_recog_result', JSON.stringify(data));
+      // 业主 2026-11-12：改用 localStorage，使零件列表/图纸子网页在「新标签页打开」与「关闭重开」后仍能读到
+      // （sessionStorage 按标签页隔离，window.open(_blank) 开的新标签读不到，导致图纸恒显示空 JSON）。
+      localStorage.setItem('ai_quote_parts', JSON.stringify(payload));
+      localStorage.setItem('ai_quote_recog_result', JSON.stringify(data));
     } catch (e) {
       console.error('Failed to save recognition data:', e);
     }

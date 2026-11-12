@@ -257,8 +257,8 @@ export default function QuoteWorkspace({ defaultProductType }: { defaultProductT
         recognitionId: data?.recognitionId,
         createdAt: Date.now(),
       };
-      sessionStorage.setItem('ai_quote_parts', JSON.stringify(payload));
-      sessionStorage.setItem('ai_quote_recog_result', JSON.stringify(data));
+      localStorage.setItem('ai_quote_parts', JSON.stringify(payload));
+      localStorage.setItem('ai_quote_recog_result', JSON.stringify(data));
     } catch { /* 存储不可用时不影响主流程 */ }
   }, [handleFormUpdate]);
 

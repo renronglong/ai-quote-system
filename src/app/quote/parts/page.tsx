@@ -335,7 +335,7 @@ export default function QuotePartsPage() {
 
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem('ai_quote_parts');
+      const raw = localStorage.getItem('ai_quote_parts');
       if (!raw) { router.push('/quote/recognize'); return; }
       const data: PartsPayload = JSON.parse(raw);
       setPayload(data);
@@ -421,7 +421,7 @@ export default function QuotePartsPage() {
     const updatedProducts = [...payload.products];
     updatedProducts[idx] = { ...updatedProducts[idx], ...patch };
     const updatedPayload = { ...payload, products: updatedProducts };
-    sessionStorage.setItem('ai_quote_parts', JSON.stringify(updatedPayload));
+    localStorage.setItem('ai_quote_parts', JSON.stringify(updatedPayload));
     setPayload(updatedPayload);
     if (invalidate) invalidateQuoted(idx);
   };
@@ -979,7 +979,7 @@ export default function QuotePartsPage() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 // 点开前把当前零件数据重新落盘，保证 inspect 子网页在本会话内一定能读到最新数据
-                                try { sessionStorage.setItem('ai_quote_parts', JSON.stringify(payload)); } catch { /* ignore */ }
+                                try { localStorage.setItem('ai_quote_parts', JSON.stringify(payload)); } catch { /* ignore */ }
                                 window.open(`/quote/parts/inspect?i=${idx}`, '_blank', 'noopener,noreferrer');
                               }}
                               onKeyDown={(e) => e.stopPropagation()}

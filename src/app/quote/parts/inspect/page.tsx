@@ -130,8 +130,8 @@ export default function PartsInspectPage() {
       const i = Math.max(0, Number(q.get('i') || 0) || 0);
       setIdx(i);
       if (q.get('raw') === '1') setShowRaw(true);
-      const rawParts = sessionStorage.getItem('ai_quote_parts');
-      const rawRecog = sessionStorage.getItem('ai_quote_recog_result');
+      const rawParts = localStorage.getItem('ai_quote_parts');
+      const rawRecog = localStorage.getItem('ai_quote_recog_result');
       const payload = JSON.parse(rawParts || '{}');
       const p = Array.isArray(payload?.products) ? (payload.products[i] || null) : null;
       setFileName(String(payload?.fileName || p?._fileName || ''));
@@ -210,9 +210,10 @@ export default function PartsInspectPage() {
                 <>
                   <div className="text-sm font-medium text-slate-600 mb-1">本会话还没有上传过图纸</div>
                   <div className="text-xs text-slate-500 leading-relaxed max-w-xl mx-auto">
-                    零件列表的「图纸」数据来自浏览器会话里暂存的识别结果。请先到
-                    <code className="px-1 py-0.5 rounded bg-slate-200 font-mono">/quote/recognize</code>
-                    （图纸 AI 识别）上传文件，等识别完成后点「去零件列表报价」，再在零件列表里点「图纸」按钮。
+                    零件列表的「图纸」数据来自浏览器本地存储（localStorage）。请先到
+                    <code className="px-1 py-0.5 rounded bg-slate-200 font-mono">/quote/extrusion</code>
+                    或 <code className="px-1 py-0.5 rounded bg-slate-200 font-mono">/quote/recognize</code>
+                    （图纸 AI 识别）上传文件，等识别完成后进入零件列表，再点「图纸」按钮。
                     直接手敲本页地址而没先上传，就会看到这个空态。
                   </div>
                 </>
