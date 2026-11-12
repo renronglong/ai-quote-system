@@ -1,7 +1,7 @@
 "use client";
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, FileImage, ShieldAlert, ChevronDown, ExternalLink, Info } from 'lucide-react';
+import { ArrowLeft, FileImage, ShieldAlert, ChevronDown, ExternalLink, Info, Box } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 
 /**
@@ -182,12 +182,127 @@ function makePlainSummary(raw: any): string[] {
   return lines;
 }
 
+/**
+ * 3D 模型查看器（业主「前端任务_3D模型显示」）。
+ * 后端把模型以 data:model/stl;base64,... 直接给出（无需再调接口）。
+ * three / STLLoader / OrbitControls 均在 useEffect 内动态 import，避免 SSR 触碰 WebGL，
+ * 也让 three 单独成 chunk、按需加载。
+ * 模型默认灰色（未上色），仅可旋转查看，不参与任何报价计算。
+ */
+function StlViewer({ url }: { url: string }) {
+  const mountRef = useRef<HTMLDivElement | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return;
+    let disposed = false;
+    let dispose: (() => void) | null = null;
+
+    (async () => {
+      try {
+        const THREE = await import('three');
+        const { STLLoader } = await import('three/examples/jsm/loaders/STLLoader.js');
+        const { OrbitControls } = await import('three/examples/jsm/controls/OrbitControls.js');
+        if (disposed || !mountRef.current) return;
+        const node = mountRef.current;
+        const height = 480;
+        const width = node.clientWidth || 480;
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xf1f5f9); // 浅色背景
+        const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(width, height);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        node.appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+        const d1 = new THREE.DirectionalLight(0xffffff, 0.9); d1.position.set(1, 1.2, 1); scene.add(d1);
+        const d2 = new THREE.DirectionalLight(0xffffff, 0.4); d2.position.set(-1, -0.5, -1); scene.add(d2);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+
+        const loader = new STLLoader();
+        loader.load(
+          url,
+          (geometry: any) => {
+            if (disposed) { geometry.dispose(); return; }
+            geometry.computeVertexNormals();
+            const material = new THREE.MeshStandardMaterial({ color: 0xb8b8b8, roughness: 0.65, metalness: 0.1 });
+            const mesh = new THREE.Mesh(geometry, material);
+            geometry.computeBoundingBox();
+            const box = geometry.boundingBox!;
+            const center = new THREE.Vector3();
+            box.getCenter(center);
+            mesh.position.sub(center); // 居中
+            scene.add(mesh);
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            const maxDim = Math.max(size.x, size.y, size.z) || 1;
+            const dist = maxDim * 1.6 + 1;
+            camera.position.set(dist, dist * 0.7, dist);
+            camera.near = maxDim / 100;
+            camera.far = maxDim * 100;
+            camera.updateProjectionMatrix();
+            controls.target.set(0, 0, 0);
+            controls.update();
+          },
+          undefined,
+          () => { if (!disposed) setFailed(true); }
+        );
+
+        let raf = 0;
+        const animate = () => {
+          raf = requestAnimationFrame(animate);
+          controls.update();
+          renderer.render(scene, camera);
+        };
+        animate();
+
+        const onResize = () => {
+          const w = node.clientWidth || 480;
+          camera.aspect = w / height;
+          camera.updateProjectionMatrix();
+          renderer.setSize(w, height);
+        };
+        window.addEventListener('resize', onResize);
+
+        dispose = () => {
+          cancelAnimationFrame(raf);
+          window.removeEventListener('resize', onResize);
+          controls.dispose();
+          renderer.dispose();
+          if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
+        };
+      } catch {
+        if (!disposed) setFailed(true);
+      }
+    })();
+
+    return () => { disposed = true; dispose?.(); };
+  }, [url]);
+
+  if (failed) {
+    return (
+      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
+        3D 模型加载失败。请用桌面版 Chrome / Edge 打开，并确认浏览器已启用 WebGL。
+      </div>
+    );
+  }
+  // 高度为 480px、宽度自适应、浅色背景；canvas 由 three 注入。
+  return <div ref={mountRef} className="w-full rounded-lg overflow-hidden border border-slate-200" style={{ height: 480, background: '#f1f5f9' }} />;
+}
+
 export default function PartsInspectPage() {
   const { loading: authLoading, isAdmin } = useAuth();
   const [idx, setIdx] = useState(0);
   const [fileName, setFileName] = useState('');
   const [raw, setRaw] = useState<any>({});
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [modelUrl, setModelUrl] = useState<string | null>(null);
   const [showRaw, setShowRaw] = useState(false);
   const [showJson, setShowJson] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -224,6 +339,16 @@ export default function PartsInspectPage() {
         recog?.recogData?.drawing_preview_url,
       ].find(v => typeof v === 'string' && v.trim() !== '');
       setPreviewUrl(url ? String(url).trim() : null);
+      // 业主「前端任务_3D模型显示」：后端顶层多给 model_3d_url（data:model/stl;base64,...），
+      // 与 drawing_preview_url 同一来源层级；有值则渲染可旋转的 STL，否则保持原 PNG。
+      const m3d = [
+        backend?.model_3d_url,
+        backend?.raw_parse?.stp?.model_3d_url,
+        p?.model_3d_url,
+        recog?.model_3d_url,
+        recog?.recogData?.model_3d_url,
+      ].find(v => typeof v === 'string' && v.trim() !== '');
+      setModelUrl(m3d ? String(m3d).trim() : null);
     } catch { /* 无数据则显示空态 */ }
     setLoaded(true);
   }, []);
@@ -319,6 +444,31 @@ export default function PartsInspectPage() {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+        </section>
+
+        {/* ①-2 后端给出的 3D 模型（STEP 等返回 model_3d_url；图片/PDF 或模型过大则不返回） */}
+        <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Box size={18} className="text-blue-600" />
+            <h2 className="font-medium">3D 模型（可旋转）</h2>
+            {modelUrl ? (
+              <span className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-600 font-mono">model_3d_url</span>
+            ) : null}
+          </div>
+          {!loaded ? (
+            <div className="text-sm text-slate-400 py-8 text-center">读取中…</div>
+          ) : modelUrl ? (
+            <StlViewer url={modelUrl} />
+          ) : (
+            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+              <Info size={22} className="mx-auto mb-2 text-slate-400" />
+              <div className="text-sm font-medium text-slate-600 mb-1">该文件没有 3D 模型</div>
+              <div className="text-xs text-slate-500 leading-relaxed max-w-xl mx-auto">
+                上传图片 / PDF，或模型过大时，后端不会返回 <code className="px-1 py-0.5 rounded bg-slate-200 font-mono">model_3d_url</code>。
+                此时保持显示上方的静态图纸，不会报错、不会留白。
+              </div>
             </div>
           )}
         </section>
