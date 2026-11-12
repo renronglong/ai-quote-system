@@ -924,6 +924,8 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           ? Math.round((outlinePerimeter + holePerimeter) * 100) / 100
           : undefined;
         const recogData: Record<string, any> = {
+          // 保留后端原始响应，供零件列表「查看后端全部信息」子网页（管理员）使用
+          _rawBackend: dxfJson || {},
           confidence: null,
           product_type: productType === '板材' ? 'stamping' : productType,
           // DXF 展开尺寸即板材，置位确保下游 isSheetPart 按板材路由（否则 'stamping' 会被误判/跳过）
