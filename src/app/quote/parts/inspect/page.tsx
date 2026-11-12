@@ -684,6 +684,18 @@ export default function PartsInspectPage() {
                     <p className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-3 leading-relaxed">{basicInfo.costTip}</p>
                   </div>
                 ) : null}
+                <div className="pt-3 border-t border-slate-100">
+                  <a
+                    href="/quote?from=parts"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+                  >
+                    <ExternalLink size={16} />
+                    去 /quote/ 获取正式报价（按实际长度 / 数量 / 表面处理）
+                  </a>
+                  <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                    上方「价格（预估）」仅按识别尺寸估算；点这里进入 /quote/ 用真实参数算正式报价，并复用本零件识别信息。
+                  </p>
+                </div>
               </div>
             </>
           )}
