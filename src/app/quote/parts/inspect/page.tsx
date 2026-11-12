@@ -374,7 +374,15 @@ export default function PartsInspectPage() {
           <span className="ml-auto text-xs text-slate-400">零件 #{idx + 1}{fileName ? ` · ${fileName}` : ''}</span>
         </div>
 
-        {/* ① 后端给出的图纸 */}
+        {/* ① + ①-2 二选一（业主 2026-11-13 定）：STEP 等有 model_3d_url → 只显示 3D、隐藏图片；
+            图片/PDF 等无 3D → 只显示静态图纸、隐藏 3D 区块。 */}
+        {!loaded ? (
+          <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-5">
+            <div className="text-sm text-slate-400 py-8 text-center">读取中…</div>
+          </section>
+        ) : null}
+        {/* ① 后端给出的图纸（无 3D 时显示） */}
+        {loaded && !modelUrl && (
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-5">
           <div className="flex items-center gap-2 mb-3">
             <FileImage size={18} className="text-blue-600" />
@@ -447,8 +455,10 @@ export default function PartsInspectPage() {
             </div>
           )}
         </section>
+        )}
 
-        {/* ①-2 后端给出的 3D 模型（STEP 等返回 model_3d_url；图片/PDF 或模型过大则不返回） */}
+        {/* ①-2 后端给出的 3D 模型（有 model_3d_url 时显示，否则隐藏） */}
+        {loaded && modelUrl && (
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-5">
           <div className="flex items-center gap-2 mb-3">
             <Box size={18} className="text-blue-600" />
@@ -457,21 +467,9 @@ export default function PartsInspectPage() {
               <span className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-600 font-mono">model_3d_url</span>
             ) : null}
           </div>
-          {!loaded ? (
-            <div className="text-sm text-slate-400 py-8 text-center">读取中…</div>
-          ) : modelUrl ? (
-            <StlViewer url={modelUrl} />
-          ) : (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-              <Info size={22} className="mx-auto mb-2 text-slate-400" />
-              <div className="text-sm font-medium text-slate-600 mb-1">该文件没有 3D 模型</div>
-              <div className="text-xs text-slate-500 leading-relaxed max-w-xl mx-auto">
-                上传图片 / PDF，或模型过大时，后端不会返回 <code className="px-1 py-0.5 rounded bg-slate-200 font-mono">model_3d_url</code>。
-                此时保持显示上方的静态图纸，不会报错、不会留白。
-              </div>
-            </div>
-          )}
+          <StlViewer url={modelUrl} />
         </section>
+        )}
 
         {/* ② 后端全部信息（管理员专属） */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
