@@ -3,8 +3,8 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, FileImage, ShieldAlert, ChevronDown, ExternalLink, Info, Box } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
-import { calculatePrice } from '@/lib/pricing/engine';
-import type { PricingResult } from '@/lib/pricing/types';
+import { calculateLaserCuttingFee } from '@/lib/stamping-mold-calculator';
+import { tryFrontendDieCasting } from '@/lib/pricing/dieCastingFrontend';
 
 /**
  * /quote/parts/inspect — 业主 2026-11-12 任务表「修改任务」第 1 条
@@ -301,6 +301,73 @@ function StlViewer({ url }: { url: string }) {
   return <div ref={mountRef} className="w-full rounded-lg overflow-hidden border border-slate-200" style={{ height: 480, background: '#f1f5f9' }} />;
 }
 
+/**
+ * 业主 2026-11-13 最终定：inspect 的「价格」必须与 /quote/ 完全相等。
+ * 做法：用本零件识别数据，复刻 /quote/（QuoteForm + QuoteWorkspace 映射）构造同一份 payload，
+ * 调用同一后端 /api/v1/quote/calculate；压铸再叠加与 /quote/ 相同的前端覆盖(tryFrontendDieCasting)；
+ * 板材默认走激光方案（与 /quote/ 默认 sheetPlan='laser' 一致），用 calculateLaserCuttingFee 算激光费。
+ * 显示字段与 /quote/ 顶部一致：含税单价=unit_price_in_tax、材料费=material_cost、加工费=processing_cost、单件重量=weight_per_piece_kg。
+ */
+
+/** /quote/ 顶部展示的报价结果（与 QuoteWorkspace 取的字段一一对应） */
+type InspectQuoteResult = {
+  material_cost: number;
+  processing_cost: number;
+  surface_treatment_cost: number;
+  unit_price: number;            // 含税单价（= unit_price_in_tax）
+  unit_price_ex_tax: number;     // 未税单价
+  weight_per_piece_kg: number;
+  mold_cost?: number;
+  notes?: string[];
+};
+type InspectQuote = { ok: boolean; loading: boolean; result?: InspectQuoteResult; reason?: string };
+
+const GRADE_ALIAS: Record<string, string> = {
+  '6063': '6063', '6061': '6061', '5052': '5052', '6060': '6060',
+  '铝（未指定）': '', '钢板': 'Q235', '钢': 'Q235',
+  '冷轧板': 'SPCC', '不锈钢': '304',
+};
+// 板材材料类别归一化（与 QuoteForm.normalizeSheetCategory 完全一致，避免在 inspect 引整组件）
+const SHEET_CATEGORY_RULES: Array<[string, string]> = [
+  ['不锈钢', '不锈钢'], ['304', '不锈钢'], ['201', '不锈钢'], ['316', '不锈钢'], ['430', '不锈钢'],
+  ['镀锌', '镀锌板'], ['白铁', '镀锌板'],
+  ['冷轧', '冷轧板'], ['冷板', '冷轧板'], ['spcc', '冷轧板'],
+  ['热轧', '钢板'],
+  ['铝', '铝板'],
+  ['钢', '钢板'], ['铁板', '钢板'], ['碳钢', '钢板'], ['q235', '钢板'], ['a3', '钢板'], ['锰钢', '钢板'],
+];
+function normalizeSheetCategory(raw: unknown, defaultCat = '铝板'): string {
+  const s = String(raw ?? '').trim();
+  if (!s) return defaultCat;
+  const lower = s.toLowerCase();
+  for (const [kw, cat] of SHEET_CATEGORY_RULES) {
+    if (lower.includes(kw.toLowerCase())) return cat;
+  }
+  return defaultCat;
+}
+
+/** 从识别响应判定产品大类，复刻 QuoteWorkspace 第 132-208 行的映射逻辑 */
+function classifyPart(raw: any): { productTypeZh: string; rawMat: string } {
+  const part = raw && typeof raw === 'object' ? raw : {};
+  const proc = String(part.process_type || part.product_type || '');
+  const isSheetPart = part.is_sheet_metal === true || part.product_type === 'sheet_metal'
+    || /sheet|板材|钣金/i.test(proc);
+  const rawMat = part.material_grade || part.material || '';
+  const notAluminum = /钢|铁|不锈钢|冷轧|镀锌|白铁|Q235|Q195|A3|SPCC|304|201|316|430/i.test(String(rawMat));
+  const isCast = /die_cast|压铸|casting|锌合金|zinc/i.test(proc);
+  const isExtrusion = !isSheetPart && !notAluminum && !isCast && (
+    part.process_type === 'extrusion' || part.process_type === 'aluminum_extrusion'
+    || part.die_type || part.perimeter || part.extrusion_length_mm || part.section_area_mm2
+  );
+  let productTypeZh: string;
+  if (isCast) productTypeZh = /锌合金|zinc/i.test(String(rawMat)) ? '锌合金' : '压铸';
+  else if (notAluminum && !isSheetPart) productTypeZh = '钢材';
+  else if (isSheetPart || notAluminum) productTypeZh = '板材';
+  else if (isExtrusion) productTypeZh = '挤出';
+  else productTypeZh = '板材';
+  return { productTypeZh, rawMat };
+}
+
 type BasicInfo = {
   name: string;
   productType: 'extrusion' | 'plate' | 'die_casting';
@@ -310,7 +377,6 @@ type BasicInfo = {
   cd?: number; mw?: number; wg?: number; conf?: number | string;
   mold: string;
   costTip: string;
-  price: { ok: boolean; result?: PricingResult; reason?: string };
 };
 
 function numFrom(r: any, ...keys: string[]): number | undefined {
@@ -323,11 +389,9 @@ function numFrom(r: any, ...keys: string[]): number | undefined {
 }
 
 /**
- * 业主 2026-11-13（意图 D）+ 2026-11-13 后续：从后端识别响应里抽取「基本信息」+ 用站点报价引擎算「价格」。
- * 价格用识别尺寸 + 默认参数（1 件、无表面处理）+ 实时基准价（与 /quote/ 同款 /api/market-price）即时算，
- * 与 /quote/ 默认口径接近一致（与 /quote/ 同样数量 1、无表面处理、识别长度）。
+ * 从后端识别响应里抽取「基本信息」（仅识别字段，价格改由后端 /api/v1/quote/calculate 计算，见下方 useEffect）。
  */
-function buildBasicInfo(raw: any, livePricePerTon?: number): BasicInfo {
+function buildBasicInfo(raw: any): BasicInfo {
   const r = raw && typeof raw === 'object' ? raw : {};
   const name = r.product_name || r.part_name || r.file_name || r.drawing_number || '';
   const isSheet = r.is_sheet_metal === true ? true : r.is_sheet_metal === false ? false : undefined;
@@ -348,29 +412,8 @@ function buildBasicInfo(raw: any, livePricePerTon?: number): BasicInfo {
   const conf = r.confidence_score ?? r.confidence;
   const mold = r.mold_type || r.die_type || '';
 
-  let price: BasicInfo['price'] = { ok: false };
-  try {
-    if (productType === 'extrusion') {
-      if (!(area && area > 0)) price = { ok: false, reason: '缺少截面面积' };
-      else if (!(len && len > 0)) price = { ok: false, reason: '缺少型材长度' };
-      else if (len > 3100) price = { ok: false, reason: '长度超出单支料长 3100mm，请到 /quote 按实际长度报价' };
-      else price = { ok: true, result: calculatePrice({ productType: 'extrusion', crossSectionArea: area, length: len, quantity: 1, surfaceTreatment: '无', aluminumPricePerTon: livePricePerTon }) };
-    } else if (productType === 'plate') {
-      if (w && w > 0 && h && h > 0 && thick && thick > 0) {
-        price = { ok: true, result: calculatePrice({ productType: 'plate', width: w, height: h, thickness: thick, quantity: 1, surfaceTreatment: '无', aluminumPricePerTon: livePricePerTon }) };
-      } else price = { ok: false, reason: '缺少宽 / 高 / 板厚' };
-    } else {
-      const kg = wg != null ? wg / 1000 : undefined;
-      if (kg && kg > 0) {
-        price = { ok: true, result: calculatePrice({ productType: 'die_casting', weight: kg, quantity: 1, surfaceTreatment: '无' }) };
-      } else price = { ok: false, reason: '缺少单件重量' };
-    }
-  } catch {
-    price = { ok: false, reason: '计算异常' };
-  }
-
   const costTip = (r.classification && r.classification.cost_tip) || '';
-  return { name, productType, processLabel, isSheet, w, h, len, thick, area, cd, mw, wg, conf, mold, costTip, price };
+  return { name, productType, processLabel, isSheet, w, h, len, thick, area, cd, mw, wg, conf, mold, costTip };
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -382,20 +425,20 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function PriceBlock({ result, productType }: { result: PricingResult; productType: BasicInfo['productType'] }) {
-  const unit = productType === 'extrusion' ? (result.unitPriceWithTax ?? result.unitCost) : result.unitCost;
-  const processing = productType === 'extrusion'
-    ? (result.processingFeeCost ?? result.cncCost)
-    : (result.extrusionCost + result.cncCost);
-  const weight = result.netWeight != null ? result.netWeight : undefined;
+function PriceBlock({ r }: { r: InspectQuoteResult }) {
+  const weightStr = r.weight_per_piece_kg != null
+    ? (r.weight_per_piece_kg >= 1
+        ? `${r.weight_per_piece_kg.toFixed(3)} kg`
+        : `${(r.weight_per_piece_kg * 1000).toFixed(1)} g`)
+    : '—';
   return (
     <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2.5 text-sm">
-      <InfoRow label="预估单价(含税)" value={`¥${(unit ?? 0).toFixed(2)}`} />
-      <InfoRow label="材料费" value={`¥${(result.materialCost ?? 0).toFixed(2)}`} />
-      <InfoRow label="加工费" value={`¥${(processing ?? 0).toFixed(2)}`} />
-      <InfoRow label="表面处理费" value={result.surfaceTreatmentCost ? `¥${result.surfaceTreatmentCost.toFixed(2)}` : '无'} />
-      {weight != null ? <InfoRow label="单件重(估)" value={`${weight.toFixed(4)} kg`} /> : null}
-      <InfoRow label="材料基准价" value={`¥${(result.aluminumPrice?.pricePerKg ?? 0).toFixed(2)}/kg`} />
+      <InfoRow label="含税单价" value={`¥${(r.unit_price ?? 0).toFixed(2)}`} />
+      <InfoRow label="材料费" value={`¥${(r.material_cost ?? 0).toFixed(2)}`} />
+      <InfoRow label="加工费" value={`¥${(r.processing_cost ?? 0).toFixed(2)}`} />
+      <InfoRow label="表面处理费" value={r.surface_treatment_cost ? `¥${r.surface_treatment_cost.toFixed(2)}` : '无'} />
+      <InfoRow label="单件重量" value={weightStr} />
+      {r.mold_cost ? <InfoRow label="模具费(一次性)" value={`¥${r.mold_cost.toFixed(2)}`} /> : null}
     </dl>
   );
 }
@@ -409,7 +452,7 @@ export default function PartsInspectPage() {
   const [modelUrl, setModelUrl] = useState<string | null>(null);
   const [showRaw, setShowRaw] = useState(false);
   const [showJson, setShowJson] = useState(false);
-  const [livePricePerTon, setLivePricePerTon] = useState<number | undefined>(undefined);
+  const [price, setPrice] = useState<InspectQuote>({ ok: false, loading: true });
   const [loaded, setLoaded] = useState(false);
   // 区分两种空态：①本会话压根没上传过图纸（ai_quote_parts / ai_quote_recog_result 皆空）；
   // ②上传过、后端也认，只是后端没给 drawing_preview_url 字段。
@@ -467,25 +510,147 @@ export default function PartsInspectPage() {
       .map(([k, v]) => ({ key: k, label: FIELD_LABELS[k] || k, value: formatValue(v), long: typeof v === 'object' && v !== null }));
   }, [raw]);
 
-  // 实时基准价（与 /quote/ 同款 /api/market-price）：让 inspect 的单价与 /quote/ 默认口径一致。
-  // 挤出/铝板→铝型材；压铸→压铸铝(ADC12)；钢材类板材→冷轧板。失败则保持 undefined，引擎回退默认。
+  // 普通用户看到的「基本信息」卡片（识别字段），见 buildBasicInfo。
+  const basicInfo = useMemo(() => buildBasicInfo(raw), [raw]);
+
+  // 业主 2026-11-13 最终定：价格必须与 /quote/ 完全相等。
+  // 用本零件识别数据，复刻 /quote/（QuoteForm + QuoteWorkspace 映射）构造同一份 payload，
+  // 调同一后端 /api/v1/quote/calculate；压铸叠加与 /quote/ 相同的前端覆盖；板材默认走激光方案。
   useEffect(() => {
-    const r = raw && typeof raw === 'object' ? raw : {};
-    const proc = String(r.process_type || r.product_type || r.material || r.product_name || r.part_name || r.file_name || '');
-    const isCast = /die_cast|压铸|casting/i.test(proc);
-    const isSteel = /钢|钢板|不锈钢|冷轧|镀锌|热轧|stainless|steel|spcc|sgcc/i.test(proc);
-    const isPlate = (r.is_sheet_metal === true) || /sheet|板材|钣金/i.test(proc);
-    const matKey = isCast ? '压铸铝' : (isPlate && isSteel) ? '冷轧板' : '铝型材';
     let cancelled = false;
-    fetch(`/api/market-price?material=${encodeURIComponent(matKey)}`)
+    const part = raw && typeof raw === 'object' ? raw : {};
+    const { productTypeZh, rawMat } = classifyPart(part);
+
+    const buildPayload = (): Record<string, any> | null => {
+      if (productTypeZh === '挤出' || productTypeZh === '钢材') {
+        const area = numFrom(part, 'section_area_mm2', 'cross_section_area_mm2');
+        const len = numFrom(part, 'extrusion_length_mm', 'length_mm', 'length');
+        const w = numFrom(part, 'section_width_mm', 'width_mm', 'width');
+        const h = numFrom(part, 'section_height_mm', 'height_mm', 'height');
+        const mw = numFrom(part, 'weight_kg_per_m', 'meter_weight');
+        const t = numFrom(part, 'wall_thickness_mm', 'material_thickness_mm', 'thickness_mm', 'thickness');
+        const per = numFrom(part, 'perimeter_mm', 'outer_perimeter_mm', 'perimeter');
+        if (productTypeZh === '钢材') {
+          if (!((mw && mw > 0) || (area && area > 0))) return null;
+        } else {
+          if (!((area && area > 0) || (mw && mw > 0))) return null;
+          if (!(len && len > 0)) return null;
+        }
+        const grade = (rawMat in GRADE_ALIAS) ? GRADE_ALIAS[rawMat] : rawMat;
+        const payload: Record<string, any> = {
+          product_type: productTypeZh === '钢材' ? 'steel_standard' : 'extrusion',
+          material: productTypeZh === '钢材' ? { category: '钢材', grade: grade || 'Q235' } : { category: '挤压铝型材', grade: grade || undefined },
+          quantity: 1,
+          dimensions: {
+            standard_category: '异型材',
+            length_mm: len || 0, width_mm: w || 0, height_mm: h || undefined,
+            cross_section_area_mm2: area || undefined, meter_weight_kg_per_m: mw || undefined,
+            wall_thickness_mm: t || undefined, perimeter_mm: per || undefined,
+          },
+        };
+        return payload;
+      }
+      if (productTypeZh === '板材') {
+        const bL = numFrom(part, 'unfold_length_mm', 'unfold_length', 'sheet_length', 'length_mm', 'length');
+        const bW = numFrom(part, 'unfold_width_mm', 'unfold_width', 'sheet_width', 'width_mm', 'width');
+        const t = numFrom(part, 'material_thickness_mm', 'wall_thickness_mm', 'thickness_mm', 'thickness');
+        if (!(bL && bL > 0) || !(bW && bW > 0)) return null;
+        const cat = normalizeSheetCategory(rawMat);
+        const grade = cat === '不锈钢' ? '304' : '5052';
+        const payload: Record<string, any> = {
+          product_type: 'sheet_metal',
+          material: { category: cat, grade },
+          quantity: 1,
+          dimensions: { length_mm: bL, width_mm: bW, wall_thickness_mm: t || undefined },
+        };
+        // 默认激光方案（与 /quote/ 默认 sheetPlan='laser' 一致）
+        const cutPath = numFrom(part, 'cut_total_path_mm', 'cut_perimeter_mm', 'cut_total_length');
+        const holeCount = numFrom(part, 'unfold_hole_count', 'punch_holes_total', 'cnc_total_holes', 'all_holes_total') || 0;
+        if (t && cutPath && cutPath > 0) {
+          const lr = calculateLaserCuttingFee({ thickness: t, cutTotalPath: cutPath, holeCount });
+          if (lr && !lr.unavailable) {
+            payload.laser_cutting_fee = lr.totalLaserFee;
+            payload.laser_cutting_detail = {
+              cutting_fee: lr.cuttingFee, piercing_fee: lr.piercingFee,
+              unit_price: lr.unitPrice, pierce_rate: lr.pierceRate,
+            };
+          }
+        }
+        return payload;
+      }
+      if (productTypeZh === '压铸' || productTypeZh === '锌合金') {
+        const wg = part.weight_g != null ? Number(part.weight_g) / 1000
+                 : (part.weight_kg_per_m != null ? Number(part.weight_kg_per_m) : undefined);
+        const cv = numFrom(part, 'volume_cm3', 'volume_mm3');
+        if (!(wg && wg > 0)) return null;
+        const payload: Record<string, any> = {
+          product_type: productTypeZh === '锌合金' ? 'zinc_alloy' : 'die_casting',
+          material: { category: productTypeZh === '锌合金' ? '锌合金ZA-8' : '压铸铝ADC12', grade: GRADE_ALIAS[rawMat] || rawMat || 'ADC12' },
+          quantity: 1, weight_per_piece_kg: wg,
+        };
+        if (cv && cv > 0) payload.volume_cm3 = cv;
+        return payload;
+      }
+      if (productTypeZh === '注塑') {
+        const cL = numFrom(part, 'length_mm', 'length');
+        const cW = numFrom(part, 'width_mm', 'width');
+        const cH = numFrom(part, 'height_mm', 'height');
+        const cv = numFrom(part, 'volume_cm3', 'volume_mm3');
+        if (!(cL && cW)) return null;
+        return {
+          product_type: 'injection', material: { category: '塑料', grade: '' }, quantity: 1,
+          dimensions: { length_mm: cL, width_mm: cW, height_mm: cH || undefined, volume_cm3: cv || undefined },
+        };
+      }
+      return null;
+    };
+
+    const payload = buildPayload();
+    if (!payload) {
+      if (!cancelled) setPrice({ ok: false, loading: false, reason: '缺少必要尺寸（截面/展开尺寸或单件重量）' });
+      return;
+    }
+    // 钢材标准件路由不支持、/quote/ 走前端计；此处降级提示
+    if (payload.product_type === 'steel_standard') {
+      if (!cancelled) setPrice({ ok: false, loading: false, reason: '钢材标准件请到 /quote/ 获取精确报价' });
+      return;
+    }
+
+    setPrice({ ok: false, loading: true });
+    fetch('/api/v1/quote/calculate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
       .then((res) => res.json())
-      .then((d) => { if (!cancelled && d?.success && typeof d?.data?.price === 'number') setLivePricePerTon(d.data.price); })
-      .catch(() => { /* 失败保持默认，不阻断 */ });
+      .then((data: any) => {
+        if (cancelled) return;
+        if (data?.success) {
+          let result: any = data;
+          if (payload.product_type === 'die_casting') {
+            const fe = tryFrontendDieCasting(data, payload);
+            if (fe) result = fe;
+          }
+          setPrice({
+            ok: true, loading: false,
+            result: {
+              material_cost: result.material_cost || 0,
+              processing_cost: result.processing_cost || 0,
+              surface_treatment_cost: result.surface_treatment_cost || 0,
+              unit_price: result.unit_price_in_tax || result.unit_price || 0,
+              unit_price_ex_tax: result.unit_price_ex_tax || result.unit_price || 0,
+              weight_per_piece_kg: result.weight_per_piece_kg || 0,
+              mold_cost: result.mold_cost || 0,
+              notes: result.notes || [],
+            },
+          });
+        } else {
+          setPrice({ ok: false, loading: false, reason: data?.error || '后端报价计算失败' });
+        }
+      })
+      .catch(() => { if (!cancelled) setPrice({ ok: false, loading: false, reason: '网络错误，无法连接报价服务' }); });
     return () => { cancelled = true; };
   }, [raw]);
-
-  // 普通用户看到的「基本信息」卡片（含价格），见 buildBasicInfo；价格用实时基准价算，与 /quote/ 同口径。
-  const basicInfo = useMemo(() => buildBasicInfo(raw, livePricePerTon), [raw, livePricePerTon]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
@@ -687,16 +852,18 @@ export default function PartsInspectPage() {
                 <div>
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <span className="text-sm font-medium">价格</span>
-                    <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-500">实时基准价 · 1 件 · 无表面处理</span>
+                    <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-500">与 /quote/ 同口径 · 1 件 · 无表面处理</span>
                   </div>
-                  {basicInfo.price.ok && basicInfo.price.result ? (
-                    <PriceBlock result={basicInfo.price.result} productType={basicInfo.productType} />
+                  {price.loading ? (
+                    <div className="text-sm text-slate-400 py-2">正在向报价服务计算…</div>
+                  ) : price.ok && price.result ? (
+                    <PriceBlock r={price.result} />
                   ) : (
-                    <div className="text-sm text-slate-500">暂无法估算：{basicInfo.price.reason}。</div>
+                    <div className="text-sm text-slate-500">暂无法估算：{price.reason}。</div>
                   )}
                   <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                    注：此价格与 /quote/ 同口径——用站点报价引擎按识别尺寸 + 实时基准价（同 /api/market-price，与 /quote/ 顶部实时铝价同源）本地算，默认 1 件、无表面处理。
-                    与 /quote/ 正式报价差异仅来自长度、数量、表面处理、牌号加价等实际参数；如需精确报价请点上方「去 /quote/ 获取正式报价」。
+                    注：以下数字与 /quote/ 完全一致——由同一后端报价接口（/api/v1/quote/calculate）按本零件识别尺寸 + 站点实时价计算，默认 1 件、无表面处理。
+                    如需改长度 / 数量 / 表面处理 / 牌号等实际参数，请点下方「去 /quote/ 获取正式报价」。
                   </p>
                 </div>
                 {basicInfo.costTip ? (
@@ -714,7 +881,7 @@ export default function PartsInspectPage() {
                     去 /quote/ 获取正式报价（按实际长度 / 数量 / 表面处理）
                   </a>
                   <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                    上方「价格（预估）」仅按识别尺寸估算；点这里进入 /quote/ 用真实参数算正式报价，并复用本零件识别信息。
+                    上方「价格」即按本零件识别尺寸、由同一后端接口算出的结果；点这里进入 /quote/ 可调真实参数并出正式报价单。
                   </p>
                 </div>
               </div>
