@@ -120,6 +120,9 @@ export default function PartsInspectPage() {
   const [showRaw, setShowRaw] = useState(false);
   const [showJson, setShowJson] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  // 区分两种空态：①本会话压根没上传过图纸（ai_quote_parts / ai_quote_recog_result 皆空）；
+  // ②上传过、后端也认，只是后端没给 drawing_preview_url 字段。
+  const [hasSessionData, setHasSessionData] = useState(false);
 
   useEffect(() => {
     try {
@@ -127,11 +130,16 @@ export default function PartsInspectPage() {
       const i = Math.max(0, Number(q.get('i') || 0) || 0);
       setIdx(i);
       if (q.get('raw') === '1') setShowRaw(true);
-      const payload = JSON.parse(sessionStorage.getItem('ai_quote_parts') || '{}');
+      const rawParts = sessionStorage.getItem('ai_quote_parts');
+      const rawRecog = sessionStorage.getItem('ai_quote_recog_result');
+      const payload = JSON.parse(rawParts || '{}');
       const p = Array.isArray(payload?.products) ? (payload.products[i] || null) : null;
       setFileName(String(payload?.fileName || p?._fileName || ''));
       let recog: any = {};
-      try { recog = JSON.parse(sessionStorage.getItem('ai_quote_recog_result') || '{}'); } catch { /* ignore */ }
+      try { recog = JSON.parse(rawRecog || '{}'); } catch { /* ignore */ }
+      // 有任何一端有数据，即认为「本会话已上传过图纸」
+      const has = !!(p || (Array.isArray(payload?.products) && payload.products.length) || (recog && Object.keys(recog).length));
+      setHasSessionData(has);
       let backend = p?._rawBackend;
       if (!backend) backend = recog?.recogData || recog;
       setRaw(backend || p || {});
@@ -198,12 +206,26 @@ export default function PartsInspectPage() {
           ) : drawings.length === 0 ? (
             <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
               <Info size={22} className="mx-auto mb-2 text-slate-400" />
-              <div className="text-sm font-medium text-slate-600 mb-1">后端暂未返回图纸</div>
-              <div className="text-xs text-slate-500 leading-relaxed max-w-xl mx-auto">
-                后端响应顶层的 <code className="px-1 py-0.5 rounded bg-slate-200 font-mono">drawing_preview_url</code> 为空（null）。
-                后端补上该字段后本页会直接把它的值放进图片地址显示，无需再改前端；
-                字段值可以是图片 URL 或 base64 图片。
-              </div>
+              {!hasSessionData ? (
+                <>
+                  <div className="text-sm font-medium text-slate-600 mb-1">本会话还没有上传过图纸</div>
+                  <div className="text-xs text-slate-500 leading-relaxed max-w-xl mx-auto">
+                    零件列表的「图纸」数据来自浏览器会话里暂存的识别结果。请先到
+                    <code className="px-1 py-0.5 rounded bg-slate-200 font-mono">/quote/recognize</code>
+                    （图纸 AI 识别）上传文件，等识别完成后点「去零件列表报价」，再在零件列表里点「图纸」按钮。
+                    直接手敲本页地址而没先上传，就会看到这个空态。
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-sm font-medium text-slate-600 mb-1">后端暂未返回图纸</div>
+                  <div className="text-xs text-slate-500 leading-relaxed max-w-xl mx-auto">
+                    后端响应顶层的 <code className="px-1 py-0.5 rounded bg-slate-200 font-mono">drawing_preview_url</code> 为空（null）。
+                    后端补上该字段后本页会直接把它的值放进图片地址显示，无需再改前端；
+                    字段值可以是图片 URL 或 base64 图片。
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

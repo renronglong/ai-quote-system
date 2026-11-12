@@ -976,7 +976,12 @@ export default function QuotePartsPage() {
                             <button
                               type="button"
                               title="查看后端给出的图纸"
-                              onClick={(e) => { e.stopPropagation(); window.open(`/quote/parts/inspect?i=${idx}`, '_blank', 'noopener,noreferrer'); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                // 点开前把当前零件数据重新落盘，保证 inspect 子网页在本会话内一定能读到最新数据
+                                try { sessionStorage.setItem('ai_quote_parts', JSON.stringify(payload)); } catch { /* ignore */ }
+                                window.open(`/quote/parts/inspect?i=${idx}`, '_blank', 'noopener,noreferrer');
+                              }}
                               onKeyDown={(e) => e.stopPropagation()}
                               className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-200 text-[11px] text-slate-500 whitespace-nowrap hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50"
                             >
