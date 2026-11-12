@@ -101,6 +101,7 @@ export interface AiFormUpdate {
   width?: number;
   height?: number;
   wallThickness?: number;
+  circumscribed_diameter_mm?: number; // 后端几何精确「外接圆直径」(mm)，优先于包围盒对角线
   surfaceTreatment?: string;
   packaging?: string;
   secondaryProcessing?: string[];
@@ -1185,9 +1186,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       die_type: (fields.die_type === 'flat' || fields.die_type === 'split') ? fields.die_type : undefined,
       meter_weight_kg_per_m: toNum(fields.meterWeight),
       cross_section_area_mm2: toNum(fields.crossSectionArea),
+      circumscribed_diameter_mm: toNum(fields.circumscribedDiameter),
     });
     setSelectedDie(sel);
-  }, [productType, standardCategory, fields.width, fields.height, fields.perimeter, fields.innerPerimeter, fields.num_cavities, fields.die_type, fields.meterWeight, fields.crossSectionArea]);
+  }, [productType, standardCategory, fields.width, fields.height, fields.perimeter, fields.innerPerimeter, fields.num_cavities, fields.die_type, fields.meterWeight, fields.crossSectionArea, fields.circumscribedDiameter]);
 
   // 标准件：单件净重(g) = 米重(kg/m) × 长度(mm)，自动填入（规则截面棒/管按长度切割，净重≈消耗重量）
   useEffect(() => {
@@ -1588,6 +1590,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     if (aiData.height) setFields(prev => ({ ...prev, height: aiData.height! }));
     if (aiData.length) setFields(prev => ({ ...prev, length: aiData.length! }));
     if (aiData.wallThickness) setFields(prev => ({ ...prev, thickness: aiData.wallThickness! }));
+    if (aiData.circumscribed_diameter_mm != null) setFields(prev => ({ ...prev, circumscribedDiameter: aiData.circumscribed_diameter_mm! }));
     if (aiData.surfaceTreatment && aiData.surfaceTreatment !== '无') {
       const st = String(aiData.surfaceTreatment);
       const stMap: Record<string,string> = {

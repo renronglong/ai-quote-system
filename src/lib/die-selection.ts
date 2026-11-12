@@ -54,6 +54,7 @@ export interface DieSelectionInput {
   die_type?: 'flat' | 'split';
   meter_weight_kg_per_m?: number;
   cross_section_area_mm2?: number;
+  circumscribed_diameter_mm?: number; // 后端几何精确「外接圆直径」(mm)，优先于包围盒对角线
 }
 
 export interface DieSelectionResult {
@@ -110,9 +111,11 @@ export function selectExtrusionDie(dims: DieSelectionInput): DieSelectionResult 
   const H_dim = dims.height_mm || 25;
   const cat = dims.standard_category;
 
-  // 步骤1：对角线 → 模具直径
+  // 步骤1：外接圆直径（后端几何精确值，优先）→ 否则包围盒对角线兜底
   let diagonal: number;
-  if (cat === '铝圆管') diagonal = dims.outer_diameter_mm || W;
+  if (dims.circumscribed_diameter_mm && dims.circumscribed_diameter_mm > 0) {
+    diagonal = dims.circumscribed_diameter_mm;
+  } else if (cat === '铝圆管') diagonal = dims.outer_diameter_mm || W;
   else if (cat === '铝圆棒') diagonal = dims.diameter_mm || W;
   else if (cat === '铝六角棒' || cat === '铝六角管') diagonal = (dims.hex_flat_mm || W) / Math.sin(Math.PI / 3);
   else diagonal = Math.sqrt(W * W + H_dim * H_dim); // 方/扁棒、角铝、方管、异型材：矩形对角线

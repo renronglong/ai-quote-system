@@ -143,6 +143,11 @@ function buildRecogDataFromParse(parseJsonIn: any, productType: string, source: 
     const flat = parseJson[k];
     return flat === undefined ? null : flat;
   };
+  // 数值字段解析：非有限正数返回 undefined（交给选模逻辑兜底）
+  const numOrUndef = (v: any): number | undefined => {
+    const n = parseFloat(String(v));
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  };
   const isSheet = parseJson.is_sheet_metal === true
     || parseJson.area_method === 'sheet_metal'
     || parseJson.product_type === 'aluminum_sheet'
@@ -174,6 +179,14 @@ function buildRecogDataFromParse(parseJsonIn: any, productType: string, source: 
     meter_weight: parseJson.meter_weight ?? parseJson.weight_kg_per_m,
     wall_thickness: pick('wall_thickness_mm') || pick('thickness_mm'),
     crossSectionArea: parseJson.section_area_mm2,
+    // 后端几何精确「外接圆直径」(mm)：优先取用，缺失时前端按包围盒对角线兜底（见 die-selection.ts 步骤1）
+    circumscribed_diameter_mm: numOrUndef(
+      parseJson.circumscribed_diameter_mm
+      ?? parseJson['外接圆直径']
+      ?? parseJson.bounding_circle_diameter_mm
+      ?? parseJson.enclosing_circle_diameter_mm
+      ?? parseJson.max_extent_diameter_mm
+    ),
     die_type: isSheet ? null : dieType,
     num_cavities: (parseJson.is_hollow && !isSheet) ? 1 : 0,
     // 优先用 AI 判的材料大类；原来这里填的是牌号（如 "Q235"/"6063"），
