@@ -182,6 +182,7 @@ function buildRecogDataFromParse(parseJsonIn: any, productType: string, source: 
     // 后端几何精确「外接圆直径」(mm)：优先取用，缺失时前端按包围盒对角线兜底（见 die-selection.ts 步骤1）
     circumscribed_diameter_mm: numOrUndef(
       parseJson.circumscribed_diameter_mm
+      ?? parseJson.section_min_circle_diameter_mm
       ?? parseJson['外接圆直径']
       ?? parseJson.bounding_circle_diameter_mm
       ?? parseJson.enclosing_circle_diameter_mm

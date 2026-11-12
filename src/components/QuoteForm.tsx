@@ -2340,6 +2340,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         next.die_type = nc >= 1 ? 'split' : 'flat';
       }
       const mw = toNum(d.meter_weight); if (mw !== null) next.meterWeight = mw;
+      // 后端几何精确「外接圆直径」：3D 解析(STEP/DXF/IGES)的 recogData 会带此字段。
+      // ⚠️ 必须在这里回填 —— aiData 含 product_type/meter_weight 时会走 applyRecogToForm 并 return，
+      // 上面 useEffect 里那段通用 aiData 回填根本执行不到。漏了这里，选模会退回包围盒对角线。
+      const cd = toNum(d.circumscribed_diameter_mm); if (cd !== null) next.circumscribedDiameter = cd;
       const qty = toNum(d.quantity) ?? toNum(d._quantity); if (qty !== null) next.quantity = qty;
       const wt = toNum(d.wall_thickness) ?? toNum(d.thickness) ?? toNum(d.sheet_thickness) ?? toNum(d.thickness_mm); if (wt !== null) next.thickness = wt;
       // ⚠️ 这里是【型材】分支，绝不能读板材专用的 unfold_* 字段。
