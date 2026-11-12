@@ -1,8 +1,10 @@
 "use client";
 import { useEffect, useMemo, useState, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, FileImage, ShieldAlert, ChevronDown, ExternalLink, Info, Box } from 'lucide-react';
+import { ArrowLeft, FileImage, ShieldAlert, ExternalLink, Info, Box } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
+import { calculatePrice } from '@/lib/pricing/engine';
+import type { PricingResult } from '@/lib/pricing/types';
 
 /**
  * /quote/parts/inspect — 业主 2026-11-12 任务表「修改任务」第 1 条
@@ -42,145 +44,7 @@ function findDrawingSources(obj: unknown): DrawingSource[] {
   return out;
 }
 
-/** 后端字段 → 中文大白话 */
-const FIELD_LABELS: Record<string, string> = {
-  drawing_preview_url: '图纸预览地址', file_name: '文件名', file_type: '文件类型', file_size_kb: '文件大小(KB)', parser_version: '解析器版本',
-  parse_success: '解析是否成功', parse_errors: '解析错误', parser_errors: '解析错误',
-  section_width_mm: '截面宽度(mm)', section_height_mm: '截面高度(mm)', section_size: '截面尺寸',
-  width_mm: '宽度(mm)', height_mm: '高度(mm)', length_mm: '长度(mm)',
-  circumscribed_diameter_mm: '外接圆直径(mm)', section_min_circle_diameter_mm: '最小外接圆直径(mm)',
-  section_area_mm2: '截面积(mm²)', cross_section_area_mm2: '截面积(mm²)',
-  outer_perimeter_mm: '外周长(mm)', inner_perimeter_mm: '内腔周长(mm)', perimeter_mm: '总周长(mm)',
-  extrusion_length_mm: '型材长度(mm)', extrusion_axis: '挤出方向', wall_thickness_mm: '壁厚(mm)',
-  material_thickness_mm: '板厚(mm)', thickness_mm: '板厚(mm)',
-  weight_kg_per_m: '每米重量(kg/m)', meter_weight: '每米重量(kg/m)', weight_g: '单件重量(g)',
-  is_sheet_metal: '是否钣金件', is_hollow: '是否中空', cavities: '内腔数量',
-  product_type: '产品类型', process_type: '工艺类型', process_type_cn: '工艺类型(中文)',
-  structure_type: '结构类型', area_method: '面积算法', classification: '分类判定',
-  mold_type: '模具类型', die_type: '模具类型', material_grade: '材料牌号', material: '材料',
-  surface_treatment: '表面处理', drawing_number: '图号', product_name: '产品名称',
-  product_model: '产品型号', product_code: '产品编号', part_name: '零件名称',
-  confidence: '识别置信度', confidence_score: '识别置信度', confidence_level: '置信度等级',
-  raw_ocr_text: '图纸上读到的原始文字', parse_method: '识别方式', size_source: '尺寸来源',
-  bbox: '三维包围盒', volume_mm3: '体积(mm³)', density_g_mm3: '密度(g/mm³)',
-  bend_count: '折弯道数', bend_radius_mm: '折弯半径(mm)', bend_deduction_mm: '折弯扣除(mm)',
-  unfold_length_mm: '展开长(mm)', unfold_width_mm: '展开宽(mm)', unfold_area_mm2: '展开面积(mm²)',
-  cut_perimeter_mm: '切割周长(mm)', cut_total_path_mm: '切割总路径(mm)',
-  punch_holes_total: '冲压孔数', cnc_total_holes: 'CNC孔数', cnc_holes: 'CNC孔明细',
-  flat_segments: '展开分段', flat_length_mm: '展开长度(mm)', ocr_pages: 'OCR页数', total_pages: '总页数',
-  products: '零件列表', quote_params: '报价参数', raw_parse: '原始解析结果',
-  missing_fields: '缺失字段', quotable: '是否可报价', quote_warnings: '报价提示',
-  note: '备注', source: '识别来源', needs_human: '是否需人工确认',
-  // —— 以下补齐后端原始字段（2026-11-12 全量中文化，覆盖所有上传类型的顶层 key）——
-  air_travel_mm: '截面行程(mm)',
-  all_holes: '全部孔',
-  all_holes_total: '孔总数',
-  bend_angle_deg: '折弯角度(度)',
-  bend_fillet_count: '折弯圆角数',
-  bend_fillet_ratio: '折弯圆角占比',
-  bends: '折弯明细',
-  blank_length_mm: '毛坯长度(mm)',
-  blank_section_area_mm2: '毛坯截面积(mm²)',
-  blank_source: '毛坯数据来源',
-  blank_volume_mm3: '毛坯体积(mm³)',
-  bspline_faces: '样条曲面数',
-  bspline_ratio: '样条曲面占比',
-  clamp_count: '夹具数量',
-  clamp_detail: '夹具明细',
-  cnc_estimate: 'CNC工时估算',
-  confidence_model: '置信度(模型)',
-  cutting_volume_mm3: '切削体积(mm³)',
-  cyl_radius_count: '圆柱半径计数',
-  cylindrical_faces: '圆柱面数',
-  decision_model: '工艺判定模型',
-  decision_model_info: '工艺判定模型信息',
-  decision_source: '判定依据来源',
-  density_source: '密度数据来源',
-  error: '错误信息',
-  extrusion_features: '挤出特征',
-  f1_constant_pairs: 'F1-等厚边对',
-  f2_wire_info: 'F2-线框信息',
-  f3_cv: 'F3-截面变异系数',
-  f3_plat_ratio: 'F3-扁平比',
-  f3_section_areas: 'F3-各截面面积',
-  face_count: '面总数',
-  fillet_count: '圆角数',
-  fillet_ratio: '圆角占比',
-  holes_perimeter_mm: '孔周长(mm)',
-  inner_wires_count: '内轮廓线数',
-  is_assembly: '是否装配体',
-  lateral_holes: '侧向孔',
-  machining_time_min: '机加工时长(分钟)',
-  max_bend_length_mm: '最大折弯长度(mm)',
-  measure_source: '测量数据来源',
-  model_confidence: '模型置信度',
-  part_count: '零件总数',
-  part_number: '零件编号',
-  parts: '零件明细(原始)',
-  parts_count: '零件数',
-  planar_faces: '平面数',
-  projection_volume_mm3: '投影体积(mm³)',
-  punch_holes: '冲压孔明细',
-  removal_volume_mm3: '去除体积(mm³)',
-  rule_confidence: '规则置信度',
-  rule_engine_raw: '规则引擎原始输出',
-  section_area_source: '截面积数据来源',
-  section_perimeter_mm: '截面周长(mm)',
-  side_axes: '侧向轴数',
-  structure_v2: '结构类型(V2)',
-  surface_area_mm2: '表面积(mm²)',
-  thickness_direction: '厚度方向',
-  tool_breakdown: '刀具分解',
-  toolpath_mm: '刀路长度(mm)',
-  total_pieces: '总件数',
-  unfold_hole_count: '展开孔数',
-  unfold_method: '展开算法',
-  unfold_perimeter_mm: '展开周长(mm)',
-  unfold_size: '展开尺寸',
-  unfold_width_vs_perimeter: '展开宽/周长比',
-  unique_part_count: '不同零件数',
-  unquotable_count: '不可报价零件数',
-  wall_thickness_cv: '壁厚变异系数',
-  wall_thickness_source: '壁厚数据来源',
-};
-
-function formatValue(v: unknown): string {
-  if (v === null || v === undefined) return '—';
-  if (typeof v === 'boolean') return v ? '是' : '否';
-  if (typeof v === 'number') return String(v);
-  if (typeof v === 'string') return v.length > 220 ? v.slice(0, 220) + '…' : v;
-  try { const s = JSON.stringify(v); return s.length > 220 ? s.slice(0, 220) + '…' : s; } catch { return String(v); }
-}
-
-/** 把后端一堆字段拼成一段人话 */
-function makePlainSummary(raw: any): string[] {
-  const root = raw?.raw_parse?.stp || raw?.quote_params || raw || {};
-  const g = (...keys: string[]) => {
-    for (const k of keys) { const v = root?.[k]; if (v !== undefined && v !== null && v !== '' && v !== 'None') return v; }
-    return undefined;
-  };
-  const lines: string[] = [];
-  const name = g('product_name', 'part_name', 'file_name', 'drawing_number');
-  const sheet = g('is_sheet_metal');
-  const proc = g('process_type_cn', 'process_type', 'product_type');
-  lines.push(`这个零件${name ? `叫「${name}」` : '没有取到名称'}，后端判定为【${sheet === true ? '钣金件' : proc ? String(proc) : '未明确类型'}】。`);
-  const w = g('section_width_mm', 'width_mm', 'width');
-  const h = g('section_height_mm', 'height_mm', 'height');
-  const len = g('extrusion_length_mm', 'length_mm', 'length');
-  if (w || h) lines.push(`截面尺寸：宽 ${w ?? '—'} mm × 高 ${h ?? '—'} mm${len ? `，型材长 ${len} mm` : ''}。`);
-  const cd = g('circumscribed_diameter_mm', 'section_min_circle_diameter_mm');
-  if (cd) lines.push(`外接圆直径 ${cd} mm（选模具时先看这个数，比用宽高对角线更准）。`);
-  const area = g('section_area_mm2', 'cross_section_area_mm2');
-  const mw = g('weight_kg_per_m', 'meter_weight');
-  const wall = g('wall_thickness_mm', 'material_thickness_mm', 'thickness_mm');
-  if (area || mw || wall) lines.push(`截面积 ${area ?? '—'} mm²，每米重 ${mw ?? '—'} kg，壁厚 ${wall ?? '—'} mm。`);
-  const mold = g('mold_type', 'die_type');
-  if (mold) lines.push(`建议模具类型：${mold}。`);
-  const ok = g('parse_success');
-  const conf = g('confidence_score', 'confidence');
-  lines.push(`解析${ok === false ? '失败' : '成功'}${conf !== undefined ? `，识别置信度 ${conf}` : ''}。`);
-  return lines;
-}
+// 业主 2026-11-13（意图 D）：原「字段对照表 / 一句话看懂 / 原始 JSON」原始转储已替换为「基本信息」卡片（见 buildBasicInfo）。
 
 /**
  * 3D 模型查看器（业主「前端任务_3D模型显示」）。
@@ -296,6 +160,104 @@ function StlViewer({ url }: { url: string }) {
   return <div ref={mountRef} className="w-full rounded-lg overflow-hidden border border-slate-200" style={{ height: 480, background: '#f1f5f9' }} />;
 }
 
+type BasicInfo = {
+  name: string;
+  productType: 'extrusion' | 'plate' | 'die_casting';
+  processLabel: string;
+  isSheet?: boolean;
+  w?: number; h?: number; len?: number; thick?: number; area?: number;
+  cd?: number; mw?: number; wg?: number; conf?: number | string;
+  mold: string;
+  costTip: string;
+  price: { ok: boolean; result?: PricingResult; reason?: string };
+};
+
+function numFrom(r: any, ...keys: string[]): number | undefined {
+  for (const k of keys) {
+    const v = r?.[k];
+    if (typeof v === 'number' && isFinite(v)) return v;
+    if (typeof v === 'string' && v.trim() !== '' && isFinite(Number(v))) return Number(v);
+  }
+  return undefined;
+}
+
+/**
+ * 业主 2026-11-13（意图 D）：从后端识别响应里抽取「基本信息」+ 用站点报价引擎算「价格预估」。
+ * 价格用识别尺寸 + 默认参数（1 件、无表面处理、引擎默认铝价）即时估算，与 /quote 正式报价会有差异。
+ */
+function buildBasicInfo(raw: any): BasicInfo {
+  const r = raw && typeof raw === 'object' ? raw : {};
+  const name = r.product_name || r.part_name || r.file_name || r.drawing_number || '';
+  const isSheet = r.is_sheet_metal === true ? true : r.is_sheet_metal === false ? false : undefined;
+  const procRaw = String(r.process_type || r.product_type || '');
+  const isCast = /die_cast|压铸|casting/i.test(procRaw);
+  const isPlate = isSheet || /sheet|板材|钣金/i.test(procRaw);
+  const productType: BasicInfo['productType'] = isPlate ? 'plate' : isCast ? 'die_casting' : 'extrusion';
+  const processLabel = isPlate ? '钣金 / 板材' : isCast ? '压铸' : '挤压型材';
+
+  const w = numFrom(r, 'section_width_mm', 'width_mm', 'width');
+  const h = numFrom(r, 'section_height_mm', 'height_mm', 'height');
+  const len = numFrom(r, 'extrusion_length_mm', 'length_mm', 'length');
+  const thick = numFrom(r, 'material_thickness_mm', 'wall_thickness_mm', 'thickness_mm', 'thickness');
+  const area = numFrom(r, 'section_area_mm2', 'cross_section_area_mm2');
+  const cd = numFrom(r, 'circumscribed_diameter_mm', 'section_min_circle_diameter_mm');
+  const mw = numFrom(r, 'weight_kg_per_m', 'meter_weight');
+  const wg = numFrom(r, 'weight_g');
+  const conf = r.confidence_score ?? r.confidence;
+  const mold = r.mold_type || r.die_type || '';
+
+  let price: BasicInfo['price'] = { ok: false };
+  try {
+    if (productType === 'extrusion') {
+      if (!(area && area > 0)) price = { ok: false, reason: '缺少截面面积' };
+      else if (!(len && len > 0)) price = { ok: false, reason: '缺少型材长度' };
+      else if (len > 3100) price = { ok: false, reason: '长度超出单支料长 3100mm，请到 /quote 按实际长度报价' };
+      else price = { ok: true, result: calculatePrice({ productType: 'extrusion', crossSectionArea: area, length: len, quantity: 1, surfaceTreatment: '无' }) };
+    } else if (productType === 'plate') {
+      if (w && w > 0 && h && h > 0 && thick && thick > 0) {
+        price = { ok: true, result: calculatePrice({ productType: 'plate', width: w, height: h, thickness: thick, quantity: 1, surfaceTreatment: '无' }) };
+      } else price = { ok: false, reason: '缺少宽 / 高 / 板厚' };
+    } else {
+      const kg = wg != null ? wg / 1000 : undefined;
+      if (kg && kg > 0) {
+        price = { ok: true, result: calculatePrice({ productType: 'die_casting', weight: kg, quantity: 1, surfaceTreatment: '无' }) };
+      } else price = { ok: false, reason: '缺少单件重量' };
+    }
+  } catch {
+    price = { ok: false, reason: '计算异常' };
+  }
+
+  const costTip = (r.classification && r.classification.cost_tip) || '';
+  return { name, productType, processLabel, isSheet, w, h, len, thick, area, cd, mw, wg, conf, mold, costTip, price };
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-xs text-slate-400">{label}</dt>
+      <dd className="text-slate-800 break-words">{value}</dd>
+    </div>
+  );
+}
+
+function PriceBlock({ result, productType }: { result: PricingResult; productType: BasicInfo['productType'] }) {
+  const unit = productType === 'extrusion' ? (result.unitPriceWithTax ?? result.unitCost) : result.unitCost;
+  const processing = productType === 'extrusion'
+    ? (result.processingFeeCost ?? result.cncCost)
+    : (result.extrusionCost + result.cncCost);
+  const weight = result.netWeight != null ? result.netWeight : undefined;
+  return (
+    <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2.5 text-sm">
+      <InfoRow label="预估单价(含税)" value={`¥${(unit ?? 0).toFixed(2)}`} />
+      <InfoRow label="材料费" value={`¥${(result.materialCost ?? 0).toFixed(2)}`} />
+      <InfoRow label="加工费" value={`¥${(processing ?? 0).toFixed(2)}`} />
+      <InfoRow label="表面处理费" value={result.surfaceTreatmentCost ? `¥${result.surfaceTreatmentCost.toFixed(2)}` : '无'} />
+      {weight != null ? <InfoRow label="单件重(估)" value={`${weight.toFixed(4)} kg`} /> : null}
+      <InfoRow label="铝价" value={`¥${(result.aluminumPrice?.pricePerKg ?? 0).toFixed(2)}/kg`} />
+    </dl>
+  );
+}
+
 export default function PartsInspectPage() {
   const { loading: authLoading, isAdmin } = useAuth();
   const [idx, setIdx] = useState(0);
@@ -303,7 +265,6 @@ export default function PartsInspectPage() {
   const [raw, setRaw] = useState<any>({});
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [modelUrl, setModelUrl] = useState<string | null>(null);
-  const [showRaw, setShowRaw] = useState(false);
   const [showJson, setShowJson] = useState(false);
   const [loaded, setLoaded] = useState(false);
   // 区分两种空态：①本会话压根没上传过图纸（ai_quote_parts / ai_quote_recog_result 皆空）；
@@ -315,7 +276,6 @@ export default function PartsInspectPage() {
       const q = new URLSearchParams(window.location.search);
       const i = Math.max(0, Number(q.get('i') || 0) || 0);
       setIdx(i);
-      if (q.get('raw') === '1') setShowRaw(true);
       const rawParts = localStorage.getItem('ai_quote_parts');
       const rawRecog = localStorage.getItem('ai_quote_recog_result');
       const payload = JSON.parse(rawParts || '{}');
@@ -354,13 +314,9 @@ export default function PartsInspectPage() {
   }, []);
 
   const drawings = useMemo(() => findDrawingSources(raw), [raw]);
-  const summary = useMemo(() => makePlainSummary(raw), [raw]);
-  const entries = useMemo(() => {
-    const o = raw && typeof raw === 'object' ? raw : {};
-    return Object.entries(o as Record<string, unknown>)
-      .filter(([k]) => k !== '_rawBackend')
-      .map(([k, v]) => ({ key: k, label: FIELD_LABELS[k] || k, value: formatValue(v), long: typeof v === 'object' && v !== null }));
-  }, [raw]);
+  // 业主 2026-11-13（意图 D）：用「基本信息」卡片替换原「后端全部信息」原始转储。
+  // 价格采用站点自带报价引擎，基于识别尺寸 + 默认参数（1 件、无表面处理、引擎默认铝价）实时估算，标注「预估」。
+  const basicInfo = useMemo(() => buildBasicInfo(raw), [raw]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
@@ -471,13 +427,13 @@ export default function PartsInspectPage() {
         </section>
         )}
 
-        {/* ② 后端全部信息（管理员专属） */}
+        {/* ② 基本信息（管理员专属，含价格预估） */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <div className="flex items-start gap-2 mb-2">
+          <div className="flex items-start gap-2 mb-3">
             <ShieldAlert size={18} className="text-amber-600 mt-0.5" />
             <div className="flex-1">
-              <h2 className="font-medium">后端给出的全部信息</h2>
-              <p className="text-xs text-slate-500 mt-0.5">把后端原始返回翻译成通俗语言，供管理员测试核对。普通用户不可见。</p>
+              <h2 className="font-medium">基本信息（管理员）</h2>
+              <p className="text-xs text-slate-500 mt-0.5">零件识别结果的关键信息与价格预估，供管理员核对。普通用户不可见。</p>
             </div>
           </div>
 
@@ -485,61 +441,65 @@ export default function PartsInspectPage() {
             <div className="text-sm text-slate-400 py-4">检查权限中…</div>
           ) : !isAdmin ? (
             <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
-              仅管理员可查看后端原始信息。普通用户看到的图纸区不受影响。
+              仅管理员可查看零件基本信息。普通用户看到的图纸区不受影响。
             </div>
           ) : (
-            <>
-              <a
-                href={`/quote/parts/inspect?i=${idx}&raw=1`}
-                onClick={(e) => { e.preventDefault(); setShowRaw(v => !v); }}
-                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline mt-1"
-              >
-                <ChevronDown size={14} className={`transition-transform ${showRaw ? 'rotate-180' : ''}`} />
-                {showRaw ? '收起后端全部信息' : '查看后端给出的全部信息（通俗解释）'}
-              </a>
+            <div className="space-y-5">
+              {/* 基本信息：识别信息 */}
+              <div>
+                <div className="text-sm font-medium mb-2">识别信息</div>
+                <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2.5 text-sm">
+                  <InfoRow label="产品名称" value={basicInfo.name || '—'} />
+                  <InfoRow label="工艺类型" value={basicInfo.processLabel} />
+                  <InfoRow label="截面尺寸" value={(basicInfo.w != null || basicInfo.h != null) ? `宽 ${basicInfo.w ?? '—'} × 高 ${basicInfo.h ?? '—'} mm` : '—'} />
+                  <InfoRow label="型材长度" value={basicInfo.len != null ? `${basicInfo.len} mm` : '—'} />
+                  <InfoRow label="壁厚" value={basicInfo.thick != null ? `${basicInfo.thick} mm` : '—'} />
+                  <InfoRow label="截面积" value={basicInfo.area != null ? `${basicInfo.area} mm²` : '—'} />
+                  <InfoRow label="每米重" value={basicInfo.mw != null ? `${basicInfo.mw} kg/m` : '—'} />
+                  <InfoRow label="单件重" value={basicInfo.wg != null ? `${basicInfo.wg} g` : '—'} />
+                  <InfoRow label="外接圆直径" value={basicInfo.cd != null ? `${basicInfo.cd} mm` : '—'} />
+                  <InfoRow label="识别置信度" value={basicInfo.conf != null ? String(basicInfo.conf) : '—'} />
+                  <InfoRow label="是否钣金件" value={basicInfo.isSheet === true ? '是' : basicInfo.isSheet === false ? '否' : '—'} />
+                  <InfoRow label="建议模具类型" value={basicInfo.mold || '—'} />
+                </dl>
+              </div>
 
-              {showRaw && (
-                <div className="mt-4 space-y-4">
-                  <div className="rounded-lg bg-blue-50 border border-blue-100 p-4">
-                    <div className="text-sm font-medium text-blue-900 mb-2">一句话看懂</div>
-                    <ul className="space-y-1">
-                      {summary.map((s, i) => <li key={i} className="text-sm text-blue-900 leading-relaxed">· {s}</li>)}
-                    </ul>
-                  </div>
-
-                  <div>
-                    <div className="text-sm font-medium mb-2">字段对照表（{entries.length} 项）</div>
-                    <div className="overflow-x-auto rounded-lg border border-slate-200">
-                      <table className="w-full text-sm">
-                        <thead className="bg-slate-50 text-slate-500 text-xs">
-                          <tr><th className="text-left px-3 py-2 w-1/4">含义</th><th className="text-left px-3 py-2 w-1/3">后端字段</th><th className="text-left px-3 py-2">值</th></tr>
-                        </thead>
-                        <tbody>
-                          {entries.map(e => (
-                            <tr key={e.key} className="border-t border-slate-100">
-                              <td className="px-3 py-1.5 text-slate-700">{e.label}</td>
-                              <td className="px-3 py-1.5 text-slate-400 font-mono text-xs break-all">{e.key}</td>
-                              <td className={`px-3 py-1.5 break-all ${e.long ? 'text-slate-500 text-xs' : 'text-slate-800'}`}>{e.value}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  <div>
-                    <button onClick={() => setShowJson(v => !v)} className="text-sm text-blue-600 hover:underline">
-                      {showJson ? '收起' : '展开'}原始 JSON（未经翻译）
-                    </button>
-                    {showJson && (
-                      <pre className="mt-2 max-h-96 overflow-auto rounded-lg bg-slate-900 text-slate-100 text-xs p-4 whitespace-pre-wrap break-all">
-                        {JSON.stringify(raw, null, 2)}
-                      </pre>
-                    )}
-                  </div>
+              {/* 价格（预估） */}
+              <div>
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <span className="text-sm font-medium">价格（预估）</span>
+                  <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-500">基于识别尺寸 · 1 件 · 无表面处理</span>
                 </div>
-              )}
-            </>
+                {basicInfo.price.ok && basicInfo.price.result ? (
+                  <PriceBlock result={basicInfo.price.result} productType={basicInfo.productType} />
+                ) : (
+                  <div className="text-sm text-slate-500">暂无法估算：{basicInfo.price.reason}。</div>
+                )}
+                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                  注：此为前端按识别尺寸即时估算（铝价取引擎默认 ¥23.53/kg），与 /quote 正式报价因长度、数量、表面处理、实时铝价不同会有差异，仅供参考。
+                </p>
+              </div>
+
+              {/* 后端成本提示 */}
+              {basicInfo.costTip ? (
+                <div>
+                  <div className="text-sm font-medium mb-1">后端成本提示</div>
+                  <p className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-3 leading-relaxed">{basicInfo.costTip}</p>
+                </div>
+              ) : null}
+
+              {/* 原始 JSON（调试） */}
+              <div>
+                <button onClick={() => setShowJson(v => !v)} className="text-sm text-blue-600 hover:underline">
+                  {showJson ? '收起' : '展开'}原始 JSON（调试用）
+                </button>
+                {showJson && (
+                  <pre className="mt-2 max-h-96 overflow-auto rounded-lg bg-slate-900 text-slate-100 text-xs p-4 whitespace-pre-wrap break-all">
+                    {JSON.stringify(raw, null, 2)}
+                  </pre>
+                )}
+              </div>
+            </div>
           )}
         </section>
 
