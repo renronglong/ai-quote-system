@@ -9,14 +9,15 @@ import { useAuth } from '@/lib/auth-context';
  *  1) 零件列表「加工方式」右侧按钮 → 本子网页显示后端给出的图纸
  *  2) 本页再加一个链接 → 查看后端给出的全部信息并翻译成通俗语言（管理员测试用，普通用户看不了）
  *
- * 图纸来源：后端 A 稍后会在识别/解析响应里补图纸字段。本页不写死字段名，
- * 而是通用探测「值像图片/PDF 的 URL 或 base64」的任意字段，后端改好即自动显示。
+ * 图纸来源（业主 2026-11-12 17:59 定）：读后端响应顶层 drawing_preview_url，
+ * 直接 <img src={值}>；值为 null / 空时显示已有空态说明。
+ * findDrawingSources 仅作该字段缺失时的兜底，不是主路径。
  * 后端全部信息：buildRecogDataFromParse 里挂的 _rawBackend（原始完整响应）。
  */
 
 type DrawingSource = { label: string; url: string; kind: 'image' | 'pdf' | 'link' };
 
-/** 递归找后端响应里任何像图纸的字段；限制深度与数量，避免误抓 OCR 长文本。 */
+/** 兜底：drawing_preview_url 为空时，递归找响应里任何像图纸的字段；限制深度与数量，避免误抓 OCR 长文本。 */
 function findDrawingSources(obj: unknown): DrawingSource[] {
   const out: DrawingSource[] = [];
   const seen = new Set<string>();
@@ -43,7 +44,7 @@ function findDrawingSources(obj: unknown): DrawingSource[] {
 
 /** 后端字段 → 中文大白话 */
 const FIELD_LABELS: Record<string, string> = {
-  file_name: '文件名', file_type: '文件类型', file_size_kb: '文件大小(KB)', parser_version: '解析器版本',
+  drawing_preview_url: '图纸预览地址', file_name: '文件名', file_type: '文件类型', file_size_kb: '文件大小(KB)', parser_version: '解析器版本',
   parse_success: '解析是否成功', parse_errors: '解析错误', parser_errors: '解析错误',
   section_width_mm: '截面宽度(mm)', section_height_mm: '截面高度(mm)', section_size: '截面尺寸',
   width_mm: '宽度(mm)', height_mm: '高度(mm)', length_mm: '长度(mm)',
@@ -115,6 +116,7 @@ export default function PartsInspectPage() {
   const [idx, setIdx] = useState(0);
   const [fileName, setFileName] = useState('');
   const [raw, setRaw] = useState<any>({});
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [showRaw, setShowRaw] = useState(false);
   const [showJson, setShowJson] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -128,11 +130,21 @@ export default function PartsInspectPage() {
       const payload = JSON.parse(sessionStorage.getItem('ai_quote_parts') || '{}');
       const p = Array.isArray(payload?.products) ? (payload.products[i] || null) : null;
       setFileName(String(payload?.fileName || p?._fileName || ''));
+      let recog: any = {};
+      try { recog = JSON.parse(sessionStorage.getItem('ai_quote_recog_result') || '{}'); } catch { /* ignore */ }
       let backend = p?._rawBackend;
-      if (!backend) {
-        try { const recog = JSON.parse(sessionStorage.getItem('ai_quote_recog_result') || '{}'); backend = recog?.recogData || recog; } catch { /* ignore */ }
-      }
+      if (!backend) backend = recog?.recogData || recog;
       setRaw(backend || p || {});
+      // 业主 2026-11-12 17:59 定：读后端响应顶层 drawing_preview_url，直接 <img src={值}>。
+      // 主取原始响应顶层；其余为不同识别链路/包装层的兼容位。全为空或 null → 显示空态。
+      const url = [
+        backend?.drawing_preview_url,
+        backend?.raw_parse?.stp?.drawing_preview_url,
+        p?.drawing_preview_url,
+        recog?.drawing_preview_url,
+        recog?.recogData?.drawing_preview_url,
+      ].find(v => typeof v === 'string' && v.trim() !== '');
+      setPreviewUrl(url ? String(url).trim() : null);
     } catch { /* 无数据则显示空态 */ }
     setLoaded(true);
   }, []);
@@ -163,17 +175,34 @@ export default function PartsInspectPage() {
           <div className="flex items-center gap-2 mb-3">
             <FileImage size={18} className="text-blue-600" />
             <h2 className="font-medium">后端给出的图纸</h2>
-            {drawings.length > 0 && <span className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-600">共 {drawings.length} 张</span>}
+            {previewUrl ? (
+              <span className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-600 font-mono">drawing_preview_url</span>
+            ) : drawings.length > 0 ? (
+              <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-500">兜底探测 {drawings.length} 张</span>
+            ) : null}
           </div>
           {!loaded ? (
             <div className="text-sm text-slate-400 py-8 text-center">读取中…</div>
+          ) : previewUrl ? (
+            <div className="rounded-lg border border-slate-200 overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200">
+                <span className="text-xs text-slate-500 flex-1 font-mono">drawing_preview_url</span>
+                <a href={previewUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1">
+                  新窗口打开 <ExternalLink size={12} />
+                </a>
+              </div>
+              {/* 业主 2026-11-12 定：读顶层 drawing_preview_url，直接 <img src={值}> */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={previewUrl} alt="后端给出的图纸" className="w-full max-h-[640px] object-contain bg-white" />
+            </div>
           ) : drawings.length === 0 ? (
             <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
               <Info size={22} className="mx-auto mb-2 text-slate-400" />
               <div className="text-sm font-medium text-slate-600 mb-1">后端暂未返回图纸</div>
               <div className="text-xs text-slate-500 leading-relaxed max-w-xl mx-auto">
-                当前识别/解析响应里只有文字和数值，没有图片地址。后端补上图纸字段后本页会自动显示，
-                无需再改前端：支持图片 URL、PDF URL、data:image / data:application/pdf，字段名不限。
+                后端响应顶层的 <code className="px-1 py-0.5 rounded bg-slate-200 font-mono">drawing_preview_url</code> 为空（null）。
+                后端补上该字段后本页会直接把它的值放进图片地址显示，无需再改前端；
+                字段值可以是图片 URL 或 base64 图片。
               </div>
             </div>
           ) : (

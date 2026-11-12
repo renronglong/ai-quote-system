@@ -164,6 +164,8 @@ function buildRecogDataFromParse(parseJsonIn: any, productType: string, source: 
     // 业主 2026-11-12：保留后端返回的原始完整响应，供「零件列表 → 查看图纸 / 后端全部信息」子网页使用。
     // 后端稍后会补图纸字段（URL 或 base64），子网页按通用规则探测，字段名不由前端写死。
     _rawBackend: parseJsonIn || {},
+    // 业主 2026-11-12 17:59：后端响应顶层图纸地址，零件列表子网页直接 <img src={值}>；null 走空态
+    drawing_preview_url: parseJson.drawing_preview_url ?? null,
     confidence: parseJson.confidence_score != null ? parseJson.confidence_score : null,
     product_type: resolvedProductType,
     product_code: resolvedProductCode,
@@ -926,6 +928,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
         const recogData: Record<string, any> = {
           // 保留后端原始响应，供零件列表「查看后端全部信息」子网页（管理员）使用
           _rawBackend: dxfJson || {},
+          drawing_preview_url: dxfJson?.drawing_preview_url ?? null,
           confidence: null,
           product_type: productType === '板材' ? 'stamping' : productType,
           // DXF 展开尺寸即板材，置位确保下游 isSheetPart 按板材路由（否则 'stamping' 会被误判/跳过）
@@ -1185,6 +1188,8 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
         return;
       }
       const d = json.data || {};
+      // 若后端把图纸地址放在响应最外层（与 success 同级），也带进零件数据
+      if (json.drawing_preview_url != null) d.drawing_preview_url = json.drawing_preview_url;
       setRecogResult(d);
       checkQuota();
 
