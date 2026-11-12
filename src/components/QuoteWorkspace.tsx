@@ -243,6 +243,23 @@ export default function QuoteWorkspace({ defaultProductType }: { defaultProductT
     if (rd && typeof rd === 'object') {
       handleFormUpdate({ ...rd, _v: drawingRecogCounter.current } as AiFormUpdate);
     }
+    // 业主 2026-11-12：把识别结果落盘到零件列表要读的会话存储，
+    // 使「零件列表 → 查看图纸 / 后端全部信息」子网页在任意上传入口（挤出/压铸/注塑/板材/钢材/主报价）
+    // 都能用，不再只有 /quote/recognize 一处在写。结构与 /quote/recognize/page.tsx 的回调保持一致。
+    try {
+      const products = (data?.recogProducts && data.recogProducts.length > 0)
+        ? data.recogProducts
+        : (data?.recogData ? [data.recogData] : []);
+      const payload = {
+        products,
+        isAssembly: data?.isAssembly ?? products.length > 1,
+        fileName: data?.fileName || '',
+        recognitionId: data?.recognitionId,
+        createdAt: Date.now(),
+      };
+      sessionStorage.setItem('ai_quote_parts', JSON.stringify(payload));
+      sessionStorage.setItem('ai_quote_recog_result', JSON.stringify(data));
+    } catch { /* 存储不可用时不影响主流程 */ }
   }, [handleFormUpdate]);
 
   const handleResult = useCallback((result: PricingResult | null) => {
