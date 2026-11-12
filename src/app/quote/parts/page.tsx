@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, FileText, Layers, CheckCircle2, Upload, Pencil,
-  ChevronRight, ArrowRight, Package, Ruler, Box, Info, AlertCircle, Loader2, X, Zap
+  ChevronRight, ArrowRight, Package, Ruler, Box, Info, AlertCircle, Loader2, X, Zap, Eye
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { saveQuoteToAPI } from '@/components/SavedQuotesPanel';
@@ -963,14 +963,26 @@ export default function QuotePartsPage() {
                         </div>
                         <div className="min-w-0">
                           <div className="text-[11px] text-slate-400">加工方式</div>
-                          <select
-                            value={displayPlan(rowPlan)}
-                            onChange={(e) => handleMoldPlanChange(idx, e.target.value)}
-                            onClick={(e) => e.stopPropagation()}
-                            className="max-w-full text-sm text-slate-700 bg-transparent rounded cursor-pointer hover:bg-blue-50 focus:outline-none"
-                          >
-                            {MOLD_PLAN_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-                          </select>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <select
+                              value={displayPlan(rowPlan)}
+                              onChange={(e) => handleMoldPlanChange(idx, e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="min-w-0 flex-1 text-sm text-slate-700 bg-transparent rounded cursor-pointer hover:bg-blue-50 focus:outline-none"
+                            >
+                              {MOLD_PLAN_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                            </select>
+                            {/* 业主 2026-11-12：加工方式右侧「查看图纸」→ 子网页显示后端给出的图纸 */}
+                            <button
+                              type="button"
+                              title="查看后端给出的图纸"
+                              onClick={(e) => { e.stopPropagation(); window.open(`/quote/parts/inspect?i=${idx}`, '_blank', 'noopener,noreferrer'); }}
+                              onKeyDown={(e) => e.stopPropagation()}
+                              className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-200 text-[11px] text-slate-500 whitespace-nowrap hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50"
+                            >
+                              <Eye size={12} /> 图纸
+                            </button>
+                          </div>
                           <div className="text-[11px] text-slate-400 truncate">
                             {matCat === '铸造' || matCat === '注塑'
                               ? '模具费按品类固定'

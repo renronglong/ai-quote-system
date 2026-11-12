@@ -161,6 +161,9 @@ function buildRecogDataFromParse(parseJsonIn: any, productType: string, source: 
   const resolvedProductCode = parseJson.product_code || parseJson.part_number || '';
 
   return {
+    // 业主 2026-11-12：保留后端返回的原始完整响应，供「零件列表 → 查看图纸 / 后端全部信息」子网页使用。
+    // 后端稍后会补图纸字段（URL 或 base64），子网页按通用规则探测，字段名不由前端写死。
+    _rawBackend: parseJsonIn || {},
     confidence: parseJson.confidence_score != null ? parseJson.confidence_score : null,
     product_type: resolvedProductType,
     product_code: resolvedProductCode,
