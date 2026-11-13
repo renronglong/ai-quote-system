@@ -762,7 +762,7 @@ export default function QuoteWorkspace({ defaultProductType }: { defaultProductT
                     </div>
                     <div className="flex items-start gap-2">
                       <span className="w-1 h-1 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
-                      <span className="text-xs text-slate-600">模具费为一次性费用，不计入单件价格</span>
+                      <span className="text-xs text-slate-600">模具费不计入单件价格</span>
                     </div>
                     <div className="flex items-start gap-2">
                       <span className="w-1 h-1 rounded-full bg-orange-400 mt-1.5 shrink-0" />
@@ -1002,7 +1002,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
             )}
             {internal ? (
             <div className="mt-1 flex items-center gap-1.5">
-              <span className="text-sm text-slate-600">模具费(一次性)</span>
+              <span className="text-sm text-slate-600">模具费</span>
               <span className="text-xs text-slate-600">¥</span>
               <input
                 type="number"
@@ -1024,7 +1024,7 @@ function ResultPanel({ pricingResult, aluminumPrice, productName, productCode, c
             </div>
             ) : (
             <div className="mt-0.5 flex items-baseline gap-1">
-              <span className="text-sm text-slate-600">模具费(一次性)</span>
+              <span className="text-sm text-slate-600">模具费</span>
               <span className="text-sm font-semibold text-blue-700">¥{fmtPrice(discountedMold)}</span>
             </div>
             )}

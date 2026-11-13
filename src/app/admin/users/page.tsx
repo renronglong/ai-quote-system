@@ -6,6 +6,12 @@ import { useAuth, getAdminToken } from '@/lib/auth-context';
 import { Users, Search, Coins, Loader2, Gift, Building2, Phone as PhoneIcon, Trash2, AlertTriangle } from 'lucide-react';
 import QuoteSidebarLayout from '@/components/QuoteSidebarLayout';
 
+// 权限判定：与 src/lib/admin.ts 的 ADMIN_PHONES 白名单同源（管理员=手机号在白名单内，其余为普通用户）。
+// 不在此处 import @/lib/admin —— 该模块顶部 import { createHmac } from 'crypto' 会污染客户端包；
+// 白名单在此内联一份，新增管理员时与 lib/admin.ts 同步即可。
+const ADMIN_PHONES = ['13800138000', '18929979760'];
+const isAdminUser = (phone?: string | null) => !!phone && ADMIN_PHONES.includes(phone);
+
 interface AdminUser {
   id: string;
   phone: string;
@@ -183,6 +189,7 @@ export default function AdminUsersPage() {
               <tr>
                 <th className="px-4 py-3 text-left">手机 / 邮箱</th>
                 <th className="px-4 py-3 text-left">公司名</th>
+                <th className="px-4 py-3 text-left">权限</th>
                 <th className="px-4 py-3 text-right">积分余额</th>
                 <th className="px-4 py-3 text-right">累计赠送</th>
                 <th className="px-4 py-3 text-right">累计消耗</th>
@@ -198,6 +205,13 @@ export default function AdminUsersPage() {
                     <div className="text-xs text-gray-500 mt-0.5">{u.email || <span className="text-gray-300">未填邮箱</span>}</div>
                   </td>
                   <td className="px-4 py-3 text-gray-600">{u.company_name || <span className="text-gray-300">—</span>}</td>
+                  <td className="px-4 py-3">
+                    {isAdminUser(u.phone) ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">管理员</span>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500">普通用户</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <span className={`font-semibold ${Number(u.balance) > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
                       {Number(u.balance).toFixed(0)}

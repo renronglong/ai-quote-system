@@ -483,7 +483,7 @@ function PriceBlock({ r }: { r: InspectQuoteResult }) {
       <InfoRow label="加工费" value={`¥${(r.processing_cost ?? 0).toFixed(2)}`} />
       <InfoRow label="表面处理费" value={r.surface_treatment_cost ? `¥${r.surface_treatment_cost.toFixed(2)}` : '无'} />
       <InfoRow label="单件重量" value={weightStr} />
-      {r.mold_cost ? <InfoRow label="模具费(一次性)" value={`¥${r.mold_cost.toFixed(2)}`} /> : null}
+      {r.mold_cost ? <InfoRow label="模具费" value={`¥${r.mold_cost.toFixed(2)}`} /> : null}
     </dl>
   );
 }
