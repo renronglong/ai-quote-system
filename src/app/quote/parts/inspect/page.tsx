@@ -484,6 +484,7 @@ export default function PartsInspectPage() {
   const [raw, setRaw] = useState<any>({});
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [modelUrl, setModelUrl] = useState<string | null>(null);
+  const [modelLoading, setModelLoading] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
   const [showJson, setShowJson] = useState(false);
   const [price, setPrice] = useState<InspectQuote>({ ok: false, loading: true });
@@ -557,6 +558,52 @@ export default function PartsInspectPage() {
     } catch { /* 无数据则显示空态 */ }
     setLoaded(true);
   }, []);
+
+  // 业主 2026-11-13 19:xx：STEP 文件若识别响应没带 3D（大文件常超时），这里按需补取。
+  // 优先读识别页后台补好的结果缓存；否则用缓存的原始文件现取（自有 /api/parse-stp 的 55s 预算）。
+  useEffect(() => {
+    if (modelUrl) return;
+    const name = String(fileName || '');
+    if (!/\.stp$|\.step$/i.test(name)) return;
+    let cancelled = false;
+    (async () => {
+      let cached: string | null = null;
+      try { cached = sessionStorage.getItem(`ai_quote_step_3d::${name}`); } catch { /* ignore */ }
+      if (cached) { if (!cancelled) setModelUrl(cached); return; }
+      let raw: { b64: string; type: string } | null = null;
+      try {
+        const rawStr = sessionStorage.getItem(`ai_quote_step_raw::${name}`);
+        if (rawStr) raw = JSON.parse(rawStr);
+      } catch { /* ignore */ }
+      if (!raw || !raw.b64) return; // 无缓存文件则保持静态图（不回归）
+      try {
+        setModelLoading(true);
+        const bin = atob(raw.b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const blob = new Blob([bytes], { type: raw.type || 'application/octet-stream' });
+        const fd = new FormData();
+        fd.append('file', blob, name);
+        const r = await fetch('/api/parse-stp', { method: 'POST', body: fd, signal: AbortSignal.timeout(60000) });
+        if (!r.ok) return;
+        const j = await r.json().catch(() => ({}));
+        const u = typeof j.model_3d_url === 'string' && j.model_3d_url.trim() ? j.model_3d_url : null;
+        if (!u || cancelled) return;
+        setModelUrl(u);
+        // 持久化回 localStorage 零件，刷新后仍保留 3D
+        try {
+          const rp = JSON.parse(localStorage.getItem('ai_quote_parts') || '{}');
+          if (Array.isArray(rp.products) && rp.products[idx]) {
+            rp.products[idx].model_3d_url = u;
+            localStorage.setItem('ai_quote_parts', JSON.stringify(rp));
+          }
+        } catch { /* ignore */ }
+        try { sessionStorage.setItem(`ai_quote_step_3d::${name}`, u); } catch { /* ignore */ }
+      } catch { /* 失败保持静态图 */ }
+      finally { if (!cancelled) setModelLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [modelUrl, fileName, idx]);
 
   const drawings = useMemo(() => findDrawingSources(raw), [raw]);
   const summary = useMemo(() => makePlainSummary(raw), [raw]);
@@ -812,6 +859,15 @@ export default function PartsInspectPage() {
         )}
 
         {/* ①-2 后端给出的 3D 模型（有 model_3d_url 时显示，否则隐藏） */}
+        {loaded && !modelUrl && modelLoading && (
+          <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-5">
+            <div className="flex items-center gap-2 mb-3">
+              <Box size={18} className="text-blue-600" />
+              <h2 className="font-medium">3D 模型（可旋转）</h2>
+            </div>
+            <div className="text-sm text-slate-400 py-8 text-center">正在加载 3D 模型…（大文件解析较慢，请稍候）</div>
+          </section>
+        )}
         {loaded && modelUrl && (
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-5">
           <div className="flex items-center gap-2 mb-3">

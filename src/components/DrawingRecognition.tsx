@@ -344,8 +344,12 @@ function collectMissingFields(d: Record<string, any>): MissingField[] {
     keys.forEach(k => { t[k] = v; });
   };
 
-  // ① 厚度：板材叫板厚、型材叫壁厚 —— 缺了激光/挤压单价档都落不了地
-  if (nz(d.sheet_thickness ?? d.thickness_mm ?? d.thickness ?? d.wall_thickness) == null) {
+  // ① 厚度：仅板材需要「板厚」（材料费按 面积×厚度 算，缺了落不了单价档）。
+  //    业主 2026-11-13 19:05 明确：铝型材（挤出）不需要填壁厚 ⇒ 挤出类不收壁厚。
+  //    （压铸/注塑/钢材仍按原逻辑要求壁厚——这些工艺壁厚参与计价；用户未反馈这些不用。）
+  const isExtrusion = d.product_type === '挤出' || d.product_type === 'extrusion'
+    || d._special?.type === 'extrusion';
+  if (!isExtrusion && nz(d.sheet_thickness ?? d.thickness_mm ?? d.thickness ?? d.wall_thickness) == null) {
     out.push({
       key: 'thickness',
       label: isSheet ? '板厚' : '壁厚',
@@ -690,6 +694,37 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
     });
   }, [completedResults, onDrawingData]);
 
+  // 业主 2026-11-13 19:xx：STEP 大文件 3D 按需补取（不阻塞识别主响应）。
+  // 识别响应里代理顺带补的 3D 常因大文件超时被跳过（model3d=skipped_or_timeout），
+  // 这里在识别页后台「慢慢」再补一次（自有 /api/parse-stp 的 55s 预算），成功后：
+  //   ① 更新识别页展示；② 回填已入库记录（保证去零件列表后 inspect 有 3D）；
+  //   ③ 缓存结果到 sessionStorage 给 inspect 页兜底（用户若秒点「去零件列表」）。
+  const recoverStep3D = useCallback(async (theFile: File, theName: string) => {
+    try {
+      const fd = new FormData();
+      fd.append('file', theFile, theName);
+      const r = await fetch('/api/parse-stp', { method: 'POST', body: fd, signal: AbortSignal.timeout(60000) });
+      if (!r.ok) return;
+      const j = await r.json().catch(() => ({}));
+      const u = typeof j.model_3d_url === 'string' && j.model_3d_url.trim() ? j.model_3d_url : null;
+      if (!u) return;
+      setRecogResult(prev => (prev ? { ...prev, model_3d_url: u } : prev));
+      const id = lastCommitIdRef.current;
+      if (id) {
+        let changed = false;
+        const next = completedResultsRef.current.map(r => {
+          if (r.id !== id) return r;
+          changed = true;
+          const base = { ...(r.products[0] || {}) };
+          base.model_3d_url = u;
+          return { ...r, products: [base, ...r.products.slice(1)] };
+        });
+        if (changed) { completedResultsRef.current = next; setCompletedResults(next); }
+      }
+      try { sessionStorage.setItem(`ai_quote_step_3d::${theName}`, u); } catch { /* ignore */ }
+    } catch { /* 3D 是增强项，失败不影响主流程 */ }
+  }, []);
+
   const processNext = useCallback(async () => {
     if (processingRef.current) return;
     if (queueRef.current.length === 0) {
@@ -981,6 +1016,23 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           fileName: file.name,
           recognitionId: 'sp_' + Date.now(),
         });
+        // 业主 2026-11-13 19:xx：识别响应里的 3D 常因大文件超时缺失（model3d=skipped_or_timeout），
+        // 这里后台补取 + 缓存原始文件，保证「图纸信息」页一定能看到可旋转 3D。
+        const isStepFile = /\.stp$|\.step$/i.test(file.name) || isStep;
+        if (isStepFile && !recogData.model_3d_url) {
+          // 先缓存原始文件，供 inspect 页按需补取（即便用户秒点「去零件列表」）
+          try {
+            const dataUrl = await new Promise<string>((res, rej) => {
+              const fr = new FileReader();
+              fr.onload = () => res(fr.result as string);
+              fr.onerror = rej;
+              fr.readAsDataURL(file);
+            });
+            const b64 = dataUrl.split(',')[1] || '';
+            if (b64) sessionStorage.setItem(`ai_quote_step_raw::${file.name}`, JSON.stringify({ b64, type: file.type || 'application/octet-stream' }));
+          } catch { /* ignore */ }
+          void recoverStep3D(file, file.name);
+        }
         return;
       }
 
