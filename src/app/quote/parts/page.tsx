@@ -900,8 +900,8 @@ export default function QuotePartsPage() {
                   ) : (
                     <>
                       {/* 业主 2026-11-02：四列=材料(五大类)/牌号(联动·同价位合并)/表面处理/加工方式(开模·现有模具·无需开模) */}
-                      {/* 业主 2026-11-13：justify-start 关掉 grid 默认的 auto 列拉伸，四列贴内容、仅留 gap-x-3=12px 间距 */}
-                      <div className="flex-1 min-w-0 grid grid-cols-2 md:grid-cols-[auto_auto_auto_auto] gap-x-3 gap-y-1.5 justify-start">
+                      {/* 业主 2026-11-13：justify-start 关掉 grid 默认的 auto 列拉伸，四列贴内容、仅留 gap-x-[5px]=5px 间距（业主定：12→5） */}
+                      <div className="flex-1 min-w-0 grid grid-cols-2 md:grid-cols-[auto_auto_auto_auto] gap-x-[5px] gap-y-1.5 justify-start">
                         <div className="min-w-0">
                           <div className="text-[11px] text-slate-400">材料</div>
                           <select
