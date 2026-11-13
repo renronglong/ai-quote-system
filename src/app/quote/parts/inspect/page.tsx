@@ -321,6 +321,32 @@ type InspectQuoteResult = {
   mold_cost?: number;
   notes?: string[];
 };
+/** 业主 2026-11-13 任务表第 3 条：把「已经选了」的表面处理透传给 /api/v1/quote/calculate。
+ *  零件列表行的值本身就是后端 type（氧化本色/氧化上色/喷砂/拉丝/喷涂）；
+ *  /quote/ 表单 chips 的值按 QuoteForm.mapSurfaceTreatment 同一张表映射。
+ *  ⚠️ 不改任何单价、费率、系数、公式，只是把用户已选参数送给同一个后端接口。 */
+const ST_DIRECT_TYPES = new Set([
+  '氧化本色', '氧化上色', '喷砂', '拉丝', '喷涂', '喷涂/喷粉',
+  '磷化', '镀锌/镀镍', '抛光/镀铬', '除油',
+]);
+const ST_CHIP_MAP: Record<string, string> = {
+  '喷砂氧化': '喷砂', '抛光氧化': '抛光/镀铬', '拉丝氧化': '拉丝',
+  '喷涂': '喷涂', '氧化': '氧化本色', '电镀': '镀锌/镀镍', '除油': '除油',
+};
+type SurfaceSelection = { type: string; label: string; color?: string | null } | null;
+
+function normalizeSurfaceSelection(rawVal: unknown, colorVal: unknown): SurfaceSelection {
+  const v = String(rawVal ?? '').trim();
+  if (!v || v === '无' || v === 'none' || v === 'null' || v === 'undefined') return null;
+  const color = colorVal ? String(colorVal).trim() : '';
+  if (ST_DIRECT_TYPES.has(v)) return { type: v, label: v, color: color || null };
+  let mapped = ST_CHIP_MAP[v];
+  // 不认识的值宁可不传，也不能让后端走「默认估算(重量×2)」凭空加价
+  if (!mapped) return null;
+  if (v === '氧化' && color && color !== '本色') mapped = '氧化上色';
+  return { type: mapped, label: v, color: color || null };
+}
+
 type InspectQuote = { ok: boolean; loading: boolean; result?: InspectQuoteResult; reason?: string };
 
 const GRADE_ALIAS: Record<string, string> = {
@@ -371,6 +397,7 @@ function classifyPart(raw: any): { productTypeZh: string; rawMat: string } {
 
 type BasicInfo = {
   name: string;
+  code: string;
   productType: 'extrusion' | 'plate' | 'die_casting';
   processLabel: string;
   isSheet?: boolean;
@@ -392,9 +419,15 @@ function numFrom(r: any, ...keys: string[]): number | undefined {
 /**
  * 从后端识别响应里抽取「基本信息」（仅识别字段，价格改由后端 /api/v1/quote/calculate 计算，见下方 useEffect）。
  */
-function buildBasicInfo(raw: any): BasicInfo {
+function buildBasicInfo(raw: any, fallbackFileName = ''): BasicInfo {
   const r = raw && typeof raw === 'object' ? raw : {};
-  const name = r.product_name || r.part_name || r.file_name || r.drawing_number || '';
+  // 业主 2026-11-13 任务表第 2 条：产品名称 / 产品编号都要有，编号可以是文件名。
+  // 专用识别接口往往只给 drawing_number 不给 product_name / product_code，
+  // 因此名称按「产品名 → 零件名 → 图号 → 文件名」兜底，编号按「产品编号 → 图号 → 完整文件名」兜底。
+  const fileNoExt = String(r.file_name || fallbackFileName || '').replace(/\.[^./\\]+$/, '');
+  const fullFileName = String(r.file_name || fallbackFileName || '');
+  const code = r.product_code || r.part_number || r.drawing_number || fullFileName || '';
+  const name = r.product_name || r.part_name || r.drawing_number || fileNoExt || '';
   const isSheet = r.is_sheet_metal === true ? true : r.is_sheet_metal === false ? false : undefined;
   const procRaw = String(r.process_type || r.product_type || '');
   const isCast = /die_cast|压铸|casting/i.test(procRaw);
@@ -414,7 +447,7 @@ function buildBasicInfo(raw: any): BasicInfo {
   const mold = r.mold_type || r.die_type || '';
 
   const costTip = (r.classification && r.classification.cost_tip) || '';
-  return { name, productType, processLabel, isSheet, w, h, len, thick, area, cd, mw, wg, conf, mold, costTip };
+  return { name, code, productType, processLabel, isSheet, w, h, len, thick, area, cd, mw, wg, conf, mold, costTip };
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -458,6 +491,8 @@ export default function PartsInspectPage() {
   // 区分两种空态：①本会话压根没上传过图纸（ai_quote_parts / ai_quote_recog_result 皆空）；
   // ②上传过、后端也认，只是后端没给 drawing_preview_url 字段。
   const [hasSessionData, setHasSessionData] = useState(false);
+  // 业主 2026-11-13 任务表第 3 条：用户在零件列表 / /quote/ 已经选过的表面处理。
+  const [surfaceSel, setSurfaceSel] = useState<SurfaceSelection>(null);
 
   useEffect(() => {
     try {
@@ -478,6 +513,27 @@ export default function PartsInspectPage() {
       let backend = p?._rawBackend;
       if (!backend) backend = recog?.recogData || recog;
       setRaw(backend || p || {});
+
+      // 「已选表面处理」按最近一次用户操作优先：零件列表本行 > /quote/ 表单草稿 > 预填零件 > 识别结果。
+      // 零件列表页写入的是 p.surface_treatment（后端 type 口径），/quote/ 草稿写入的是 chips 口径。
+      let draft: any = {};
+      try {
+        const d = JSON.parse(localStorage.getItem('ai_quote_form_draft_v1') || '{}');
+        if (d && d.savedAt && Date.now() - d.savedAt <= 6 * 60 * 60 * 1000) draft = d;
+      } catch { /* ignore */ }
+      let selectedPart: any = {};
+      try { selectedPart = JSON.parse(sessionStorage.getItem('ai_quote_selected_part') || '{}'); } catch { /* ignore */ }
+      const candidates: Array<[unknown, unknown]> = [
+        [p?.surface_treatment, p?.surface_color],
+        [draft?.surfaceTreatment, draft?.surfaceColor],
+        [selectedPart?.surface_treatment ?? selectedPart?.surfaceTreatment, selectedPart?.surface_color ?? selectedPart?.surfaceColor],
+        [backend?.surface_treatment, backend?.surface_color],
+        [recog?.recogData?.surface_treatment, recog?.recogData?.surface_color],
+      ];
+      for (const [v, c] of candidates) {
+        const norm = normalizeSurfaceSelection(v, c);
+        if (norm) { setSurfaceSel(norm); break; }
+      }
       // 业主 2026-11-12 17:59 定：读后端响应顶层 drawing_preview_url，直接 <img src={值}>。
       // 主取原始响应顶层；其余为不同识别链路/包装层的兼容位。全为空或 null → 显示空态。
       const url = [
@@ -512,7 +568,7 @@ export default function PartsInspectPage() {
   }, [raw]);
 
   // 普通用户看到的「基本信息」卡片（识别字段），见 buildBasicInfo。
-  const basicInfo = useMemo(() => buildBasicInfo(raw), [raw]);
+  const basicInfo = useMemo(() => buildBasicInfo(raw, fileName), [raw, fileName]);
 
   // 业主 2026-11-13 最终定：价格必须与 /quote/ 完全相等。
   // 用本零件识别数据，复刻 /quote/（QuoteForm + QuoteWorkspace 映射）构造同一份 payload，
@@ -611,6 +667,12 @@ export default function PartsInspectPage() {
       if (!cancelled) setPrice({ ok: false, loading: false, reason: '缺少必要尺寸（截面/展开尺寸或单件重量）' });
       return;
     }
+    // 业主 2026-11-13 任务表第 3 条：把已选表面处理透传给同一个后端报价接口。
+    // 与 /quote/ 的 payload 字段完全一致（surface_treatment: { type, color }），
+    // 费率/系数/公式一律由后端既有规则计算，前端不参与、不改动。
+    if (surfaceSel) {
+      payload.surface_treatment = { type: surfaceSel.type, color: surfaceSel.color || null };
+    }
     // 钢材标准件路由不支持、/quote/ 走前端计；此处降级提示
     if (payload.product_type === 'steel_standard') {
       if (!cancelled) setPrice({ ok: false, loading: false, reason: '钢材标准件请到 /quote/ 获取精确报价' });
@@ -651,7 +713,7 @@ export default function PartsInspectPage() {
       })
       .catch(() => { if (!cancelled) setPrice({ ok: false, loading: false, reason: '网络错误，无法连接报价服务' }); });
     return () => { cancelled = true; };
-  }, [raw]);
+  }, [raw, surfaceSel]);
 
   return (
   <QuoteSidebarLayout fromPartsList partsListLabel={fileName}>
@@ -837,24 +899,24 @@ export default function PartsInspectPage() {
                 <div>
                   <div className="text-sm font-medium mb-2">识别信息</div>
                   <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2.5 text-sm">
+                    {/* 业主 2026-11-13 任务表第 2 条：删「单件重 / 识别置信度 / 是否钣金件 / 壁厚」，补「产品编号」 */}
                     <InfoRow label="产品名称" value={basicInfo.name || '—'} />
+                    <InfoRow label="产品编号" value={basicInfo.code || '—'} />
                     <InfoRow label="工艺类型" value={basicInfo.processLabel} />
                     <InfoRow label="截面尺寸" value={(basicInfo.w != null || basicInfo.h != null) ? `宽 ${basicInfo.w ?? '—'} × 高 ${basicInfo.h ?? '—'} mm` : '—'} />
                     <InfoRow label="型材长度" value={basicInfo.len != null ? `${basicInfo.len} mm` : '—'} />
-                    <InfoRow label="壁厚" value={basicInfo.thick != null ? `${basicInfo.thick} mm` : '—'} />
                     <InfoRow label="截面积" value={basicInfo.area != null ? `${basicInfo.area} mm²` : '—'} />
                     <InfoRow label="每米重" value={basicInfo.mw != null ? `${basicInfo.mw} kg/m` : '—'} />
-                    <InfoRow label="单件重" value={basicInfo.wg != null ? `${basicInfo.wg} g` : '—'} />
                     <InfoRow label="外接圆直径" value={basicInfo.cd != null ? `${basicInfo.cd} mm` : '—'} />
-                    <InfoRow label="识别置信度" value={basicInfo.conf != null ? String(basicInfo.conf) : '—'} />
-                    <InfoRow label="是否钣金件" value={basicInfo.isSheet === true ? '是' : basicInfo.isSheet === false ? '否' : '—'} />
                     <InfoRow label="建议模具类型" value={basicInfo.mold || '—'} />
                   </dl>
                 </div>
                 <div>
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <span className="text-sm font-medium">价格</span>
-                    <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-500">与 /quote/ 同口径 · 1 件 · 无表面处理</span>
+                    <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-500">
+                      与 /quote/ 同口径 · 1 件 · {surfaceSel ? `表面处理：${surfaceSel.label}` : '无表面处理'}
+                    </span>
                   </div>
                   {price.loading ? (
                     <div className="text-sm text-slate-400 py-2">正在向报价服务计算…</div>
@@ -864,7 +926,8 @@ export default function PartsInspectPage() {
                     <div className="text-sm text-slate-500">暂无法估算：{price.reason}。</div>
                   )}
                   <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                    注：以下数字与 /quote/ 完全一致——由同一后端报价接口（/api/v1/quote/calculate）按本零件识别尺寸 + 站点实时价计算，默认 1 件、无表面处理。
+                    注：以上数字与 /quote/ 完全一致——由同一后端报价接口（/api/v1/quote/calculate）按本零件识别尺寸 + 站点实时价计算，
+                    数量 1 件，表面处理沿用您在零件列表 / /quote/ 的选择{surfaceSel ? `（${surfaceSel.label}）` : '（当前未选）'}。
                     如需改长度 / 数量 / 表面处理 / 牌号等实际参数，请点下方「去 /quote/ 获取正式报价」。
                   </p>
                 </div>

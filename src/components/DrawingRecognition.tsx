@@ -952,6 +952,11 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           parse_method: raw.parse_method,
         };
         recogData._rawBackend = spJson;
+        // 业主 2026-11-13 任务表第 1 条：代理层对 STEP 已从 /api/parse/stp 补回 3D 模型，
+        // 这里显式挂到零件顶层，保证「零件列表 → 图纸信息」inspect 页的多层兜底都能读到。
+        recogData.model_3d_url = typeof spJson.model_3d_url === 'string' ? spJson.model_3d_url : null;
+        recogData.drawing_preview_url = typeof spJson.drawing_preview_url === 'string'
+          ? spJson.drawing_preview_url : (recogData.drawing_preview_url ?? null);
         setRecogResult(recogData);
         if (!(await chargeCadRecognition())) return;
         checkQuota();

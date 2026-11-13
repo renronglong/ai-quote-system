@@ -42,10 +42,19 @@ export async function POST(request: NextRequest) {
 
     const file = incoming.get("file");
     const fileId = incoming.get("file_id");
+    // 业主 2026-11-13 任务表第 1 条「上传 STEP 不显示 3D」：
+    // 专用识别端点只给 drawing_preview_url，不给 model_3d_url；而同上游 /api/parse/stp 会给出
+    // data:model/stl;base64。这里把文件字节留一份，识别成功后补取 3D 挂到响应顶层，
+    // 前端 inspect 页已有的 model_3d_url 读取逻辑即可直接渲染可旋转模型，无需改前端。
+    let fileBuf: ArrayBuffer | null = null;
+    let fileName = "";
+    let fileType = "application/octet-stream";
     if (file && typeof file !== "string" && typeof (file as File).arrayBuffer === "function") {
       const f = file as File;
-      const blob = new Blob([await f.arrayBuffer()], { type: f.type || "application/octet-stream" });
-      proxyForm.append("file", blob, f.name);
+      fileBuf = await f.arrayBuffer();
+      fileName = f.name || "file.stp";
+      fileType = f.type || "application/octet-stream";
+      proxyForm.append("file", new Blob([fileBuf], { type: fileType }), fileName);
     } else if (typeof fileId === "string" && fileId.trim()) {
       proxyForm.append("file_id", fileId.trim());
     } else {
@@ -55,9 +64,13 @@ export async function POST(request: NextRequest) {
     }
 
     // 透传契约里的可选参数：source_type / material_grade / thickness_mm
+    const optional: Record<string, string> = {};
     for (const key of ["source_type", "material_grade", "thickness_mm"]) {
       const v = incoming.get(key);
-      if (typeof v === "string" && v.trim()) proxyForm.append(key, v.trim());
+      if (typeof v === "string" && v.trim()) {
+        optional[key] = v.trim();
+        proxyForm.append(key, v.trim());
+      }
     }
 
     const upstream = await fetch(`${PARSER_API}${endpoint}`, {
@@ -75,8 +88,41 @@ export async function POST(request: NextRequest) {
     }
 
     // 附一小段元信息，方便管理员排查走的是哪个专用端点（不覆盖上游同名字段语义）
+    const proxyMeta: Record<string, unknown> = { type, endpoint, upstream_status: upstream.status };
+
+    // ===== 业主 2026-11-13 任务表第 1 条：STEP 补回 3D 模型 =====
+    // 5 个专用识别端点只给 drawing_preview_url，没有 model_3d_url；
+    // 同一上游的 /api/parse/stp 对 .stp/.step 会返回 data:model/stl;base64（实测约 2KB）。
+    // 只挑 model_3d_url（以及缺图时的 drawing_preview_url）挂到响应顶层，不覆盖专用端点的几何/价格字段，
+    // 也不把 parse/stp 的其它字段混进来；补取失败一律静默，绝不影响识别主结果。
+    const isStep = /\.stp$|\.step$/i.test(fileName) || optional.source_type === "step";
+    if (upstream.ok && isStep && fileBuf) {
+      try {
+        const fd3d = new FormData();
+        fd3d.append("file", new Blob([fileBuf], { type: fileType }), fileName);
+        if (optional.material_grade) fd3d.append("material_grade", optional.material_grade);
+        const r3d = await fetch(`${PARSER_API}/api/parse/stp`, {
+          method: "POST",
+          body: fd3d,
+          signal: AbortSignal.timeout(20000),
+        });
+        if (r3d.ok) {
+          const j3d = (await r3d.json()) as Record<string, unknown>;
+          if (typeof j3d.model_3d_url === "string" && j3d.model_3d_url.trim()) {
+            body.model_3d_url = j3d.model_3d_url;
+            (proxyMeta).model3d = "parse/stp";
+          }
+          if (!body.drawing_preview_url && typeof j3d.drawing_preview_url === "string" && j3d.drawing_preview_url.trim()) {
+            body.drawing_preview_url = j3d.drawing_preview_url;
+          }
+        }
+      } catch {
+        // 3D 是展示增强项，补取失败时保持专用端点原响应（静态图纸仍可看）
+      }
+    }
+
     return new Response(
-      JSON.stringify({ ...body, _proxy: { type, endpoint, upstream_status: upstream.status } }),
+      JSON.stringify({ ...body, _proxy: proxyMeta }),
       {
         status: upstream.ok ? 200 : 502,
         headers: { "Content-Type": "application/json" },
