@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import { Fragment, useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import {
-  Sparkles, Layers, Square, Box, Component, Hammer,
+  Sparkles, Layers, Square, Box, Component, Hammer, Factory,
   History, Building2, Store, TrendingUp, MessageCircle, Coins,
   Package, LogOut, Users, UserCheck, ArrowLeft, FileSpreadsheet,
   type LucideIcon,
@@ -35,6 +35,8 @@ const NAV: NavItem[] = [
   { key: 'customers', label: '客户管理', href: '/admin/customers', icon: UserCheck },
   { key: 'profile', label: '公司资料', href: '/profile', icon: Building2 },
   { key: 'products', label: '我的产品展示', href: '/supplier/register', icon: Store },
+  // 公开供应商目录（挤压铝型材供应商，可全网浏览）；「搜索现有模具」的公开产品卡也链到这里
+  { key: 'suppliers', label: '供应商目录', href: '/suppliers', icon: Factory },
   { key: 'market', label: '铝价行情', href: '/market', icon: TrendingUp },
   { key: 'contact', label: '联系我们', href: '/contact', icon: MessageCircle },
 ];

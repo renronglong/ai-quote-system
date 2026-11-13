@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import AppLayout from '@/components/AppLayout';
+import QuoteSidebarLayout from '@/components/QuoteSidebarLayout';
 import { Loader2, Building2, ChevronDown, ChevronUp, Search, Handshake, ArrowRight } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
@@ -108,6 +109,7 @@ export default function SuppliersPage() {
 
   return (
     <AppLayout>
+      <QuoteSidebarLayout>
       <div className="max-w-5xl mx-auto">
         <div className="mb-6 text-center">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
@@ -285,6 +287,7 @@ export default function SuppliersPage() {
           </Link>
         </div>
       </div>
+      </QuoteSidebarLayout>
     </AppLayout>
   );
 }
