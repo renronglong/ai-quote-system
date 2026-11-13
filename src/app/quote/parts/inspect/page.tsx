@@ -403,6 +403,8 @@ type BasicInfo = {
   isSheet?: boolean;
   w?: number; h?: number; len?: number; thick?: number; area?: number;
   cd?: number; mw?: number; wg?: number; conf?: number | string;
+  vol?: number; unfoldLen?: number; unfoldW?: number; bend?: number; hole?: number;
+  isInjection?: boolean;
   mold: string;
   costTip: string;
 };
@@ -420,7 +422,10 @@ function numFrom(r: any, ...keys: string[]): number | undefined {
  * 从后端识别响应里抽取「基本信息」（仅识别字段，价格改由后端 /api/v1/quote/calculate 计算，见下方 useEffect）。
  */
 function buildBasicInfo(raw: any, fallbackFileName = ''): BasicInfo {
-  const r = raw && typeof raw === 'object' ? raw : {};
+  const r0 = raw && typeof raw === 'object' ? raw : {};
+  // 业主 2026-11-13 任务表 ②-⑤：专用识别响应把字段收在 data 层，_rawBackend 已摊平到顶层；
+  // 这里再兜底一层（data 层优先并入顶层），保证 numFrom 总能读到几何量/体积。
+  const r = (r0.data && typeof r0.data === 'object') ? { ...r0, ...r0.data } : r0;
   // 业主 2026-11-13 任务表第 2 条：产品名称 / 产品编号都要有，编号可以是文件名。
   // 专用识别接口往往只给 drawing_number 不给 product_name / product_code，
   // 因此名称按「产品名 → 零件名 → 图号 → 文件名」兜底，编号按「产品编号 → 图号 → 完整文件名」兜底。
@@ -429,11 +434,12 @@ function buildBasicInfo(raw: any, fallbackFileName = ''): BasicInfo {
   const code = r.product_code || r.part_number || r.drawing_number || fullFileName || '';
   const name = r.product_name || r.part_name || r.drawing_number || fileNoExt || '';
   const isSheet = r.is_sheet_metal === true ? true : r.is_sheet_metal === false ? false : undefined;
-  const procRaw = String(r.process_type || r.product_type || '');
+  const procRaw = String(r.process_type || r.product_type || r._special_type || '');
   const isCast = /die_cast|压铸|casting/i.test(procRaw);
+  const isInjection = /injection|注塑/i.test(procRaw) || r._special_type === 'injection';
   const isPlate = isSheet || /sheet|板材|钣金/i.test(procRaw);
-  const productType: BasicInfo['productType'] = isPlate ? 'plate' : isCast ? 'die_casting' : 'extrusion';
-  const processLabel = isPlate ? '钣金 / 板材' : isCast ? '压铸' : '挤压型材';
+  const productType: BasicInfo['productType'] = isPlate ? 'plate' : (isCast || isInjection) ? 'die_casting' : 'extrusion';
+  const processLabel = isPlate ? '钣金 / 板材' : isCast ? '压铸' : isInjection ? '注塑' : '挤压型材';
 
   const w = numFrom(r, 'section_width_mm', 'width_mm', 'width');
   const h = numFrom(r, 'section_height_mm', 'height_mm', 'height');
@@ -442,12 +448,17 @@ function buildBasicInfo(raw: any, fallbackFileName = ''): BasicInfo {
   const area = numFrom(r, 'section_area_mm2', 'cross_section_area_mm2');
   const cd = numFrom(r, 'circumscribed_diameter_mm', 'section_min_circle_diameter_mm');
   const mw = numFrom(r, 'weight_kg_per_m', 'meter_weight');
-  const wg = numFrom(r, 'weight_g');
+  const wg = numFrom(r, 'weight_g', 'net_weight_g');
+  const vol = numFrom(r, 'volume_mm3', 'volume_cm3');
+  const unfoldLen = numFrom(r, 'unfold_length_mm', 'unfold_length', 'flat_length_mm');
+  const unfoldW = numFrom(r, 'unfold_width_mm', 'unfold_width', 'flat_width_mm');
+  const bend = numFrom(r, 'bend_count', 'bend_angle_deg');
+  const hole = numFrom(r, 'punch_holes_total', 'unfold_hole_count', 'hole_count');
   const conf = r.confidence_score ?? r.confidence;
   const mold = r.mold_type || r.die_type || '';
 
   const costTip = (r.classification && r.classification.cost_tip) || '';
-  return { name, code, productType, processLabel, isSheet, w, h, len, thick, area, cd, mw, wg, conf, mold, costTip };
+  return { name, code, productType, processLabel, isSheet, w, h, len, thick, area, cd, mw, wg, conf, vol, unfoldLen, unfoldW, bend, hole, isInjection, mold, costTip };
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -955,16 +966,42 @@ export default function PartsInspectPage() {
                 <div>
                   <div className="text-sm font-medium mb-2">识别信息</div>
                   <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2.5 text-sm">
-                    {/* 业主 2026-11-13 任务表第 2 条：删「单件重 / 识别置信度 / 是否钣金件 / 壁厚」，补「产品编号」 */}
+                    {/* 业主 2026-11-13 任务表 ②-⑤：图纸信息按料型显示，各料型只显示自己该有的 */}
                     <InfoRow label="产品名称" value={basicInfo.name || '—'} />
                     <InfoRow label="产品编号" value={basicInfo.code || '—'} />
                     <InfoRow label="工艺类型" value={basicInfo.processLabel} />
-                    <InfoRow label="截面尺寸" value={(basicInfo.w != null || basicInfo.h != null) ? `宽 ${basicInfo.w ?? '—'} × 高 ${basicInfo.h ?? '—'} mm` : '—'} />
-                    <InfoRow label="型材长度" value={basicInfo.len != null ? `${basicInfo.len} mm` : '—'} />
-                    <InfoRow label="截面积" value={basicInfo.area != null ? `${basicInfo.area} mm²` : '—'} />
-                    <InfoRow label="每米重" value={basicInfo.mw != null ? `${basicInfo.mw} kg/m` : '—'} />
-                    <InfoRow label="外接圆直径" value={basicInfo.cd != null ? `${basicInfo.cd} mm` : '—'} />
-                    <InfoRow label="建议模具类型" value={basicInfo.mold || '—'} />
+                    {/* 板材 / 钣金：展开尺寸 */}
+                    {basicInfo.productType === 'plate' && (
+                      <>
+                        <InfoRow label="展开长" value={basicInfo.unfoldLen != null ? `${basicInfo.unfoldLen} mm` : '—'} />
+                        <InfoRow label="展开宽" value={basicInfo.unfoldW != null ? `${basicInfo.unfoldW} mm` : '—'} />
+                        <InfoRow label="板厚" value={basicInfo.thick != null ? `${basicInfo.thick} mm` : '—'} />
+                        <InfoRow label="折弯数" value={basicInfo.bend != null ? `${basicInfo.bend}` : '—'} />
+                        <InfoRow label="孔数" value={basicInfo.hole != null ? `${basicInfo.hole} 个` : '—'} />
+                        <InfoRow label="单件重" value={basicInfo.wg != null ? `${basicInfo.wg >= 1000 ? (basicInfo.wg / 1000).toFixed(3) + ' kg' : basicInfo.wg.toFixed(1) + ' g'}` : '—'} />
+                      </>
+                    )}
+                    {/* 铸造 / 注塑：体积 + 净重 */}
+                    {basicInfo.productType === 'die_casting' && (
+                      <>
+                        <InfoRow label="体积" value={basicInfo.vol != null ? `${basicInfo.vol} mm³` : '—'} />
+                        <InfoRow label="净重" value={basicInfo.wg != null ? `${basicInfo.wg >= 1000 ? (basicInfo.wg / 1000).toFixed(3) + ' kg' : basicInfo.wg.toFixed(1) + ' g'}` : '—'} />
+                        <InfoRow label="宽" value={basicInfo.w != null ? `${basicInfo.w} mm` : '—'} />
+                        <InfoRow label="高" value={basicInfo.h != null ? `${basicInfo.h} mm` : '—'} />
+                        <InfoRow label="长" value={basicInfo.len != null ? `${basicInfo.len} mm` : '—'} />
+                      </>
+                    )}
+                    {/* 挤出 / 钢材：截面 + 米重 */}
+                    {basicInfo.productType === 'extrusion' && (
+                      <>
+                        <InfoRow label="截面尺寸" value={(basicInfo.w != null || basicInfo.h != null) ? `宽 ${basicInfo.w ?? '—'} × 高 ${basicInfo.h ?? '—'} mm` : '—'} />
+                        <InfoRow label="型材长度" value={basicInfo.len != null ? `${basicInfo.len} mm` : '—'} />
+                        <InfoRow label="截面积" value={basicInfo.area != null ? `${basicInfo.area} mm²` : '—'} />
+                        <InfoRow label="每米重" value={basicInfo.mw != null ? `${basicInfo.mw} kg/m` : '—'} />
+                        <InfoRow label="外接圆直径" value={basicInfo.cd != null ? `${basicInfo.cd} mm` : '—'} />
+                        <InfoRow label="建议模具类型" value={basicInfo.mold || '—'} />
+                      </>
+                    )}
                   </dl>
                 </div>
                 <div>

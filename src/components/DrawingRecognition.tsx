@@ -278,6 +278,10 @@ function buildRecogDataFromParse(parseJsonIn: any, productType: string, source: 
     cnc_machining_seconds: parseJson.cnc_machining_seconds ?? null,
     cnc_process: parseJson.cnc_process ?? null,
     cnc_estimate: parseJson.cnc_estimate || null,
+    // 专用识别：铸造/注塑上游返回 volume_mm3，净重由前端按密度补算（见 specialType 分支）
+    volume_mm3: parseJson.volume_mm3 ?? null,
+    net_weight_g: parseJson.net_weight_g ?? null,
+    net_weight_kg: parseJson.net_weight_kg ?? null,
     notes: `${source}${fileName ? ': ' + fileName : ''}${isSheet ? ` | 钣金折弯件 ${parseJson.unfold_size || ''} ${parseJson.bend_angle_deg || 90}°/R${parseJson.bend_radius_mm || ''}` : ''}${isSheet && pick('unfold_precision') === 'estimated' ? ' | ⚠️展开尺寸为估算值（几何不规范，切割周长偏差可达 10%），建议人工复核' : ''} | ⚠️仅用于报价估算，不可作为开模依据`,
     _fileName: fileName,
     _partId: parseJson.part_id || parseJson.part_number || '',
@@ -985,6 +989,17 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           adapted.weight_g = Math.round(weightG * 100) / 100;
           adapted.weight_kg = Math.round(weightG / 1000 * 10000) / 10000;
         }
+        // 业主 2026-11-13 任务表 ②-⑤：铸造/注塑上游返回 volume_mm3，净重由前端按密度补算。
+        // 体积 mm³ × 密度 g/mm³ = 净重 g（契约第五节：后端不输出重量，重量一律前端算）。
+        const volMm3 = Number(raw.volume_mm3 ?? 0);
+        if ((specialType === 'casting' || specialType === 'injection') && volMm3 > 0) {
+          const netWeightG = volMm3 * rho;
+          adapted.volume_mm3 = volMm3;
+          adapted.net_weight_g = Math.round(netWeightG * 100) / 100;
+          adapted.net_weight_kg = Math.round((netWeightG / 1000) * 10000) / 10000;
+          adapted.weight_g = adapted.net_weight_g;
+          adapted.weight_kg = adapted.net_weight_kg;
+        }
         const recogData = buildRecogDataFromParse(adapted, zhType, '专用接口识别', file.name);
         recogData._density_used = rho;
         // 料型由 ?type= 显式指定，后端返回的分类/字段不得把型材误判成钣金（契约初衷）
@@ -1004,8 +1019,13 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
         // 修法：把补算的重量并回 _rawBackend，保证「识别 → 零件列表 → 图纸信息」链路基本信息不缺米重。
         recogData._rawBackend = {
           ...spJson,
+          // 业主 2026-11-13 任务表 ②-⑤：把上游 data 层字段摊平到顶层，
+          // 保证 inspect 页 buildBasicInfo 的 numFrom(r,'section_width_mm'/'volume_mm3'...) 能直接读到几何量。
+          ...raw,
+          _special_type: specialType,
           ...(adapted.meter_weight != null ? { meter_weight: adapted.meter_weight } : {}),
           ...(adapted.weight_g != null ? { weight_g: adapted.weight_g, weight_kg: adapted.weight_kg } : {}),
+          ...(adapted.volume_mm3 != null ? { volume_mm3: adapted.volume_mm3 } : {}),
         };
         // 业主 2026-11-13 任务表第 1 条：代理层对 STEP 已从 /api/parse/stp 补回 3D 模型，
         // 这里显式挂到零件顶层，保证「零件列表 → 图纸信息」inspect 页的多层兜底都能读到。
@@ -1861,31 +1881,67 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
               </span>
             </div>
             <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-sm text-gray-600">
-              {recogResult._isSheetMetal || recogResult.is_sheet_metal ? (
-                <>
-                  {recogResult.unfold_length != null && <div>展开长: <b>{recogResult.unfold_length}mm</b></div>}
-                  {recogResult.unfold_width != null && <div>展开宽: <b>{recogResult.unfold_width}mm</b></div>}
-                  {(recogResult.sheet_thickness || recogResult.wall_thickness) != null && <div>板厚: <b>{(recogResult.sheet_thickness || recogResult.wall_thickness)}mm</b></div>}
-                  {recogResult.bend_angle != null && <div>折弯角: <b>{recogResult.bend_angle}°</b></div>}
-                  {recogResult.bend_radius != null && <div>折弯R: <b>R{recogResult.bend_radius}</b></div>}
-                  {(recogResult.unfold_hole_count ?? recogResult.all_holes_total ?? recogResult.cnc_total_holes) != null && <div>孔数: <b>{recogResult.unfold_hole_count ?? recogResult.all_holes_total ?? recogResult.cnc_total_holes}个</b></div>}
-                  <div className="col-span-2 text-blue-600 font-medium">📐 钣金折弯件（无需挤压模具）</div>
-                </>
-              ) : (
-                <>
-                  {recogResult.width != null && <div>宽: <b>{recogResult.width}mm</b></div>}
-                  {recogResult.height != null && <div>高: <b>{recogResult.height}mm</b></div>}
-                  {recogResult.wall_thickness != null && <div>壁厚: <b>{recogResult.wall_thickness}mm</b></div>}
-                  {recogResult.length != null && <div>长: <b>{recogResult.length}mm</b></div>}
-                  {recogResult.perimeter != null && <div>总周长: <b>{recogResult.perimeter}mm</b></div>}
-                  {recogResult.inner_perimeter != null && <div>内周长: <b>{recogResult.inner_perimeter}mm</b></div>}
-                  {recogResult.meter_weight != null && <div>米重: <b>{recogResult.meter_weight}kg/m</b></div>}
-                  {recogResult.crossSectionArea != null && <div>截面积: <b>{recogResult.crossSectionArea}mm²</b></div>}
-                  {recogResult.num_cavities != null && <div>模腔数: <b>{recogResult.num_cavities}</b></div>}
-                </>
-              )}
-              {/* 型材但后端没返回截面尺寸：必须显式告知，否则报价页一片空白、用户不知为何算不出价 */}
-              {!(recogResult._isSheetMetal || recogResult.is_sheet_metal) &&
+              {(() => {
+                const spT = (recogResult as any)._special?.type as string | undefined;
+                // 板材 / 钣金：展开尺寸
+                if (spT === 'sheet' || recogResult._isSheetMetal || recogResult.is_sheet_metal) {
+                  return (
+                    <>
+                      {recogResult.unfold_length != null && <div>展开长: <b>{recogResult.unfold_length}mm</b></div>}
+                      {recogResult.unfold_width != null && <div>展开宽: <b>{recogResult.unfold_width}mm</b></div>}
+                      {(recogResult.sheet_thickness || recogResult.wall_thickness) != null && <div>板厚: <b>{(recogResult.sheet_thickness || recogResult.wall_thickness)}mm</b></div>}
+                      {recogResult.bend_angle != null && <div>折弯角: <b>{recogResult.bend_angle}°</b></div>}
+                      {recogResult.bend_radius != null && <div>折弯R: <b>R{recogResult.bend_radius}</b></div>}
+                      {(recogResult.unfold_hole_count ?? recogResult.all_holes_total ?? recogResult.cnc_total_holes) != null && <div>孔数: <b>{recogResult.unfold_hole_count ?? recogResult.all_holes_total ?? recogResult.cnc_total_holes}个</b></div>}
+                      <div className="col-span-2 text-blue-600 font-medium">📐 钣金折弯件（无需挤压模具）</div>
+                    </>
+                  );
+                }
+                // 挤出 / 钢材：截面 + 米重，不显示壁厚/周长
+                if (spT === 'extrusion' || spT === 'steel') {
+                  return (
+                    <>
+                      {recogResult.width != null && <div>宽: <b>{recogResult.width}mm</b></div>}
+                      {recogResult.height != null && <div>高: <b>{recogResult.height}mm</b></div>}
+                      {recogResult.length != null && <div>长: <b>{recogResult.length}mm</b></div>}
+                      {recogResult.meter_weight != null && <div>米重: <b>{recogResult.meter_weight}kg/m</b></div>}
+                      {recogResult.crossSectionArea != null && <div>截面积: <b>{recogResult.crossSectionArea}mm²</b></div>}
+                      <div className="col-span-2 text-blue-600 font-medium">📏 挤压/型材件（按米重计价）</div>
+                    </>
+                  );
+                }
+                // 铸造 / 注塑：体积 + 净重，隐藏壁厚/周长/米重
+                if (spT === 'casting' || spT === 'injection') {
+                  return (
+                    <>
+                      {recogResult.volume_mm3 != null && <div>体积: <b>{recogResult.volume_mm3}mm³</b></div>}
+                      {recogResult.net_weight_g != null && (
+                        <div>净重: <b>{recogResult.net_weight_g}g</b>{recogResult.net_weight_kg != null && <span className="opacity-70">（{recogResult.net_weight_kg}kg）</span>}</div>
+                      )}
+                      {recogResult.width != null && <div>宽: <b>{recogResult.width}mm</b></div>}
+                      {recogResult.height != null && <div>高: <b>{recogResult.height}mm</b></div>}
+                      {recogResult.length != null && <div>长: <b>{recogResult.length}mm</b></div>}
+                      <div className="col-span-2 text-blue-600 font-medium">🏭 铸造/注塑件（按净重计价）</div>
+                    </>
+                  );
+                }
+                // 普通识别（无 _special）：保持原二分
+                return (
+                  <>
+                    {recogResult.width != null && <div>宽: <b>{recogResult.width}mm</b></div>}
+                    {recogResult.height != null && <div>高: <b>{recogResult.height}mm</b></div>}
+                    {recogResult.wall_thickness != null && <div>壁厚: <b>{recogResult.wall_thickness}mm</b></div>}
+                    {recogResult.length != null && <div>长: <b>{recogResult.length}mm</b></div>}
+                    {recogResult.perimeter != null && <div>总周长: <b>{recogResult.perimeter}mm</b></div>}
+                    {recogResult.inner_perimeter != null && <div>内周长: <b>{recogResult.inner_perimeter}mm</b></div>}
+                    {recogResult.meter_weight != null && <div>米重: <b>{recogResult.meter_weight}kg/m</b></div>}
+                    {recogResult.crossSectionArea != null && <div>截面积: <b>{recogResult.crossSectionArea}mm²</b></div>}
+                    {recogResult.num_cavities != null && <div>模腔数: <b>{recogResult.num_cavities}</b></div>}
+                  </>
+                );
+              })()}
+              {/* 挤出/钢材但后端没返回截面尺寸：必须显式告知 */}
+              {(recogResult._special?.type === 'extrusion' || recogResult._special?.type === 'steel') &&
                 recogResult.crossSectionArea == null && recogResult.width == null && (
                 <div className="col-span-2 mt-0.5 rounded px-1.5 py-1 text-xs text-amber-800 bg-amber-100 border border-amber-200">
                   ⚠️ 已判定为<b>型材</b>，但未能提取截面尺寸（宽 / 高 / 总周长 / 截面积）。
