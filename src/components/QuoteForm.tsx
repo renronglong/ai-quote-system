@@ -3298,60 +3298,97 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                     <CheckCircle2 className="w-3 h-3 text-green-500" />
                     找到 {moldMatches.length} 个相近模具（公差≤15%）
                   </div>
-                  <div className="max-h-40 overflow-y-auto space-y-1">
+                  <div className="max-h-60 overflow-y-auto space-y-1.5">
                     {moldMatches.slice(0, 5).map(m => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedMoldId(m.id);
-                          setUseExistingMold(true);
-                          setSelectedMold(m);
-                          // 按产品管理带出：编号=模具编号，名称=产品名称
-                          if (m.mold_number) setProductCode(m.mold_number);
-                          if (standardCategory === '异型材' && realMoldProductName(m.product_name)) setProductName(realMoldProductName(m.product_name));
-                          // 注：表面处理不改表单选择（表面处理费按用户实际选择计算）；
-                          // 产品库登记的表面处理原文通过 selectedMold → moldSurface 带到报价单显示
-                          const dims = parseMoldDimensions(standardCategory, m.cross_section_mm);
-                          setFields(prev => ({
-                            ...prev,
-                            ...dims,
-                            die_type: m.mold_type === '分流模' ? 'split' : 'flat',
-                            perimeter: m.perimeter || prev.perimeter,
-                            meterWeight: m.weight_per_meter || prev.meterWeight,
-                            // 模具库带米重时，若截面积为空则自动反算（米重×1000/2.7）
-                            crossSectionArea: prev.crossSectionArea
-                              ? prev.crossSectionArea
-                              : (m.weight_per_meter
-                                  ? String(Math.round(parseFloat(m.weight_per_meter) * 1000 / 2.7 * 100) / 100)
-                                  : prev.crossSectionArea),
-                          }));
-                          setPerimeterManual(true);
-                          setMeterWeightManual(true);
-                          setAreaManual(false);
-                        }}
-                        className={`w-full text-left px-2.5 py-1.5 rounded-lg border text-sm transition-all flex items-center justify-between ${
-                          selectedMoldId === m.id
-                            ? 'bg-green-50 border-green-300 text-green-700'
-                            : 'bg-white border-gray-200 text-gray-700 hover:bg-green-50/50 hover:border-green-200'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          {/* 任务1：异型材显示模具编号，标准件无编号不显示 */}
-                          {standardCategory === '异型材' && m.mold_number && (
-                            <span className="shrink-0 px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-mono text-xs font-medium">{m.mold_number}</span>
+                      <div key={m.id} className={`rounded-lg border overflow-hidden ${
+                        selectedMoldId === m.id ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-white'
+                      }`}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedMoldId(m.id);
+                            setUseExistingMold(true);
+                            setSelectedMold(m);
+                            // 按产品管理带出：编号=模具编号，名称=产品名称
+                            if (m.mold_number) setProductCode(m.mold_number);
+                            if (standardCategory === '异型材' && realMoldProductName(m.product_name)) setProductName(realMoldProductName(m.product_name));
+                            // 注：表面处理不改表单选择（表面处理费按用户实际选择计算）；
+                            // 产品库登记的表面处理原文通过 selectedMold → moldSurface 带到报价单显示
+                            const dims = parseMoldDimensions(standardCategory, m.cross_section_mm);
+                            setFields(prev => ({
+                              ...prev,
+                              ...dims,
+                              die_type: m.mold_type === '分流模' ? 'split' : 'flat',
+                              perimeter: m.perimeter || prev.perimeter,
+                              meterWeight: m.weight_per_meter || prev.meterWeight,
+                              // 模具库带米重时，若截面积为空则自动反算（米重×1000/2.7）
+                              crossSectionArea: prev.crossSectionArea
+                                ? prev.crossSectionArea
+                                : (m.weight_per_meter
+                                    ? String(Math.round(parseFloat(m.weight_per_meter) * 1000 / 2.7 * 100) / 100)
+                                    : prev.crossSectionArea),
+                            }));
+                            setPerimeterManual(true);
+                            setMeterWeightManual(true);
+                            setAreaManual(false);
+                          }}
+                          className="w-full text-left px-2.5 py-1.5 transition-all hover:bg-green-50/50"
+                        >
+                          {/* 供应商（公开目录归属）+ 匹配分 */}
+                          <div className="flex items-center justify-between gap-2 mb-0.5">
+                            {m.supplier_name ? (
+                              <a
+                                href="/suppliers"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-xs text-blue-600 hover:underline truncate"
+                                title="查看该供应商公开目录"
+                              >🏭 {m.supplier_name}</a>
+                            ) : (
+                              <span className="text-xs text-slate-400">公开供应商</span>
+                            )}
+                            <span className={`shrink-0 font-bold ${
+                              m.match_score >= 95 ? 'text-green-600' : m.match_score >= 80 ? 'text-amber-600' : 'text-slate-600'
+                            }`}>{m.match_score}%</span>
+                          </div>
+                          {/* 产品名 */}
+                          {m.product_name && (
+                            <div className="text-sm font-medium text-gray-800 truncate">{m.product_name}</div>
                           )}
-                          <span className="font-medium shrink-0">{m.cross_section_mm}</span>
-                          <span className="text-slate-600 shrink-0">·</span>
-                          <span className="text-slate-600 truncate">{m.weight_per_meter}kg/m</span>
-                          <span className={`shrink-0 px-1 py-0.5 rounded text-[11px] ${
-                            m.mold_type === '分流模' ? 'bg-red-50 text-red-500' : 'bg-gray-100 text-slate-600'
-                          }`}>{m.mold_type}</span>
-                        </div>
-                        <span className={`shrink-0 ml-1.5 font-bold ${
-                          m.match_score >= 95 ? 'text-green-600' : m.match_score >= 80 ? 'text-amber-600' : 'text-slate-600'
-                        }`}>{m.match_score}%</span>
-                      </button>
+                          {/* 尺寸行 */}
+                          <div className="flex items-center gap-1.5 min-w-0 text-xs text-slate-600 flex-wrap">
+                            {/* 异型材显示模具编号，标准件无编号不显示 */}
+                            {standardCategory === '异型材' && m.mold_number && (
+                              <span className="shrink-0 px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-mono">{m.mold_number}</span>
+                            )}
+                            <span className="font-medium shrink-0">{m.cross_section_mm}</span>
+                            <span className="shrink-0">·</span>
+                            <span className="shrink-0">{m.weight_per_meter}kg/m</span>
+                            {m.perimeter != null && <span className="shrink-0">· 周长{m.perimeter}mm</span>}
+                            <span className={`shrink-0 px-1 py-0.5 rounded text-[11px] ${
+                              m.mold_type === '分流模' ? 'bg-red-50 text-red-500' : 'bg-gray-100 text-slate-600'
+                            }`}>{m.mold_type}</span>
+                          </div>
+                          {/* 表面处理 */}
+                          {m.surface_treatments && m.surface_treatments.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-0.5">
+                              {m.surface_treatments.slice(0, 3).map((t: string, i: number) => (
+                                <span key={i} className="px-1 py-0.5 rounded bg-gray-100 text-[11px] text-slate-600">{t}</span>
+                              ))}
+                            </div>
+                          )}
+                        </button>
+                        {/* 截面图 + 备注（公开产品信息） */}
+                        {(m.cross_section_image_url || m.remarks) && (
+                          <div className="px-2.5 pb-1.5 flex gap-2 items-start">
+                            {m.cross_section_image_url && (
+                              <img src={m.cross_section_image_url} alt="截面图" className="w-10 h-10 object-cover rounded border shrink-0" />
+                            )}
+                            {m.remarks && <span className="text-[11px] text-slate-500 truncate">{m.remarks}</span>}
+                          </div>
+                        )}
+                      </div>
                     ))}
                   </div>
 

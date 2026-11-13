@@ -224,7 +224,7 @@ export async function GET(request: NextRequest) {
     // Fetch all products in category
     let query = supabase
       .from('supplier_products')
-      .select('id, product_name, mold_number, cross_section_mm, weight_per_meter, perimeter, num_dies, remarks, surface_treatments')
+      .select('id, product_name, mold_number, cross_section_mm, weight_per_meter, perimeter, num_dies, remarks, surface_treatments, supplier_id, cross_section_image_url')
       .not('product_name', 'is', null)
       .limit(10000);
 
@@ -277,11 +277,30 @@ export async function GET(request: NextRequest) {
           product_name: spec.product_name,
           surface_treatments: spec.surface_treatments || [],
           remarks: spec.remarks,
+          supplier_id: spec.supplier_id || '',
+          cross_section_image_url: spec.cross_section_image_url || '',
         };
       })
       .filter(Boolean)
       .sort((a: any, b: any) => b.match_score - a.match_score)
       .slice(0, 10);
+
+    // 附带公开供应商名称（与 /suppliers 公开页一致，读 supplier_profiles.company_name）
+    // 让「搜索现有模具」结果直接归属到公开供应商目录
+    const nameMap: Record<string, string> = {};
+    const supplierIds = Array.from(
+      new Set((matches as any[]).map((m: any) => m.supplier_id).filter(Boolean))
+    );
+    if (supplierIds.length) {
+      const { data: supps } = await supabase
+        .from('supplier_profiles')
+        .select('id, company_name')
+        .in('id', supplierIds);
+      for (const s of supps || []) nameMap[s.id] = s.company_name;
+    }
+    for (const m of matches as any[]) {
+      m.supplier_name = m.supplier_id ? (nameMap[m.supplier_id] || '') : '';
+    }
 
     return NextResponse.json({
       success: true,
