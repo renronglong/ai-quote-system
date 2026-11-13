@@ -900,7 +900,7 @@ export default function QuotePartsPage() {
                   ) : (
                     <>
                       {/* 业主 2026-11-02：四列=材料(五大类)/牌号(联动·同价位合并)/表面处理/加工方式(开模·现有模具·无需开模) */}
-                      <div className="flex-1 min-w-0 grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1.5">
+                      <div className="flex-1 min-w-0 grid grid-cols-2 md:grid-cols-[auto_auto_auto_auto] gap-x-3 gap-y-1.5">
                         <div className="min-w-0">
                           <div className="text-[11px] text-slate-400">材料</div>
                           <select
