@@ -877,7 +877,7 @@ export default function QuotePartsPage() {
                 >
                   {/* 业主 2026-11-02：列表改详细信息行式（不平铺），列=加工方式/材料/表面处理/模具类型 */}
                   <div className="flex items-center gap-4 flex-wrap lg:flex-nowrap">
-                    <div className="flex items-center gap-2 min-w-0 lg:w-56 shrink-0">
+                    <div className="flex items-center gap-2 min-w-0 lg:w-40 shrink-0">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isQuoted ? 'bg-emerald-100' : 'bg-slate-50'}`}>
                         {isQuoted ? <CheckCircle2 size={16} className="text-emerald-600" /> : <TypeIcon size={16} className="text-slate-500" />}
                       </div>
