@@ -21,6 +21,13 @@ interface DrawingRecognitionProps {
   user: any;
   aiData?: any;
   mode?: 'single' | 'continuous';
+  /**
+   * 业主 2026-11-13：/quote/recognize-special 专用识别模式。
+   * 传入后复用本组件「完全相同」的操作界面，仅把识别请求改道到
+   * 《gyparts 专用材料识别接口契约》对应料型端点（同域代理 /api/recognize-special?type=xxx）。
+   * 不传时整段专用分支不会执行，/quote/recognize 原链路（分类/解析/扣费/入库）一字不改。
+   */
+  specialType?: 'extrusion' | 'sheet' | 'casting' | 'injection' | 'steel';
 }
 
 interface CompletedResult {
@@ -408,7 +415,7 @@ function collectMissingFields(d: Record<string, any>): MissingField[] {
 
 // ==================== Component ====================
 
-export default function DrawingRecognition({ onDrawingData, user, mode = 'single' }: DrawingRecognitionProps) {
+export default function DrawingRecognition({ onDrawingData, user, mode = 'single', specialType }: DrawingRecognitionProps) {
   // ===== 登录 + 识图额度 =====
   const { quota, checkQuota, referralLink, ensureReferralLink } = useAuth();
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -825,6 +832,117 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
     setRecognizing(true);
 
     try {
+      // ===== 专用识别接口模式（业主 2026-11-13）=====
+      // /quote/recognize-special 复用本组件全部操作界面（上传框/进度/连续上传队列/去零件列表），
+      // 只把「识别请求」改道到《gyparts 专用材料识别接口契约》对应料型端点，
+      // 走同域代理 /api/recognize-special?type=xxx（HTTPS 站点不能直连明文 HTTP 上游）。
+      // 不传 specialType 时下面整段不执行，普通识别链路完全不受影响。
+      if (specialType) {
+        const SPECIAL_PRODUCT: Record<string, string> = {
+          extrusion: '挤出', sheet: '板材', casting: '压铸', injection: '注塑', steel: '钢材',
+        };
+        const zhType = SPECIAL_PRODUCT[specialType] || '挤出';
+        setProductType(zhType);
+        setStatusMessage('专用接口正在识别...');
+        const spFd = new FormData();
+        spFd.append('file', file);
+        // 契约可选参数 source_type：STEP 精度最高，显式指定避免后端按后缀猜错
+        const isStep = ['.stp', '.step'].includes(ext);
+        const isImg = ['.jpg', '.jpeg', '.png', '.heic', '.heif', '.gif', '.bmp', '.webp'].includes(ext);
+        if (isStep) spFd.append('source_type', 'step');
+        else if (ext === '.pdf') spFd.append('source_type', 'pdf');
+        else if (isImg) spFd.append('source_type', 'image');
+        const spController = new AbortController();
+        const spTimeout = setTimeout(() => spController.abort(), 110000);
+        const spResp = await fetch(`/api/recognize-special?type=${specialType}`, {
+          method: 'POST', body: spFd, signal: spController.signal,
+        });
+        clearTimeout(spTimeout);
+        const spJson = await spResp.json().catch(() => ({}));
+        if (!spResp.ok || spJson.success === false) {
+          const msg = String(spJson.error || spJson.detail || spJson.message || `专用识别失败 (${spResp.status})`);
+          lastRecogErrorRef.current = msg;
+          setRecogError(msg);
+          setRecognitionFailed(true);
+          return;
+        }
+        // 专用端点返回扁平契约字段。别名归一后复用 buildRecogDataFromParse，
+        // 让零件列表 / 报价页拿到与 /api/drawing-parse 完全一致的数据结构。
+        const raw: Record<string, any> = (spJson.data && typeof spJson.data === 'object') ? spJson.data : spJson;
+        const isSheetSpecial = specialType === 'sheet';
+        const unfoldArea = Number(raw.unfold_area_mm2 ?? 0);
+        const unfoldW = Number(raw.unfold_width_mm ?? 0);
+        const adapted: Record<string, any> = {
+          ...raw,
+          is_sheet_metal: isSheetSpecial,
+          parse_success: true,
+          confidence_score: raw.confidence ?? raw.confidence_score ?? null,
+          section_width_mm: raw.section_width_mm ?? raw.cw_mm,
+          section_height_mm: raw.section_height_mm ?? raw.ch_mm,
+          extrusion_length_mm: raw.extrusion_length_mm ?? raw.length_mm,
+          section_area_mm2: raw.section_area_mm2 ?? (isSheetSpecial ? undefined : raw.area_mm2),
+          thickness_mm: raw.thickness_mm,
+          cut_total_path_mm: raw.cut_total_path_mm ?? raw.cut_perimeter_mm,
+          bend_count: raw.bend_count,
+          punch_holes_total: raw.punch_holes_total ?? raw.hole_count,
+          // 专用端点只给展开面积时，按展开宽反推展开长，避免报价页显示 0.00
+          ...(!raw.unfold_length_mm && unfoldArea > 0 && unfoldW > 0
+            ? { unfold_length_mm: Math.round((unfoldArea / unfoldW) * 100) / 100 }
+            : {}),
+        };
+        // 契约第五节：专用端点不输出重量，前端按 material_grade 取密度算。
+        // 口径与 11-13 原专用子页完全一致，未改任何价格/费率/系数；
+        // 这里把重量补进 recogData，保证「识别 → 零件列表 → 报价」链路不缺米重。
+        const SPECIAL_DENSITY: { keys: string[]; rho: number }[] = [
+          { keys: ['不锈钢', 'stainless'], rho: 0.00793 },
+          { keys: ['黄铜', 'brass'], rho: 0.00850 },
+          { keys: ['铜', 'copper'], rho: 0.00896 },
+          { keys: ['钢', 'steel', '铁', 'Q235', '45#'], rho: 0.00785 },
+          { keys: ['铝', 'aluminum', '6063', '6061', '5052'], rho: 0.00270 },
+        ];
+        const gradeStr = String(raw.material_grade || '').toLowerCase();
+        const rho = SPECIAL_DENSITY.find(d => d.keys.some(k => gradeStr.includes(k.toLowerCase())))?.rho ?? 0.00270;
+        const secArea = Number(raw.section_area_mm2 ?? 0);
+        const uThick = Number(raw.thickness_mm ?? 0);
+        if (!isSheetSpecial && secArea > 0) {
+          // 型材米重 kg/m = 截面面积 mm² × 密度 g/mm³
+          adapted.meter_weight = Math.round(secArea * rho * 10000) / 10000;
+        }
+        if (isSheetSpecial && unfoldArea > 0 && uThick > 0) {
+          // 钣金单件重 g = 展开面积 mm² × 板厚 mm × 密度 g/mm³
+          const weightG = unfoldArea * uThick * rho;
+          adapted.weight_g = Math.round(weightG * 100) / 100;
+          adapted.weight_kg = Math.round(weightG / 1000 * 10000) / 10000;
+        }
+        const recogData = buildRecogDataFromParse(adapted, zhType, '专用接口识别', file.name);
+        recogData._density_used = rho;
+        // 料型由 ?type= 显式指定，后端返回的分类/字段不得把型材误判成钣金（契约初衷）
+        recogData.is_sheet_metal = isSheetSpecial;
+        recogData.product_type = isSheetSpecial ? 'sheet_metal' : zhType;
+        // 契约原文的 notes / needs_review / parse_method 与端点元信息一并带回，供零件列表查看
+        recogData._special = {
+          type: specialType,
+          endpoint: spJson._proxy?.endpoint,
+          notes: raw.notes,
+          needs_review: raw.needs_review,
+          parse_method: raw.parse_method,
+        };
+        recogData._rawBackend = spJson;
+        setRecogResult(recogData);
+        if (!(await chargeCadRecognition())) return;
+        checkQuota();
+        setStatusMessage(null);
+        setRecognizing(false);
+        commitResult({
+          recogData,
+          recogProducts: [recogData],
+          isAssembly: false,
+          fileName: file.name,
+          recognitionId: 'sp_' + Date.now(),
+        });
+        return;
+      }
+
       // ===== 自动工艺分类 =====
       const classifyFd = new FormData();
       classifyFd.append('file', file);
