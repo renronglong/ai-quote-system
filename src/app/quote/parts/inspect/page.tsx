@@ -5,6 +5,7 @@ import { ArrowLeft, FileImage, ShieldAlert, ChevronDown, ExternalLink, Info, Box
 import { useAuth } from '@/lib/auth-context';
 import { calculateLaserCuttingFee } from '@/lib/stamping-mold-calculator';
 import { tryFrontendDieCasting } from '@/lib/pricing/dieCastingFrontend';
+import QuoteSidebarLayout from '@/components/QuoteSidebarLayout';
 
 /**
  * /quote/parts/inspect — 业主 2026-11-12 任务表「修改任务」第 1 条
@@ -653,6 +654,7 @@ export default function PartsInspectPage() {
   }, [raw]);
 
   return (
+  <QuoteSidebarLayout fromPartsList partsListLabel={fileName}>
     <div className="min-h-screen bg-slate-50 text-slate-800">
       <div className="max-w-5xl mx-auto px-4 py-6">
         <div className="flex items-center gap-3 mb-5">
@@ -894,5 +896,6 @@ export default function PartsInspectPage() {
         </p>
       </div>
     </div>
+  </QuoteSidebarLayout>
   );
 }

@@ -8,7 +8,7 @@ import { useSidebarAccount } from '@/components/sidebarAccountContext';
 // 与 /quote 一致的「顶部页头 + 左栏 + 内容区」外壳：
 // 在页面自有 header 之下，放左侧栏（桌面）+ 内容区（内部滚动）。
 // 自身拉取 user / 积分，供左侧栏底部「用户名 + 积分」使用。
-export default function QuoteSidebarLayout({ children }: { children: ReactNode }) {
+export default function QuoteSidebarLayout({ children, fromPartsList = false, partsListLabel }: { children: ReactNode; fromPartsList?: boolean; partsListLabel?: string; }) {
   const { user } = useAuth();
   const credits = useCreditsBalance(user?.id);
   const { setHasSidebar } = useSidebarAccount();
@@ -21,7 +21,7 @@ export default function QuoteSidebarLayout({ children }: { children: ReactNode }
 
   return (
     <div className="flex flex-1 h-full min-h-0 flex-col lg:flex-row">
-      <QuoteSidebar user={user} credits={credits} />
+      <QuoteSidebar user={user} credits={credits} fromPartsList={fromPartsList} partsListLabel={partsListLabel} />
       <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
         {children}
       </div>
