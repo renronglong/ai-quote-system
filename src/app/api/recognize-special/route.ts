@@ -80,12 +80,7 @@ export async function POST(request: NextRequest) {
     // 浏览器拿不到任何 HTTP 响应 ⇒ fetch reject（Failed to fetch）。
     // 改为两个请求同时发出，总耗时 ≈ max(主识别, 3D)，而不是相加。
     const isStep = /\.stp$|\.step$/i.test(fileName) || optional.source_type === "step";
-    const mainPromise = fetch(`${PARSER_API}${endpoint}`, {
-      method: "POST",
-      body: proxyForm,
-      signal: AbortSignal.timeout(170000),
-    });
-
+    // 冷启动时两个并发 fetch 会争抢 Vercel 出站连接，3D 先发占先手（业主 18:08 首传曾丢 3D）。
     let model3dPromise: Promise<Record<string, unknown> | null> | null = null;
     if (isStep && fileBuf) {
       const fd3d = new FormData();
@@ -106,6 +101,12 @@ export async function POST(request: NextRequest) {
       })();
     }
 
+    const mainPromise = fetch(`${PARSER_API}${endpoint}`, {
+      method: "POST",
+      body: proxyForm,
+      signal: AbortSignal.timeout(170000),
+    });
+
     const upstream = await mainPromise;
     const text = await upstream.text();
     let body: Record<string, unknown>;
@@ -118,13 +119,14 @@ export async function POST(request: NextRequest) {
     // 附一小段元信息，方便管理员排查走的是哪个专用端点（不覆盖上游同名字段语义）
     const proxyMeta: Record<string, unknown> = { type, endpoint, upstream_status: upstream.status };
 
-    // ===== 合并 3D 结果（最多再等 8s，绝不让展示项拖垮识别主响应）=====
+    // ===== 合并 3D 结果（最多再等 10s，绝不让展示项拖垮识别主响应）=====
     // 两个请求是同时发出的，正常情况 3D 会与主识别一起回来；
     // 万一 3D 卡住，主识别结果立刻返回（静态图纸仍可看），不再叠加等待时间。
+    // 大模型（6840.stp）的 model_3d_url 约 220KB，跨境传输比小模型慢，故给 10s 余量。
     if (upstream.ok && model3dPromise) {
       const j3d = await Promise.race([
         model3dPromise,
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
       ]);
       if (j3d) {
         if (typeof j3d.model_3d_url === "string" && j3d.model_3d_url.trim()) {
