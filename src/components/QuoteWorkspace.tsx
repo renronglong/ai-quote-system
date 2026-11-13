@@ -486,6 +486,18 @@ export default function QuoteWorkspace({ defaultProductType }: { defaultProductT
     if (typeof window !== 'undefined' && window.innerWidth < 1600) setGuideCollapsed(true);
   }, []);
 
+  // 业主 2026-11-13：/quote 统一工作台的侧栏高亮要跟随表单实际产品大类，
+  // 不能写死「挤出铝型材」（从零件列表带板材零件进来时会「顶部挤出、内容板材」）。
+  // 优先用 QuoteForm 每次 onCalculate 回传的 params.productType（中文大类），
+  // 再用零件列表预填 aiFormData 兜底，避免首屏还没计算时高亮闪错。
+  const sidebarProductType = String(
+    (currentParams as any)?.productType
+    || (currentParams as any)?.product_type
+    || (aiFormData as any)?.productType
+    || (aiFormData as any)?.product_type
+    || ''
+  );
+
   return (
     <div className={`${narrow ? 'min-h-screen' : 'h-screen'} bg-gray-50 flex flex-col overflow-x-hidden`}>
       {/* 顶部栏已移除：品牌/导航/铝价/账户统一走左侧栏 QuoteSidebar */}
@@ -497,6 +509,7 @@ export default function QuoteWorkspace({ defaultProductType }: { defaultProductT
           credits={credits}
           fromPartsList={fromPartsList}
           partsListLabel={partsListPartName || `零件${partsListPartIdx + 1}`}
+          currentProductType={sidebarProductType}
         />
 
         <div className="flex-1 flex flex-col min-h-0">

@@ -39,9 +39,21 @@ const NAV: NavItem[] = [
   { key: 'contact', label: '联系我们', href: '/contact', icon: MessageCircle },
 ];
 
-function isActive(item: NavItem, pathname: string): boolean {
-  // /quote 默认页（无子路径）时，挤出铝型材作为默认高亮
-  if (item.href === '/quote/extrusion' && pathname === '/quote') return true;
+function isActive(item: NavItem, pathname: string, currentProductType?: string): boolean {
+  // /quote 是统一报价工作台：产品大类由表单状态决定，不能只看网址写死「挤出铝型材」。
+  // 业主 2026-11-13 反馈：从零件列表带板材零件进 /quote，表单显示板材、侧栏却高亮挤出。
+  if (pathname === '/quote') {
+    const PT_TO_NAV: Record<string, string> = {
+      '挤出': 'extrusion', extrusion: 'extrusion',
+      '板材': 'sheet', sheet_metal: 'sheet',
+      '压铸': 'casting', die_casting: 'casting', zinc_alloy: 'casting',
+      '注塑': 'injection', injection: 'injection',
+      '钢材': 'steel', steel_standard: 'steel',
+    };
+    const key = currentProductType ? PT_TO_NAV[currentProductType] : undefined;
+    // 尚无任何表单数据（纯手动新建报价）时维持原默认：高亮挤出铝型材
+    return item.key === (key || 'extrusion');
+  }
   // /history/sheets 是独立子页，别把「我的报价」也一起点亮
   if (item.key === 'history') return pathname === '/history';
   return pathname === item.href || pathname.startsWith(item.href + '/');
@@ -52,11 +64,14 @@ export default function QuoteSidebar({
   credits,
   fromPartsList = false,
   partsListLabel,
+  currentProductType,
 }: {
   user: any;
   credits: number;
   fromPartsList?: boolean;
   partsListLabel?: string;
+  /** /quote 统一工作台当前表单的产品大类（中文「板材」或英文 sheet_metal 均可）；其它页面不传 */
+  currentProductType?: string;
 }) {
   const pathname = usePathname() || '';
   const { signOut, isAdmin } = useAuth();
@@ -79,7 +94,7 @@ export default function QuoteSidebar({
 
   const renderItem = (item: NavItem, compact = false) => {
     const Icon = item.icon;
-    const active = isActive(item, pathname);
+    const active = isActive(item, pathname, currentProductType);
     const base = 'group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors border-l-2';
     const state = active
       ? 'bg-white text-blue-700 font-medium border-blue-600 shadow-sm'
