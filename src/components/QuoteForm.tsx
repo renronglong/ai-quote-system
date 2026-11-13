@@ -865,6 +865,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
   // Mold matching state (尺寸匹配现有模具)
   const [moldMatches, setMoldMatches] = useState<any[]>([]);
   const [moldMatchLoading, setMoldMatchLoading] = useState(false);
+  const [moldSearched, setMoldSearched] = useState(false);
   const [selectedMoldId, setSelectedMoldId] = useState<string | null>(null);
   const [useExistingMold, setUseExistingMold] = useState<boolean | null>(null); // null=未选择, true=现有, false=新开
   // 板材加工方案（业主 2026-11-02）：出单前三选一——开模/现模/激光切割，默认激光切割
@@ -1200,7 +1201,14 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       circumscribed_diameter_mm: toNum(fields.circumscribedDiameter),
     });
     setSelectedDie(sel);
-  }, [productType, standardCategory, fields.width, fields.height, fields.perimeter, fields.innerPerimeter, fields.num_cavities, fields.die_type, fields.meterWeight, fields.crossSectionArea, fields.circumscribedDiameter]);
+    // 异型材：把几何推算出的模具类型（平模/分流模）回填到 fields.die_type。
+    // 否则手动录入异型材时，「搜索现有模具」按钮因 die_type 为空而置灰，
+    // 但绿条「前端选定模具」已显示平模/分流模，导致功能看起来不可用。
+    // 仅在用户尚未显式选择时才回填，避免覆盖用户主动选的相反类型。
+    if (sel && materialCategory === '异型材' && !fields.die_type) {
+      setFields(prev => (prev.die_type ? prev : { ...prev, die_type: sel.dieTypeKey }));
+    }
+  }, [productType, materialCategory, standardCategory, fields.width, fields.height, fields.perimeter, fields.innerPerimeter, fields.num_cavities, fields.die_type, fields.meterWeight, fields.crossSectionArea, fields.circumscribedDiameter]);
 
   // 标准件：单件净重(g) = 米重(kg/m) × 长度(mm)，自动填入（规则截面棒/管按长度切割，净重≈消耗重量）
   useEffect(() => {
@@ -1253,9 +1261,10 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     } else if (cur.perimeter) {
       params.set('perimeter', String(cur.perimeter));
     }
-    if (!hasInput) { setMoldMatches([]); setSelectedMoldId(null); setUseExistingMold(null); return; }
+    if (!hasInput) { setMoldMatches([]); setSelectedMoldId(null); setUseExistingMold(null); setMoldSearched(false); return; }
 
     setMoldMatchLoading(true);
+    setMoldSearched(false);
     setSelectedMoldId(null);
     setUseExistingMold(null);
     try {
@@ -1268,6 +1277,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
       console.error('Mold match failed:', e);
     } finally {
       setMoldMatchLoading(false);
+      setMoldSearched(true);
     }
   };
 
@@ -3181,7 +3191,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 <button
                   key={opt.v}
                   type="button"
-                  onClick={() => { setFields(prev => ({ ...prev, die_type: opt.v })); setSelectedMoldId(null); setUseExistingMold(null); setSelectedMold(null); setMoldMatches([]); }}
+                  onClick={() => { setFields(prev => ({ ...prev, die_type: opt.v })); setSelectedMoldId(null); setUseExistingMold(null); setSelectedMold(null); setMoldMatches([]); setMoldSearched(false); }}
                   className={`flex-1 px-2 py-1.5 rounded-lg text-sm font-semibold border transition-all ${
                     fields.die_type === opt.v
                       ? opt.v === 'split'
@@ -3229,6 +3239,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                           setSelectedMoldId(null);
                           setUseExistingMold(null);
                           setMoldMatches([]);
+                          setMoldSearched(false);
                           setPerimeterManual(false);
                           // 米重↔截面积 手动标记（触发自动互算）
                           if (stateKey === 'meterWeight') {
@@ -3392,7 +3403,7 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                 </div>
               )}
 
-              {!moldMatchLoading && moldMatches.length === 0 && standardCategory && (fields.width || fields.height || fields.perimeter || fields.meterWeight) && (
+              {!moldMatchLoading && moldSearched && moldMatches.length === 0 && standardCategory && (fields.width || fields.height || fields.perimeter || fields.meterWeight) && (
                 <div className="mt-2 flex items-center justify-between bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
                   <span className="text-sm text-orange-600">未找到相近现有模具</span>
                   <button
