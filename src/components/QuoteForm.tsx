@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from 'react';
+import Link from 'next/link';
 import { Sparkles, Plus, Loader2, CheckCircle2, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { calculateStampingMoldFee, calculateLaserCuttingFee, type StampingMoldResult, type LaserCuttingResult } from '@/lib/stamping-mold-calculator';
@@ -9,6 +10,11 @@ import { adviseCastingMachine } from '@/lib/pricing/castingMachine';
 import { calcProjVolumeMm3 } from '@/lib/pricing/cncMachining';
 import { STEEL_STANDARD_SPECS } from '@/data/steelStandardSpecs';
 import { selectExtrusionDie, type DieSelectionResult } from '@/lib/die-selection';
+
+/** 业主 2026-11-13 任务表「修改任务」第 3 条：材料大类 → 专用识别端点（见《gyparts专用材料识别接口契约》） */
+const RECOGNIZE_TYPE_BY_PRODUCT: Record<string, string> = {
+  '挤出': 'extrusion', '板材': 'sheet', '压铸': 'casting', '注塑': 'injection', '钢材': 'steel',
+};
 
 // ==================== 表单草稿（自动暂存 / 恢复） ====================
 // 目的：保存报价、组件重挂载、误刷新后，已经填好的参数不再凭空消失
@@ -2908,38 +2914,24 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
           </div>
         )}
 
-        {/* ---- 产品名称 & 编号 ---- */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div>
-              <label className="block text-sm text-slate-600 mb-1">产品名称</label>
-              <input
-                type="text"
-                placeholder="输入产品名称"
-                value={productName}
-                onChange={e => setProductName(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-600 mb-1">产品编号</label>
-              <input
-                type="text"
-                placeholder="输入产品编号"
-                value={productCode}
-                onChange={e => setProductCode(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
-              />
-            </div>
-          </div>
-        </div>
-
         {/* ---- STEP 1 选材料与模具（材料类别 + 牌号/型号 + 标准件 + 模具匹配） ---- */}
         <StepCard n={1} title="选材料与模具" hint="左侧栏选产品模块后，再填尺寸搜模具">
 
         {/* ---- 材料类别 ---- */}
+        {/* 业主 2026-11-13 任务表「修改任务」第 3 条：材料类别右边加「图纸识别」链接按钮，按料型进专用识别子网页 */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
-          <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wide">材料类别</label>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <label className="block text-sm font-semibold text-slate-600 uppercase tracking-wide">材料类别</label>
+            <Link
+              href={`/quote/recognize-special?type=${RECOGNIZE_TYPE_BY_PRODUCT[productType] || 'extrusion'}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+            >
+              <Sparkles size={13} /> 图纸识别
+            </Link>
+          </div>
           <div className="flex flex-wrap gap-1.5">
             {Object.entries(productConfig?.materialCategories || {}).map(([key, cfg]) => (
               <button
@@ -3634,6 +3626,32 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         })()}
 
         </StepCard>
+
+        {/* 业主 2026-11-13 任务表「修改任务」第 3 条：产品名称和编号这一行移到「基本参数」下面 */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 transition-shadow duration-200 hover:shadow-md">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">产品名称</label>
+              <input
+                type="text"
+                placeholder="输入产品名称"
+                value={productName}
+                onChange={e => setProductName(e.target.value)}
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">产品编号</label>
+              <input
+                type="text"
+                placeholder="输入产品编号"
+                value={productCode}
+                onChange={e => setProductCode(e.target.value)}
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-800 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 min-h-[36px]"
+              />
+            </div>
+          </div>
+        </div>
 
         {/* ---- STEP 3 工艺与表面 ---- */}
         <StepCard n={3} title="工艺与表面处理" hint="按需点选，可多选">
