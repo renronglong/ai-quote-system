@@ -998,7 +998,15 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           needs_review: raw.needs_review,
           parse_method: raw.parse_method,
         };
-        recogData._rawBackend = spJson;
+        // 业主 2026-11-13 任务表第 1 条：挤出「米重没有加进去」。
+        // 根因：契约第五节规定专用端点不输出重量，米重/单件重是上方前端按密度补算到 adapted 的，
+        // 但 _rawBackend 存的是原始响应 spJson（无米重），inspect 页 buildBasicInfo 读它 → 每米重显示「—」。
+        // 修法：把补算的重量并回 _rawBackend，保证「识别 → 零件列表 → 图纸信息」链路基本信息不缺米重。
+        recogData._rawBackend = {
+          ...spJson,
+          ...(adapted.meter_weight != null ? { meter_weight: adapted.meter_weight } : {}),
+          ...(adapted.weight_g != null ? { weight_g: adapted.weight_g, weight_kg: adapted.weight_kg } : {}),
+        };
         // 业主 2026-11-13 任务表第 1 条：代理层对 STEP 已从 /api/parse/stp 补回 3D 模型，
         // 这里显式挂到零件顶层，保证「零件列表 → 图纸信息」inspect 页的多层兜底都能读到。
         recogData.model_3d_url = typeof spJson.model_3d_url === 'string' ? spJson.model_3d_url : null;
