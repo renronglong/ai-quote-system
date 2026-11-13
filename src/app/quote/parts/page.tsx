@@ -934,7 +934,7 @@ export default function QuotePartsPage() {
                             </div>
                           )}
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 ml-3">
                           <div className="text-[11px] text-slate-400">牌号</div>
                           <select
                             value={p.material_grade || ''}
@@ -949,7 +949,7 @@ export default function QuotePartsPage() {
                             {(GRADE_GROUPS[matCat] || []).map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
                           </select>
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 ml-3">
                           <div className="text-[11px] text-slate-400">表面处理</div>
                           <select
                             value={p.surface_treatment || ''}
