@@ -2939,8 +2939,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
             <label className="block text-sm font-semibold text-slate-600 uppercase tracking-wide">材料类别</label>
             <Link
               href={`/quote/recognize-special?type=${RECOGNIZE_TYPE_BY_PRODUCT[productType] || 'extrusion'}`}
-              target="_blank"
-              rel="noopener noreferrer"
               onClick={e => e.stopPropagation()}
               className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
             >
@@ -3339,8 +3337,6 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
                             {m.supplier_name ? (
                               <a
                                 href="/suppliers"
-                                target="_blank"
-                                rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
                                 className="text-xs text-blue-600 hover:underline truncate"
                                 title="查看该供应商公开目录"
