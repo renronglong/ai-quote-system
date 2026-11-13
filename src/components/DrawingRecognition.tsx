@@ -852,12 +852,27 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
         if (isStep) spFd.append('source_type', 'step');
         else if (ext === '.pdf') spFd.append('source_type', 'pdf');
         else if (isImg) spFd.append('source_type', 'image');
-        const spController = new AbortController();
-        const spTimeout = setTimeout(() => spController.abort(), 110000);
-        const spResp = await fetch(`/api/recognize-special?type=${specialType}`, {
-          method: 'POST', body: spFd, signal: spController.signal,
-        });
-        clearTimeout(spTimeout);
+        // 浏览器到同域代理偶发瞬时断连时 fetch 会直接 reject（Failed to fetch，拿不到任何 HTTP 响应）。
+        // 业主 2026-11-13 实机复现过一次 ⇒ 自动重试 1 次，避免手动再传一遍。
+        // 超时（AbortError）不重试，直接交给外层给提示。FormData 可安全重复提交。
+        let spResp: Response | null = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const spController = new AbortController();
+          const spTimeout = setTimeout(() => spController.abort(), 110000);
+          try {
+            spResp = await fetch(`/api/recognize-special?type=${specialType}`, {
+              method: 'POST', body: spFd, signal: spController.signal,
+            });
+            clearTimeout(spTimeout);
+            break;
+          } catch (err: any) {
+            clearTimeout(spTimeout);
+            if (err?.name === 'AbortError' || attempt === 1) throw err;
+            setStatusMessage('网络中断，正在自动重试...');
+            await new Promise(resolve => setTimeout(resolve, 1200));
+          }
+        }
+        if (!spResp) throw new Error('识别请求未送达服务器');
         const spJson = await spResp.json().catch(() => ({}));
         if (!spResp.ok || spJson.success === false) {
           const msg = String(spJson.error || spJson.detail || spJson.message || `专用识别失败 (${spResp.status})`);
@@ -1348,9 +1363,18 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
       setRecognizing(false);
     } catch (e: any) {
       if (e?.name === 'AbortError') {
-        setRecogError('识别超时，请重试或申请深度报价');
+        const msg = specialType
+          ? '专用识别超时，请重试；也可先用「图纸AI识别」通用入口'
+          : '识别超时，请重试或申请深度报价';
+        if (specialType) lastRecogErrorRef.current = msg;
+        setRecogError(msg);
       } else {
-        const enet = e?.message || '网络错误';
+        const raw = e?.message || '网络错误';
+        // 专用识别：把浏览器网络层的英文原文换成业主看得懂、能动手的提示。
+        // 不传 specialType 时保持原样，普通识别链路一字不改。
+        const enet = (specialType && /failed to fetch|networkerror|load failed|network request failed/i.test(raw))
+          ? '网络连接中断，图纸没有送到服务器（已自动重试 1 次）。请检查网络后重新上传；文件请控制在 4.5MB 以内，仍失败可先用「图纸AI识别」通用入口。'
+          : raw;
         lastRecogErrorRef.current = enet;
         setRecogError(enet);
       }
