@@ -813,7 +813,7 @@ function calcExtrusion(
   let minOrderWeightKg = 300; // 最低起订重量(kg)，按模具规格分档
   if (req.mold_cost && req.mold_cost > 0) {
     moldCost = req.mold_cost;
-    notes.push(`挤压模具费: ${moldCost}元（用户指定，一次性，不计入单件价格）`);
+    notes.push(`挤压模具费: ${moldCost}元（用户指定，不计入单件价格）`);
     breakdown['mold'] = {
       formula: '用户指定模具费',
       detail: `模具费: ${moldCost}元（单独列出）`,
@@ -1099,7 +1099,7 @@ function calcExtrusion(
       notes.push(`模具费: ${moldCost}元 = (${Math.round(materialFee)}材料 + (${Math.round(baseProcessingFee)}基础 + ${Math.round(perimeterFee)}(${perimeterNote})×厚度加工)×加工档${processingTierFactor} × ${(mgmtRate*100).toFixed(0)}%管理费)`);
     }
     notes.push(`模具统一加价+100元: ${preSurcharge}→${moldCost}元`);
-    notes.push(`模具费一次性，不计入单件价格`);
+    notes.push(`模具费不计入单件价格`);
 
     breakdown['mold'] = {
       formula: `(材料费: 钢价×密度7.85×损耗1.2×πR²×H/10⁹ + 基础加工费0.028×Φ×H + 周长加工费0.0035×加工总周长×厚度) × (1+管理费率)；加工总周长=AI识别总周长(已含内孔)，无AI时=外周长+内孔周长`,
@@ -1896,9 +1896,9 @@ function calcDieCasting(
   const moldAutoDie = calcCastingMoldFee(req, '铝压铸');
   let moldTotal = req.mold_cost && req.mold_cost > 0 ? req.mold_cost : (moldAutoDie ?? 20000);
   if (moldTotal > 0) {
-    notes.push(`压铸模具费: ${moldTotal}元（一次性，不计入单件价格${moldAutoDie ? '；按L×W×H×H13自动核算，模架2535，钢板价¥7/kg' : ''}）`);
+    notes.push(`压铸模具费: ${moldTotal}元（不计入单件价格${moldAutoDie ? '；按L×W×H×H13自动核算，模架2535，钢板价¥7/kg' : ''}）`);
     breakdown['mold'] = {
-      formula: '模具费（一次性，不分摊）',
+      formula: '模具费（不分摊）',
       detail: `模具费: ${moldTotal}元（单独列出）`,
     };
   }
@@ -1996,9 +1996,9 @@ function calcZincAlloy(
 
   // 3. 模具费（单独列出，不计入单价）
   let moldTotal = req.mold_cost && req.mold_cost > 0 ? req.mold_cost : (calcCastingMoldFee(req, '锌合金压铸') ?? 25000);
-  notes.push(`锌合金模具费: ${moldTotal}元（一次性，不计入单件价格）`);
+  notes.push(`锌合金模具费: ${moldTotal}元（不计入单件价格）`);
   breakdown['mold'] = {
-    formula: '模具费（一次性，不分摊）',
+    formula: '模具费（不分摊）',
     detail: `模具费: ${moldTotal}元（单独列出）`,
   };
 
@@ -2095,9 +2095,9 @@ function calcInjection(
 
   // 3. 模具费（单独列出，不计入单价）
   let moldTotal = req.mold_cost && req.mold_cost > 0 ? req.mold_cost : (calcCastingMoldFee(req, '塑料注塑') ?? 18000);
-  notes.push(`注塑模具费: ${moldTotal}元（一次性，不计入单件价格）`);
+  notes.push(`注塑模具费: ${moldTotal}元（不计入单件价格）`);
   breakdown['mold'] = {
-    formula: '模具费（一次性，不分摊）',
+    formula: '模具费（不分摊）',
     detail: `模具费: ${moldTotal}元（单独列出）`,
   };
 

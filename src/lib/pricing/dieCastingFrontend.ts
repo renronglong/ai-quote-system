@@ -229,7 +229,7 @@ export function tryFrontendDieCasting(
 
   const notes: string[] = [
     `压铸前端算价（价格归前端）· ${materialCategory}`,
-    `模具费(一次性): ${moldCost}元${moldCost ? '' : '（无尺寸，未估算）'}`,
+    `模具费: ${moldCost}元${moldCost ? '' : '（无尺寸，未估算）'}`,
   ];
   if (minOrderWeightKg > 0) {
     notes.push(`最低起订重量 ${minOrderWeightKg}kg → 约 ${minOrderQty} 件`);
