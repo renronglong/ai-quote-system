@@ -1023,8 +1023,11 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
     }
     if (d.materialCategory) setMaterialCategory(d.materialCategory);
     if (d.standardCategory !== undefined) setStandardCategory(d.standardCategory || '');
-    if (d.productName) setProductName(d.productName);
-    if (d.productCode) setProductCode(d.productCode);
+    // 业主 2026-11-13 18:37：产品名称 / 产品编号**不从草稿恢复**。
+    // 这两个是「本次零件」的标识，草稿 6 小时 TTL 且每次编辑都会续期，
+    // 于是上次测试的名字（如 100W壳体2）会长期残留在 /quote/extrusion 基本参数里。
+    // 当前零件的名称/编号由识别结果（aiData）或零件列表预填（ai_quote_selected_part）带入；
+    // 没有新图纸时就保持空白，宁可空着也不要顶着一个旧零件的名字。
     if (d.materialGrade) setMaterialGrade(d.materialGrade);
     if (d.materialSurfaceTreatment) setMaterialSurfaceTreatment(d.materialSurfaceTreatment);
     if (d.materialColor) setMaterialColor(d.materialColor);
@@ -1049,7 +1052,9 @@ export default function QuoteForm({ onCalculate, onResult, onProductInfoChange, 
         if (hasContent) {
           localStorage.setItem(QUOTE_DRAFT_KEY, JSON.stringify({
             fields, productType, materialCategory, standardCategory,
-            productName, productCode, materialGrade,
+            // 业主 11-13：productName / productCode 不进草稿（避免旧零件名字长期残留）；
+            // 当前零件的标识由识别结果 / 零件列表预填带入，历史报价走 loadQuoteData 恢复。
+            materialGrade,
             materialSurfaceTreatment, materialColor,
             productSurfaceTreatment, productColor,
             surfaceTreatment, surfaceColor,

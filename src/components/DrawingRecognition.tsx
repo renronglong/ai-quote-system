@@ -557,6 +557,11 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
     const promptSrc = payload.promptData || payload.recogData;
     const missing = (payload.skipMissingCheck || payload.patchId || !promptSrc)
       ? [] : collectMissingFields(promptSrc);
+    // 业主 2026-11-13 18:34：只缺选填标识（图号/零件编号、零件名称）时不要再弹补全对话框。
+    // 这些字段 required:false、不参与算价，专用识别端点本来就不返回它们，
+    // 弹窗却写着「缺了就算不出价」——既骚扰又误导。
+    // 只有真正缺几何量（required:true）时才弹；弹窗里仍保留选填项供用户顺手补。
+    const hasRequiredMissing = missing.some(f => f.required);
     let newId: string | null = null;
     if (isContinuous) {
       const products = payload.recogProducts && payload.recogProducts.length > 0
@@ -600,12 +605,12 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
       resetRecognitionState();
       if (fileInputRef.current) fileInputRef.current.value = '';
       committedThisRunRef.current = true;
-    } else if (missing.length === 0) {
-      // 单件模式：参数齐了才直接填表；缺参数时先弹窗（确认/跳过后再提交）
+    } else if (!hasRequiredMissing) {
+      // 单件模式：必填几何量齐了才直接填表；只缺选填标识不再拦着弹窗（业主 11-13）
       onDrawingData(payload as any);
     }
-    // ===== 有缺失 → 弹窗让用户手填 =====
-    if (missing.length > 0 && promptSrc) {
+    // ===== 有「缺了算不出价」的必填项 → 才弹窗让用户手填 =====
+    if (hasRequiredMissing && promptSrc) {
       setMissingFields(missing);
       setMissingValues({});
       setMissingCtx({
@@ -887,6 +892,11 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
         // 让零件列表 / 报价页拿到与 /api/drawing-parse 完全一致的数据结构。
         const raw: Record<string, any> = (spJson.data && typeof spJson.data === 'object') ? spJson.data : spJson;
         const isSheetSpecial = specialType === 'sheet';
+        // 业主 11-13 任务表第 2 条「产品编号可以是文件名」：专用端点不返回图号/零件名，
+        // 补全弹窗又已不再为选填标识弹出 ⇒ 这里直接用文件名兜底，保证零件列表/报价页有名字。
+        // 与 inspect 页 buildBasicInfo 同口径：编号=完整文件名，名称=去扩展名文件名。
+        const spFileName = String(file.name || '');
+        const spFileNoExt = spFileName.replace(/\.[^./\\]+$/, '');
         const unfoldArea = Number(raw.unfold_area_mm2 ?? 0);
         const unfoldW = Number(raw.unfold_width_mm ?? 0);
         const adapted: Record<string, any> = {
@@ -909,8 +919,8 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
           unfold_length_mm: raw.unfold_length_mm ?? raw.flat_length_mm,
           unfold_width_mm: raw.unfold_width_mm ?? raw.flat_width_mm,
           unfold_area_mm2: raw.unfold_area_mm2 ?? (isSheetSpecial ? undefined : raw.area_mm2),
-          product_code: raw.product_code ?? raw.drawing_number ?? '',
-          product_name: raw.product_name ?? '',
+          product_code: raw.product_code || raw.drawing_number || spFileName,
+          product_name: raw.product_name || raw.part_name || spFileNoExt,
           // 专用端点只给展开面积时，按展开宽反推展开长，避免报价页显示 0.00
           ...(!raw.unfold_length_mm && !raw.flat_length_mm && unfoldArea > 0 && unfoldW > 0
             ? { unfold_length_mm: Math.round((unfoldArea / unfoldW) * 100) / 100 }
