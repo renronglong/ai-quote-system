@@ -853,10 +853,12 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
         else if (ext === '.pdf') spFd.append('source_type', 'pdf');
         else if (isImg) spFd.append('source_type', 'image');
         // 浏览器到同域代理偶发瞬时断连时 fetch 会直接 reject（Failed to fetch，拿不到任何 HTTP 响应）。
-        // 业主 2026-11-13 实机复现过一次 ⇒ 自动重试 1 次，避免手动再传一遍。
-        // 超时（AbortError）不重试，直接交给外层给提示。FormData 可安全重复提交。
+        // 业主 2026-11-13 实机复现过两次：一次 52-50-5.step，一次 6840.stp（330KB，耗时更长更容易被掐断）。
+        // ⇒ 自动重试 2 次（共 3 次尝试），间隔递增；超时（AbortError）不重试，直接交给外层给提示。
+        // FormData 可安全重复提交；扣积分只在识别成功后发生，重试不会重复扣分。
         let spResp: Response | null = null;
-        for (let attempt = 0; attempt < 2; attempt++) {
+        const SP_MAX_ATTEMPTS = 3;
+        for (let attempt = 0; attempt < SP_MAX_ATTEMPTS; attempt++) {
           const spController = new AbortController();
           const spTimeout = setTimeout(() => spController.abort(), 110000);
           try {
@@ -867,9 +869,9 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
             break;
           } catch (err: any) {
             clearTimeout(spTimeout);
-            if (err?.name === 'AbortError' || attempt === 1) throw err;
-            setStatusMessage('网络中断，正在自动重试...');
-            await new Promise(resolve => setTimeout(resolve, 1200));
+            if (err?.name === 'AbortError' || attempt === SP_MAX_ATTEMPTS - 1) throw err;
+            setStatusMessage(`网络中断，正在自动重试（${attempt + 1}/${SP_MAX_ATTEMPTS - 1}）...`);
+            await new Promise(resolve => setTimeout(resolve, 1200 * (attempt + 1)));
           }
         }
         if (!spResp) throw new Error('识别请求未送达服务器');
@@ -1378,7 +1380,7 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
         // 专用识别：把浏览器网络层的英文原文换成业主看得懂、能动手的提示。
         // 不传 specialType 时保持原样，普通识别链路一字不改。
         const enet = (specialType && /failed to fetch|networkerror|load failed|network request failed/i.test(raw))
-          ? '网络连接中断，图纸没有送到服务器（已自动重试 1 次）。请检查网络后重新上传；文件请控制在 4.5MB 以内，仍失败可先用「图纸AI识别」通用入口。'
+          ? '网络连接中断，图纸没有送到服务器（已自动重试 2 次）。请先关掉其它同站标签页、停用浏览器扩展后重试；大文件（如 300KB 以上 STEP）解析较慢，也建议改用「图纸AI识别」通用入口。'
           : raw;
         lastRecogErrorRef.current = enet;
         setRecogError(enet);
