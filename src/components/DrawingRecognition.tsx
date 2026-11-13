@@ -875,18 +875,27 @@ export default function DrawingRecognition({ onDrawingData, user, mode = 'single
         const adapted: Record<string, any> = {
           ...raw,
           is_sheet_metal: isSheetSpecial,
-          parse_success: true,
+          parse_success: raw.parse_success ?? true,
           confidence_score: raw.confidence ?? raw.confidence_score ?? null,
           section_width_mm: raw.section_width_mm ?? raw.cw_mm,
           section_height_mm: raw.section_height_mm ?? raw.ch_mm,
           extrusion_length_mm: raw.extrusion_length_mm ?? raw.length_mm,
           section_area_mm2: raw.section_area_mm2 ?? (isSheetSpecial ? undefined : raw.area_mm2),
-          thickness_mm: raw.thickness_mm,
+          thickness_mm: raw.thickness_mm ?? raw.wall_thickness_mm,
           cut_total_path_mm: raw.cut_total_path_mm ?? raw.cut_perimeter_mm,
           bend_count: raw.bend_count,
           punch_holes_total: raw.punch_holes_total ?? raw.hole_count,
+          // 2026-11-13 实测专用端点返回字段名（/api/recognize/sheet 的 PDF OCR）：
+          // flat_length_mm=展开长、drawing_number=图号、flat_segments=各段展开长度；
+          // 该端点未给展开宽/展开面积/cut_total_path_mm ⇒ 留空由补全弹窗手填，绝不猜数
+          // （几何归后端；展开宽口径业主定案 208.23mm，不能拿主视图宽 136 顶替）。
+          unfold_length_mm: raw.unfold_length_mm ?? raw.flat_length_mm,
+          unfold_width_mm: raw.unfold_width_mm ?? raw.flat_width_mm,
+          unfold_area_mm2: raw.unfold_area_mm2 ?? (isSheetSpecial ? undefined : raw.area_mm2),
+          product_code: raw.product_code ?? raw.drawing_number ?? '',
+          product_name: raw.product_name ?? '',
           // 专用端点只给展开面积时，按展开宽反推展开长，避免报价页显示 0.00
-          ...(!raw.unfold_length_mm && unfoldArea > 0 && unfoldW > 0
+          ...(!raw.unfold_length_mm && !raw.flat_length_mm && unfoldArea > 0 && unfoldW > 0
             ? { unfold_length_mm: Math.round((unfoldArea / unfoldW) * 100) / 100 }
             : {}),
         };
