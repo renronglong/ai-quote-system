@@ -984,7 +984,8 @@ export default function QuotePartsPage() {
                                 e.stopPropagation();
                                 // 点开前把当前零件数据重新落盘，保证 inspect 子网页在本会话内一定能读到最新数据
                                 try { localStorage.setItem('ai_quote_parts', JSON.stringify(payload)); } catch { /* ignore */ }
-                                window.open(`/quote/parts/inspect?i=${idx}`, '_blank', 'noopener,noreferrer');
+                                // 同标签跳转（业主 21:24：查看图纸不再新开标签页）
+                                router.push(`/quote/parts/inspect?i=${idx}`);
                               }}
                               onKeyDown={(e) => e.stopPropagation()}
                               className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-slate-200 text-sm text-slate-500 whitespace-nowrap hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50"
