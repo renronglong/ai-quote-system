@@ -1245,9 +1245,10 @@ function calcExtrusion(
       const sec = calcSecondaryOperationsCost(req.process, rules, mat.cost, req.dimensions || {});
       if (sec.cost > 0 && sec.detail && sec.detail !== '无二次加工') {
         const opsCount = countSecondaryOps(req.process);
-        const perOpCostWithLoss = r2((sec.cost / opsCount) * 1.03);
-        accumulated += perOpCostWithLoss * opsCount;
-        totalSecondaryCost += perOpCostWithLoss * opsCount;
+        // 业主 2026-11-14：二次加工费不再乘 1.03 工序损耗，按各工序纯和计入（CNC=分钟×1+材料费×3% 等）
+        const perOpCost = r2(sec.cost / opsCount);
+        accumulated += perOpCost * opsCount;
+        totalSecondaryCost += perOpCost * opsCount;
         secondaryDetails.push(sec.detail);
         secondaryFormulaParts.push(sec.formula);
       }
@@ -1633,7 +1634,7 @@ function calcSecondaryOperationsCost(
 
   // 折弯费在板材主引擎中按工序累计（×1.03×1.03），此处不重复计
 
-  // CNC/车加工：时间费 1元/分钟 + 材料费的10%（2026-08-30 龙哥规则）
+  // CNC/车加工：时间费 1元/分钟(分钟×1) + 材料费的3%（SECONDARY_MATERIAL_RATE，2026-11-01 业主定：10%→3%）
   // 分钟数优先按刀路自算（业主 2026-10-15 定案：A 给几何量 → 后端算节拍），
   // 没有刀路时退回手填分钟；两者都没有则不收费
   {
