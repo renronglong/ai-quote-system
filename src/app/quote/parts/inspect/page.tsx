@@ -896,63 +896,6 @@ export default function PartsInspectPage() {
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
           {authLoading ? (
             <div className="text-sm text-slate-400 py-4">检查权限中…</div>
-          ) : isAdmin ? (
-            <>
-              <div className="flex items-start gap-2 mb-3">
-                <Info size={18} className="text-blue-600 mt-0.5" />
-                <div className="flex-1">
-                  <h2 className="font-medium">后端给出的全部信息</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">把后端原始返回翻译成通俗语言，供管理员测试核对。普通用户不可见。</p>
-                </div>
-              </div>
-              <a
-                href={`/quote/parts/inspect?i=${idx}&raw=1`}
-                onClick={(e) => { e.preventDefault(); setShowRaw(v => !v); }}
-                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline mt-1"
-              >
-                <ChevronDown size={14} className={`transition-transform ${showRaw ? 'rotate-180' : ''}`} />
-                {showRaw ? '收起后端全部信息' : '查看后端给出的全部信息（通俗解释）'}
-              </a>
-              {showRaw && (
-                <div className="mt-5 space-y-5">
-                  <div>
-                    <div className="text-sm font-medium mb-2">一句话看懂</div>
-                    <ul className="space-y-1">
-                      {summary.map((s, i) => <li key={i} className="text-sm text-slate-700 leading-relaxed">· {s}</li>)}
-                    </ul>
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium mb-2">字段对照表（{entries.length} 项）</div>
-                    <div className="overflow-x-auto rounded-lg border border-slate-200">
-                      <table className="w-full text-sm">
-                        <thead className="bg-slate-50 text-slate-500 text-xs">
-                          <tr><th className="text-left px-3 py-2 w-1/4">含义</th><th className="text-left px-3 py-2 w-1/3">后端字段</th><th className="text-left px-3 py-2">值</th></tr>
-                        </thead>
-                        <tbody>
-                          {entries.map(e => (
-                            <tr key={e.key} className="border-t border-slate-100">
-                              <td className="px-3 py-1.5 text-slate-700">{e.label}</td>
-                              <td className="px-3 py-1.5 text-slate-400 font-mono text-xs break-all">{e.key}</td>
-                              <td className={`px-3 py-1.5 break-all ${e.long ? 'text-slate-500 text-xs' : 'text-slate-800'}`}>{e.value}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                  <div>
-                    <button onClick={() => setShowJson(v => !v)} className="text-sm text-blue-600 hover:underline">
-                      {showJson ? '收起' : '展开'}原始 JSON（未经翻译）
-                    </button>
-                    {showJson && (
-                      <pre className="mt-2 max-h-96 overflow-auto rounded-lg bg-slate-900 text-slate-100 text-xs p-4 whitespace-pre-wrap break-all">
-                        {JSON.stringify(raw, null, 2)}
-                      </pre>
-                    )}
-                  </div>
-                </div>
-              )}
-            </>
           ) : (
             <>
               <div className="flex items-start gap-2 mb-3">
@@ -1043,6 +986,59 @@ export default function PartsInspectPage() {
                   </p>
                 </div>
               </div>
+          
+            {/* 管理员专属调试信息（折叠，普通用户不可见） */}
+            {isAdmin && (
+              <div className="mt-5 pt-4 border-t border-slate-200">
+                <a
+                  href={`/quote/parts/inspect?i=${idx}&raw=1`}
+                  onClick={(e) => { e.preventDefault(); setShowRaw(v => !v); }}
+                  className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
+                >
+                  <ChevronDown size={14} className={`transition-transform ${showRaw ? 'rotate-180' : ''}`} />
+                  {showRaw ? '收起管理员调试信息' : '查看管理员调试信息（通俗解释，普通用户不可见）'}
+                </a>
+                {showRaw && (
+                <div className="mt-5 space-y-5">
+                  <div>
+                    <div className="text-sm font-medium mb-2">一句话看懂</div>
+                    <ul className="space-y-1">
+                      {summary.map((s, i) => <li key={i} className="text-sm text-slate-700 leading-relaxed">· {s}</li>)}
+                    </ul>
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium mb-2">字段对照表（{entries.length} 项）</div>
+                    <div className="overflow-x-auto rounded-lg border border-slate-200">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50 text-slate-500 text-xs">
+                          <tr><th className="text-left px-3 py-2 w-1/4">含义</th><th className="text-left px-3 py-2 w-1/3">后端字段</th><th className="text-left px-3 py-2">值</th></tr>
+                        </thead>
+                        <tbody>
+                          {entries.map(e => (
+                            <tr key={e.key} className="border-t border-slate-100">
+                              <td className="px-3 py-1.5 text-slate-700">{e.label}</td>
+                              <td className="px-3 py-1.5 text-slate-400 font-mono text-xs break-all">{e.key}</td>
+                              <td className={`px-3 py-1.5 break-all ${e.long ? 'text-slate-500 text-xs' : 'text-slate-800'}`}>{e.value}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div>
+                    <button onClick={() => setShowJson(v => !v)} className="text-sm text-blue-600 hover:underline">
+                      {showJson ? '收起' : '展开'}原始 JSON（未经翻译）
+                    </button>
+                    {showJson && (
+                      <pre className="mt-2 max-h-96 overflow-auto rounded-lg bg-slate-900 text-slate-100 text-xs p-4 whitespace-pre-wrap break-all">
+                        {JSON.stringify(raw, null, 2)}
+                      </pre>
+                    )}
+                  </div>
+                </div>
+              )}
+              </div>
+            )}
             </>
           )}
         </section>
