@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, FileImage, ShieldAlert, ChevronDown, ExternalLink, Info, Box } from 'lucide-react';
+import { ArrowLeft, FileImage, ChevronDown, ExternalLink, Info, Box } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { calculateLaserCuttingFee } from '@/lib/stamping-mold-calculator';
 import { tryFrontendDieCasting } from '@/lib/pricing/dieCastingFrontend';
@@ -898,8 +898,8 @@ export default function PartsInspectPage() {
             <div className="text-sm text-slate-400 py-4">检查权限中…</div>
           ) : isAdmin ? (
             <>
-              <div className="flex items-start gap-2 mb-2">
-                <ShieldAlert size={18} className="text-amber-600 mt-0.5" />
+              <div className="flex items-start gap-2 mb-3">
+                <Info size={18} className="text-blue-600 mt-0.5" />
                 <div className="flex-1">
                   <h2 className="font-medium">后端给出的全部信息</h2>
                   <p className="text-xs text-slate-500 mt-0.5">把后端原始返回翻译成通俗语言，供管理员测试核对。普通用户不可见。</p>
@@ -914,11 +914,11 @@ export default function PartsInspectPage() {
                 {showRaw ? '收起后端全部信息' : '查看后端给出的全部信息（通俗解释）'}
               </a>
               {showRaw && (
-                <div className="mt-4 space-y-4">
-                  <div className="rounded-lg bg-blue-50 border border-blue-100 p-4">
-                    <div className="text-sm font-medium text-blue-900 mb-2">一句话看懂</div>
+                <div className="mt-5 space-y-5">
+                  <div>
+                    <div className="text-sm font-medium mb-2">一句话看懂</div>
                     <ul className="space-y-1">
-                      {summary.map((s, i) => <li key={i} className="text-sm text-blue-900 leading-relaxed">· {s}</li>)}
+                      {summary.map((s, i) => <li key={i} className="text-sm text-slate-700 leading-relaxed">· {s}</li>)}
                     </ul>
                   </div>
                   <div>
