@@ -22,6 +22,8 @@ interface AdminUser {
   balance: number;
   total_recharged: number;
   total_consumed: number;
+  quote_count?: number;
+  quote_total?: number;
 }
 
 export default function AdminUsersPage() {
@@ -193,6 +195,7 @@ export default function AdminUsersPage() {
                 <th className="px-4 py-3 text-right">积分余额</th>
                 <th className="px-4 py-3 text-right">累计赠送</th>
                 <th className="px-4 py-3 text-right">累计消耗</th>
+                <th className="px-4 py-3 text-right">报价</th>
                 <th className="px-4 py-3 text-left">注册时间</th>
                 <th className="px-4 py-3 text-center">操作</th>
               </tr>
@@ -219,22 +222,36 @@ export default function AdminUsersPage() {
                   </td>
                   <td className="px-4 py-3 text-right text-gray-500">{Number(u.total_recharged).toFixed(0)}</td>
                   <td className="px-4 py-3 text-right text-gray-500">{Number(u.total_consumed).toFixed(0)}</td>
-                  <td className="px-4 py-3 text-gray-400 text-xs">{new Date(u.created_at).toLocaleDateString('zh-CN')}</td>
+                  <td className="px-4 py-3 text-right">
+                    {isAdminUser(u.phone) ? (
+                      <span>
+                        <span className="font-semibold text-emerald-600">¥{(Number(u.quote_total || 0)).toFixed(2)}</span>
+                        <span className="text-xs text-gray-400 ml-1">{Number(u.quote_count || 0)} 条</span>
+                      </span>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-gray-400 text-xs">{u.created_at ? new Date(u.created_at).toLocaleDateString('zh-CN') : '—'}</td>
                   <td className="px-4 py-3 text-center">
                     <div className="inline-flex items-center gap-1.5">
-                      <button
-                        onClick={() => { setGrantOpen(u); setGrantAmount('100'); setGrantRemark(''); setError(''); }}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
-                      >
-                        <Gift className="w-3.5 h-3.5" /> 赠积分
-                      </button>
-                      <button
-                        onClick={() => { setDeleteTarget(u); setError(''); }}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
-                        title="删除该用户（不可恢复）"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" /> 删除
-                      </button>
+                      {!u.id.startsWith('admin:') && (
+                        <button
+                          onClick={() => { setGrantOpen(u); setGrantAmount('100'); setGrantRemark(''); setError(''); }}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
+                        >
+                          <Gift className="w-3.5 h-3.5" /> 赠积分
+                        </button>
+                      )}
+                      {!isAdminUser(u.phone) && (
+                        <button
+                          onClick={() => { setDeleteTarget(u); setError(''); }}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
+                          title="删除该用户（不可恢复）"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> 删除
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
